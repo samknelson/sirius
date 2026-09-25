@@ -4,9 +4,10 @@ import type { buildWorkerMonthlyCoverageHistory } from "../../services/sitespeci
 export function registerWorkerMonthlyCoverageHistoryRoute(
   app: Express,
   workerView: RequestHandler,
+  baoComponent: RequestHandler,
   buildHistory?: typeof buildWorkerMonthlyCoverageHistory,
 ) {
-  app.get("/api/workers/:workerId/benefits/monthly-history", workerView, async (req, res) => {
+  app.get("/api/workers/:workerId/benefits/monthly-history", workerView, baoComponent, async (req, res) => {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 12);
     if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 24) {

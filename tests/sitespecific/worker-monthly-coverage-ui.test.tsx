@@ -17,6 +17,7 @@ describe("worker monthly coverage presentation", () => {
         months: [{
           coverageMonth: { year: 2024, month: 1, label: "January 2024" },
           workMonth: { year: 2023, month: 10, label: "October 2023" },
+          employerHours: [{ employerId: "employer", employerName: "Employer Name", reported: 88.25 }],
           hours: { reported: 88.25, required: 100 },
           status: "unknown", reasons: [], medical: [], dental: [], other: [], charge: null,
         }],
@@ -25,8 +26,14 @@ describe("worker monthly coverage presentation", () => {
     });
     const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-a" />);
     expect(html).toContain("January 2024");
-    expect(html).toContain("Source work month: October 2023");
-    expect(html).toContain("88.25 of 100 required");
+    expect(html).toContain("Work month — October 2023");
+    expect(html).toContain("Employer Name");
+    expect(html).toContain("Total reported across employers:");
+    expect(html).toContain("88.25 hours");
+    expect(html).toContain("Applicable threshold:");
+    expect(html).toContain("The total is below the hours threshold");
+    expect(html).toContain("not the coverage decision");
+    expect(html).toContain("sm:grid-cols-2");
     expect(html).toContain("Not confirmed");
     expect(html).toContain("No recorded medical benefit");
     expect(html).not.toContain("Posted EE-fund benefit charge");
@@ -40,7 +47,11 @@ describe("worker monthly coverage presentation", () => {
         months: [{
           coverageMonth: { year: 2024, month: 2, label: "February 2024" },
           workMonth: { year: 2023, month: 11, label: "November 2023" },
-          hours: null, status: "inactive", reasons: ["Low hours", "Unpaid benefit"],
+          employerHours: [
+            { employerId: "employer-a", employerName: "Employer A", reported: 12.25 },
+            { employerId: "unknown", employerName: "Unknown employer (unknown)", reported: 10.5 },
+          ],
+          hours: null, status: "inactive", reasons: ["Low Hours", "Unpaid Employee Contributions"],
           medical: ["Medical A", "Medical B"], dental: ["Dental A"],
           other: ["Vision"], charge: "0.00",
         }],
@@ -53,8 +64,13 @@ describe("worker monthly coverage presentation", () => {
     expect(html).toContain("$0.00");
     expect(html).toContain("Medical A, Medical B");
     expect(html).toContain("Dental A");
-    expect(html).toContain("Other recorded benefits: Vision");
-    expect(html).toContain("Low hours · Unpaid benefit");
+    expect(html).toContain("Employer A");
+    expect(html).toContain("Unknown employer (unknown)");
+    expect(html).toContain("Total reported across employers:");
+    expect(html).toContain("Applicable threshold:");
+    expect(html).toContain("Other recorded benefits:");
+    expect(html).toContain("Vision");
+    expect(html).toContain("Low Hours · Unpaid Employee Contributions");
     expect(html).toContain("Load older months");
   });
 

@@ -24,7 +24,8 @@ const HISTORY_PAGE_LIMIT = 120;
 export interface WorkerMonthlyCoverageHistoryMonth {
   coverageMonth: { year: number; month: number; label: string };
   workMonth: { year: number; month: number; label: string };
-  hours: { reported: number; required: number } | null;
+  employerHours: Array<{ employerId: string | null; employerName: string; reported: number | null }> | null;
+  hours: { reported: number | null; required: number | null } | null;
   status: "active" | "inactive" | "unknown";
   reasons: string[];
   medical: string[];
@@ -48,6 +49,15 @@ type MonthlyCharge = {
   balanceDelta: string;
   chargeTotal: string;
   hadNonzeroBalance?: boolean;
+};
+type MonthlyEmployerHours = {
+  employerId: string | null;
+  employerName: string;
+  reported: number | null;
+};
+type MonthlyHoursEvidence = {
+  employers: MonthlyEmployerHours[];
+  reported: number | null;
 };
 
 export function coverageMonthLabel(year: number, month: number) {
@@ -108,6 +118,67 @@ export function classifyBenefitPresence(rows: BenefitPresence[]) {
   };
 }
 
+/** Combines monthly rows (which can be split by employment status) by employer. */
+export function aggregateEmployerHours(rows: MonthlyHours[]): MonthlyHoursEvidence {
+  const byEmployer = new Map<string, {
+    employerId: string | null;
+    employerName: string;
+    reported: number;
+    hasReportedHours: boolean;
+    hasUnavailableHours: boolean;
+  }>();
+  for (const row of rows) {
+    const employerId = row.employerId ?? null;
+    const employerName = typeof row.employer?.name === "string" && row.employer.name.trim()
+      ? row.employer.name.trim()
+      : employerId
+        ? `Unknown employer (${employerId})`
+        : "Unknown employer";
+    const key = employerId ?? `unknown:${employerName}`;
+    let entry = byEmployer.get(key);
+    if (!entry) {
+      entry = {
+        employerId,
+        employerName,
+        reported: 0,
+        hasReportedHours: false,
+        hasUnavailableHours: false,
+      };
+      byEmployer.set(key, entry);
+    }
+    if (row.totalHours === null || row.totalHours === undefined || row.totalHours === "") {
+      entry.hasUnavailableHours = true;
+      continue;
+    }
+    const reported = Number(row.totalHours);
+    if (!Number.isFinite(reported)) {
+      entry.hasUnavailableHours = true;
+      continue;
+    }
+    entry.reported += reported;
+    entry.hasReportedHours = true;
+  }
+
+  const employers = Array.from(byEmployer.values(), (entry) => ({
+    employerId: entry.employerId,
+    employerName: entry.employerName,
+    reported: entry.hasUnavailableHours
+      ? null
+      : roundHours(entry.hasReportedHours ? entry.reported : 0),
+  })).sort((a, b) =>
+    a.employerName.localeCompare(b.employerName) ||
+    (a.employerId ?? "").localeCompare(b.employerId ?? ""),
+  );
+  const reported = employers.every((employer) => employer.reported !== null)
+    ? roundHours(employers.reduce((sum, employer) => sum + (employer.reported ?? 0), 0))
+    : null;
+  return { employers, reported };
+}
+
+function roundHours(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 type ScanDecision = { status: "active" | "inactive" | "unknown"; reasons: string[] };
 
 /** Missing or stale scan results never become negative coverage evidence. */
@@ -149,26 +220,34 @@ export function scanDecisionForMonth(
 function failedBaoCauses(summary: unknown): string[] {
   const actions = (summary as { actions?: unknown[] } | null)?.actions;
   if (!Array.isArray(actions)) return [];
-  let lowHours = false;
-  let unpaidBenefit = false;
+  const failed = new Set<string>();
   for (const action of actions as any[]) {
     if (action?.eligible !== false || !["none", "delete"].includes(action?.action)) continue;
     const results = Array.isArray(action.pluginResults) ? action.pluginResults : [];
-    const election = results.find((result: any) => result?.pluginKey === "election");
-    if (election && election.eligible !== true) continue;
-    lowHours ||= results.some((result: any) =>
-      ["sitespecific-bao-threshold", "sitespecific-bao-buildup"].includes(result?.pluginKey) &&
-      result?.eligible === false,
-    );
-    unpaidBenefit ||= results.some((result: any) =>
-      result?.pluginKey === "sitespecific-bao-ee-contributions" &&
-      result?.eligible === false,
-    );
+    for (const result of results) {
+      if (result?.eligible !== false) continue;
+      switch (result.pluginKey) {
+        case "sitespecific-bao-buildup":
+          failed.add("Buildup Incomplete");
+          break;
+        case "sitespecific-bao-threshold":
+          failed.add("Low Hours");
+          break;
+        case "sitespecific-bao-ee-contributions":
+          failed.add("Unpaid Employee Contributions");
+          break;
+        case "election":
+          failed.add("No Election");
+          break;
+      }
+    }
   }
   return [
-    ...(lowHours ? ["Low hours"] : []),
-    ...(unpaidBenefit ? ["Unpaid benefit"] : []),
-  ];
+    "Buildup Incomplete",
+    "Low Hours",
+    "Unpaid Employee Contributions",
+    "No Election",
+  ].filter((reason) => failed.has(reason));
 }
 
 function monthOrdinalFromYmd(ymd: string): number {
@@ -270,15 +349,19 @@ export async function buildWorkerMonthlyCoverageHistory(
     }
   }
   const chargeHistory = deriveChargeHistory(chargeRows);
-  const hoursByOrdinal = new Map<number, number>();
+  const rowsByHoursOrdinal = new Map<number, MonthlyHours[]>();
   if (hoursRead.status === "fulfilled") {
     for (const row of monthlyHours as MonthlyHours[]) {
       const ordinal = toOrdinal(Number(row.year), Number(row.month));
-      const total = Number(row.totalHours);
-      if (!Number.isFinite(ordinal) || !Number.isFinite(total)) continue;
-      hoursByOrdinal.set(ordinal, (hoursByOrdinal.get(ordinal) ?? 0) + total);
+      if (!Number.isFinite(ordinal)) continue;
+      const rows = rowsByHoursOrdinal.get(ordinal) ?? [];
+      rows.push(row);
+      rowsByHoursOrdinal.set(ordinal, rows);
     }
   }
+  const hoursByOrdinal = new Map<number, MonthlyHoursEvidence>(
+    Array.from(rowsByHoursOrdinal, ([ordinal, rows]) => [ordinal, aggregateEmployerHours(rows)]),
+  );
 
   const earliestOrdinals = [
     ...benefitRows.map((row) => toOrdinal(row.year, row.month)),
@@ -344,8 +427,11 @@ export async function buildWorkerMonthlyCoverageHistory(
       ? scanDecisionForMonth(scanRows, benefitRows, year, month)
       : { status: "unknown" as const, reasons: ["Coverage records could not be loaded."] };
     const benefits = classifyBenefitPresence(benefitRows.filter((row) => row.year === year && row.month === month));
-    let hours: WorkerMonthlyCoverageHistoryMonth["hours"] = null;
-    if (hoursRead.status === "fulfilled" && policyResolutionAvailable) {
+    const sourceHours = hoursRead.status === "fulfilled"
+      ? hoursByOrdinal.get(toOrdinal(source.year, source.month)) ?? { employers: [], reported: 0 }
+      : null;
+    let required: number | null = null;
+    if (sourceHours && policyResolutionAvailable) {
       const resolved = thresholds.get(ordinal) ?? { employerId: null, policyId: null };
       try {
         const defaultThreshold = await defaultForPolicy(resolved.policyId);
@@ -372,16 +458,20 @@ export async function buildWorkerMonthlyCoverageHistory(
               candidate.threshold < lowest.threshold ? candidate : lowest);
           }
         }
-        const reported = hoursByOrdinal.get(toOrdinal(source.year, source.month)) ?? 0;
-        hours = { reported, required: threshold.threshold };
+        required = threshold.threshold;
       } catch {
         partial = true;
       }
     }
+    const hours: WorkerMonthlyCoverageHistoryMonth["hours"] =
+      sourceHours || required !== null
+        ? { reported: sourceHours?.reported ?? null, required }
+        : null;
     const ym = `${year}-${String(month).padStart(2, "0")}`;
     months.push({
       coverageMonth: { year, month, label: coverageMonthLabel(year, month) },
       workMonth: { year: source.year, month: source.month, label: coverageMonthLabel(source.year, source.month) },
+      employerHours: sourceHours?.employers ?? null,
       hours,
       ...decision,
       medical: benefits.medical,

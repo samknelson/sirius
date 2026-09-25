@@ -1726,6 +1726,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   registerWorkerMonthlyCoverageHistoryRoute(
     app, requireAccess("worker.view", req => req.params.workerId),
+    requireComponent("sitespecific.bao"),
   );
 
   // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker.view policy: staff or worker with matching email)

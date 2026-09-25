@@ -1189,7 +1189,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/summary">
-        <ProtectedRoute tabId="benefits-summary" entityType="worker">
+        <ProtectedRoute tabId="benefits-summary" entityType="worker" component="sitespecific.bao">
           <AuthenticatedLayout>
             <WorkerBenefitsSummary />
           </AuthenticatedLayout>

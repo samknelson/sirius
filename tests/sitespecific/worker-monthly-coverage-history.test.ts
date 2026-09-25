@@ -39,6 +39,7 @@ vi.mock("../../server/storage/database", () => ({
 }));
 
 import {
+  aggregateEmployerHours,
   buildWorkerMonthlyCoverageHistory,
   classifyBenefitPresence,
   deriveChargeHistory,
@@ -84,7 +85,29 @@ describe("worker monthly coverage history", () => {
       ] }] },
     }] as any, [], 2024, 4)).toMatchObject({
       status: "inactive",
-      reasons: ["Low hours", "Unpaid benefit"],
+      reasons: ["Low Hours", "Unpaid Employee Contributions"],
+    });
+  });
+
+  it("aggregates decimal hours across employer rows and preserves unknown employer names", () => {
+    expect(aggregateEmployerHours([
+      { employerId: "a", employer: { name: "Employer A" }, totalHours: "12.25" },
+      { employerId: "a", employer: { name: "Employer A" }, totalHours: "4.5" },
+      { employerId: "b", employer: { name: "Employer B" }, totalHours: "30" },
+      { employerId: "missing", employer: null, totalHours: "1.25" },
+    ] as any)).toEqual({
+      employers: [
+        { employerId: "a", employerName: "Employer A", reported: 16.75 },
+        { employerId: "b", employerName: "Employer B", reported: 30 },
+        { employerId: "missing", employerName: "Unknown employer (missing)", reported: 1.25 },
+      ],
+      reported: 48,
+    });
+    expect(aggregateEmployerHours([
+      { employerId: "a", employer: { name: "Employer A" }, totalHours: null },
+    ] as any)).toEqual({
+      employers: [{ employerId: "a", employerName: "Employer A", reported: null }],
+      reported: null,
     });
   });
 
@@ -179,6 +202,34 @@ describe("worker monthly coverage history", () => {
       .toEqual({ reported: 123.5, required: 120 });
   });
 
+  it("returns employer-level source hours and compares their aggregate with the applicable threshold", async () => {
+    mocks.getEmployer.mockImplementation(async (id: string) => ({
+      id,
+      industryId: "industry",
+      denormPolicyId: null,
+    }));
+    mocks.getWorkerMsh.mockResolvedValue([
+      { date: "2023-10-01", industryId: "industry", ms: { data: { sitespecific: { bao: { threshold: 100 } } } } },
+    ]);
+    mocks.getWorkerHoursMonthly.mockResolvedValue([
+      { year: 2023, month: 10, employerId: "employer-a", employer: { name: "Employer A" }, homeStatus: "all", totalHours: "63.25" },
+      { year: 2023, month: 10, employerId: "employer-a", employer: { name: "Employer A" }, homeStatus: "all", totalHours: "5.5" },
+      { year: 2023, month: 10, employerId: "employer-b", employer: { name: "Employer B" }, homeStatus: "none", totalHours: "48" },
+    ]);
+    const history = await buildWorkerMonthlyCoverageHistory(
+      "worker", 0, 12, new Date("2024-01-15T12:00:00Z"),
+    );
+    expect(history.months[0]).toMatchObject({
+      coverageMonth: { label: "January 2024" },
+      workMonth: { label: "October 2023" },
+      employerHours: [
+        { employerId: "employer-a", employerName: "Employer A", reported: 68.75 },
+        { employerId: "employer-b", employerName: "Employer B", reported: 48 },
+      ],
+      hours: { reported: 116.75, required: 100 },
+    });
+  });
+
   it("returns a continuous newest-first page across year rollover with source hours and period thresholds", async () => {
     mocks.getWorker.mockResolvedValue({ denormHomeEmployerId: "employer" });
     mocks.getEmployer.mockResolvedValue({ id: "employer", industryId: "industry", denormPolicyId: null });
@@ -231,7 +282,7 @@ describe("worker monthly coverage history", () => {
     });
     expect(history.months[4]).toMatchObject({
       status: "inactive",
-      reasons: ["Low hours"],
+      reasons: ["Low Hours"],
     });
     expect(history.showCharges).toBe(true);
     expect(history.months[2].charge).toBe("0.00");
@@ -256,6 +307,32 @@ describe("worker monthly coverage history", () => {
     expect(decision).toEqual({
       status: "inactive",
       reasons: ["No failed BAO eligibility rule was recorded for this month."],
+    });
+  });
+
+  it("extracts and orders supported BAO failures, including election failure", () => {
+    expect(scanDecisionForMonth([{
+      id: "done", year: 2024, month: 1, status: "success",
+      completedAt: new Date("2024-02-01T00:00:00Z"),
+      resultSummary: { actions: [
+        { action: "none", eligible: false, pluginResults: [
+          { pluginKey: "election", eligible: false },
+          { pluginKey: "sitespecific-bao-ee-contributions", eligible: false },
+          { pluginKey: "sitespecific-bao-threshold", eligible: false },
+          { pluginKey: "sitespecific-bao-buildup", eligible: false },
+        ] },
+        { action: "delete", eligible: false, pluginResults: [
+          { pluginKey: "sitespecific-bao-threshold", eligible: false },
+        ] },
+      ] },
+    }] as any, [], 2024, 1)).toEqual({
+      status: "inactive",
+      reasons: [
+        "Buildup Incomplete",
+        "Low Hours",
+        "Unpaid Employee Contributions",
+        "No Election",
+      ],
     });
   });
 });

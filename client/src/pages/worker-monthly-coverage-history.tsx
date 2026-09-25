@@ -12,7 +12,8 @@ interface Month {
 export interface MonthlyCoverageRow {
   coverageMonth: Month;
   workMonth: Month;
-  hours: { reported: number; required: number } | null;
+  employerHours: Array<{ employerId: string | null; employerName: string; reported: number | null }> | null;
+  hours: { reported: number | null; required: number | null } | null;
   status: "active" | "inactive" | "unknown";
   reasons: string[];
   medical: string[];
@@ -29,6 +30,12 @@ export interface MonthlyCoveragePage {
 }
 
 const PAGE_SIZE = 12;
+
+function formatHours(value: number | null | undefined): string {
+  return value === null || value === undefined
+    ? "Unavailable"
+    : `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} hours`;
+}
 
 export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string }) {
   const query = useInfiniteQuery<MonthlyCoveragePage>({
@@ -69,28 +76,76 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
           {first?.partial && <p role="status" className="rounded-lg border p-3 text-sm">Some coverage details are unavailable. Months without a confirmed decision are shown as unknown.</p>}
           {first && first.total === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No monthly coverage, hours, scan, or charge history has been recorded for this worker.</p>}
           {rows.map((row) => (
-            <article key={`${row.coverageMonth.year}-${row.coverageMonth.month}`} className="rounded-lg border p-4 text-sm" aria-label={`Coverage for ${row.coverageMonth.label}`}>
+            <article key={`${row.coverageMonth.year}-${row.coverageMonth.month}`} className="rounded-lg border p-4 text-sm" aria-label={`Coverage for ${row.coverageMonth.label}`} data-testid="monthly-coverage-card">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Coverage month</p>
                   <h3 className="text-base font-semibold">{row.coverageMonth.label}</h3>
-                  <p className="mt-1 text-muted-foreground">Source work month: {row.workMonth.label}</p>
                 </div>
                 <span className="rounded-full border px-3 py-1 font-medium" role="status">
                   {row.status === "active" ? "Active" : row.status === "inactive" ? "Inactive" : "Not confirmed"}
                 </span>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <p>Reported hours: <strong className="tabular-nums">{row.hours ? `${row.hours.reported} of ${row.hours.required} required` : "Unavailable"}</strong></p>
-                {first?.showCharges && <p>Posted EE-fund benefit charge: <strong className="tabular-nums">{row.charge === null ? "Unavailable" : `$${row.charge}`}</strong></p>}
-                <p>Medical: {row.medical.length ? row.medical.join(", ") : "No recorded medical benefit"}</p>
-                <p>Dental: {row.dental.length ? row.dental.join(", ") : "No recorded dental benefit"}</p>
-                {row.other.length > 0 && <p>Other recorded benefits: {row.other.join(", ")}</p>}
+              <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2" data-testid="monthly-coverage-card-columns">
+                <section aria-label={`Benefits for ${row.coverageMonth.label}`} className="min-w-0 rounded-md border bg-muted/20 p-3">
+                  <h4 className="font-semibold">Benefits received for {row.coverageMonth.label}</h4>
+                  <dl className="mt-3 space-y-2">
+                    <div className="min-w-0">
+                      <dt className="font-medium">Medical</dt>
+                      <dd className="break-words text-muted-foreground">{row.medical.length ? row.medical.join(", ") : "No recorded medical benefit"}</dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="font-medium">Dental</dt>
+                      <dd className="break-words text-muted-foreground">{row.dental.length ? row.dental.join(", ") : "No recorded dental benefit"}</dd>
+                    </div>
+                  </dl>
+                  {row.other.length > 0 && <p className="mt-3 break-words"><span className="font-medium">Other recorded benefits: </span>{row.other.join(", ")}</p>}
+                  {row.status === "inactive" && (
+                    <p className="mt-3 border-t pt-3 text-muted-foreground">
+                      <span className="font-medium text-foreground">Scan reason: </span>
+                      {row.reasons.length ? row.reasons.join(" · ") : "No specific reason confirmed by the scan."}
+                    </p>
+                  )}
+                </section>
+                <section aria-label={`Work-month evidence for ${row.workMonth.label}`} className="min-w-0 rounded-md border p-3">
+                  <h4 className="font-semibold">Work month — {row.workMonth.label}</h4>
+                  <p className="mt-3 font-medium">Hours by employer</p>
+                  {row.employerHours === null ? (
+                    <p className="mt-1 text-muted-foreground">Employer hours unavailable.</p>
+                  ) : row.employerHours.length === 0 ? (
+                    <p className="mt-1 text-muted-foreground">No employer hours recorded for this work month.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {row.employerHours.map((employer, index) => (
+                        <li key={`${employer.employerId ?? employer.employerName}-${index}`} className="flex min-w-0 flex-wrap justify-between gap-x-3">
+                          <span className="min-w-0 break-words">{employer.employerName}</span>
+                          <strong className="shrink-0 tabular-nums">{formatHours(employer.reported)}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-3 border-t pt-3">
+                    <p>Total reported across employers: <strong className="tabular-nums">{formatHours(row.hours?.reported)}</strong></p>
+                    <p className="mt-1">Applicable threshold: <strong className="tabular-nums">{formatHours(row.hours?.required)}</strong></p>
+                    {row.hours?.reported !== null && row.hours?.reported !== undefined &&
+                      row.hours.required !== null && row.hours.required !== undefined && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          The total {row.hours.reported >= row.hours.required ? "meets or exceeds" : "is below"} the hours threshold; this is evidence for the review, not the coverage decision.
+                        </p>
+                      )}
+                    {(row.hours?.reported === null || row.hours?.reported === undefined ||
+                      row.hours.required === null || row.hours.required === undefined) && (
+                        <p className="mt-2 text-xs text-muted-foreground">Hours are evidence for the review; they do not by themselves determine coverage.</p>
+                      )}
+                  </div>
+                </section>
               </div>
-              {row.status === "inactive" && (
-                <p className="mt-3 text-muted-foreground">{row.reasons.length ? row.reasons.join(" · ") : "No specific reason confirmed by the scan."}</p>
+              {row.status === "unknown" && <p className="mt-3 rounded-md bg-muted/40 p-3 text-muted-foreground">A reliable coverage decision is not available for this month.</p>}
+              {first?.showCharges && (
+                <p className="mt-3 border-t pt-3">
+                  Posted EE-fund benefit charge: <strong className="tabular-nums">{row.charge === null ? "Unavailable" : `$${row.charge}`}</strong>
+                </p>
               )}
-              {row.status === "unknown" && <p className="mt-3 text-muted-foreground">A reliable coverage decision is not available for this month.</p>}
             </article>
           ))}
           {query.isError && rows.length > 0 && <p role="alert">Older months could not be loaded. <Button variant="outline" size="sm" onClick={() => query.fetchNextPage()}>Retry</Button></p>}

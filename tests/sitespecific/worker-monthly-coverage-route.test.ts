@@ -2,6 +2,7 @@ import express from "express";
 import type { Server } from "http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerWorkerMonthlyCoverageHistoryRoute } from "../../server/modules/workers/monthly-coverage-history";
+import { getTabAccessRequirements } from "../../shared/tabRegistry";
 
 let server: Server | undefined;
 afterEach(() => { server?.close(); server = undefined; });
@@ -10,10 +11,15 @@ describe("worker monthly coverage history route", () => {
   it("checks worker access before reading history and scopes the read to the requested worker", async () => {
     const app = express();
     const build = vi.fn().mockResolvedValue({ months: [], total: 0, showCharges: false, partial: false });
+    let baoEnabled = false;
     registerWorkerMonthlyCoverageHistoryRoute(
       app,
       (req, res, next) => {
         if (req.params.workerId !== req.header("x-authorized-worker")) return res.sendStatus(403);
+        next();
+      },
+      (_req, res, next) => {
+        if (!baoEnabled) return res.sendStatus(403);
         next();
       },
       build,
@@ -28,6 +34,11 @@ describe("worker monthly coverage history route", () => {
       headers: { "x-authorized-worker": "selected" },
     })).status).toBe(403);
     expect(build).not.toHaveBeenCalled();
+    expect((await fetch(`${base}/selected/benefits/monthly-history`, {
+      headers: { "x-authorized-worker": "selected" },
+    })).status).toBe(403);
+    expect(build).not.toHaveBeenCalled();
+    baoEnabled = true;
     expect((await fetch(`${base}/selected/benefits/monthly-history?limit=500`, {
       headers: { "x-authorized-worker": "selected" },
     })).status).toBe(400);
@@ -36,5 +47,12 @@ describe("worker monthly coverage history route", () => {
     });
     expect(response.status).toBe(200);
     expect(build).toHaveBeenCalledExactlyOnceWith("selected", 12, 12);
+  });
+
+  it("keeps the worker summary navigation and protected page tied to the BAO staff tab", () => {
+    expect(getTabAccessRequirements("worker", "benefits-summary")).toMatchObject({
+      permission: "staff",
+      component: "sitespecific.bao",
+    });
   });
 });
