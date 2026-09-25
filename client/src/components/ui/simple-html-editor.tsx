@@ -15,7 +15,8 @@ import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
 import { TemplateDesignTools } from "./template-design-tools";
 import { captureBookmark, restoreBookmark, TemplateEditorHistory } from "./template-editor-history";
-import { moveImageInFlow, resizeImageBy, safeDesignUrl } from "./template-image-tools";
+import { imageFlowNode, moveImageInFlow, moveImageToRange, resizeImageBy, safeDesignUrl, setImageAlignment } from "./template-image-tools";
+import { TemplateImageOverlay } from "./template-image-overlay";
 import { insertAtSelection } from "./template-table-tools";
 
 const SPECIAL_CHARACTERS = [
@@ -314,6 +315,23 @@ export function SimpleHtmlEditor({
   const dropPending = useRef(false);
   const documentGeneration = useRef(0);
   useEffect(() => () => { documentGeneration.current++; }, []);
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
+  const [menuImage, setMenuImage] = useState<HTMLImageElement | null>(null);
+  const movingImage = useRef<HTMLImageElement | null>(null);
+  const pointerMovingImage = useRef(false);
+  const [imagePanelRequest, setImagePanelRequest] = useState(0);
+  useEffect(() => {
+    if (!templateMode || disabled) return;
+    const refuseOutsideDrop = (event: DragEvent) => {
+      if (movingImage.current && !editorRef.current?.contains(event.target as Node)) event.preventDefault();
+    };
+    document.addEventListener("dragover", refuseOutsideDrop, true);
+    document.addEventListener("drop", refuseOutsideDrop, true);
+    return () => {
+      document.removeEventListener("dragover", refuseOutsideDrop, true);
+      document.removeEventListener("drop", refuseOutsideDrop, true);
+    };
+  }, [templateMode, disabled]);
   const toolSelectionLocked = useRef(false);
   const history = useRef(new TemplateEditorHistory());
   useEffect(() => {
@@ -434,6 +452,7 @@ export function SimpleHtmlEditor({
       if (editorRef.current.innerHTML !== rendered) {
         editorRef.current.innerHTML = rendered;
         lastRichRangeRef.current = null;
+        setSelectedImage(null);
       }
       representedDom.current = { node: editor, value };
       if (templateMode) {
@@ -586,11 +605,92 @@ export function SimpleHtmlEditor({
     }
   };
 
+  const moveHistory = (delta: number) => {
+    if (disabled) return;
+    const snapshot = history.current.move(delta);
+    if (!snapshot) return;
+    if (rawMode) {
+      const source = snapshot.source ?? cleanHtml(restoreAttributeTokens(snapshot.html));
+      setRawHtml(source);
+      emit(source);
+      return;
+    }
+    if (!editorRef.current) return;
+    editorRef.current.innerHTML = snapshot.html;
+    setSelectedImage(null);
+    editorRef.current.focus();
+    restoreBookmark(editorRef.current, snapshot.bookmark);
+    handleInput(false);
+  };
+
+  const execCommand = (command: string, value?: string) => {
+    if (templateMode && (command === "undo" || command === "redo")) {
+      moveHistory(command === "undo" ? -1 : 1);
+      return;
+    }
+    execute(() => {
+      if (templateMode) document.execCommand("styleWithCSS", false, "true");
+      document.execCommand(command, false, value);
+      if (templateMode) document.execCommand("styleWithCSS", false, "false");
+    });
+  };
+
+  const handleCreateLink = () => {
+    if (disabled) return;
+    const url = prompt('Enter URL:');
+    if (url) {
+      execCommand('createLink', url);
+    }
+  };
+
+  const handleInsertCharacter = (character: string) => {
+    execCommand('insertHTML', character);
+  };
+
+  const toggleRawMode = () => {
+    if (disabled) return;
+    closeSlash();
+    setSelectedImage(null);
+    setContextMenu(null);
+    if (rawMode) {
+      const next = templateMode ? cleanHtml(rawHtml) : rawHtml;
+      emit(next);
+      setIsFocused(false);
+      setRawMode(false);
+    } else {
+      setRawHtml(value);
+      setRawMode(true);
+    }
+  };
+
+  const handleRawHtmlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (disabled) return;
+    const newValue = e.target.value;
+    setRawHtml(newValue);
+    if (templateMode) history.current.push({
+      html: enableTokens ? protectAttributeTokens(cleanHtml(newValue)) : cleanHtml(newValue),
+      source: newValue,
+    });
+    emit(newValue);
+    if (enableTokens) detectSlashRaw(e.target);
+  };
+
+  const handleTemplatePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    if (!templateMode || disabled) return;
+    event.preventDefault();
+    const html = event.clipboardData.getData("text/html");
+    const text = event.clipboardData.getData("text/plain");
+    const source = html || (/<(?:!doctype|html|body|p|div|table|span|h[1-6]|img)\b/i.test(text)
+      ? text : escapeHtml(text).replace(/\r?\n/g, "<br>"));
+    const cleaned = cleanHtml(source);
+    saveRichSelection();
+    execCommand("insertHTML", enableTokens ? protectAttributeTokens(cleaned) : cleaned);
+  };
+
   const dropLocalImage = async (event: React.DragEvent<HTMLDivElement>) => {
     const transfer = event.dataTransfer;
-    // Native image moves have their own handler and history path.
-    if (!templateMode || transfer.types.includes("text/template-image") ||
-        editorRef.current?.querySelector('[data-template-moving-image="true"]')) return;
+    // Existing-image moves are handled separately; never treat them as files.
+    if (!templateMode || transfer.types.includes("text/template-image") || movingImage.current) return;
     if (!transfer.types.includes("Files")) return;
     event.preventDefault();
     event.stopPropagation();
@@ -639,83 +739,25 @@ export function SimpleHtmlEditor({
     }
   };
 
-  const moveHistory = (delta: number) => {
-    if (disabled) return;
-    const snapshot = history.current.move(delta);
-    if (!snapshot) return;
-    if (rawMode) {
-      const source = snapshot.source ?? cleanHtml(restoreAttributeTokens(snapshot.html));
-      setRawHtml(source);
-      emit(source);
-      return;
+  const placeImageAt = (image: HTMLImageElement, x: number, y: number, hit: Element | null) => {
+    const editor = editorRef.current;
+    if (!editor || !editor.contains(image) || !hit || !editor.contains(hit) ||
+        hit.closest("img") === image || hit.closest("a") === imageFlowNode(image)) return;
+    let range = document.caretRangeFromPoint?.(x, y);
+    const table = hit.closest("table");
+    if (table && editor.contains(table) && !hit.closest("td,th")) {
+      range = document.createRange();
+      if (y < table.getBoundingClientRect().top + table.getBoundingClientRect().height / 2) range.setStartBefore(table);
+      else range.setStartAfter(table);
     }
-    if (!editorRef.current) return;
-    editorRef.current.innerHTML = snapshot.html;
-    editorRef.current.focus();
-    restoreBookmark(editorRef.current, snapshot.bookmark);
-    handleInput(false);
-  };
-
-  const execCommand = (command: string, value?: string) => {
-    if (templateMode && (command === "undo" || command === "redo")) {
-      moveHistory(command === "undo" ? -1 : 1);
-      return;
+    const otherImage = hit.closest("img");
+    if (otherImage && otherImage !== image && editor.contains(otherImage)) {
+      range = document.createRange();
+      range.setStartBefore(imageFlowNode(otherImage));
     }
-    execute(() => {
-      if (templateMode) document.execCommand("styleWithCSS", false, "true");
-      document.execCommand(command, false, value);
-      if (templateMode) document.execCommand("styleWithCSS", false, "false");
-    });
-  };
-
-  const handleCreateLink = () => {
-    if (disabled) return;
-    const url = prompt('Enter URL:');
-    if (url) {
-      execCommand('createLink', url);
-    }
-  };
-
-  const handleInsertCharacter = (character: string) => {
-    execCommand('insertHTML', character);
-  };
-
-  const toggleRawMode = () => {
-    if (disabled) return;
-    closeSlash();
-    if (rawMode) {
-      const next = templateMode ? cleanHtml(rawHtml) : rawHtml;
-      emit(next);
-      setIsFocused(false);
-      setRawMode(false);
-    } else {
-      setRawHtml(value);
-      setRawMode(true);
-    }
-  };
-
-  const handleRawHtmlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (disabled) return;
-    const newValue = e.target.value;
-    setRawHtml(newValue);
-    if (templateMode) history.current.push({
-      html: enableTokens ? protectAttributeTokens(cleanHtml(newValue)) : cleanHtml(newValue),
-      source: newValue,
-    });
-    emit(newValue);
-    if (enableTokens) detectSlashRaw(e.target);
-  };
-
-  const handleTemplatePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
-    if (!templateMode || disabled) return;
-    event.preventDefault();
-    const html = event.clipboardData.getData("text/html");
-    const text = event.clipboardData.getData("text/plain");
-    const source = html || (/<(?:!doctype|html|body|p|div|table|span|h[1-6]|img)\b/i.test(text)
-      ? text : escapeHtml(text).replace(/\r?\n/g, "<br>"));
-    const cleaned = cleanHtml(source);
-    saveRichSelection();
-    execCommand("insertHTML", enableTokens ? protectAttributeTokens(cleaned) : cleaned);
+    if (!range || !editor.contains(range.startContainer) || imageFlowNode(image).contains(range.startContainer)) return;
+    execute(() => moveImageToRange(editor, image, range));
+    setSelectedImage(image);
   };
 
   const handleEditorKeyDown = (e: React.KeyboardEvent) => {
@@ -732,7 +774,10 @@ export function SimpleHtmlEditor({
     if (templateMode && !rawMode && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
       e.preventDefault();
       const rect = editorRef.current?.getBoundingClientRect();
-      if (rect) setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, rect.left + 12)), top: Math.min(window.innerHeight - 240, Math.max(8, rect.top + rect.height / 2)) });
+      if (rect) {
+        setMenuImage(selectedImage && editorRef.current?.contains(selectedImage) ? selectedImage : null);
+        setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, rect.left + 12)), top: Math.min(window.innerHeight - 240, Math.max(8, rect.top + rect.height / 2)) });
+      }
       return;
     }
     if (templateMode && !rawMode) {
@@ -769,8 +814,7 @@ export function SimpleHtmlEditor({
           e.preventDefault();
           execute(() => {
             const align = e.key === "ArrowLeft" ? "left" : e.key === "ArrowRight" ? "right" : "center";
-            image.style.marginLeft = align === "left" ? "0" : "auto";
-            image.style.marginRight = align === "right" ? "0" : "auto";
+            setImageAlignment(image, align);
           });
           return;
         }
@@ -778,7 +822,8 @@ export function SimpleHtmlEditor({
           e.preventDefault();
           execute(() => {
             const backward = e.key === "ArrowUp" || e.key === "ArrowLeft";
-            const sibling = backward ? image.previousSibling : image.nextSibling;
+            const flow = imageFlowNode(image);
+            const sibling = backward ? flow.previousSibling : flow.nextSibling;
             if (sibling) moveImageInFlow(image, sibling, backward);
           });
           return;
@@ -1046,6 +1091,7 @@ export function SimpleHtmlEditor({
         <TemplateDesignTools editor={editorRef.current} disabled={disabled}
           mode={templateMode} execute={execute} command={execCommand}
           selectionVersion={selectionVersion} uploadImage={uploadImage}
+          imagePanelRequest={imagePanelRequest}
           undo={() => moveHistory(-1)} redo={() => moveHistory(1)}
           canUndo={history.current.index > 0} canRedo={history.current.index < history.current.entries.length - 1}
           toggleRaw={toggleRawMode}
@@ -1232,17 +1278,86 @@ export function SimpleHtmlEditor({
             }
           }}
           onPaste={handleTemplatePaste}
+          onPointerDown={event => {
+            if (!templateMode || disabled || event.button !== 0 || !(event.target instanceof HTMLImageElement)) return;
+            const image = event.target;
+            event.preventDefault(); // Avoid contentEditable's native move of only the img inside an <a>.
+            pointerMovingImage.current = true;
+            const startX = event.clientX;
+            const startY = event.clientY;
+            let moved = false;
+            const move = (next: PointerEvent) => {
+              if (next.pointerId === event.pointerId && Math.hypot(next.clientX - startX, next.clientY - startY) > 6) moved = true;
+            };
+            const finish = (next: PointerEvent) => {
+              if (next.pointerId !== event.pointerId) return;
+              cleanup();
+              if (next.type === "pointerup" && moved) placeImageAt(image, next.clientX, next.clientY, document.elementFromPoint(next.clientX, next.clientY));
+            };
+            const cancel = (next: KeyboardEvent) => {
+              if (next.key === "Escape") { next.preventDefault(); cleanup(); }
+            };
+            const cleanup = () => {
+              pointerMovingImage.current = false;
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", finish);
+              window.removeEventListener("pointercancel", finish);
+              window.removeEventListener("keydown", cancel, true);
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", finish);
+            window.addEventListener("pointercancel", finish);
+            window.addEventListener("keydown", cancel, true);
+          }}
+          onDragStart={event => {
+            if (!templateMode || disabled) return;
+            if (pointerMovingImage.current) { event.preventDefault(); return; }
+            const target = event.target as HTMLElement;
+            const image = target instanceof HTMLImageElement ? target
+              : target.closest("a")?.querySelector("img");
+            if (!image || !editorRef.current?.contains(image)) return;
+            movingImage.current = image;
+            setSelectedImage(image);
+            event.dataTransfer.setData("text/template-image", "move");
+            event.dataTransfer.effectAllowed = "move";
+          }}
           onDragOver={event => {
             if (templateMode && event.dataTransfer.types.includes("Files")) {
               event.preventDefault();
               event.dataTransfer.dropEffect = disabled || rawMode ? "none" : "copy";
+              return;
+            }
+            if (movingImage.current && !event.dataTransfer.types.includes("Files")) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
             }
           }}
-          onDrop={dropLocalImage}
+          onDrop={event => {
+            if (event.dataTransfer.types.includes("Files")) {
+              void dropLocalImage(event);
+              return;
+            }
+            const image = movingImage.current;
+            if (!image || event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            movingImage.current = null;
+            placeImageAt(image, event.clientX, event.clientY, event.target as Element);
+          }}
+          onDragEnd={() => { movingImage.current = null; }}
           onContextMenu={event => {
             if (!templateMode || disabled) return;
             event.preventDefault();
+            const image = event.target instanceof HTMLImageElement ? event.target : null;
+            if (image) {
+              const range = document.createRange();
+              range.selectNode(image);
+              const selection = window.getSelection();
+              selection?.removeAllRanges();
+              selection?.addRange(range);
+            }
             saveRichSelection();
+            setMenuImage(image);
+            if (image) setSelectedImage(image);
             setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, event.clientX)), top: Math.min(window.innerHeight - 240, Math.max(8, event.clientY)) });
           }}
           data-template-editor={templateMode}
@@ -1261,6 +1376,7 @@ export function SimpleHtmlEditor({
           onMouseUp={saveRichSelection}
           onClick={(e) => {
             const target = e.target as HTMLElement;
+            if (templateMode && target instanceof HTMLImageElement) e.preventDefault();
             const pageBreak = target.closest("[data-template-page-break]");
             const selectedObject = templateMode && target.tagName === "IMG"
               ? target
@@ -1271,6 +1387,7 @@ export function SimpleHtmlEditor({
               window.getSelection()?.removeAllRanges();
               window.getSelection()?.addRange(range);
             }
+            if (templateMode) setSelectedImage(!disabled && selectedObject instanceof HTMLImageElement ? selectedObject : null);
             saveRichSelection();
             handleEditorClick();
           }}
@@ -1279,6 +1396,8 @@ export function SimpleHtmlEditor({
           suppressContentEditableWarning
         />
       )}
+      {templateMode && !rawMode && !disabled && selectedImage && editorRef.current?.contains(selectedImage) && containerRef.current &&
+        <TemplateImageOverlay image={selectedImage} editor={editorRef.current} container={containerRef.current} execute={execute} />}
       {templateMode && !rawMode && (dropError || dropping) && (
         <p role={dropError ? "alert" : "status"} className={cn("px-3 py-1 text-xs", dropError && "text-destructive")}>
           {dropError || "Uploading image…"}
@@ -1286,7 +1405,7 @@ export function SimpleHtmlEditor({
       )}
 
       {contextMenu && templateMode && !rawMode && (
-        createPortal(<div role="menu" aria-label="Editor selection actions" className="fixed z-[120] max-h-[70vh] min-w-40 overflow-auto rounded-md border bg-popover p-1 shadow-md"
+        createPortal(<div role="menu" aria-label={menuImage ? "Image actions" : "Editor selection actions"} className="fixed z-[120] max-h-[70vh] min-w-40 overflow-auto rounded-md border bg-popover p-1 shadow-md"
           style={{ left: contextMenu.left, top: contextMenu.top, maxWidth: "calc(100vw - 16px)" }}
           onKeyDown={event => {
             if (event.key === "Escape") {
@@ -1295,6 +1414,40 @@ export function SimpleHtmlEditor({
               editorRef.current?.focus();
             }
           }} onMouseDown={event => event.preventDefault()}>
+          {menuImage && editorRef.current?.contains(menuImage) ? <>
+            {(["left", "center", "right"] as const).map(align =>
+              <button key={align} type="button" role="menuitem"
+                aria-label={`Align ${align}`}
+                className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  execute(() => setImageAlignment(menuImage, align));
+                  setContextMenu(null);
+                }}>Align {align}</button>)}
+            {(["Edit image", "Replace image"] as const).map(label =>
+              <button key={label} type="button" role="menuitem"
+                aria-label={label}
+                className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  const range = document.createRange();
+                  range.selectNode(menuImage);
+                  const selection = window.getSelection();
+                  selection?.removeAllRanges();
+                  selection?.addRange(range);
+                  setSelectedImage(menuImage);
+                  setImagePanelRequest(value => value + 1);
+                  setContextMenu(null);
+                }}>{label}</button>)}
+            <button type="button" role="menuitem" aria-label="Delete image" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                execute(() => {
+                  const parent = menuImage.parentElement;
+                  menuImage.remove();
+                  if (parent?.tagName === "A" && !parent.childNodes.length) parent.remove();
+                });
+                setSelectedImage(null);
+                setContextMenu(null);
+              }}>Delete image</button>
+          </> : <>
           {([
             ["Bold", () => execCommand("bold")],
             ["Italic", () => execCommand("italic")],
@@ -1309,8 +1462,9 @@ export function SimpleHtmlEditor({
               onClick={() => { setContextMenu(null); openToolbarAction(target === "Font" ? "Font" : target); }}>{label}…</button>)}
           <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
             onClick={() => { setContextMenu(null); execCommand("removeFormat"); }}>Clear formatting</button>
+          </>}
           <button type="button" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => { setContextMenu(null); editorRef.current?.focus(); }}>Close</button>
-        </div>, document.body)
+        </div>, containerRef.current ?? document.body)
       )}
 
       {enableTokens && slashOpen && (

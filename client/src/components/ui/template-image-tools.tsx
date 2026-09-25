@@ -16,27 +16,57 @@ export function resizeImageBy(image: HTMLImageElement, deltaX: number, deltaY: n
   const rect = image.getBoundingClientRect();
   const horizontal = corner.includes("w") ? -deltaX : deltaX;
   const vertical = corner.includes("n") ? -deltaY : deltaY;
-  const current = Number(image.width) || rect.width || 1;
+  const current = rect.width || Number(image.width) || 1;
   const next = Math.max(1, Math.min(2000, Math.round(current + (Math.abs(horizontal) >= Math.abs(vertical) ? horizontal : vertical))));
   image.width = next;
   image.style.width = `${next}px`;
   image.style.height = "auto";
 }
 
-export function moveImageInFlow(image: HTMLImageElement, target: Node, before = false): void {
-  if (image === target || image.contains(target) || target === image.parentNode) return;
-  if (before) target.parentNode?.insertBefore(image, target);
-  else if (target.parentNode) target.parentNode.insertBefore(image, target.nextSibling);
-  else target.appendChild(image);
+export function setImageAlignment(image: HTMLImageElement, align: "left" | "center" | "right"): void {
+  image.style.display = "block";
+  image.style.marginLeft = align === "left" ? "0" : "auto";
+  image.style.marginRight = align === "right" ? "0" : "auto";
 }
 
-export function TemplateImageTools({ editor, image, execute, disabled, uploadImage }: {
+export function imageFlowNode(image: HTMLImageElement): HTMLElement {
+  const anchor = image.parentElement;
+  return anchor?.tagName === "A" && anchor.childNodes.length === 1 ? anchor : image;
+}
+
+/** Only commit a move after verifying a destination outside the moved subtree. */
+export function moveImageToRange(editor: HTMLElement, image: HTMLImageElement, range: Range): boolean {
+  const node = imageFlowNode(image);
+  if (!editor.contains(node) || !editor.contains(range.startContainer) || node.contains(range.startContainer)) return false;
+  const destination = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+  if (!destination || destination.closest("img") || destination.closest("a")) return false;
+  // Do not split a table or insert arbitrary children into its structural elements.
+  if (["TABLE", "TR", "TBODY", "THEAD", "TFOOT"].includes(destination.tagName)) return false;
+  const marker = document.createComment("image-drop");
+  const target = range.cloneRange();
+  target.collapse(true);
+  target.insertNode(marker);
+  if (node.contains(marker)) { marker.remove(); return false; }
+  marker.replaceWith(node);
+  return true;
+}
+
+export function moveImageInFlow(image: HTMLImageElement, target: Node, before = false): void {
+  const node = imageFlowNode(image);
+  if (node === target || node.contains(target) || target === node.parentNode) return;
+  if (before) target.parentNode?.insertBefore(node, target);
+  else if (target.parentNode) target.parentNode.insertBefore(node, target.nextSibling);
+  else target.appendChild(node);
+}
+
+export function TemplateImageTools({ editor, image, execute, disabled, uploadImage, selectionVersion }: {
   editor: HTMLDivElement | null;
   image: HTMLImageElement | null;
   execute: (mutation: () => void) => void;
   disabled: boolean;
   /** Host-supplied API adapter; resolves to a persisted HTTPS URL. */
   uploadImage?: (file: File) => Promise<string>;
+  selectionVersion?: number;
 }) {
   const [url, setUrl] = useState("");
   const [alt, setAlt] = useState("");
@@ -61,53 +91,7 @@ export function TemplateImageTools({ editor, image, execute, disabled, uploadIma
     setAlign(image?.style.marginLeft === "auto" ? (image.style.marginRight === "auto" ? "center" : "right") : "left");
     setError(image && image.complete && !image.naturalWidth ? "Image unavailable. Check its URL or replace it." : "");
     setPreviewUrl("");
-  }, [image]);
-  useEffect(() => {
-    if (!editor) return;
-    const dragStart = (event: DragEvent) => {
-      const target = event.target as HTMLElement;
-      const selected = target.closest("img") as HTMLImageElement | null;
-      if (!selected || !editor.contains(selected)) return;
-      event.dataTransfer?.setData("text/template-image", "move");
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      selected.dataset.templateMovingImage = "true";
-    };
-    const drop = (event: DragEvent) => {
-      const selected = editor.querySelector<HTMLImageElement>('[data-template-moving-image="true"]');
-      if (!selected) return;
-      event.preventDefault();
-      const target = event.target as HTMLElement;
-      const targetImage = target.closest("img");
-      if (targetImage && targetImage !== selected) moveImageInFlow(selected, targetImage, true);
-      else {
-        const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
-        const block = range?.startContainer.nodeType === Node.ELEMENT_NODE
-          ? range.startContainer as Element
-          : range?.startContainer.parentElement;
-        if (block && editor.contains(block) && !block.contains(selected)) block.appendChild(selected);
-      }
-      delete selected.dataset.templateMovingImage;
-      selected.focus?.();
-      editor.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-    const dragOver = (event: DragEvent) => {
-      if (editor.querySelector('[data-template-moving-image="true"]')) event.preventDefault();
-    };
-    const dragEnd = () => editor.querySelectorAll('[data-template-moving-image="true"]').forEach(el => delete (el as HTMLElement).dataset.templateMovingImage);
-    editor.addEventListener("dragstart", dragStart);
-    editor.addEventListener("dragover", dragOver);
-    editor.addEventListener("drop", drop);
-    editor.addEventListener("dragend", dragEnd);
-    return () => {
-      editor.removeEventListener("dragstart", dragStart);
-      editor.removeEventListener("dragover", dragOver);
-      editor.removeEventListener("drop", drop);
-      editor.removeEventListener("dragend", dragEnd);
-    };
-  }, [editor]);
-  useEffect(() => {
-    if (image) image.draggable = true;
-  }, [image]);
+  }, [image, selectionVersion]);
   const save = () => {
     if (!editor) return;
     if (!safeDesignUrl(url, true)) { setError("Enter an HTTPS image URL without credentials."); return; }
@@ -121,9 +105,7 @@ export function TemplateImageTools({ editor, image, execute, disabled, uploadIma
       target.src = url;
       target.alt = alt;
       target.style.maxWidth = "100%";
-      target.style.display = "block";
-      target.style.marginLeft = align === "left" ? "0" : "auto";
-      target.style.marginRight = align === "right" ? "0" : "auto";
+      setImageAlignment(target, align as "left" | "center" | "right");
       const w = width ? +width : undefined;
       const h = height ? +height : undefined;
       for (const property of ["width", "height"]) { target.removeAttribute(property); target.style.removeProperty(property); }
@@ -178,36 +160,6 @@ export function TemplateImageTools({ editor, image, execute, disabled, uploadIma
     }}>Check image</Button>
     {previewUrl && <img src={previewUrl} alt="Image URL preview" className="max-h-24 max-w-full" onError={() => setError("Image unavailable. Check its URL or replace it. Postal delivery also checks image resource safety.")} onLoad={() => setError("")} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {image && <div role="group" aria-label="Image resize handles" className="flex gap-1">
-      {(["nw", "ne", "sw", "se"] as const).map(handle => <button key={handle} type="button" aria-label={`Resize image ${handle.toUpperCase()}`} className="h-6 w-6 border bg-background text-[10px] cursor-nwse-resize"
-        onKeyDown={event => {
-          if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
-          event.preventDefault();
-          const dx = event.key === "ArrowRight" ? 8 : event.key === "ArrowLeft" ? -8 : 0;
-          const dy = event.key === "ArrowDown" ? 8 : event.key === "ArrowUp" ? -8 : 0;
-          execute(() => resizeImageBy(image, dx, dy, handle));
-        }}
-        onPointerDown={event => {
-          event.preventDefault();
-          const startX = event.clientX; const startY = event.clientY;
-          const baseWidth = image.width || image.getBoundingClientRect().width || 1;
-          const move = (next: PointerEvent) => {
-            if (!image.isConnected) return;
-            const dx = handle.includes("w") ? startX - next.clientX : next.clientX - startX;
-            const dy = handle.includes("n") ? startY - next.clientY : next.clientY - startY;
-            const dimension = Math.max(1, Math.min(2000, Math.round(baseWidth + (Math.abs(dx) >= Math.abs(dy) ? dx : dy))));
-            image.width = dimension;
-            image.style.width = `${dimension}px`;
-            image.style.height = "auto";
-          };
-          const finish = () => {
-            window.removeEventListener("pointermove", move);
-            window.removeEventListener("pointerup", finish);
-            execute(() => {});
-          };
-          window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish, { once: true });
-        }}>{handle.toUpperCase()}</button>)}
-    </div>}
     <Button type="button" size="sm" onClick={save}>{image ? "Update image" : "Insert image"}</Button>
     {image && <Button type="button" size="sm" variant="outline" className="ml-2" onClick={() => execute(() => {
       if (!editor?.contains(image)) return;

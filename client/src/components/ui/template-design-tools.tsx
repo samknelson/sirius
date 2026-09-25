@@ -15,6 +15,7 @@ export interface TemplateDesignToolsProps {
   command: (name: string, value?: string) => void;
   selectionVersion: number;
   uploadImage?: (file: File) => Promise<string>;
+  imagePanelRequest?: number;
   undo?: () => void;
   redo?: () => void;
   canUndo?: boolean;
@@ -41,7 +42,7 @@ export function selectedInlineTextNodes(editor: HTMLElement, range: Range): Text
 
 /** Selection is observed only inside this editor; focusing a control keeps its target. */
 export function TemplateDesignTools({ editor, disabled, mode, execute, command, selectionVersion, uploadImage,
-  undo, redo, canUndo = true, canRedo = true, toggleRaw, insertPageBreak, openTokenPicker, testId }: TemplateDesignToolsProps) {
+  imagePanelRequest, undo, redo, canUndo = true, canRedo = true, toggleRaw, insertPageBreak, openTokenPicker, testId }: TemplateDesignToolsProps) {
   const toolbarRef = useRef<HTMLFieldSetElement>(null);
   const [cell, setCell] = useState<HTMLTableCellElement | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -143,6 +144,27 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   useEffect(() => {
     if (image && insertOpen && imagePanel.current) imagePanel.current.open = true;
   }, [image, insertOpen]);
+  useEffect(() => {
+    if (image && !editor?.contains(image)) setImage(null);
+  }, [editor, image, selectionVersion]);
+  useEffect(() => {
+    if (!imagePanelRequest || !editor) return;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const selected = range && !range.collapsed && range.startContainer === range.endContainer &&
+      range.endOffset === range.startOffset + 1 ? range.startContainer.childNodes[range.startOffset] : null;
+    if (selected instanceof HTMLImageElement && editor.contains(selected)) setImage(selected);
+    // A pointer click in the context menu also dismisses Radix popovers.
+    // Open after that dismissal, not in the same event turn.
+    const timer = window.setTimeout(() => {
+      setInsertOpen(true);
+      requestAnimationFrame(() => {
+        if (imagePanel.current) imagePanel.current.open = true;
+        requestAnimationFrame(() => imagePanel.current?.querySelector<HTMLInputElement>('[aria-label="Image URL"]')?.focus());
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [imagePanelRequest, editor]);
   useEffect(() => {
     const selection = window.getSelection();
     if (!editor || !selection?.rangeCount ||
@@ -443,7 +465,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     </details>
     <details ref={imagePanel} className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary className={insertRow}><ImageIcon className="h-4 w-4" />Image</summary>
-      <div className="pb-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} uploadImage={uploadImage} /></div>
+       <div className="pb-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} uploadImage={uploadImage} selectionVersion={selectionVersion} /></div>
     </details>
     <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary className={insertRow}><Table2 className="h-4 w-4" />Table</summary>

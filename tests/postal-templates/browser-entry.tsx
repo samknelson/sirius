@@ -20,7 +20,7 @@ function EmailStudioFixture() {
   const [open, setOpen] = React.useState(true);
   const [values, setValues] = React.useState({
     subject: "A quick follow-up, {{first_name}}",
-    bodyHtml: '<p>Hi {{first_name}},</p><p>Thanks for taking the time to connect. I wanted to follow up and share a few details with you.</p><p><a href="https://example.invalid/details" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold">View details</a></p><p>Best,<br>{{sender_name}}</p>',
+    bodyHtml: '<p>Hi {{first_name}},</p><p>Thanks for taking the time to connect. I wanted to follow up and share a few details with you.</p><p><a href="https://example.invalid/details" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold">View details</a></p><p>Best,<br>{{sender_name}}</p><p><img src="https://fixture-images.invalid/logo.png" alt="Studio logo" width="120" style="width:120px;height:auto"></p>',
   });
   return <>
     <button type="button" onClick={() => setOpen(true)}>Open email editor</button>

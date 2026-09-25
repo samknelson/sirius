@@ -458,6 +458,15 @@ try {
   await emailPreviewFrame.waitForSelector("img");
   assert.equal(await emailPreviewFrame.$eval("img", el => el.getAttribute("src")), managedImageUrl);
   await click("button-studio-toggle-right-column");
+  await page.click(`${sel("studio-editor-bodyHtml")} img`, { button: "right" });
+  await page.waitForSelector('[role="menu"][aria-label="Image actions"]', { visible: true });
+  await page.click('[aria-label="Image actions"] button[aria-label="Align right"]');
+  assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} img`, el => el.style.marginLeft), "auto",
+    "Image menu actions must respond to real pointer clicks inside the modal dialog");
+  await page.click(`${sel("studio-editor-bodyHtml")} img`, { button: "right" });
+  await page.click('[aria-label="Image actions"] button[aria-label="Edit image"]');
+  await page.waitForSelector('[aria-label="Image URL"]:focus', { visible: true });
+  await page.keyboard.press("Escape");
   assert.equal(await page.$eval("#studio-right-column", el => getComputedStyle(el).display), "none",
     "Email editor opens with the full writing canvas");
   const emailToolbar = `[data-template-design-toolbar]`;
