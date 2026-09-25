@@ -40,6 +40,24 @@ describe("worker monthly coverage presentation", () => {
     expect(query.useInfiniteQuery.mock.calls[0][0].queryKey).toContain("worker-a");
   });
 
+  it("renders rows from older responses that omit employer hours", () => {
+    query.useInfiniteQuery.mockReturnValue({
+      data: { pages: [{
+        total: 1, showCharges: false, partial: false,
+        months: [{
+          coverageMonth: { year: 2024, month: 1, label: "January 2024" },
+          workMonth: { year: 2023, month: 10, label: "October 2023" },
+          hours: null, status: "unknown", reasons: [], medical: [], dental: [], other: [], charge: null,
+        }],
+      }] },
+      isPending: false, isError: false, hasNextPage: false,
+    });
+
+    const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-legacy" />);
+    expect(html).toContain("Employer hours unavailable.");
+    expect(html).toContain("Coverage for January 2024");
+  });
+
   it("shows partial data and posted charges only when historical balance exists", () => {
     query.useInfiniteQuery.mockReturnValue({
       data: { pages: [{

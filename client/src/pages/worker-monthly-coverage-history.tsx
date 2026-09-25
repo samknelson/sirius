@@ -12,7 +12,7 @@ interface Month {
 export interface MonthlyCoverageRow {
   coverageMonth: Month;
   workMonth: Month;
-  employerHours: Array<{ employerId: string | null; employerName: string; reported: number | null }> | null;
+  employerHours?: Array<{ employerId: string | null; employerName: string; reported: number | null }> | null;
   hours: { reported: number | null; required: number | null } | null;
   status: "active" | "inactive" | "unknown";
   reasons: string[];
@@ -110,7 +110,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                 <section aria-label={`Work-month evidence for ${row.workMonth.label}`} className="min-w-0 rounded-md border p-3">
                   <h4 className="font-semibold">Work month — {row.workMonth.label}</h4>
                   <p className="mt-3 font-medium">Hours by employer</p>
-                  {row.employerHours === null ? (
+                  {row.employerHours === null || row.employerHours === undefined ? (
                     <p className="mt-1 text-muted-foreground">Employer hours unavailable.</p>
                   ) : row.employerHours.length === 0 ? (
                     <p className="mt-1 text-muted-foreground">No employer hours recorded for this work month.</p>
