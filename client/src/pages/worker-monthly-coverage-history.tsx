@@ -76,7 +76,12 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
           {first?.partial && <p role="status" className="rounded-lg border p-3 text-sm">Some coverage details are unavailable. Months without a confirmed decision are shown as unknown.</p>}
           {first && first.total === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No monthly coverage, hours, scan, or charge history has been recorded for this worker.</p>}
           {rows.map((row) => (
-            <article key={`${row.coverageMonth.year}-${row.coverageMonth.month}`} className="rounded-lg border p-4 text-sm" aria-label={`Coverage for ${row.coverageMonth.label}`} data-testid="monthly-coverage-card">
+            <article
+              key={`${row.coverageMonth.year}-${row.coverageMonth.month}`}
+              className={`rounded-lg border p-4 text-sm ${row.status === "active" ? "bg-green-50" : row.status === "inactive" ? "bg-red-50" : "bg-background"}`}
+              aria-label={`Coverage for ${row.coverageMonth.label}`}
+              data-testid="monthly-coverage-card"
+            >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Coverage month</p>
@@ -87,7 +92,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                 </span>
               </div>
               <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2" data-testid="monthly-coverage-card-columns">
-                <section aria-label={`Benefits for ${row.coverageMonth.label}`} className="min-w-0 rounded-md border bg-muted/20 p-3">
+                <section aria-label={`Benefits for ${row.coverageMonth.label}`} className="min-w-0 rounded-md border bg-background p-3">
                   <h4 className="font-semibold">Benefits received for {row.coverageMonth.label}</h4>
                   <dl className="mt-3 space-y-2">
                     <div className="min-w-0">
@@ -107,7 +112,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                     </p>
                   )}
                 </section>
-                <section aria-label={`Work-month evidence for ${row.workMonth.label}`} className="min-w-0 rounded-md border p-3">
+                <section aria-label={`Work-month evidence for ${row.workMonth.label}`} className="min-w-0 rounded-md border bg-background p-3">
                   <h4 className="font-semibold">Work month — {row.workMonth.label}</h4>
                   <p className="mt-3 font-medium">Hours by employer</p>
                   {row.employerHours === null || row.employerHours === undefined ? (

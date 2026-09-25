@@ -35,6 +35,8 @@ describe("worker monthly coverage presentation", () => {
     expect(html).toContain("not the coverage decision");
     expect(html).toContain("sm:grid-cols-2");
     expect(html).toContain("Not confirmed");
+    expect(html).toContain('class="rounded-lg border p-4 text-sm bg-background"');
+    expect(html.match(/rounded-md border bg-background p-3/g)).toHaveLength(2);
     expect(html).toContain("No recorded medical benefit");
     expect(html).not.toContain("Posted EE-fund benefit charge");
     expect(query.useInfiniteQuery.mock.calls[0][0].queryKey).toContain("worker-a");
@@ -58,6 +60,25 @@ describe("worker monthly coverage presentation", () => {
     expect(html).toContain("Coverage for January 2024");
   });
 
+  it("uses a light green card for confirmed active coverage", () => {
+    query.useInfiniteQuery.mockReturnValue({
+      data: { pages: [{
+        total: 1, showCharges: false, partial: false,
+        months: [{
+          coverageMonth: { year: 2024, month: 3, label: "March 2024" },
+          workMonth: { year: 2023, month: 12, label: "December 2023" },
+          employerHours: [], hours: null, status: "active", reasons: [],
+          medical: [], dental: [], other: [], charge: null,
+        }],
+      }] },
+      isPending: false, isError: false, hasNextPage: false,
+    });
+
+    const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-active" />);
+    expect(html).toContain('class="rounded-lg border p-4 text-sm bg-green-50"');
+    expect(html.match(/rounded-md border bg-background p-3/g)).toHaveLength(2);
+  });
+
   it("shows partial data and posted charges only when historical balance exists", () => {
     query.useInfiniteQuery.mockReturnValue({
       data: { pages: [{
@@ -78,6 +99,7 @@ describe("worker monthly coverage presentation", () => {
     });
     const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-b" />);
     expect(html).toContain("Some coverage details are unavailable");
+    expect(html).toContain('class="rounded-lg border p-4 text-sm bg-red-50"');
     expect(html).toContain("Posted EE-fund benefit charge");
     expect(html).toContain("$0.00");
     expect(html).toContain("Medical A, Medical B");
