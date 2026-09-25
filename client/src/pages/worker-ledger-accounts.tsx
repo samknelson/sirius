@@ -12,17 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, ExternalLink } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, ExternalLink } from "lucide-react";
 import { WorkerLayout } from "@/components/layouts/WorkerLayout";
 
 const formSchema = insertLedgerEaSchema.omit({ data: true });
@@ -34,7 +24,6 @@ type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 function WorkerLedgerAccountsContent() {
   const { id: workerId } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   const { data: entries = [], isLoading } = useQuery<LedgerEaWithBalance[]>({
@@ -80,27 +69,6 @@ function WorkerLedgerAccountsContent() {
       toast({
         title: "Error",
         description: getApiErrorMessage(error, "Failed to create ledger account entry"),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return await apiRequest("DELETE", `/api/ledger/ea/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/ledger/ea/entity/worker/${workerId}`] });
-      toast({
-        title: "Success",
-        description: "Ledger account entry deleted successfully",
-      });
-      setDeleteId(null);
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: getApiErrorMessage(error, "Failed to delete ledger account entry"),
         variant: "destructive",
       });
     },
@@ -270,14 +238,6 @@ function WorkerLedgerAccountsContent() {
                              Pay Balance
                           </Link>
                          </Button>}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteId(entry.id)}
-                          data-testid={`button-delete-${entry.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
                       </div>
                     </div>
                   </div>
@@ -288,27 +248,6 @@ function WorkerLedgerAccountsContent() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Ledger Account Entry</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this ledger account entry? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              disabled={deleteMutation.isPending}
-              data-testid="button-confirm-delete"
-            >
-              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
