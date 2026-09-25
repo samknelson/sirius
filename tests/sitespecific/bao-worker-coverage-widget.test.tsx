@@ -22,6 +22,10 @@ vi.mock("../../client/src/components/layouts/WorkerLayout", () => ({
   useWorkerLayout: () => ({ worker: { id: "staff-worker-456" } }),
 }));
 
+vi.mock("../../client/src/pages/worker-monthly-coverage-history", () => ({
+  WorkerMonthlyCoverageHistory: () => <div data-testid="worker-monthly-coverage-history" />,
+}));
+
 const summary = (overrides: Partial<BaoCoverageSummary> = {}): BaoCoverageSummary => ({
   workerId: "worker/123",
   state: "available",
@@ -109,6 +113,7 @@ describe("BAO worker coverage dashboard widget", () => {
       "bao-worker-coverage", { action: "staff-worker", params: { workerId: "staff-worker-456" } },
     ]);
     expect(html).toContain('href="/workers/staff-worker-456/ledger/pay"');
+    expect(html).toContain('href="/workers/staff-worker-456/benefits/summary#monthly-coverage-history"');
     expect(html).toContain("Pay Balance");
     expect(html).not.toContain("/workers/signed-in-viewer/ledger/pay");
   });
