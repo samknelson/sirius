@@ -165,10 +165,23 @@ export async function exerciseAuthoring(page, origin) {
   await click("fixture-email-disabled");
   const tools = `div:has(> ${editor})`;
   const toolbarSelector = `${tools} [data-template-design-toolbar]`;
-  const control = label => ["Font", "Size", "Paragraph"].includes(label)
+  const control = label => ["Font", "Size", "Paragraph", "Line spacing", "Space after"].includes(label)
     ? `${toolbarSelector} [aria-label="${label}"]`
     : `[aria-label="${label}"]`;
   const toolbarLayoutFailures = [];
+  const direct = label => `${toolbarSelector} [data-promoted-tools] [aria-label="${label}"]`;
+  const overflow = label => `[data-state="open"] [aria-label="${label}"]`;
+  const assertLocation = async (labels, main) => {
+    for (const label of labels) {
+      assert.equal(await page.$(direct(label)) !== null, main, `${label} direct location`);
+      if (!main) {
+        await openToolbarPopover("More formatting");
+        await page.waitForSelector(overflow(label), { visible: true });
+        assert.equal(await page.$$(overflow(label)).then(items => items.length), 1, `${label} has one overflow action`);
+        await page.keyboard.press("Escape");
+      }
+    }
+  };
   const openToolbarPopover = async label => {
     const trigger = await page.$(`${toolbarSelector} button[aria-label="${label}"]`);
     assert.ok(trigger, `Missing toolbar button: ${label}`);
@@ -237,6 +250,9 @@ export async function exerciseAuthoring(page, origin) {
     }
   };
   await page.setViewport({ width: 1400, height: 1100 });
+  const promoted = ["Line spacing", "Space after", "Clear formatting", "HTML source"];
+  await page.waitForSelector(direct("HTML source"));
+  await assertLocation(promoted, true);
   const canvasBeforePopover = await page.$eval(editor, el => {
     const { x, y, width, height } = el.getBoundingClientRect();
     return { x, y, width, height };
@@ -259,9 +275,10 @@ export async function exerciseAuthoring(page, origin) {
   await openToolbarPopover("Alignment");
   await page.click('button[aria-label="Align center"]');
   await page.keyboard.press("Escape");
-  await openToolbarPopover("More formatting");
+  await select(`${editor} p`);
   await page.select(control("Line spacing"), "1.5");
-  await page.keyboard.press("Escape");
+  await select(`${editor} p`);
+  await page.select(control("Space after"), "16px");
   assert.match(await source(), /font-family:Georgia,serif/);
   assert.match(await source(), /font-size:24px/);
   assert.match(await source(), /text-align:center/);
@@ -303,14 +320,52 @@ export async function exerciseAuthoring(page, origin) {
   assert.match(await source(), /Designed email/);
   const beforeClear = await source();
   assert.match(beforeClear, /line-height:1.5/);
+  assert.match(beforeClear, /margin-bottom:16px/);
   await select(`${editor} p`);
-  await openToolbarPopover("More formatting");
-  await textClick("Clear formatting");
+  await page.click(direct("Clear formatting"));
   assert.doesNotMatch(await source(), /font-family:|font-size:|text-align:|line-height:/);
   assert.match(await source(), /Designed email/);
   await key("KeyZ");
   assert.equal(await source(), beforeClear, "Clear formatting is undoable");
   await page.keyboard.press("Escape");
+  await page.setViewport({ width: 390, height: 1100 });
+  await page.waitForFunction(() => !document.querySelector('[data-template-design-toolbar] [data-promoted-tools] [aria-label="HTML source"]'));
+  await assertLocation(promoted, false);
+  await assertToolbarLayout(390);
+  await click("fixture-email-raw-mode");
+  assert.match(await page.$eval(id("fixture-email-raw"), el => el.value), /Designed email/);
+  await click("fixture-email-raw-mode");
+  await select(`${editor} p`);
+  await openToolbarPopover("More formatting");
+  await page.select(overflow("Line spacing"), "2");
+  if (!await page.$(overflow("Space after"))) await openToolbarPopover("More formatting");
+  await page.select(overflow("Space after"), "24px");
+  await page.keyboard.press("Escape");
+  assert.match(await source(), /line-height:2/);
+  assert.match(await source(), /margin-bottom:24px/);
+  const beforeNarrowClear = await source();
+  await select(`${editor} p`);
+  await openToolbarPopover("More formatting");
+  await page.click(overflow("Clear formatting"));
+  assert.doesNotMatch(await source(), /line-height:2|margin-bottom:24px/);
+  await key("KeyZ");
+  assert.equal(await source(), beforeNarrowClear, "Overflow clear formatting is undoable");
+  await page.keyboard.press("Escape");
+  await page.setViewport({ width: 980, height: 1100 });
+  await page.waitForFunction(() => {
+    const count = document.querySelectorAll('div:has(> [data-testid="fixture-email"]) [data-promoted-tools] [aria-label]').length;
+    return count > 0 && count < 4;
+  });
+  await assertToolbarLayout(980);
+  for (const label of promoted) {
+    if (await page.$(direct(label))) continue;
+    await openToolbarPopover("More formatting");
+    await page.waitForSelector(overflow(label), { visible: true });
+    await page.keyboard.press("Escape");
+  }
+  await page.setViewport({ width: 1400, height: 1100 });
+  await page.waitForSelector(direct("HTML source"));
+  await assertLocation(promoted, true);
   console.log("PASS ordinary text links add/update/remove and selection clear formatting/undo");
   await select(editor, true);
   await openInsertSection("Table");

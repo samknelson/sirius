@@ -155,5 +155,5 @@
 - [Worker coverage month relationship](worker-coverage-month-relationship.md) — user prefers explicit work-month → coverage-month mapping and “Hours grant coverage in”; future thresholds remain separate from decisions.
 - [Historical coverage evidence](coverage-history-evidence.md) — past BAO months must not borrow today's home employer or EE charge account after either changes.
 - [Benefit History design direction](benefit-history-design-direction.md) — user chose grouped coverage eras for further design; this is not production approval, and dependent-provided benefits remain separate.
-- [Contenteditable object selection](contenteditable-object-selection.md) — object clicks may report adjacent carets; local serialized echoes must not rebuild DOM and invalidate saved ranges.
-- [Template editor engine compatibility](template-editor-engine-compatibility.md) — do not migrate stored email/postal HTML to a schema editor until its fixture proves lossless import/export and source parity.
+- Template editing — [object selection](contenteditable-object-selection.md) needs stable ranges; [engine compatibility](template-editor-engine-compatibility.md) requires lossless fixture parity.
+- [Flex toolbar width measurement](flex-toolbar-width-measurement.md) — computed auto margins consume the remaining width; exclude them when budgeting optional controls.

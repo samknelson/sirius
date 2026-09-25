@@ -193,12 +193,26 @@ try {
     await click(openId);
     assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "true");
     const editorNode = await page.$(sel("studio-editor-bodyHtml"));
+    const studioToolbar = `div:has(> ${sel("studio-editor-bodyHtml")}) [data-template-design-toolbar]`;
+    const toolbarState = () => page.$eval(studioToolbar, el => ({
+      width: el.clientWidth, scrollWidth: el.scrollWidth,
+      direct: !!el.querySelector('[data-promoted-tools] [aria-label="HTML source"]'),
+    }));
+    const panelOpen = await toolbarState();
     await click("button-studio-toggle-right-column");
     assert.equal(await page.$eval("#studio-right-column", el => getComputedStyle(el).display), "none");
+    await page.waitForFunction((selector, previous) => document.querySelector(selector)?.clientWidth > previous, {}, studioToolbar, panelOpen.width);
+    const panelClosed = await toolbarState();
+    assert.ok(panelClosed.direct, "Full Studio writing canvas exposes HTML source directly");
+    assert.ok(panelClosed.scrollWidth <= panelClosed.width, "Expanded editor toolbar does not overflow");
     await page.$eval(sel("button-studio-toggle-maximize"), el => el.click());
     assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "false");
     await page.$eval(sel("button-studio-toggle-maximize"), el => el.click());
     await page.$eval(sel("button-studio-toggle-right-column"), el => el.click());
+    await page.waitForFunction((selector, previous) => document.querySelector(selector)?.clientWidth < previous, {}, studioToolbar, panelClosed.width);
+    const restoredPanel = await toolbarState();
+    assert.ok(restoredPanel.scrollWidth <= restoredPanel.width, "Panel resize does not overflow the toolbar");
+    assert.equal(restoredPanel.direct, panelOpen.direct, "Panel resize restores the previous toolbar location");
     assert.equal(await editorNode.evaluate(el => el === document.querySelector('[data-testid="studio-editor-bodyHtml"]')), true,
       "Resizing the workspace must not remount the editor");
     await click("button-studio-panel-templates");

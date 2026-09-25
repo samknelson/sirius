@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "./button";
 import { Input } from "./input";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
@@ -72,6 +72,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   const [insertExpanded, setInsertExpanded] = useState(false);
   const [compact, setCompact] = useState(true);
   const [ultraCompact, setUltraCompact] = useState(false);
+  const [promotedCount, setPromotedCount] = useState(0);
   const lastSelection = useRef<Range | null>(null);
   useEffect(() => {
     // The editor can be much narrower than the viewport in the Studio's
@@ -87,6 +88,37 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     update();
     return () => observer.disconnect();
   }, []);
+  // Count only the *other* visible controls. Measuring scrollWidth after
+  // promotion would oscillate when a control crosses the fit boundary.
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const update = () => {
+      const core = Array.from(toolbar.children).filter(child =>
+        child !== toolbar.querySelector("[data-promoted-tools]") &&
+        getComputedStyle(child).position !== "absolute" &&
+        child.getBoundingClientRect().width > 0);
+      const css = getComputedStyle(toolbar);
+      const available = toolbar.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)
+        - core.reduce((sum, child) => sum + child.getBoundingClientRect().width +
+          (child.classList.contains("ml-auto") ? 0 : (parseFloat(getComputedStyle(child).marginLeft) || 0)) +
+          (parseFloat(getComputedStyle(child).marginRight) || 0), 0)
+        - (core.length + 4) * 1 - 4;
+      const widths = toggleRaw ? [126, 132, 116, 100] : [126, 132, 116];
+      let count = 0;
+      let used = 0;
+      for (const width of widths) {
+        if (used + width > available) break;
+        used += width;
+        count++;
+      }
+      setPromotedCount(count);
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(toolbar);
+    update();
+    return () => observer.disconnect();
+  }, [compact, ultraCompact, toggleRaw]);
   const rememberToolSelection = () => {
     const selection = window.getSelection();
     if (!editor || !selection?.rangeCount) return;
@@ -244,9 +276,9 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       }
     }
   });
-  const select = (label: string, value: string, options: [string, string][], change: (value: string) => void, compact = false) =>
+  const select = (label: string, value: string, options: [string, string][], change: (value: string) => void, compact = false, visibleLabel = false) =>
     <label className={`flex min-w-0 items-center gap-1 text-xs ${label === "Font" && !compact ? "hidden md:flex" : ""} ${label === "Size" && !compact ? "hidden sm:flex" : ""}`}>
-      <span className="sr-only">{label}</span><select className={`${control} ${label === "Paragraph" ? "w-[70px] px-1 sm:w-[100px]" : label === "Font" ? "w-full md:w-[118px]" : label === "Size" ? "w-[58px] px-1 sm:w-[68px]" : "w-full"}`} aria-label={label} value={options.some(([v]) => v === value) ? value : ""} onChange={e => change(e.target.value)}>
+      <span className={visibleLabel ? "shrink-0" : "sr-only"}>{visibleLabel ? (label === "Line spacing" ? "Line" : "After") : label}</span><select className={`${control} ${label === "Paragraph" ? "w-[70px] px-1 sm:w-[100px]" : label === "Font" ? "w-full md:w-[118px]" : label === "Size" ? "w-[58px] px-1 sm:w-[68px]" : "w-full"}`} aria-label={label} value={options.some(([v]) => v === value) ? value : ""} onChange={e => change(e.target.value)}>
       <option value="" disabled>{value === "mixed" ? "Mixed" : value || "Current"}</option>{options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
     </select></label>;
   const tableAction = (operation: TableOperation) => run(() => {
@@ -439,6 +471,18 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   const CurrentAlignIcon = format.textAlign === "center" ? AlignCenter
     : format.textAlign === "right" ? AlignRight
       : format.textAlign === "justify" ? AlignJustify : AlignLeft;
+  const spacing = (label: string, value: string, options: [string, string][], property: string, direct: boolean) =>
+    <div className={direct ? `shrink-0 ${label === "Line spacing" ? "w-[126px]" : "w-[132px]"}` : ""}>
+      {select(label, value, options, next => style(property, next, true), true, direct)}
+    </div>;
+  const clearFormatting = (direct: boolean) =>
+    <Button type="button" size="sm" variant={direct ? "ghost" : "outline"}
+      className={direct ? "h-8 w-[116px] shrink-0 px-1 text-xs" : "w-full justify-start"}
+      aria-label="Clear formatting" onClick={() => run(() => { if (editor) clearTemplateFormatting(editor); })}>Clear formatting</Button>;
+  const htmlSource = (direct: boolean) => toggleRaw && <Button type="button" size="sm"
+    variant={direct ? "ghost" : "outline"}
+    className={direct ? "h-8 w-[100px] shrink-0 px-1 text-xs" : "w-full justify-start"}
+    aria-label="HTML source" data-testid={testId ? `${testId}-raw-mode` : undefined} onClick={toggleRaw}>HTML source</Button>;
   return <fieldset ref={toolbarRef} data-template-design-toolbar disabled={disabled} onMouseDownCapture={rememberToolSelection}
     className="sticky top-0 z-30 flex h-[46px] w-full min-w-0 items-center gap-px overflow-visible border-b bg-background px-1.5"
     aria-label="Template editing toolbar">
@@ -496,6 +540,12 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
         <fieldset disabled={disabled} className="min-w-0 border-0 p-0">{insertContent}</fieldset>
       </PopoverContent>
     </Popover>
+    <div data-promoted-tools className="flex shrink-0 items-center gap-px">
+      {promotedCount >= 1 && spacing("Line spacing", format.lineHeight, [["normal", "Normal"], ["1", "Single"], ["1.5", "1.5"], ["2", "Double"]], "line-height", true)}
+      {promotedCount >= 2 && spacing("Space after", format.marginBottom, [0, 8, 16, 24, 32].map(n => [`${n}px`, `${n}px`]), "margin-bottom", true)}
+      {promotedCount >= 3 && clearFormatting(true)}
+      {promotedCount >= 4 && htmlSource(true)}
+    </div>
     <Popover>
       <PopoverTrigger asChild><Button type="button" size="sm" variant="ghost" className={`${triggerClass} ml-auto`} aria-label="More formatting" title="More">
         <MoreHorizontal className="h-4 w-4" /><span className="sr-only">More</span>
@@ -513,11 +563,10 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
             <details className="rounded border px-2"><summary className="cursor-pointer py-1 text-sm">Text color</summary>{colorEditor(false)}</details>
             <details className="rounded border px-2"><summary className="cursor-pointer py-1 text-sm">Highlight</summary>{colorEditor(true)}</details>
           </div>}
-          {select("Line spacing", format.lineHeight, [["normal", "Normal"], ["1", "Single"], ["1.5", "1.5"], ["2", "Double"]], value => style("line-height", value, true), true)}
-          {select("Space after", format.marginBottom, [0, 8, 16, 24, 32].map(n => [`${n}px`, `${n}px`]), value => style("margin-bottom", value, true), true)}
-          <Button type="button" size="sm" variant="outline" className="w-full justify-start" onClick={() => run(() => { if (editor) clearTemplateFormatting(editor); })}>Clear formatting</Button>
-          {toggleRaw && <Button type="button" size="sm" variant="outline" className="w-full justify-start"
-            data-testid={testId ? `${testId}-raw-mode` : undefined} onClick={toggleRaw}>HTML source</Button>}
+          {promotedCount < 1 && spacing("Line spacing", format.lineHeight, [["normal", "Normal"], ["1", "Single"], ["1.5", "1.5"], ["2", "Double"]], "line-height", false)}
+          {promotedCount < 2 && spacing("Space after", format.marginBottom, [0, 8, 16, 24, 32].map(n => [`${n}px`, `${n}px`]), "margin-bottom", false)}
+          {promotedCount < 3 && clearFormatting(false)}
+          {promotedCount < 4 && htmlSource(false)}
         </div></fieldset>
       </PopoverContent>
     </Popover>
