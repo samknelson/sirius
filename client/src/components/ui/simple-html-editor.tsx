@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
 import { TemplateDesignTools } from "./template-design-tools";
+import { TemplateCellMenu } from "./template-cell-menu";
 import { captureBookmark, restoreBookmark, TemplateEditorHistory } from "./template-editor-history";
 import { imageFlowNode, moveImageInFlow, moveImageToRange, resizeImageBy, safeDesignUrl, setImageAlignment } from "./template-image-tools";
 import { TemplateImageOverlay } from "./template-image-overlay";
@@ -309,7 +310,7 @@ export function SimpleHtmlEditor({
   const [rawMode, setRawMode] = useState(false);
   const [rawHtml, setRawHtml] = useState(value);
   const [selectionVersion, setSelectionVersion] = useState(0);
-  const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ left: number; top: number; cell: HTMLTableCellElement | null } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const contextRange = useRef<Range | null>(null);
   const [dropError, setDropError] = useState("");
@@ -650,15 +651,17 @@ export function SimpleHtmlEditor({
     }
   };
 
-  const openSelectionMenu = (left: number, top: number, image: HTMLImageElement | null = null) => {
+  const openSelectionMenu = (left: number, top: number, image: HTMLImageElement | null = null, clickedCell: HTMLTableCellElement | null = null) => {
     saveRichSelection();
     const range = lastRichRangeRef.current;
-    if (!range || range.collapsed || !editorRef.current?.contains(range.startContainer) || !editorRef.current.contains(range.endContainer)) return;
-    contextRange.current = range.cloneRange();
+    if (!editorRef.current || (!clickedCell && (!range || range.collapsed || !editorRef.current.contains(range.startContainer) || !editorRef.current.contains(range.endContainer)))) return;
+    contextRange.current = range && editorRef.current.contains(range.startContainer) && editorRef.current.contains(range.endContainer)
+      ? range.cloneRange() : null;
     toolSelectionLocked.current = true;
     setMenuImage(image);
     if (image) setSelectedImage(image);
-    setContextMenu({ left: Math.max(8, Math.min(left, window.innerWidth - 210)), top: Math.max(8, Math.min(top, window.innerHeight - 340)) });
+    setContextMenu({ left: Math.max(8, Math.min(left, window.innerWidth - 320)), top: Math.max(8, Math.min(top, window.innerHeight - 440)),
+      cell: clickedCell && editorRef.current.contains(clickedCell) ? clickedCell : null });
   };
   const restoreContextRange = () => {
     const range = contextRange.current;
@@ -809,7 +812,11 @@ export function SimpleHtmlEditor({
       e.preventDefault();
       const range = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0) : null;
       const rect = range?.getBoundingClientRect() ?? editorRef.current?.getBoundingClientRect();
-      if (rect) openSelectionMenu(rect.left + 12, rect.bottom + 4, selectedImage && editorRef.current?.contains(selectedImage) ? selectedImage : null);
+      const node = range?.startContainer;
+      const element = node instanceof Element ? node : node?.parentElement;
+      const cell = element?.closest<HTMLTableCellElement>("td,th") ?? null;
+      if (rect) openSelectionMenu(rect.left + 12, rect.bottom + 4,
+        selectedImage && editorRef.current?.contains(selectedImage) ? selectedImage : null, cell);
       return;
     }
     if (templateMode && !rawMode) {
@@ -1387,7 +1394,8 @@ export function SimpleHtmlEditor({
               selection?.removeAllRanges();
               selection?.addRange(range);
             }
-            openSelectionMenu(event.clientX, event.clientY, image);
+            const element = event.target instanceof Element ? event.target : null;
+            openSelectionMenu(event.clientX, event.clientY, image, element?.closest<HTMLTableCellElement>("td,th") ?? null);
           }}
           data-template-editor={templateMode}
           onFocus={() => { toolSelectionLocked.current = false; setIsFocused(true); }}
@@ -1442,8 +1450,8 @@ export function SimpleHtmlEditor({
         const item = (label: string, icon: React.ReactNode, action: () => void) =>
           <button key={label} type="button" role="menuitem" className={row}
             onClick={() => { restoreContextRange(); setContextMenu(null); action(); }}>{icon}<span>{label}</span></button>;
-        return createPortal(<div ref={contextMenuRef} role="menu" aria-label={menuImage ? "Image actions" : "Editor selection actions"}
-          className={`${dialog ? "absolute" : "fixed"} z-[120] max-h-[70vh] min-w-48 overflow-auto rounded-md border bg-popover p-1 shadow-md`}
+        return createPortal(<div ref={contextMenuRef} role="menu" data-template-context-menu aria-label={menuImage ? "Image actions" : "Editor selection actions"}
+          className={`${dialog ? "absolute" : "fixed"} z-[120] max-h-[70vh] w-[min(20rem,calc(100vw-16px))] overflow-auto rounded-md border bg-popover p-1 shadow-md`}
           style={{ left: contextMenu.left - (bounds?.left ?? 0), top: contextMenu.top - (bounds?.top ?? 0), maxWidth: "calc(100vw - 16px)" }}
           onKeyDown={event => {
             if (event.key === "Escape") {
@@ -1456,7 +1464,7 @@ export function SimpleHtmlEditor({
               const index = items.indexOf(document.activeElement as HTMLButtonElement);
               items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
             }
-          }} onMouseDown={event => event.preventDefault()}>
+          }}>
           {menuImage && editorRef.current?.contains(menuImage) ? <>
             {(["left", "center", "right"] as const).map(align =>
               <button key={align} type="button" role="menuitem"
@@ -1501,6 +1509,8 @@ export function SimpleHtmlEditor({
           {item("Highlight color…", <Highlighter className="h-4 w-4 shrink-0" />, () => openToolbarAction("Highlight hex"))}
           {item("Clear formatting", <Eraser className="h-4 w-4 shrink-0" />, () => execCommand("removeFormat"))}
           </>}
+          {contextMenu.cell && editorRef.current?.contains(contextMenu.cell) &&
+            <TemplateCellMenu cell={contextMenu.cell} disabled={disabled} execute={execute} close={() => setContextMenu(null)} />}
           <button type="button" role="menuitem" className={row} onClick={dismissSelectionMenu}><X className="h-4 w-4 shrink-0" /><span>Close</span></button>
         </div>, dialog ?? document.body);
       })()}

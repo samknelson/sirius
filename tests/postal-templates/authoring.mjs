@@ -159,6 +159,56 @@ export async function exerciseAuthoring(page, origin) {
   assert.equal(await page.$('[role="menu"][aria-label="Editor selection actions"]'), null,
     "Source mode cannot expose rich-text selection actions");
   await click("fixture-email-raw-mode");
+  // Right-clicked nested cell wins over the caret in another cell.
+  await click("fixture-email-raw-mode");
+  await set(id("fixture-email-raw"), '<table><tr><td id="outer"><a href="https://example.invalid">Outer</a><table><tr><td id="inner"><strong>Inner</strong> {{contact.field(name="firstName")}}</td></tr></table></td><td id="neighbor">Neighbor</td></tr></table>');
+  await click("fixture-email-raw-mode");
+  await select(`${editor} #neighbor`);
+  await page.click(`${editor} #inner strong`, { button: "right" });
+  const cellMenu = '[role="menu"][aria-label="Editor selection actions"]';
+  await page.waitForSelector(`${cellMenu} [aria-label="Cell font family"]`);
+  await page.select(`${cellMenu} [aria-label="Cell font family"]`, "Georgia, serif");
+  await page.select(`${cellMenu} [aria-label="Cell font size"]`, "24px");
+  await page.click(`${cellMenu} button[aria-label="Cell text color #1d4ed8"]`);
+  await page.click(`${cellMenu} button[aria-label="Cell background color #fef08a"]`);
+  const innerHtml = await page.$eval(`${editor} #inner`, el => el.outerHTML);
+  assert.match(innerHtml, /font-family: Georgia, serif/);
+  assert.match(innerHtml, /font-size: 24px/);
+  assert.match(innerHtml, /#1d4ed8|rgb\(29, 78, 216\)/);
+  assert.match(innerHtml, /background-color: rgb\(254, 240, 138\)|background-color: #fef08a/);
+  assert.match(innerHtml, /<strong>/);
+  assert.match(innerHtml, /\{\{contact.field\(name="firstName"\)\}\}/);
+  assert.equal(await page.$eval(`${editor} #neighbor`, el => el.getAttribute("style")), null);
+  assert.equal(await page.$eval(`${editor} #outer`, el => el.getAttribute("style")), null);
+  await page.keyboard.press("Escape");
+  const beforeUndo = await source();
+  await key("KeyZ");
+  assert.notEqual(await source(), beforeUndo, "Cell background is undoable");
+  await key("KeyY");
+  assert.equal(await source(), beforeUndo, "Cell background is redoable");
+  await select(`${editor} #inner strong`, true);
+  await page.keyboard.down("Shift"); await page.keyboard.press("F10"); await page.keyboard.up("Shift");
+  await page.waitForSelector(`${cellMenu} [aria-label="Cell font family"]`);
+  await page.focus(`${cellMenu} [aria-label="Cell font family"]`);
+  await page.keyboard.press("Home"); await page.keyboard.press("Enter");
+  await page.$eval(cellMenu, el => [...el.querySelectorAll("button")].find(button => button.textContent === "Reset cell text color")?.click());
+  await page.keyboard.press("Escape");
+  assert.equal(await page.$eval(`${editor} #inner`, el => el.style.fontFamily), "");
+  assert.equal(await page.$eval(`${editor} #neighbor`, el => el.getAttribute("style")), null);
+  const cellResult = await source();
+  await click("fixture-email-raw-mode");
+  assert.equal(await page.$eval(id("fixture-email-raw"), el => el.value), cellResult);
+  assert.equal(await page.$(cellMenu), null, "Source mode has no cell menu");
+  await click("fixture-email-raw-mode");
+  await click("fixture-email-save");
+  await page.reload();
+  await click("fixture-email-reopen");
+  assert.match(await source(), /background-color/);
+  assert.equal(await page.$eval(`${editor} #inner`, el => el.textContent.includes("{{contact.field(name=\"firstName\")}}")), true);
+  console.log("PASS clicked nested cell formatting, neighbor isolation, keyboard reset, undo/redo and source/save/reopen");
+  await click("fixture-email-raw-mode");
+  await set(id("fixture-email-raw"), canonical);
+  await click("fixture-email-raw-mode");
   await click("fixture-email-disabled");
   assert.equal(await page.$eval(editor, el => el.isContentEditable), false);
   assert.equal(await page.$eval(id("fixture-email-undo"), el => el.disabled), true);
@@ -166,6 +216,9 @@ export async function exerciseAuthoring(page, origin) {
   await page.click(editor, { button: "right" });
   assert.equal(await page.$('[role="menu"][aria-label="Editor selection actions"]'), null,
     "Disabled editor cannot expose selection actions");
+  await page.click(`${editor} td`, { button: "right" });
+  assert.equal(await page.$('[role="menu"][aria-label="Editor selection actions"]'), null,
+    "A disabled editor offers no cell formatting actions");
   await click("fixture-email-token");
   assert.equal(await source(), canonical, "Disabled imperative insertion is refused");
   await click("fixture-email-disabled");

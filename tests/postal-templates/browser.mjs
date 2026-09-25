@@ -612,6 +612,16 @@ try {
     "Color menu floats without moving the email document");
   await new Promise(resolve => setTimeout(resolve, 250));
   await page.screenshot({ path: path.join(root, "screenshots/email-template-color-menu.png") });
+  await page.keyboard.press("Escape");
+  await page.click(`${sel("studio-editor-bodyHtml")} img`);
+  await page.focus(sel("studio-editor-bodyHtml"));
+  await page.keyboard.down("Shift"); await page.keyboard.press("F10"); await page.keyboard.up("Shift");
+  await page.waitForSelector('[role="menu"][aria-label="Image actions"]', { visible: true });
+  const imageBeforeDismiss = await value("studio-editor-bodyHtml");
+  await page.keyboard.press("Escape");
+  assert.ok(await page.$(sel("dialog-template-studio")), "Escape from the image menu must keep Studio open");
+  assert.equal(await page.$('[role="menu"][aria-label="Image actions"]'), null);
+  assert.equal(await value("studio-editor-bodyHtml"), imageBeforeDismiss, "Closing the image menu makes no edit");
   await page.click(sel("studio-editor-bodyHtml"));
   const emailPoint = await page.$eval(`${sel("studio-editor-bodyHtml")} p:nth-child(2)`, el => {
     el.closest('[contenteditable]').focus();
@@ -631,6 +641,36 @@ try {
   assert.match(await value("studio-editor-bodyHtml"), /<(?:b|strong)[^>]*>taking<\/(?:b|strong)>|<span[^>]*font-weight[^>]*>taking<\/span>/);
   await page.click(`${emailToolbar} button[aria-label="Undo"]`);
   assert.doesNotMatch(await value("studio-editor-bodyHtml"), /<(?:b|strong)[^>]*>taking/);
+  // Exercise cell formatting inside the real email Studio dialog.
+  const studioEditor = sel("studio-editor-bodyHtml");
+  const rawButton = sel("studio-editor-bodyHtml-raw-mode");
+  const openRaw = async () => {
+    const target = await page.$(rawButton);
+    const visible = target && await target.evaluate(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+    if (!visible) await page.click(`${emailToolbar} button[aria-label="More formatting"]`);
+    await page.waitForSelector(rawButton, { visible: true });
+    await page.click(rawButton);
+  };
+  await openRaw();
+  await replaceByTyping("studio-editor-bodyHtml-raw",
+    '<table><tr><td id="studio-target">Studio <strong>cell</strong></td><td id="studio-other">Other</td></tr></table>');
+  await openRaw();
+  const studioBeforeDismiss = await value("studio-editor-bodyHtml");
+  await page.click(`${studioEditor} #studio-target`, { button: "right" });
+  await page.waitForSelector(`${menu} [aria-label="Cell font size"]`);
+  await page.click(`${studioEditor} #studio-other`);
+  assert.equal(await page.$(menu), null);
+  assert.equal(await value("studio-editor-bodyHtml"), studioBeforeDismiss, "Dismissing the cell menu makes no edit");
+  await page.click(`${studioEditor} #studio-target strong`, { button: "right" });
+  await page.select(`${menu} [aria-label="Cell font size"]`, "18px");
+  assert.equal(await page.$eval(`${studioEditor} #studio-target`, el => el.style.fontSize), "18px");
+  assert.equal(await page.$eval(`${studioEditor} #studio-other`, el => el.getAttribute("style")), null);
+  await page.keyboard.press("Escape");
+  assert.ok(await page.$(sel("dialog-template-studio")), "Closing the cell menu must not close Studio");
+  await page.click(sel("button-studio-toggle-right-column"));
+  await page.waitForFunction(() => document.querySelector('[data-testid="studio-preview-email-body"]')?.getAttribute("srcdoc")?.includes("18px"));
+  assert.match(await page.$eval(sel("studio-preview-email-body"), el => el.srcdoc), /font-size:18px|font-size: 18px/);
+  console.log("PASS real email Studio dialog cell menu pointer input, dismissal and preview");
   console.log("PASS email Studio full-width canvas, 46px toolbar, and floating Insert/color menus");
   console.log(`PASS fail-closed networking; screenshot: screenshots/postal-template-regression.png; Chromium ${await browser.version()}`);
   if (process.env.POSTAL_BROWSER_KEEP_OPEN === "1") {

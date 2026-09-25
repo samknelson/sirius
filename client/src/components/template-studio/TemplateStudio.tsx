@@ -1209,7 +1209,7 @@ export function TemplateStudio({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         onEscapeKeyDown={event => {
-          if (document.querySelector('[role="menu"][aria-label="Editor selection actions"]')) event.preventDefault();
+          if (document.querySelector('[data-testid="dialog-template-studio"] [data-template-context-menu]')) event.preventDefault();
         }}
         className={cn(
           "max-w-[96vw] sm:max-w-[96vw] lg:max-w-[1400px] h-[92vh] flex flex-col p-0 gap-0 [&>button:last-child]:top-2",

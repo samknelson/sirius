@@ -147,3 +147,4 @@
 - ContentEditable objects — [selection](contenteditable-object-selection.md) can report adjacent carets; [linked-image moves](linked-image-contenteditable-move.md) must move the whole anchor at release.
 - [Template editor engine compatibility](template-editor-engine-compatibility.md) — do not migrate stored email/postal HTML to a schema editor until its fixture proves lossless import/export and source parity.
 - [Flex toolbar width measurement](flex-toolbar-width-measurement.md) — computed auto margins consume the remaining width; exclude them when budgeting optional controls.
+- [Editor menus inside dialogs](editor-menus-inside-dialogs.md) — Escape can close the outer Radix dialog even when React handles it in an inner menu; prevent dialog dismissal while that menu is open.

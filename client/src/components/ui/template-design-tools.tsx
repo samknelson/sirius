@@ -4,8 +4,8 @@ import { Input } from "./input";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Braces, ChevronDown, Columns2, Highlighter, ImageIcon, Italic, Link2, List, ListOrdered, MoreHorizontal, MousePointer2, Redo2, Table2, Type, Underline, Undo2 } from "lucide-react";
 import { TemplateImageTools, safeDesignUrl } from "./template-image-tools";
-import { editTable, insertAtSelection, makeTable, tableRows, type TableOperation } from "./template-table-tools";
 import { clearTemplateFormatting, removeTemplateLink } from "./template-text-tools";
+import { editTable, insertAtSelection, makeTable, tableRows, TEMPLATE_FONTS, TEMPLATE_SIZES, TEMPLATE_TEXT_COLORS, TEMPLATE_CELL_COLORS, type TableOperation } from "./template-table-tools";
 
 export interface TemplateDesignToolsProps {
   editor: HTMLDivElement | null;
@@ -313,10 +313,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     const setDraft = highlight ? setDraftHighlight : setDraftColor;
     const edited = highlight ? highlightDraftEdited : colorDraftEdited;
     const setEdited = highlight ? setHighlightDraftEdited : setColorDraftEdited;
-    const presets = highlight
-      ? ["#ffffff", "#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fcd34d", "#a7f3d0"]
-      : ["#111827", "#374151", "#6b7280", "#d1d5db", "#dc2626", "#f97316", "#facc15", "#16a34a",
-          "#3b82f6", "#1d4ed8", "#9333ea", "#db2777", "#92400e", "#fda4af", "#0891b2", "#f3f4f6"];
+    const presets = highlight ? TEMPLATE_CELL_COLORS : TEMPLATE_TEXT_COLORS;
     const apply = (color: string) => {
       setDraft(color);
       setEdited(false);
@@ -443,8 +440,8 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     { name: "Left quote", symbol: "“" }, { name: "Right quote", symbol: "”" }, { name: "Left single quote", symbol: "‘" },
     { name: "Right single quote", symbol: "’" }, { name: "Ellipsis", symbol: "…" }, { name: "Section", symbol: "§" },
     { name: "Paragraph", symbol: "¶" }, { name: "Degree", symbol: "°" }];
-  const fontOptions: [string, string][] = [["Arial, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["Georgia, serif", "Georgia"], ["Times New Roman, serif", "Times New Roman"], ["Courier New, monospace", "Courier New"]];
-  const sizeOptions: [string, string][] = [10, 12, 14, 16, 18, 24, 32, 48].map(n => [`${n}px`, `${n}px`]);
+  const fontOptions = TEMPLATE_FONTS;
+  const sizeOptions = TEMPLATE_SIZES;
   const paragraphOptions: [string, string][] = [["p", "Normal"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"]];
   const alignmentOptions: [string, string][] = [["left", "Left"], ["center", "Center"], ["right", "Right"], ["justify", "Justify"]];
   const listButtons = (mobile = false) => (["insertUnorderedList", "insertOrderedList"] as const).map((name, i) =>
@@ -509,9 +506,9 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     className="sticky top-0 z-30 flex h-[46px] w-full min-w-0 items-center gap-px overflow-visible border-b bg-background px-1.5"
     aria-label="Template editing toolbar">
     {undo && <Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Undo" title="Undo (Ctrl/⌘ Z)"
-      disabled={!canUndo} onClick={undo} data-testid={testId ? `${testId}-undo` : undefined}><Undo2 className="h-4 w-4" /></Button>}
+      disabled={disabled || !canUndo} onClick={undo} data-testid={testId ? `${testId}-undo` : undefined}><Undo2 className="h-4 w-4" /></Button>}
     {redo && <Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)"
-      disabled={!canRedo} onClick={redo} data-testid={testId ? `${testId}-redo` : undefined}><Redo2 className="h-4 w-4" /></Button>}
+      disabled={disabled || !canRedo} onClick={redo} data-testid={testId ? `${testId}-redo` : undefined}><Redo2 className="h-4 w-4" /></Button>}
     <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
     {!compact && select("Paragraph", format.block, paragraphOptions, value => command("formatBlock", value))}
     {!compact && select("Font", format.fontFamily?.replaceAll('"', ""), fontOptions, value => style("font-family", value))}

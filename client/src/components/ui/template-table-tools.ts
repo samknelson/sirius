@@ -1,3 +1,9 @@
+export const TEMPLATE_FONTS: [string, string][] = [["Arial, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["Georgia, serif", "Georgia"], ["Times New Roman, serif", "Times New Roman"], ["Courier New, monospace", "Courier New"]];
+export const TEMPLATE_SIZES: [string, string][] = [10, 12, 14, 16, 18, 24, 32, 48].map(n => [`${n}px`, `${n}px`]);
+export const TEMPLATE_TEXT_COLORS = ["#111827", "#374151", "#6b7280", "#d1d5db", "#dc2626", "#f97316", "#facc15", "#16a34a",
+  "#3b82f6", "#1d4ed8", "#9333ea", "#db2777", "#92400e", "#fda4af", "#0891b2", "#f3f4f6"];
+export const TEMPLATE_CELL_COLORS = ["#ffffff", "#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fcd34d", "#a7f3d0"];
+
 /** Only direct rows/cells: descendants belonging to nested tables are never edited. */
 export function tableRows(table: HTMLTableElement): HTMLTableRowElement[] {
   return Array.from(table.rows).filter(row => row.closest("table") === table);
