@@ -1,0 +1,11 @@
+/* Grid tracks respond to the widget width, not the dashboard viewport. */
+.bao-dp-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem;
+}
+
+.bao-dp-summary-metric {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

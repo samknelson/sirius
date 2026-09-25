@@ -31,3 +31,15 @@ After changing a dialog between regular and maximized layouts, let its transform
 **Why:** During the transition, the automation target can move between hit-test and click; the menu remains visibly open while the pointer lands on a different row.
 
 **How to apply:** Wait for stable dialog geometry before pointer-interaction assertions in both layout modes; a visible selector alone does not prove the position is stable.
+
+Standalone Vite browser fixtures rooted at the workspace may exhaust Linux file watchers by traversing the hidden local package store; ignore `.local` in fixture watch settings.
+
+**Why:** A layout fixture failed before rendering with ENOSPC while Vite watched cached package-store files unrelated to the app.
+
+**How to apply:** Scope or ignore hidden local dependency stores in new Vite fixture servers; when a cold compile is slow, wait for DOM readiness and the target element rather than requiring network-idle.
+
+For CSS `auto-fit` grids, computed `gridTemplateColumns` can include collapsed zero-width tracks.
+
+**Why:** A four-tile grid reported five computed tracks even though only four tracks had width and all tiles were contained.
+
+**How to apply:** In layout tests, count nonzero tracks and assert element geometry, not the raw space-separated track count.

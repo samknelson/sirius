@@ -4,6 +4,7 @@ import { useDashboardContent } from "../useDashboardContent";
 import type { DashboardPluginProps } from "../registry";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import "./bao-dp-summary.css";
 
 type DpStatus =
   | "paid_covered"
@@ -64,7 +65,7 @@ export function BaoDpSummary(_props: DashboardPluginProps) {
 
   const statuses = Object.keys(STATUS_LABELS) as DpStatus[];
   return (
-    <Card data-testid="card-dashboard-bao-dp-summary">
+    <Card className="min-w-0" data-testid="card-dashboard-bao-dp-summary">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base"><HeartHandshake className="h-4 w-4" /> Domestic Partner</CardTitle>
         <CardDescription>Current-month coverage and member-charge monitoring ({data.currentMonth}).</CardDescription>
@@ -74,7 +75,7 @@ export function BaoDpSummary(_props: DashboardPluginProps) {
           <p className="text-sm text-muted-foreground" data-testid="text-bao-dp-summary-empty">No active Domestic Partner workers for this month.</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="bao-dp-summary-metrics">
               <Metric label="Active workers" value={data.totalActiveWorkers} href={reportLink()} testId="active-workers" />
               <Metric label="Total charge" value={money(data.totalCharges)} href={reportLink()} testId="total-charge" />
               <Metric label="Total paid" value={money(data.totalPaid)} href={reportLink()} testId="total-paid" />
@@ -82,9 +83,9 @@ export function BaoDpSummary(_props: DashboardPluginProps) {
             </div>
             <div className="space-y-2">
               {statuses.map((status) => (
-                <Link key={status} href={reportLink(status)} className="flex items-center justify-between rounded border p-2 hover:bg-muted" data-testid={`link-bao-dp-status-${status}`}>
-                  <span>{STATUS_LABELS[status]}</span>
-                  <span className="font-semibold">{data.statusCounts?.[status] ?? 0}</span>
+                <Link key={status} href={reportLink(status)} className="flex min-w-0 items-center justify-between gap-2 rounded border p-2 hover:bg-muted" data-testid={`link-bao-dp-status-${status}`}>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{STATUS_LABELS[status]}</span>
+                  <span className="shrink-0 font-semibold">{data.statusCounts?.[status] ?? 0}</span>
                 </Link>
               ))}
             </div>
@@ -98,9 +99,9 @@ export function BaoDpSummary(_props: DashboardPluginProps) {
 
 function Metric({ label, value, href, testId }: { label: string; value: string | number; href: string; testId: string }) {
   return (
-    <Link href={href} className="rounded border p-3 hover:bg-muted" data-testid={`link-bao-dp-${testId}`}>
+    <Link href={href} className="bao-dp-summary-metric rounded border p-3 hover:bg-muted" data-testid={`link-bao-dp-${testId}`}>
       <span className="block text-xs text-muted-foreground">{label}</span>
-      <span className="text-lg font-semibold">{value}</span>
+      <span className="block text-lg font-semibold">{value}</span>
     </Link>
   );
 }
