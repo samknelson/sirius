@@ -35,6 +35,7 @@ interface UserInfo {
 interface AssignmentWithWorker {
   id: string;
   crewId: string;
+  generationId: string;
   workerId: string;
   ymd: string;
   data: AssignmentExtra | null;
@@ -62,7 +63,7 @@ interface AssignmentsContextValue {
   setSelectedCrewId: (id: string | null) => void;
   assignments: AssignmentWithWorker[];
   assignWorker: (workerId: string) => void;
-  unassignWorker: (assignmentId: string) => void;
+  unassignWorker: (assignment: AssignmentWithWorker) => void;
   isAssigning: boolean;
   isUnassigning: boolean;
   selectedRatingId: string;
@@ -211,7 +212,10 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
 
   const updateMutation = useMutation({
     mutationFn: async (data: AssignmentExtra) => {
-      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, data);
+      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, {
+        ...data,
+        generationId: assignment.generationId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId, "assignments"] });
@@ -309,7 +313,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedCrewId(crewId);
-    unassignWorker(assignment.id);
+    unassignWorker(assignment);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
@@ -1050,8 +1054,10 @@ function EdlsSheetAssignmentsContent() {
   });
 
   const unassignMutation = useMutation({
-    mutationFn: async (assignmentId: string) => {
-      return apiRequest("DELETE", `/api/edls/sheets/${sheet.id}/assignments/${assignmentId}`);
+    mutationFn: async (assignment: AssignmentWithWorker) => {
+      return apiRequest("DELETE", `/api/edls/sheets/${sheet.id}/assignments/${assignment.id}`, {
+        generationId: assignment.generationId,
+      });
     },
     onSuccess: () => {
       toast({
@@ -1077,7 +1083,7 @@ function EdlsSheetAssignmentsContent() {
     setSelectedCrewId,
     assignments,
     assignWorker: (workerId: string) => assignMutation.mutate(workerId),
-    unassignWorker: (assignmentId: string) => unassignMutation.mutate(assignmentId),
+    unassignWorker: (assignment: AssignmentWithWorker) => unassignMutation.mutate(assignment),
     isAssigning: assignMutation.isPending,
     isUnassigning: unassignMutation.isPending,
     selectedRatingId,

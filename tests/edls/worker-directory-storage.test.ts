@@ -72,6 +72,8 @@ describe("EDLS worker directory storage", () => {
       page: 2,
       pageSize: 1,
       referenceYmd: "2026-09-20",
+      currentAssignment: "include",
+      nextAssignment: "exclude",
     });
 
     expect(result).toEqual({
@@ -92,7 +94,10 @@ describe("EDLS worker directory storage", () => {
     expect(execute).toHaveBeenCalledTimes(4);
     const pageSql = statements[1].toLowerCase();
     const assignmentsSql = statements[2].toLowerCase();
-    expect(pageSql).toContain("limit $1 offset $2");
+    const filterSql = statements[0].toLowerCase();
+    expect(pageSql).toMatch(/limit \$\d+ offset \$\d+/);
+    expect(filterSql.match(/filter_ea\.crew_id is not null/g)).toHaveLength(2);
+    expect(pageSql.match(/filter_ea\.crew_id is not null/g)).toHaveLength(2);
     expect(assignmentsSql).toContain("assignment_statuses as materialized");
     expect(assignmentsSql.match(/edls_assignments/g)).toHaveLength(1);
     expect(assignmentsSql.match(/filter \(where ea\.ymd/g)).toHaveLength(3);

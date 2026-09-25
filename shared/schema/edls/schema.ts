@@ -108,7 +108,10 @@ export const edlsAssignments = pgTable("edls_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ymd: date("ymd").notNull(),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  crewId: varchar("crew_id").notNull().references(() => edlsCrews.id, { onDelete: 'cascade' }),
+  crewId: varchar("crew_id").references(() => edlsCrews.id, { onDelete: 'restrict' }),
+  // Fresh on each fill, null while cleared. Old sheet actions and in-flight
+  // message receipts must not affect a later use of this durable row.
+  generationId: varchar("generation_id"),
   /**
    * RECEIPT for the message telling this worker about their assignment: it
    * means they have been told about the assignment AS IT STOOD when that
@@ -168,6 +171,11 @@ export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).o
   id: true,
   commId: true,
   accepted: true,
+  generationId: true,
+}).extend({
+  // Retained cleared assignments may no longer belong to a crew, but new
+  // assignments must always be created with their crew.
+  crewId: z.string(),
 });
 
 export type EdlsAssignment = typeof edlsAssignments.$inferSelect;

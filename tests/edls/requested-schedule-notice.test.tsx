@@ -6,6 +6,7 @@ import { AssignmentDetails } from "../../client/src/pages/edls-schedule";
 
 const assignment = {
   assignmentId: "assignment-1",
+  generationId: "77777777-7777-4777-8777-777777777777",
   ymd: "2026-09-25",
   sheetId: "sheet-1",
   sheetTitle: "Private job details",

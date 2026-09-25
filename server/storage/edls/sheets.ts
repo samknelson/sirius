@@ -584,14 +584,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           .where(eq(edlsSheets.id, id))
           .returning();
         
-        // If status changed to "trash", delete all assignments individually for audit logging
+        // A trashed sheet releases its workers but keeps their assignment rows.
         if (safeSheetUpdate.status === 'trash' && existingSheet.status !== 'trash') {
           const sheetCrews = await storage.edlsCrews.getBySheetId(id);
           for (const crew of sheetCrews) {
-            const crewAssignments = await storage.edlsAssignments.getByCrewId(crew.id);
-            for (const assignment of crewAssignments) {
-              await storage.edlsAssignments.delete(assignment.id);
-            }
+            await storage.edlsAssignments.deleteByCrewId(crew.id);
           }
         }
         
@@ -667,10 +664,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           kind = "updated";
           const oldCrews = await storage.edlsCrews.getBySheetId(existing.id);
           for (const oldCrew of oldCrews) {
-            const oldAssignments = await storage.edlsAssignments.getByCrewId(oldCrew.id);
-            for (const assignment of oldAssignments) {
-              await storage.edlsAssignments.delete(assignment.id);
-            }
+            await storage.edlsAssignments.deleteByCrewId(oldCrew.id);
             await storage.edlsCrews.delete(oldCrew.id);
           }
         } else {
@@ -695,7 +689,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
                 await runInSavepoint(() => storage.edlsAssignments.create({
                   ...assignments[assignmentIndex],
                   crewId: createdCrews[index].id,
-                }));
+                }, saved.id));
               } catch (error) {
                 omittedAssignments.push({
                   crewIndex: index,
@@ -717,9 +711,21 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(edlsSheets).where(eq(edlsSheets.id, id)).returning();
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Lock the parent first (the same order as assignment creation), then
+        // each crew. A concurrent assignment cannot slip in after the clear
+        // and be cascaded away with the crew.
+        const locked = await client.execute(sql`SELECT id FROM edls_sheets WHERE id = ${id} FOR UPDATE`);
+        if (!locked.rows.length) return false;
+        const crews = await storage.edlsCrews.getBySheetId(id);
+        for (const crew of crews) {
+          await client.execute(sql`SELECT id FROM edls_crews WHERE id = ${crew.id} FOR UPDATE`);
+          await storage.edlsAssignments.deleteByCrewId(crew.id);
+        }
+        const result = await client.delete(edlsSheets).where(eq(edlsSheets.id, id)).returning();
+        return result.length > 0;
+      });
     }
   };
 }

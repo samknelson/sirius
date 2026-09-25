@@ -12,10 +12,17 @@ const ACCESS_TOKEN = "33333333-3333-4333-8333-333333333333";
 const REVOKED_TOKEN = "44444444-4444-4444-8444-444444444444";
 const ASSIGNMENT_ID = "55555555-5555-4555-8555-555555555555";
 const OTHER_ASSIGNMENT_ID = "66666666-6666-4666-8666-666666666666";
+const GENERATION_ID = "77777777-7777-4777-8777-777777777777";
+const REFILLED_GENERATION_ID = "88888888-8888-4888-8888-888888888888";
 
 interface Scenario {
   tokens: Record<string, { workerId: string } | undefined>;
-  visibleAssignments: Array<{ assignmentId: string; sheetStatus: string; accepted: boolean | null }>;
+  visibleAssignments: Array<{
+    assignmentId: string;
+    generationId: string;
+    sheetStatus: string;
+    accepted: boolean | null;
+  }>;
   setAcceptedResult: boolean;
 }
 
@@ -135,7 +142,12 @@ beforeEach(() => {
   componentState.enabled = { edls: true, "worker.aat": true };
   scenario = {
     tokens: { [ACCESS_TOKEN]: { workerId: WORKER_ID } },
-    visibleAssignments: [{ assignmentId: ASSIGNMENT_ID, sheetStatus: "lock", accepted: null }],
+    visibleAssignments: [{
+      assignmentId: ASSIGNMENT_ID,
+      generationId: GENERATION_ID,
+      sheetStatus: "lock",
+      accepted: null,
+    }],
     setAcceptedResult: true,
   };
   setAccepted.mockReset();
@@ -157,7 +169,12 @@ async function schedule(scheduleId = ACCESS_TOKEN) {
   return res;
 }
 
-async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted = true) {
+async function answer(
+  scheduleId: string,
+  assignmentId = ASSIGNMENT_ID,
+  accepted = true,
+  generationId: string | null = GENERATION_ID,
+) {
   const result: { status: number; body?: unknown } = { status: 200 };
   const res = {
     status(code: number) {
@@ -170,7 +187,14 @@ async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted
     },
   };
 
-  const req = { params: { id: scheduleId, assignmentId }, body: { accepted }, ip: "127.0.0.1" };
+  const req = {
+    params: { id: scheduleId, assignmentId },
+    body: {
+      accepted,
+      ...(generationId === null ? {} : { generationId }),
+    },
+    ip: "127.0.0.1",
+  };
   for (const middleware of answerMiddleware) {
     let nextCalled = false;
     await middleware(req, res, () => {
@@ -206,6 +230,7 @@ describe("public EDLS schedule answers", () => {
     const payload = res.json.mock.calls[0][0];
 
     expect(getManyMetadata).toHaveBeenCalledWith([ASSIGNMENT_ID]);
+    expect(payload.assignments[0].generationId).toBe(GENERATION_ID);
     expect(payload.assignments[0].updatedAt).toBe("2026-09-24T12:12:00.000Z");
     expect(JSON.stringify(payload)).not.toContain("Private Staff Name");
     expect(JSON.stringify(payload)).not.toContain("2020-01-01");
@@ -256,7 +281,7 @@ describe("public EDLS schedule answers", () => {
       status: 200,
       body: { assignmentId: ASSIGNMENT_ID, accepted: false },
     });
-    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, false);
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, false, GENERATION_ID);
   });
 
   it.each([true, false])("allows direct Reserved answers (accepted=%s)", async (accepted) => {
@@ -265,7 +290,7 @@ describe("public EDLS schedule answers", () => {
       status: 200,
       body: { assignmentId: ASSIGNMENT_ID, accepted },
     });
-    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, accepted);
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, accepted, GENERATION_ID);
   });
 
   it.each([true, false])("refuses direct Requested answers (accepted=%s)", async (accepted) => {
@@ -289,6 +314,25 @@ describe("public EDLS schedule answers", () => {
 
   it("refuses an assignment that the token holder's schedule does not show", async () => {
     const result = await answer(ACCESS_TOKEN, OTHER_ASSIGNMENT_ID);
+
+    expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
+    expect(setAccepted).not.toHaveBeenCalled();
+  });
+
+  it("refuses an old page generation after the same assignment row is refilled", async () => {
+    scenario.visibleAssignments[0].generationId = REFILLED_GENERATION_ID;
+
+    const result = await answer(ACCESS_TOKEN, ASSIGNMENT_ID, true, GENERATION_ID);
+
+    expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
+    expect(setAccepted).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", null],
+    ["invalid", "not-a-uuid"],
+  ])("refuses a %s generation id in the answer body", async (_label, generationId) => {
+    const result = await answer(ACCESS_TOKEN, ASSIGNMENT_ID, true, generationId);
 
     expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
     expect(setAccepted).not.toHaveBeenCalled();

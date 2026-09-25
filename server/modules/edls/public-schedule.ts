@@ -104,6 +104,7 @@ async function resolveVisibleAssignments(
 
 const answerSchema = z.object({
   accepted: z.boolean(),
+  generationId: z.string().uuid(),
 });
 
 export function registerEdlsPublicScheduleRoutes(app: Express) {
@@ -262,12 +263,20 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         // The storage write is the real one-answer guard (its condition is
         // part of the UPDATE); this only saves a pointless write on the
         // common stale-tab case.
-        if (!ANSWERABLE_SHEET_STATUSES.includes(assignment.sheetStatus) || assignment.accepted !== null) {
+        if (
+          !ANSWERABLE_SHEET_STATUSES.includes(assignment.sheetStatus)
+          || assignment.accepted !== null
+          || assignment.generationId !== parsed.data.generationId
+        ) {
           denied();
           return;
         }
 
-        const recorded = await storage.edlsAssignments.setAccepted(assignmentId, parsed.data.accepted);
+        const recorded = await storage.edlsAssignments.setAccepted(
+          assignmentId,
+          parsed.data.accepted,
+          parsed.data.generationId,
+        );
         if (!recorded) {
           denied();
           return;

@@ -16,6 +16,7 @@ const SCHEDULE_DAYS = 7;
 
 interface ScheduleAssignment {
   assignmentId: string;
+  generationId: string;
   ymd: string;
   sheetId: string;
   sheetTitle: string;
@@ -115,7 +116,7 @@ function AssignmentAnswer({
       apiRequest(
         "POST",
         `/api/public/edls/schedule/${scheduleId}/assignments/${assignment.assignmentId}/answer`,
-        { accepted },
+        { accepted, generationId: assignment.generationId },
       ),
     onSuccess: () => {
       setError(null);

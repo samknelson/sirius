@@ -253,7 +253,7 @@ async function main() {
   // Two texts about the same assignment can finish their bookkeeping out of
   // order when one provider call is slower. The later message must win
   // regardless of which write lands second.
-  if (sample?.commId && sampleComm) {
+  if (sample?.commId && sampleComm && sample.crewId && sample.generationId) {
     const at = (offsetMs: number) =>
       new Date((sampleComm.sent ?? new Date()).getTime() + offsetMs);
     const older = await commStorage.createComm({
@@ -274,7 +274,7 @@ async function main() {
     // Un-keyed inserts can never lose a send-once claim, so both rows exist.
     if (!older || !newer) throw new Error("comm insert returned nothing for an un-keyed send");
 
-    const olderWrote = await storage.edlsAssignments.setCommId(sampleId, older.id, sample.data);
+    const olderWrote = await storage.edlsAssignments.setCommId(sampleId, older.id, sample.data, sample.crewId, sample.generationId);
     const afterOlder = await linkOf(chosen.sheetId, sampleId);
     check(
       "an earlier-sent message does not displace a later one",
@@ -282,7 +282,7 @@ async function main() {
       `wrote=${olderWrote}, link ${afterOlder === sample.commId ? "unchanged" : "CHANGED"}`,
     );
 
-    const newerWrote = await storage.edlsAssignments.setCommId(sampleId, newer.id, sample.data);
+    const newerWrote = await storage.edlsAssignments.setCommId(sampleId, newer.id, sample.data, sample.crewId, sample.generationId);
     const afterNewer = await linkOf(chosen.sheetId, sampleId);
     check(
       "a later-sent message does displace the recorded one",
@@ -294,7 +294,7 @@ async function main() {
     // comm clears the column, which lets the original be recorded again.
     await commStorage.deleteComm(newer.id);
     await commStorage.deleteComm(older.id);
-    await storage.edlsAssignments.setCommId(sampleId, sample.commId, sample.data);
+    await storage.edlsAssignments.setCommId(sampleId, sample.commId, sample.data, sample.crewId, sample.generationId);
     check(
       "the sheet is back to what the event produced",
       (await linkOf(chosen.sheetId, sampleId)) === sample.commId,
