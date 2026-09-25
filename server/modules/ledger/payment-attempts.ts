@@ -372,6 +372,14 @@ export function registerLedgerPaymentAttemptRoutes(
     creditTransfers: a.metadata?.checkoutQuote?.creditTransfers ?? [],
     failureMessage: a.status === "failed" ? a.failureMessage : null, ...extra,
   });
+  const receipt = async (a: any) => {
+    const payment = a.ledgerPaymentId ? await storage.ledger.payments.get(a.ledgerPaymentId) : null;
+    return safeAttempt(a, {
+      paymentStatus: payment?.status ?? null,
+      dateReceived: payment?.dateReceived ?? null,
+      dateCleared: payment?.dateCleared ?? null,
+    });
+  };
   const safePublicConfig = (config: Record<string, unknown>) => Object.fromEntries(
     Object.entries(config).filter(([key]) => ["publishableKey", "paymentTypes", "clientMode"].includes(key)),
   );
@@ -648,7 +656,7 @@ export function registerLedgerPaymentAttemptRoutes(
         const result = await resolved.plugin.retrievePayment(resolved.context, attempt.providerIntentRef);
         await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, evidenceFromPayment(result));
       }
-      return res.json(safeAttempt(await storage.ledger.paymentAttempts.get(attempt.id)));
+      return res.json(await receipt(await storage.ledger.paymentAttempts.get(attempt.id)));
     } catch (e) {
       if (e instanceof PaymentCancellationError) return error(res, 409, e.message);
       return error(res, 502, "Payment provider could not be reconciled");

@@ -1159,11 +1159,16 @@ export function PaymentForm({
   const entityFiles = mode === "edit" && paymentId ? (
     <EntityFileManager context="ledger_payment" entityId={paymentId} />
   ) : null;
+  const providerManaged = mode === "edit" &&
+    Boolean((payment?.details as Record<string, unknown> | null)?.paymentAttemptId);
+  const editableContent = providerManaged
+    ? <p className="text-sm text-muted-foreground">This online payment is managed by the payment provider. Its status, dates, and allocations cannot be edited here.</p>
+    : formBody;
 
   if (hideCardWrapper) {
     return (
       <div className="space-y-6">
-        {formBody}
+        {editableContent}
         {entityFiles}
       </div>
     );
@@ -1181,7 +1186,7 @@ export function PaymentForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {formBody}
+        {editableContent}
         {entityFiles}
       </CardContent>
     </Card>

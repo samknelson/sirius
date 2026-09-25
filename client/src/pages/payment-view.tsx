@@ -53,6 +53,7 @@ function PaymentViewContent() {
       case "cleared":
         return "default";
       case "draft":
+      case "pending":
         return "secondary";
       case "canceled":
         return "outline";

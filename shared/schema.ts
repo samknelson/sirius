@@ -1026,7 +1026,7 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
 
 export const ledgerPayments = pgTable("ledger_payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  status: text("status").notNull().$type<'draft' | 'canceled' | 'cleared' | 'error'>(),
+  status: text("status").notNull().$type<'draft' | 'pending' | 'canceled' | 'cleared' | 'error'>(),
   allocated: boolean("allocated").notNull().default(false),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   paymentType: varchar("payment_type").notNull().references(() => optionsLedgerPaymentType.id),

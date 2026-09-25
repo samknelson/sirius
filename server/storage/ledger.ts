@@ -83,6 +83,8 @@ export interface LedgerPaymentStorage {
   /** Migration-only: like create, but preserves a verbatim historical dateCreated. */
   createForMigration(payment: InsertLedgerPayment & { dateCreated?: Date | null }): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
+  /** Only the provider settlement path may move a linked online payment. */
+  settleOnline(id: string, status: "cleared" | "canceled" | "error", clearedAt?: Date): Promise<LedgerPayment | undefined>;
   /** Migration-only: like update, but the patch admits dateCreated (S1-wins
    * sync re-writes the verbatim historical timestamp). */
   updateForMigration(
@@ -831,13 +833,14 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
+      const [current] = await client.select().from(ledgerPayments)
+        .where(eq(ledgerPayments.id, id)).for("update");
+      if (!current) return undefined;
+      if ((current.details as Record<string, unknown> | null)?.paymentAttemptId)
+        throw new Error("Online payments are managed by the payment provider and cannot be edited");
       // If payment type or EA is being changed, validate the effective pair.
       if (paymentUpdate.paymentType || paymentUpdate.ledgerEaId) {
-        const [existingPayment] = await client.select().from(ledgerPayments)
-          .where(eq(ledgerPayments.id, id)).for("update");
-        if (!existingPayment) {
-          return undefined;
-        }
+        const existingPayment = current;
         
         const effectiveEaId = paymentUpdate.ledgerEaId ?? existingPayment.ledgerEaId;
         const effectivePaymentTypeId = paymentUpdate.paymentType ?? existingPayment.paymentType;
@@ -877,6 +880,16 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       return payment || undefined;
     },
 
+    async settleOnline(id, status, clearedAt) {
+      const [payment] = await getClient().update(ledgerPayments)
+        .set({ status, ...(status === "cleared" ? { dateCleared: clearedAt } : {}) })
+        .where(and(eq(ledgerPayments.id, id),
+          sqlRaw`${ledgerPayments.details}->>'paymentAttemptId' IS NOT NULL`,
+          inArray(ledgerPayments.status, ["pending", "canceled", "error"])))
+        .returning();
+      return payment;
+    },
+
     async updateForMigration(
       id: string,
       paymentUpdate: Partial<InsertLedgerPayment> & { dateCreated?: Date },
@@ -898,6 +911,10 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
+      const [current] = await client.select().from(ledgerPayments)
+        .where(eq(ledgerPayments.id, id)).for("update");
+      if ((current?.details as Record<string, unknown> | null)?.paymentAttemptId)
+        throw new Error("Online payments are managed by the payment provider and cannot be deleted");
       const deletedEntries = await client.delete(ledger)
         .where(and(
           eq(ledger.referenceType, "payment"),

@@ -3,7 +3,14 @@ import { createHmac } from "node:crypto";
 import type { PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
 
 let attempt: any;
+let ledgerPayment: any;
 const paymentCreate = vi.fn();
+const paymentGet = vi.fn(async () => ledgerPayment);
+const paymentUpdate = vi.fn(async (_id: string, status: string, clearedAt?: Date) => {
+  const patch = { status, ...(clearedAt ? { dateCleared: clearedAt } : {}) };
+  ledgerPayment = { ...ledgerPayment, ...patch };
+  return ledgerPayment;
+});
 const allocation = vi.fn();
 const methodUpsert = vi.fn();
 const retrieve = vi.fn();
@@ -38,6 +45,8 @@ vi.mock("../../server/storage", () => ({
   storage: {
     ledger: {
       paymentAttempts: events,
+      payments: { get: paymentGet, settleOnline: paymentUpdate,
+        update: vi.fn(async () => { throw new Error("Online payments cannot be edited"); }) },
       paymentMethods: { upsertProviderMethod: methodUpsert },
       invoices: { listForEa: vi.fn(async () => [
         { invoiceNumber: "INV-JAN", year: 2026, month: 1 },
@@ -100,9 +109,12 @@ describe("online settlement", () => {
         { invoiceNumber: "INV-FEB", amount: "40.00" },
       ],
     };
-    paymentCreate.mockImplementation(async (body) => ({
-      ok: true, payment: { ...body, id: "payment-1" },
-    }));
+    ledgerPayment = undefined;
+    paymentCreate.mockImplementation(async (body) => {
+      ledgerPayment = { ...body, dateReceived: new Date(body.dateReceived),
+        dateCleared: body.dateCleared ? new Date(body.dateCleared) : null, id: "payment-1" };
+      return { ok: true, payment: ledgerPayment };
+    });
     allocation.mockResolvedValue([]);
     methodUpsert.mockResolvedValue({ id: "method-1" });
     retrieve.mockResolvedValue({
@@ -176,10 +188,45 @@ describe("online settlement", () => {
     expect(allocation).toHaveBeenCalledOnce();
   });
 
-  it.each(["payment.processing", "payment.failed", "payment.canceled"] as const)(
-    "does not post on %s", async type => {
+  it("records processing without credit then clears the same payment on success", async () => {
+    attempt.status = "requires_action";
+    await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
+    const received = ledgerPayment.dateReceived;
+    expect(ledgerPayment).toMatchObject({ status: "pending", dateCleared: null });
+    expect(allocation).not.toHaveBeenCalled();
+    await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    expect(paymentCreate).toHaveBeenCalledOnce();
+    expect(paymentUpdate).toHaveBeenCalledWith("payment-1", "cleared", expect.any(Date));
+    expect(ledgerPayment.dateReceived).toEqual(received);
+    expect(ledgerPayment.dateCleared).toBeInstanceOf(Date);
+    expect(allocation).toHaveBeenCalledOnce();
+    expect(allocation.mock.calls[0][0].dateReceived).toEqual(received);
+    await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    expect(paymentUpdate).toHaveBeenCalledOnce();
+    expect(allocation).toHaveBeenCalledOnce();
+  });
+
+  it("refuses to settle a pending payment whose allocation was changed", async () => {
+    attempt.status = "requires_action";
+    await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
+    ledgerPayment.details.proposedAllocation[0].statementYmd = "2026-03-01";
+    await expect(processPaymentEvidence("attempt-1", "gateway-1", success()))
+      .rejects.toThrow("differs from checkout snapshot");
+    expect(ledgerPayment.status).toBe("pending");
+    expect(allocation).not.toHaveBeenCalled();
+  });
+
+  it.each(["payment.failed", "payment.canceled"] as const)(
+    "closes pending without allocating on %s", async type => {
+      attempt.status = "requires_action";
+      await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
       await processPaymentEvidence("attempt-1", "gateway-1", success({ type }));
-      expect(paymentCreate).not.toHaveBeenCalled();
+      expect(ledgerPayment.status).toBe(type === "payment.failed" ? "error" : "canceled");
+      expect(ledgerPayment.dateCleared).toBeNull();
+      expect(allocation).not.toHaveBeenCalled();
+      expect(attempt.status).toBe(type === "payment.failed" ? "failed" : "canceled");
     },
   );
 
@@ -198,6 +245,7 @@ describe("online settlement", () => {
     await expect(processPaymentEvidence("attempt-1", "gateway-1", success())).rejects.toThrow();
     // The real transaction rolls back both payment and claim on this error.
     attempt.ledgerPaymentId = null;
+    ledgerPayment = undefined;
     await processPaymentEvidence("attempt-1", "gateway-1", success());
     expect(allocation).toHaveBeenCalledTimes(2);
     expect(attempt.status).toBe("succeeded");
@@ -221,6 +269,12 @@ describe("online settlement", () => {
     attempt.saveMethod = true;
     attempt.ledgerPaymentId = "payment-1";
     attempt.status = "succeeded";
+    ledgerPayment = { id: "payment-1", ledgerEaId: "ea-1", status: "cleared",
+      amount: "100.00", paymentType: "financial-usd", dateReceived: new Date(),
+      details: { paymentAttemptId: "attempt-1", proposedAllocation: [
+        { eaId: "ea-1", amount: "60.00", statementYmd: "2026-01-01" },
+        { eaId: "ea-1", amount: "40.00", statementYmd: "2026-02-01" },
+      ] } };
     retrieve.mockResolvedValue({
       providerRef: "ref-1", status: "succeeded", amountMinor: 10000, currency: "USD",
     });
@@ -259,11 +313,14 @@ describe("online settlement", () => {
       .mockResolvedValueOnce({ providerRef: "ref-1", status: "processing", amountMinor: 10000, currency: "USD" });
     await recoverOnlinePayments();
     expect(attempt.status).toBe("processing");
-    expect(paymentCreate).not.toHaveBeenCalled();
+    expect(ledgerPayment.status).toBe("pending");
+    expect(paymentCreate).toHaveBeenCalledOnce();
+    expect(allocation).not.toHaveBeenCalled();
     retrieve.mockResolvedValue({ providerRef: "ref-1", status: "failed", amountMinor: 10000, currency: "USD" });
     await recoverOnlinePayments();
     expect(attempt.status).toBe("failed");
-    expect(paymentCreate).not.toHaveBeenCalled();
+    expect(ledgerPayment.status).toBe("error");
+    expect(allocation).not.toHaveBeenCalled();
   });
 
   it("does not release an old created payment when cancellation loses a race", async () => {
@@ -320,6 +377,7 @@ describe("online settlement", () => {
       "x-dummy-signature": signature,
     });
     await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, verified);
-    expect(paymentCreate).toHaveBeenCalledTimes(posts ? 1 : 0);
+    expect(paymentCreate).toHaveBeenCalledTimes(posts || outcome === "processing" ? 1 : 0);
+    expect(allocation).toHaveBeenCalledTimes(posts ? 1 : 0);
   });
 });

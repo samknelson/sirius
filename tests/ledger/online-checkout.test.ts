@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
       accounts: { get: vi.fn() },
       invoices: { listForEa: vi.fn() },
       paymentMethods: { get: vi.fn() },
+      payments: { get: vi.fn() },
       gatewayCustomers: { get: vi.fn(), upsert: vi.fn() },
       paymentAttempts: {
         getByIdempotencyKey: vi.fn(), getReservedAmount: vi.fn(), getReservations: vi.fn(), create: vi.fn(),
@@ -361,6 +362,34 @@ describe("online checkout HTTP contract", () => {
     expect(await (await checkout(valid())).json()).toMatchObject({ status: "succeeded", ledgerPaymentId: null });
     const legacy = await fetch(`${base}/api/ledger/payment-attempts/attempt-1`);
     expect(await legacy.json()).toMatchObject({ status: "processing", ledgerPaymentId: null });
+  });
+
+  it("shows a verified pending receipt and its separate receipt and clearing dates", async () => {
+    const attempt = {
+      id: "attempt-1", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "12.34", currency: "USD",
+      status: "processing", ledgerPaymentId: "payment-1", providerIntentRef: "pi-1",
+    };
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    mocks.storage.ledger.payments.get.mockResolvedValueOnce({
+      status: "pending", dateReceived: new Date("2026-09-01T12:00:00Z"), dateCleared: null,
+    }).mockResolvedValueOnce({
+      status: "cleared", dateReceived: new Date("2026-09-01T12:00:00Z"),
+      dateCleared: new Date("2026-09-05T12:00:00Z"),
+    });
+    gateway.plugin.retrievePayment.mockResolvedValue({
+      status: "processing", providerRef: "pi-1", amountMinor: 1234, currency: "USD",
+    });
+    const pending = await (await fetch(`${base}/api/ledger/checkout/sessions/attempt-1`)).json();
+    expect(pending).toMatchObject({
+      paymentStatus: "pending", dateReceived: "2026-09-01T12:00:00.000Z",
+      dateCleared: null, ledgerPaymentId: "payment-1",
+    });
+    const cleared = await (await fetch(`${base}/api/ledger/checkout/sessions/attempt-1`)).json();
+    expect(cleared).toMatchObject({
+      paymentStatus: "cleared", dateReceived: "2026-09-01T12:00:00.000Z",
+      dateCleared: "2026-09-05T12:00:00.000Z",
+    });
   });
 
   it.each([

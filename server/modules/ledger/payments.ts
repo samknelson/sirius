@@ -773,6 +773,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
       const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
 
       const { payment, notifications, enriched, batchIds, auditSummary } = await runInTransaction(async () => {
+        // Also enforced in storage under a row lock, so other ordinary edit
+        // paths cannot race a provider transition or bypass this check.
+        const existing = await storage.ledger.payments.get(id);
+        if ((existing?.details as Record<string, unknown> | null)?.paymentAttemptId)
+          throw new PaymentStateValidationError("Online payments are managed by the payment provider and cannot be edited");
         const payment = await storage.ledger.payments.update(id, validatedData);
         if (!payment) {
           return {
@@ -891,6 +896,10 @@ export function registerLedgerPaymentRoutes(app: Express) {
       const payment = await storage.ledger.payments.get(id);
       if (!payment) {
         res.status(404).json({ message: "Payment not found" });
+        return;
+      }
+      if ((payment.details as Record<string, unknown> | null)?.paymentAttemptId) {
+        res.status(409).json({ message: "Online payments are managed by the payment provider and cannot be deleted" });
         return;
       }
 

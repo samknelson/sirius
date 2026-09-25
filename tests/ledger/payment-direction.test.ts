@@ -83,6 +83,18 @@ describe("payment type ledger direction", () => {
     expect(deleteEntry).toHaveBeenCalledWith("entry-1");
   });
 
+  it("does not credit a pending payment and dates a later clearing to receipt, not settlement", async () => {
+    getType.mockResolvedValue({ name: "Bank payment", direction: "credit", currencyCode: "USD" });
+    const config = { id: "config-1", account: "account-1", settings: {} };
+    const received = new Date("2026-01-10T10:00:00.000Z");
+    const cleared = new Date("2026-01-15T11:00:00.000Z");
+    const pending = await plugin.execute(context({ status: "pending", dateReceived: received }), config);
+    expect(pending.transactions).toEqual([]);
+    const settled = await plugin.execute(context({ dateReceived: received, dateCleared: cleared }), config);
+    expect(settled.transactions[0].transactionDate).toEqual(received);
+    expect(settled.transactions[0].statementYmd).toBe("2026-01-01");
+  });
+
   it.each([null, "Original payment memo"])("keeps persisted provenance identical across directions for memo %s", async memo => {
     const config = { id: "config-1", account: "account-1", settings: {} };
     getType.mockResolvedValue({ name: "Legacy", direction: "credit", currencyCode: "USD" });

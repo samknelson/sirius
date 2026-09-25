@@ -38,7 +38,7 @@ function formatStatementPeriods(details: Record<string, unknown> | null, fallbac
   return Array.from(uniquePeriods).join(", ");
 }
 
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
+const paymentStatuses = ["draft", "pending", "canceled", "cleared", "error"] as const;
 
 type SortField = "amount" | "createdDate" | "dateReceived" | "dateCleared";
 type SortDirection = "asc" | "desc";
@@ -81,6 +81,7 @@ function EAPaymentsContent() {
       case "cleared":
         return "default";
       case "draft":
+      case "pending":
         return "secondary";
       case "canceled":
         return "outline";
@@ -628,7 +629,7 @@ function EAPaymentsContent() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>
-                          {payment.status}
+                          {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
                         </Badge>
                       </TableCell>
                       <TableCell data-testid={`text-statement-${payment.id}`}>
