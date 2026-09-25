@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,11 +54,25 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
       return loaded < lastPage.total && lastPage.months.length > 0 ? loaded : undefined;
     },
   });
+  useEffect(() => {
+    if (window.location.hash !== "#monthly-coverage-history") return;
+    const target = document.getElementById("monthly-coverage-history");
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start" });
+  }, []);
+
   const rows = query.data?.pages.flatMap((page) => page.months) ?? [];
   const first = query.data?.pages[0];
 
   return (
-    <section aria-label="Monthly coverage history" className="mt-6" data-testid="worker-monthly-coverage-history">
+    <section
+      id="monthly-coverage-history"
+      tabIndex={-1}
+      aria-label="Monthly coverage history"
+      className="mt-6 scroll-mt-4"
+      data-testid="worker-monthly-coverage-history"
+    >
       <Card>
         <CardHeader>
           <CardTitle>Monthly coverage history</CardTitle>

@@ -76,7 +76,7 @@ describe("BAO worker coverage dashboard widget", () => {
     expect(html).toMatch(/<a\b[^>]*href="\/workers\/worker%2F123\/ledger\/pay"[^>]*>Pay Balance<\/a>/);
     expect(html).toMatch(/class="coverage-first-balance-row"[\s\S]*Account balance[\s\S]*\$0\.00[\s\S]*Pay Balance/);
     expect(html).not.toContain("/workers/signed-in-viewer/ledger/pay");
-    expect(html).toContain('href="/workers/worker%2F123/employment/monthly"');
+    expect(html).toContain('href="/workers/worker%2F123/benefits/summary#monthly-coverage-history"');
   });
 
   it("shows the balance action for zero, positive, credit and unavailable totals, including a blocking balance", () => {
@@ -212,7 +212,7 @@ describe("BAO worker coverage dashboard widget", () => {
     expect(html).toContain("No future coverage periods to show.");
     expect(html).toContain("of — required");
     expect(html).toContain("—");
-    expect(html).toContain('href="/workers/worker%2F123/employment/monthly"');
+    expect(html).toContain('href="/workers/worker%2F123/benefits/summary#monthly-coverage-history"');
     expect(html).toContain("Questions? Contact the fund.");
     expect(renderToStaticMarkup(
       <Router hook={() => ["/", () => {}]}><BaoWorkerCoverageView data={data} /></Router>,

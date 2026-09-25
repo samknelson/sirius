@@ -58,6 +58,7 @@ describe("worker monthly coverage presentation", () => {
     const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-legacy" />);
     expect(html).toContain("Employer hours unavailable.");
     expect(html).toContain("Coverage for January 2024");
+    expect(html).toContain('id="monthly-coverage-history"');
   });
 
   it("uses a light green card for confirmed active coverage", () => {

@@ -106,7 +106,8 @@ export function BaoWorkerCoverage(_props: DashboardPluginProps) {
 /** Shared presentation for the member dashboard and admin worker record. */
 export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
   if (data.state !== "available") return null;
-  const monthlyHoursHref = `/workers/${encodeURIComponent(data.workerId)}/employment/monthly`;
+  const monthlyHistoryPath = `/workers/${encodeURIComponent(data.workerId)}/benefits/summary`;
+  const monthlyHistoryHref = `${monthlyHistoryPath}#monthly-coverage-history`;
   const paymentHref = `/workers/${encodeURIComponent(data.workerId)}/ledger/pay`;
   const currentNotCovered = data.current.coverage === "not-covered";
   const hoursHighlight = currentNotCovered && data.current.causes.hours === true;
@@ -229,7 +230,20 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
           )}
         </section>
         <div className="coverage-first-footer">
-          <Link href={monthlyHoursHref} className="coverage-first-link rounded-sm font-medium underline decoration-[hsl(170_38%_38%)] underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(170_38%_38%)] focus-visible:ring-offset-2" data-testid="link-bao-worker-coverage-monthly-hours">View full monthly hours breakdown</Link>
+          <Link
+            href={monthlyHistoryHref}
+            onClick={() => {
+              if (window.location.pathname === monthlyHistoryPath) {
+                const target = document.getElementById("monthly-coverage-history");
+                target?.focus({ preventScroll: true });
+                target?.scrollIntoView({ block: "start" });
+              }
+            }}
+            className="coverage-first-link rounded-sm font-medium underline decoration-[hsl(170_38%_38%)] underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(170_38%_38%)] focus-visible:ring-offset-2"
+            data-testid="link-bao-worker-coverage-monthly-history"
+          >
+            View full monthly hours breakdown
+          </Link>
           <span className="text-xs text-muted-foreground">Questions? Contact the fund.</span>
         </div>
       </CardContent>

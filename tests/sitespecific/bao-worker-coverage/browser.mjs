@@ -97,7 +97,7 @@ try {
     const values = await page.evaluate(() => {
       const card = document.querySelector('[data-testid="card-dashboard-bao-worker-coverage"]');
       const status = card?.querySelector('[role="status"]');
-      const footer = card?.querySelector('[data-testid="link-bao-worker-coverage-monthly-hours"]');
+      const footer = card?.querySelector('[data-testid="link-bao-worker-coverage-monthly-history"]');
       if (!card || !status || !footer) throw new Error("Coverage card status or footer is missing");
       const rect = card.getBoundingClientRect();
       const statusRect = status.getBoundingClientRect();
@@ -134,7 +134,7 @@ try {
     assert.ok(values.statusVisible, `coverage status is not visible at ${values.viewportWidth}px`);
     assert.ok(values.footerVisible, `footer link is not visible at ${values.viewportWidth}px`);
     assert.equal(values.statusLabel, "Not covered");
-    assert.equal(values.footerHref, "/workers/fixture-worker/employment/monthly");
+    assert.equal(values.footerHref, "/workers/fixture-worker/benefits/summary#monthly-coverage-history");
     assert.equal(values.footerText, "View your full monthly hours breakdown");
     assert.ok(values.footerNote.includes("Contact the fund with any questions or concerns."));
     assert.ok(values.currentText.includes("99.75 hrs"));
