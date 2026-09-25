@@ -32,10 +32,12 @@ export default function MasqueradePage() {
   const { toast } = useToast();
   const { masquerade } = useAuth();
 
-  const { data: recentData, isLoading: isLoadingRecent } = useQuery<{ recentMasquerades: RecentMasquerade[] }>({
+  const { data: recentData } = useQuery<{ recentMasquerades: RecentMasquerade[] }>({
     queryKey: ['/api/auth/masquerade/recent'],
   });
 
+  // Both recent targets and search results are filtered by the server. The
+  // start endpoint rechecks activity in case an account changes meanwhile.
   // Debounced search effect
   useEffect(() => {
     const searchUsers = async () => {
@@ -139,6 +141,7 @@ export default function MasqueradePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">Only active users can be selected, including from recent users.</p>
             {recentData?.recentMasquerades && recentData.recentMasquerades.length > 0 && (
               <>
                 <div className="space-y-2">

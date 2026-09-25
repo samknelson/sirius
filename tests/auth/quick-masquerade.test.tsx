@@ -108,7 +108,7 @@ describe("quick masquerade toolbar", () => {
     // jsdom does not synthesize the browser's native button click from Enter.
     await act(async () => { trigger.click(); });
     await settle();
-    expect(document.body.textContent).toContain("No recent users.");
+    expect(document.body.textContent).toContain("No recent active users.");
     await act(async () => {
       document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });

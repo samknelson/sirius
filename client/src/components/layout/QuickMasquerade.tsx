@@ -146,7 +146,7 @@ export function QuickMasquerade() {
               <p className="text-xs font-medium">Recent users</p>
               {loadingRecent ? <p className="text-sm text-muted-foreground" role="status">Loading recent users...</p>
                 : recentError ? <p className="text-sm text-destructive" role="alert">Could not load recent users.</p>
-                : !recents?.recentMasquerades.length ? <p className="text-sm text-muted-foreground">No recent users.</p>
+                : !recents?.recentMasquerades.length ? <p className="text-sm text-muted-foreground">No recent active users.</p>
                 : recents.recentMasquerades.slice(0, 3).map((recent) => (
                   <button key={recent.userId} type="button" disabled={pending} onClick={() => start(recent.userId)}
                     data-testid={`quick-recent-${recent.userId}`}

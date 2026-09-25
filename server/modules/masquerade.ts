@@ -97,10 +97,14 @@ export function registerMasqueradeRoutes(
         return res.status(404).json({ message: "Original user not found" });
       }
       
-      // Verify the target user exists
+      // Search and recent lists are conveniences; the start endpoint is the
+      // authority even when a target was deactivated after being selected.
       const targetUser = await storage.users.getUser(userId);
       if (!targetUser) {
         return res.status(404).json({ message: "Target user not found" });
+      }
+      if (!targetUser.isActive) {
+        return res.status(400).json({ message: "Cannot masquerade as a deactivated user" });
       }
       
       // Prevent masquerading if already masquerading
@@ -298,7 +302,19 @@ export function registerMasqueradeRoutes(
         timestamp: string;
       }>) || [];
       
-      res.json({ recentMasquerades });
+      // Saved history is a snapshot, not evidence that an account is still active.
+      // Do not offer targets that have since been deactivated or deleted.
+      const currentTargets = await Promise.all(recentMasquerades.map(async recent => {
+        const target = await storage.users.getUser(recent.userId);
+        return target?.isActive ? {
+          userId: target.id,
+          email: target.email,
+          firstName: target.firstName,
+          lastName: target.lastName,
+          timestamp: recent.timestamp,
+        } : null;
+      }));
+      res.json({ recentMasquerades: currentTargets.filter(target => target !== null) });
     } catch (error) {
       console.error("Failed to get recent masquerades:", error);
       res.status(500).json({ message: "Failed to get recent masquerades" });
