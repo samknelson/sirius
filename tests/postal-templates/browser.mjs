@@ -214,6 +214,125 @@ try {
     el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer,
       clientX: point.left, clientY: point.top + point.height / 2 }));
   }, { bytes: imageBytes.toString("base64"), mime, paragraph });
+  const menu = '[role="menu"][aria-label="Editor selection actions"]';
+  async function exerciseSelectionMenu(layout) {
+    const editor = sel("studio-editor-bodyHtml");
+    const source = () => page.$eval(editor, el => el.innerHTML);
+    const selectWord = async (word = "Saved") => page.$eval(editor, (el, word) => {
+      el.focus();
+      const text = el.querySelector("p").firstChild;
+      const start = text.textContent.indexOf(word);
+      if (start < 0) throw new Error(`Missing selected word: ${word}`);
+      const range = document.createRange();
+      range.setStart(text, start); range.setEnd(text, start + word.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, word);
+    const open = async (word = "Saved") => {
+      const point = await selectWord(word);
+      await page.mouse.click(point.x, point.y, { button: "right" });
+      await page.waitForSelector(menu, { visible: true });
+      assert.equal(await page.$eval(menu, el => el.closest('[data-testid="dialog-template-studio"]') !== null), true,
+        `${layout}: menu must be within modal pointer boundary`);
+    };
+    const item = label => `${menu} button[role="menuitem"]`;
+    const pressItem = async label => {
+      const buttons = await page.$$(item(label));
+      const index = await page.$$eval(item(label), (nodes, text) => nodes.findIndex(node => node.lastElementChild?.textContent.trim() === text), label);
+      assert.ok(index >= 0, `${layout}: missing ${label}`);
+      const hit = await buttons[index].evaluate(button => {
+        const rect = button.getBoundingClientRect();
+        return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('button')?.textContent.trim();
+      });
+      assert.equal(hit, buttons[index] && await buttons[index].evaluate(el => el.textContent.trim()), `${layout}: ${label} pointer hit target`);
+      await buttons[index].click();
+      await page.waitForSelector(menu, { hidden: true });
+    };
+    const reset = async () => {
+      await page.click(`${editor} p`);
+      await page.click('[data-template-design-toolbar] button[aria-label="Undo"]');
+      assert.equal(await source(), content.bodyHtml, `${layout}: command is undoable`);
+    };
+    await open();
+    assert.equal(await page.$eval(menu, el => [...el.querySelectorAll('button')].every(button =>
+      button.getAttribute('role') === 'menuitem' && button.textContent.trim() && button.querySelector('svg, span[aria-hidden]'))), true,
+    `${layout}: every action shows an icon and label`);
+    assert.equal(await page.$eval(menu, el => getComputedStyle(el.querySelector('button')).pointerEvents), "auto");
+    await pressItem("Bold");
+    assert.match(await source(), /<(?:b|strong)[^>]*>Saved<\/(?:b|strong)>|<span[^>]*font-weight[^>]*>Saved<\/span>/);
+    assert.match(await source(), /postal letter/, "unselected text remains");
+    const boldHtml = await source();
+    const point = await page.$eval(`${editor} strong, ${editor} b, ${editor} span[style*="font-weight"]`, el => {
+      el.closest('[contenteditable]').focus();
+      const range = document.createRange(); range.selectNodeContents(el);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.click(point.x, point.y, { button: "right" });
+    await page.waitForSelector(menu, { visible: true });
+    await pressItem("Clear formatting");
+    assert.equal(await source(), content.bodyHtml, "Clear formatting changes only selected text");
+    await page.click('[data-template-design-toolbar] button[aria-label="Undo"]');
+    assert.equal(await source(), boldHtml, "Clear formatting is undoable");
+    await reset();
+    await open();
+    await page.keyboard.press("ArrowDown");
+    assert.equal(await page.$eval(menu, el => document.activeElement.textContent.trim()), "Italic");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(menu, { hidden: true });
+    assert.match(await source(), /<(?:i|em)[^>]*>Saved<\/(?:i|em)>|<span[^>]*font-style[^>]*>Saved<\/span>/);
+    await reset();
+    await open();
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(menu, { hidden: true });
+    assert.equal(await source(), content.bodyHtml);
+    await open();
+    await pressItem("Close");
+    assert.equal(await source(), content.bodyHtml);
+    await open();
+    await pressItem("Text color…");
+    await page.waitForSelector('input[aria-label="Text color hex"]', { visible: true });
+    await page.focus('input[aria-label="Text color hex"]');
+    await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
+    await page.keyboard.sendCharacter("#123456");
+    assert.equal(await page.$eval(`${editor} span[style*="color"]`, el => el.textContent), "Saved");
+    await reset();
+    await open();
+    await pressItem("Highlight color…");
+    await page.waitForSelector('input[aria-label="Highlight hex"]', { visible: true });
+    await page.click('button[aria-label="Apply highlight #fef08a"]');
+    assert.equal(await page.$eval(`${editor} span[style*="background-color"]`, el => el.textContent), "Saved");
+    await reset();
+    await open();
+    await pressItem("Font…");
+    await page.waitForSelector('select[aria-label="Font"]', { visible: true });
+    await page.select('select[aria-label="Font"]', "Georgia, serif");
+    assert.equal(await page.$eval(`${editor} span[style*="font-family"]`, el => el.textContent), "Saved");
+    await reset();
+    await open();
+    page.once("dialog", async dialog => dialog.dismiss());
+    await pressItem("Insert link");
+    // The current link command prompts; cancel must leave the selection and HTML untouched.
+    assert.equal(await source(), content.bodyHtml);
+    await open();
+    page.once("dialog", async dialog => dialog.accept("https://example.invalid/selected"));
+    await pressItem("Insert link");
+    assert.equal(await page.$eval(`${editor} a`, el => el.textContent), "Saved");
+    await reset();
+    await open();
+    await pressItem("Bulleted list");
+    assert.equal(await page.$eval(`${editor} ul li`, el => el.textContent.includes("Saved")), true);
+    await reset();
+    await open();
+    await pressItem("Numbered list");
+    assert.equal(await page.$eval(`${editor} ol li`, el => el.textContent.includes("Saved")), true);
+    await reset();
+    console.log(`PASS ${layout} Studio selection menu pointer, keyboard, formatting, controls and undo`);
+  }
   async function exerciseStudio(openId) {
     await click(openId);
     assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "true");
@@ -245,6 +364,12 @@ try {
     await click("button-load-template-confirm");
     await page.waitForSelector(sel("dialog-load-letter-template"), { hidden: true });
     await expectFields(content);
+    await exerciseSelectionMenu("maximized");
+    await page.click(sel("button-studio-toggle-maximize"));
+    assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "false");
+    await new Promise(resolve => setTimeout(resolve, 350)); // Wait for dialog position transition before pointer hit testing.
+    await exerciseSelectionMenu("regular");
+    await page.click(sel("button-studio-toggle-maximize"));
     // Upload is a reusable HTTPS image reference, never a blob or expiring signed URL.
     await page.$eval(sel("studio-editor-bodyHtml"), el => {
       el.focus();
@@ -487,6 +612,25 @@ try {
     "Color menu floats without moving the email document");
   await new Promise(resolve => setTimeout(resolve, 250));
   await page.screenshot({ path: path.join(root, "screenshots/email-template-color-menu.png") });
+  await page.click(sel("studio-editor-bodyHtml"));
+  const emailPoint = await page.$eval(`${sel("studio-editor-bodyHtml")} p:nth-child(2)`, el => {
+    el.closest('[contenteditable]').focus();
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let text;
+    while (walker.nextNode()) if (walker.currentNode.textContent.includes("taking")) { text = walker.currentNode; break; }
+    if (!text) throw new Error("Expected taking in email paragraph");
+    const start = text.textContent.indexOf("taking");
+    const range = document.createRange(); range.setStart(text, start); range.setEnd(text, start + 6);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.click(emailPoint.x, emailPoint.y, { button: "right" });
+  await page.waitForSelector(menu, { visible: true });
+  await page.click(`${menu} button:first-child`);
+  assert.match(await value("studio-editor-bodyHtml"), /<(?:b|strong)[^>]*>taking<\/(?:b|strong)>|<span[^>]*font-weight[^>]*>taking<\/span>/);
+  await page.click(`${emailToolbar} button[aria-label="Undo"]`);
+  assert.doesNotMatch(await value("studio-editor-bodyHtml"), /<(?:b|strong)[^>]*>taking/);
   console.log("PASS email Studio full-width canvas, 46px toolbar, and floating Insert/color menus");
   console.log(`PASS fail-closed networking; screenshot: screenshots/postal-template-regression.png; Chromium ${await browser.version()}`);
   if (process.env.POSTAL_BROWSER_KEEP_OPEN === "1") {

@@ -155,11 +155,17 @@ export async function exerciseAuthoring(page, origin) {
   assert.equal(await page.$$eval(`${editor} table`, els => els.length), 2);
   await click("fixture-email-raw-mode");
   assert.equal(await page.$eval(id("fixture-email-raw"), el => el.value), canonical);
+  await page.click(id("fixture-email-raw"), { button: "right" });
+  assert.equal(await page.$('[role="menu"][aria-label="Editor selection actions"]'), null,
+    "Source mode cannot expose rich-text selection actions");
   await click("fixture-email-raw-mode");
   await click("fixture-email-disabled");
   assert.equal(await page.$eval(editor, el => el.isContentEditable), false);
   assert.equal(await page.$eval(id("fixture-email-undo"), el => el.disabled), true);
   assert.equal(await page.$eval(id("fixture-email-redo"), el => el.disabled), true);
+  await page.click(editor, { button: "right" });
+  assert.equal(await page.$('[role="menu"][aria-label="Editor selection actions"]'), null,
+    "Disabled editor cannot expose selection actions");
   await click("fixture-email-token");
   assert.equal(await source(), canonical, "Disabled imperative insertion is refused");
   await click("fixture-email-disabled");
@@ -288,9 +294,7 @@ export async function exerciseAuthoring(page, origin) {
   await page.keyboard.up("Shift");
   await page.waitForSelector('[role="menu"][aria-label="Editor selection actions"]');
   assert.match(await page.$eval('[role="menu"][aria-label="Editor selection actions"]', el => el.textContent), /Font….*Text color….*Highlight color…/s);
-  await page.$eval('[role="menu"][aria-label="Editor selection actions"]', el => {
-    [...el.querySelectorAll("button")].find(button => button.textContent.includes("Text color"))?.click();
-  });
+  await page.click('[role="menu"][aria-label="Editor selection actions"] button:nth-child(7)');
   const beforeColor = await source();
   await set(control("Text color hex"), "#12"); // incomplete RGB is only a draft
   assert.equal(await source(), beforeColor);

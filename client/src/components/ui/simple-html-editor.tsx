@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Bold, Italic, List, ListOrdered, Link, Type, Code, Clock } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Link, Link2, Type, Code, Clock, Highlighter, Eraser, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -310,6 +310,8 @@ export function SimpleHtmlEditor({
   const [rawHtml, setRawHtml] = useState(value);
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const contextRange = useRef<Range | null>(null);
   const [dropError, setDropError] = useState("");
   const [dropping, setDropping] = useState(false);
   const dropPending = useRef(false);
@@ -336,7 +338,12 @@ export function SimpleHtmlEditor({
   const history = useRef(new TemplateEditorHistory());
   useEffect(() => {
     if (!contextMenu) return;
-    requestAnimationFrame(() => document.querySelector<HTMLElement>('[role="menu"][aria-label="Editor selection actions"] button')?.focus());
+    const frame = requestAnimationFrame(() => contextMenuRef.current?.querySelector("button")?.focus());
+    const dismiss = (event: PointerEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as Node)) setContextMenu(null);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", dismiss); };
   }, [contextMenu]);
   const lastEmitted = useRef<string | null>(null);
   const representedDom = useRef<{ node: HTMLDivElement; value: string } | null>(null);
@@ -643,6 +650,33 @@ export function SimpleHtmlEditor({
     }
   };
 
+  const openSelectionMenu = (left: number, top: number, image: HTMLImageElement | null = null) => {
+    saveRichSelection();
+    const range = lastRichRangeRef.current;
+    if (!range || range.collapsed || !editorRef.current?.contains(range.startContainer) || !editorRef.current.contains(range.endContainer)) return;
+    contextRange.current = range.cloneRange();
+    toolSelectionLocked.current = true;
+    setMenuImage(image);
+    if (image) setSelectedImage(image);
+    setContextMenu({ left: Math.max(8, Math.min(left, window.innerWidth - 210)), top: Math.max(8, Math.min(top, window.innerHeight - 340)) });
+  };
+  const restoreContextRange = () => {
+    const range = contextRange.current;
+    if (!range || !editorRef.current?.contains(range.startContainer) || !editorRef.current.contains(range.endContainer)) return;
+    lastRichRangeRef.current = range.cloneRange();
+  };
+  const dismissSelectionMenu = () => {
+    restoreContextRange();
+    setContextMenu(null);
+    editorRef.current?.focus();
+    const selection = window.getSelection();
+    if (selection && contextRange.current) {
+      selection.removeAllRanges();
+      selection.addRange(contextRange.current);
+    }
+    contextRange.current = null;
+  };
+
   const handleInsertCharacter = (character: string) => {
     execCommand('insertHTML', character);
   };
@@ -773,11 +807,9 @@ export function SimpleHtmlEditor({
     if (composing.current || e.nativeEvent.isComposing) return;
     if (templateMode && !rawMode && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
       e.preventDefault();
-      const rect = editorRef.current?.getBoundingClientRect();
-      if (rect) {
-        setMenuImage(selectedImage && editorRef.current?.contains(selectedImage) ? selectedImage : null);
-        setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, rect.left + 12)), top: Math.min(window.innerHeight - 240, Math.max(8, rect.top + rect.height / 2)) });
-      }
+      const range = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0) : null;
+      const rect = range?.getBoundingClientRect() ?? editorRef.current?.getBoundingClientRect();
+      if (rect) openSelectionMenu(rect.left + 12, rect.bottom + 4, selectedImage && editorRef.current?.contains(selectedImage) ? selectedImage : null);
       return;
     }
     if (templateMode && !rawMode) {
@@ -1355,10 +1387,7 @@ export function SimpleHtmlEditor({
               selection?.removeAllRanges();
               selection?.addRange(range);
             }
-            saveRichSelection();
-            setMenuImage(image);
-            if (image) setSelectedImage(image);
-            setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, event.clientX)), top: Math.min(window.innerHeight - 240, Math.max(8, event.clientY)) });
+            openSelectionMenu(event.clientX, event.clientY, image);
           }}
           data-template-editor={templateMode}
           onFocus={() => { toolSelectionLocked.current = false; setIsFocused(true); }}
@@ -1404,14 +1433,28 @@ export function SimpleHtmlEditor({
         </p>
       )}
 
-      {contextMenu && templateMode && !rawMode && (
-        createPortal(<div role="menu" aria-label={menuImage ? "Image actions" : "Editor selection actions"} className="fixed z-[120] max-h-[70vh] min-w-40 overflow-auto rounded-md border bg-popover p-1 shadow-md"
-          style={{ left: contextMenu.left, top: contextMenu.top, maxWidth: "calc(100vw - 16px)" }}
+      {contextMenu && templateMode && !rawMode && !disabled && (() => {
+        // Radix Dialog disables pointer interaction outside its content.
+        // Place both editor menus inside it, without opening the rest of the page.
+        const dialog = containerRef.current?.closest<HTMLElement>('[data-testid="dialog-template-studio"]');
+        const bounds = dialog?.getBoundingClientRect();
+        const row = "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground focus-visible:outline-none";
+        const item = (label: string, icon: React.ReactNode, action: () => void) =>
+          <button key={label} type="button" role="menuitem" className={row}
+            onClick={() => { restoreContextRange(); setContextMenu(null); action(); }}>{icon}<span>{label}</span></button>;
+        return createPortal(<div ref={contextMenuRef} role="menu" aria-label={menuImage ? "Image actions" : "Editor selection actions"}
+          className={`${dialog ? "absolute" : "fixed"} z-[120] max-h-[70vh] min-w-48 overflow-auto rounded-md border bg-popover p-1 shadow-md`}
+          style={{ left: contextMenu.left - (bounds?.left ?? 0), top: contextMenu.top - (bounds?.top ?? 0), maxWidth: "calc(100vw - 16px)" }}
           onKeyDown={event => {
             if (event.key === "Escape") {
               event.preventDefault();
-              setContextMenu(null);
-              editorRef.current?.focus();
+              event.stopPropagation();
+              dismissSelectionMenu();
+            } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+              const index = items.indexOf(document.activeElement as HTMLButtonElement);
+              items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
             }
           }} onMouseDown={event => event.preventDefault()}>
           {menuImage && editorRef.current?.contains(menuImage) ? <>
@@ -1448,24 +1491,19 @@ export function SimpleHtmlEditor({
                 setContextMenu(null);
               }}>Delete image</button>
           </> : <>
-          {([
-            ["Bold", () => execCommand("bold")],
-            ["Italic", () => execCommand("italic")],
-            ["Bulleted list", () => execCommand("insertUnorderedList")],
-            ["Numbered list", () => execCommand("insertOrderedList")],
-            ["Insert link", handleCreateLink],
-          ] as [string, () => void][]).map(([label, action]) => <button key={label} type="button" role="menuitem"
-            className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => { action(); setContextMenu(null); }}>{label}</button>)}
-          {([["Font", "Font"], ["Text color", "Text color hex"], ["Highlight color", "Highlight hex"]] as const).map(([label, target]) =>
-            <button key={label} type="button" role="menuitem"
-              className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
-              onClick={() => { setContextMenu(null); openToolbarAction(target === "Font" ? "Font" : target); }}>{label}…</button>)}
-          <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
-            onClick={() => { setContextMenu(null); execCommand("removeFormat"); }}>Clear formatting</button>
+          {item("Bold", <Bold className="h-4 w-4 shrink-0" />, () => execCommand("bold"))}
+          {item("Italic", <Italic className="h-4 w-4 shrink-0" />, () => execCommand("italic"))}
+          {item("Bulleted list", <List className="h-4 w-4 shrink-0" />, () => execCommand("insertUnorderedList"))}
+          {item("Numbered list", <ListOrdered className="h-4 w-4 shrink-0" />, () => execCommand("insertOrderedList"))}
+          {item("Insert link", <Link2 className="h-4 w-4 shrink-0" />, handleCreateLink)}
+          {item("Font…", <Type className="h-4 w-4 shrink-0" />, () => openToolbarAction("Font"))}
+          {item("Text color…", <span aria-hidden="true" className="relative w-4 text-center font-semibold leading-none">A<span className="absolute -bottom-1 left-0 h-0.5 w-full bg-blue-600" /></span>, () => openToolbarAction("Text color hex"))}
+          {item("Highlight color…", <Highlighter className="h-4 w-4 shrink-0" />, () => openToolbarAction("Highlight hex"))}
+          {item("Clear formatting", <Eraser className="h-4 w-4 shrink-0" />, () => execCommand("removeFormat"))}
           </>}
-          <button type="button" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => { setContextMenu(null); editorRef.current?.focus(); }}>Close</button>
-        </div>, containerRef.current ?? document.body)
-      )}
+          <button type="button" role="menuitem" className={row} onClick={dismissSelectionMenu}><X className="h-4 w-4 shrink-0" /><span>Close</span></button>
+        </div>, dialog ?? document.body);
+      })()}
 
       {enableTokens && slashOpen && (
         createPortal(<div

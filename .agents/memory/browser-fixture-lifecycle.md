@@ -20,3 +20,8 @@ Compare rich-editor output at the persistence boundary, not raw live `innerHTML`
 **Why:** The browser's CSS serialization can add whitespace and semicolons that the editor's normalized saved HTML omits. A previous preview frame can already exist while a debounced new PDF request has not run.
 
 **How to apply:** In browser fixtures, assert image identity and structure across saved/reopened values; for an asynchronous preview, observe its incoming request or rendered document tied to the changed source before claiming success.
+After changing a dialog between regular and maximized layouts, let its transform/position transition settle before testing real pointer hits on a menu.
+
+**Why:** During the transition, the automation target can move between hit-test and click; the menu remains visibly open while the pointer lands on a different row.
+
+**How to apply:** Wait for stable dialog geometry before pointer-interaction assertions in both layout modes; a visible selector alone does not prove the position is stable.
