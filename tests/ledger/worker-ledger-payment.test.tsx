@@ -105,6 +105,19 @@ describe("worker payment account chooser", () => {
     expect(payLink("ea-family").getAttribute("href")).toBe("/pay/ea-family");
   });
 
+  it("links both owned pending receipts when multiple reservations consume the balance", async () => {
+    apiRequest.mockResolvedValueOnce([{ ...accounts[0], balance: "461.00", available: "0.00", pendingCheckouts: [
+      { id: "session-140", amount: "140.00", currency: "USD", status: "created" },
+      { id: "session-321", amount: "321.00", currency: "USD", status: "processing" },
+    ] }]);
+    await render();
+    expect(text()).toContain("Your unfinished payments");
+    expect(text()).toContain("140.00 USD");
+    expect(text()).toContain("321.00 USD");
+    expect(container?.querySelector('a[href="/pay/receipt/session-140"]')).toBeTruthy();
+    expect(container?.querySelector('a[href="/pay/receipt/session-321"]')).toBeTruthy();
+  });
+
   it("redirects a valid old deep link to the shared account checkout", async () => {
     location.path = "/workers/worker-42/ledger/pay?eaId=ea-family";
     await render();

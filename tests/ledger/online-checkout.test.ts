@@ -88,6 +88,7 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.processPaymentEvidence.mockReset();
   mocks.access.mockResolvedValue({ granted: false });
   mocks.authority.mockResolvedValue("user-1");
   mocks.storage.ledger.ea.get.mockResolvedValue(ea);
@@ -564,29 +565,135 @@ describe("online checkout HTTP contract", () => {
     );
   });
 
-  it("allows the creator to cancel and read, but blocks another authority from canceling", async () => {
+  it.each(["card", "us_bank_account"])("allows the creator to cancel a new %s draft, but blocks another authority", async (type) => {
     const attempt = {
       id: "attempt-cancel", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
       gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "12.34", currency: "USD",
-      status: "requires_action", providerIntentRef: "pi-cancel",
+      status: "created", providerIntentRef: "pi-cancel", metadata: { paymentTypes: [type] },
     };
     mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
     gateway.plugin.retrievePayment.mockResolvedValue({
-      status: "requires_action", providerRef: "pi-cancel", amountMinor: 1234, currency: "USD",
+      status: "created", providerRef: "pi-cancel", amountMinor: 1234, currency: "USD",
     });
     gateway.plugin.cancelPayment.mockResolvedValue({
       status: "canceled", providerRef: "pi-cancel", amountMinor: 1234, currency: "USD",
     });
-    mocks.storage.ledger.paymentAttempts.updateStatus.mockResolvedValue({ ...attempt, status: "canceled" });
     let response = await fetch(`${base}/api/ledger/checkout/sessions/attempt-cancel`, { method: "GET" });
     expect(response.status).toBe(200);
     mocks.authority.mockResolvedValue("different-user");
     response = await fetch(`${base}/api/ledger/checkout/sessions/attempt-cancel/cancel`, { method: "POST" });
     expect(response.status).toBe(403);
     mocks.authority.mockResolvedValue("user-1");
+    mocks.processPaymentEvidence.mockImplementation(async () => {
+      mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({ ...attempt, status: "canceled" });
+    });
     response = await fetch(`${base}/api/ledger/checkout/sessions/attempt-cancel/cancel`, { method: "POST" });
     expect(response.status).toBe(200);
     expect(gateway.plugin.cancelPayment).toHaveBeenCalledWith(expect.anything(), "pi-cancel");
+  });
+
+  it("shows only the creator's reserved checkouts, including multiple attempts with zero available", async () => {
+    mocks.storage.ledger.ea.getByEntity.mockResolvedValue([ea]);
+    mocks.storage.ledger.ea.getBalance.mockResolvedValue("481.00");
+    mocks.storage.ledger.paymentAttempts.getReservedAmount.mockResolvedValue(481);
+    mocks.storage.ledger.paymentAttempts.getReservations.mockResolvedValue([
+      { id: "one", ledgerEaId: "ea-1", amount: "140.00", currency: "USD", status: "created", createdByUserId: "user-1", providerIntentRef: "pi-one" },
+      { id: "two", ledgerEaId: "ea-1", amount: "321.00", currency: "USD", status: "created", createdByUserId: "user-1", providerIntentRef: "pi-two" },
+      { id: "other", ledgerEaId: "ea-1", amount: "20.00", currency: "USD", status: "processing", createdByUserId: "user-2" },
+    ]);
+    const response = await fetch(`${base}/api/ledger/pay-accounts/worker/worker-1`);
+    expect(await response.json()).toMatchObject([{ available: "0.00", pendingCheckouts: [
+      { id: "one", amount: "140.00", canCancel: true },
+      { id: "two", amount: "321.00", canCancel: true },
+    ] }]);
+    mocks.authority.mockResolvedValue("user-2");
+    const second = await (await fetch(`${base}/api/ledger/pay-accounts/worker/worker-1`)).json();
+    expect(second[0].pendingCheckouts).toEqual([{ id: "other", amount: "20.00", currency: "USD", status: "processing", canCancel: false }]);
+  });
+
+  it("refuses cancellation without a reference, after processing, or when the provider changes state", async () => {
+    const attempt = { id: "one", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "140.00", currency: "USD",
+      status: "created", providerIntentRef: "pi-one" };
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    const url = `${base}/api/ledger/checkout/sessions/one/cancel`;
+    mocks.authority.mockResolvedValue("user-2");
+    expect((await fetch(url, { method: "POST" })).status).toBe(403);
+    mocks.authority.mockResolvedValue("user-1");
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({ ...attempt, providerIntentRef: null });
+    expect((await fetch(url, { method: "POST" })).status).toBe(409);
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({ ...attempt, status: "processing" });
+    expect((await fetch(url, { method: "POST" })).status).toBe(409);
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    gateway.plugin.retrievePayment.mockResolvedValue({ status: "processing", providerRef: "pi-one", amountMinor: 14000, currency: "USD" });
+    expect((await fetch(url, { method: "POST" })).status).toBe(409);
+    expect(gateway.plugin.cancelPayment).not.toHaveBeenCalled();
+    expect(mocks.processPaymentEvidence).toHaveBeenCalled();
+  });
+
+  it("keeps the reservation on provider refusal, outage, or ambiguous cancellation result", async () => {
+    const attempt = { id: "one", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "140.00", currency: "USD",
+      status: "created", providerIntentRef: "pi-one" };
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    gateway.plugin.retrievePayment.mockResolvedValue({ status: "created", providerRef: "pi-one", amountMinor: 14000, currency: "USD" });
+    gateway.plugin.cancelPayment.mockRejectedValueOnce(new Error("provider down")).mockResolvedValueOnce({
+      status: "processing", providerRef: "pi-one", amountMinor: 14000, currency: "USD",
+    });
+    const url = `${base}/api/ledger/checkout/sessions/one/cancel`;
+    expect((await fetch(url, { method: "POST" })).status).toBe(502);
+    expect((await fetch(url, { method: "POST" })).status).toBe(409);
+    expect(mocks.storage.ledger.paymentAttempts.updateStatus).not.toHaveBeenCalledWith("one", "canceled", expect.anything());
+  });
+
+  it("does not report released funds when confirmation races the provider cancellation", async () => {
+    const attempt = { id: "one", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "140.00", currency: "USD",
+      status: "created", providerIntentRef: "pi-one" };
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    gateway.plugin.retrievePayment.mockResolvedValue({ status: "created", providerRef: "pi-one", amountMinor: 14000, currency: "USD" });
+    gateway.plugin.cancelPayment.mockResolvedValue({ status: "canceled", providerRef: "pi-one", amountMinor: 14000, currency: "USD" });
+    mocks.processPaymentEvidence.mockImplementation(async () => {
+      mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({ ...attempt, status: "succeeded", ledgerPaymentId: "posted" });
+    });
+    const response = await fetch(`${base}/api/ledger/checkout/sessions/one/cancel`, { method: "POST" });
+    expect(response.status).toBe(409);
+    expect((await response.json()).message).toContain("Check the payment status");
+  });
+
+  it("rechecks local state under the attempt lock before contacting the provider", async () => {
+    const draft = { id: "one", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "140.00", currency: "USD",
+      status: "created", providerIntentRef: "pi-one" };
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValueOnce(draft).mockResolvedValueOnce({ ...draft, status: "processing" });
+    const response = await fetch(`${base}/api/ledger/checkout/sessions/one/cancel`, { method: "POST" });
+    expect(response.status).toBe(409);
+    expect(mocks.storage.ledger.paymentAttempts.lockAttempt).toHaveBeenCalledWith("one");
+    expect(gateway.plugin.cancelPayment).not.toHaveBeenCalled();
+  });
+
+  it("releases only the provider-canceled draft and leaves the other reservation in the server balance", async () => {
+    const draft = { id: "one", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "140.00", currency: "USD",
+      status: "created", providerIntentRef: "pi-one" };
+    let canceled = false;
+    mocks.storage.ledger.ea.getByEntity.mockResolvedValue([ea]);
+    mocks.storage.ledger.ea.getBalance.mockResolvedValue("461.00");
+    mocks.storage.ledger.paymentAttempts.getReservedAmount.mockImplementation(async () => canceled ? 321 : 461);
+    mocks.storage.ledger.paymentAttempts.getReservations.mockImplementation(async () => [
+      ...(!canceled ? [draft] : []),
+      { ...draft, id: "two", amount: "321.00", providerIntentRef: "pi-two" },
+    ]);
+    mocks.storage.ledger.paymentAttempts.get.mockImplementation(async () => canceled ? { ...draft, status: "canceled" } : draft);
+    gateway.plugin.retrievePayment.mockResolvedValue({ status: "created", providerRef: "pi-one", amountMinor: 14000, currency: "USD" });
+    gateway.plugin.cancelPayment.mockResolvedValue({ status: "canceled", providerRef: "pi-one", amountMinor: 14000, currency: "USD" });
+    mocks.processPaymentEvidence.mockImplementation(async () => { canceled = true; });
+    const accounts = () => fetch(`${base}/api/ledger/pay-accounts/worker/worker-1`).then(r => r.json());
+    expect((await accounts())[0].available).toBe("0.00");
+    const response = await fetch(`${base}/api/ledger/checkout/sessions/one/cancel`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect((await response.json()).status).toBe("canceled");
+    expect((await accounts())[0]).toMatchObject({ available: "140.00", pendingCheckouts: [{ id: "two", amount: "321.00" }] });
   });
 
   it("uses employer authority and rejects a cross-EA checkout", async () => {

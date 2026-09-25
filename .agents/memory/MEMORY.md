@@ -135,7 +135,6 @@
 - [Live staging range evidence](live-staging-range-evidence.md) — daily high-churn staging freezes exact ranges; cleanup authorization and checkpoint commit atomically, while final-freeze stays whole-source exact.
 - Document/billing integrity — [Lob pagination](lob-html-pagination-limits.md) cannot trust padded blocks for arbitrary multi-page HTML; [DP billing authority](dp-report-billing-authority.md) treats surviving posted charges as authoritative when reconstruction fails.
 - [Webhook replay must retry unfinished effects](webhook-replay-unfinished-effects.md) — duplicate receipt proves ingestion, not completion; replays must resume any uncommitted internal side effect.
-- [Deployment cron policy](deployment-cron-policy.md) — production cron enablement must come from the real deployment environment; copied DB overrides cannot authorize execution.
 - [Payment editor lifecycle](payment-editor-lifecycle.md) — intact allocations can disappear during control initialization; distinguish deliberate account changes from hydration and preserve local drafts.
 - [Ledger currency discovery](ledger-currency-discovery.md) — nonfinancial units must not invalidate account discovery; monetary validation belongs to payable responses.
 - [Browser fixture lifecycle](browser-fixture-lifecycle.md) — print failures before bounded Vite cleanup; wait for closing confirmation portals before typing into the underlying editor.
@@ -145,6 +144,7 @@
 - [Worker-list sensitive filters](worker-list-sensitive-filters.md) — body-only searches, opaque cache generations, and consistent selection/export without exposing lookup values.
 - [Worker export traversal consistency](worker-export-traversal-consistency.md) — keyset batches preserve a total order without a long-lived snapshot; edits to filter/sort keys during a download may move rows.
 - [Online payment rollout](online-payment-foundation-boundary.md) — reuse existing attempts and pending ACH recovery; historical payer/consent stay unknown; foundation does not authorize live charging.
+- [Checkout abandonment boundary](checkout-abandonment-boundary.md) — only provider-created, unconfirmed checkout is abandonable; serialize explicit cancellation with webhook settlement.
 - [Test-mode provider entry order](test-mode-provider-entry-order.md) — reject live credentials before customer creation, not only before SetupIntent; redact client secrets in response previews.
 - [Whole-statement checkout](whole-statement-checkout.md) — net credits apply oldest-first; unknown pending allocations block checkout rather than guessing; method management differs from method use.
 - [Payment direction historical correction](payment-direction-historical-correction.md) — changing a type's charge/credit meaning after clearing needs a reviewed snapshot and payment-plugin reconciliation, never a blind sign flip.

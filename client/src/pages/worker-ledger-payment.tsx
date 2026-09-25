@@ -7,7 +7,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type Account = { eaId: string; accountName: string; balance: string; available: string; currency: string };
+type Account = { eaId: string; accountName: string; balance: string; available: string; currency: string;
+  pendingCheckouts?: { id: string; amount: string; currency: string; status: string }[] };
 
 function WorkerPaymentAccounts() {
   const { worker } = useWorkerLayout();
@@ -32,6 +33,11 @@ function WorkerPaymentAccounts() {
         <p>Posted balance: {account.balance} {account.currency}</p>
         <p>Pending: {(Number(account.balance) - Number(account.available)).toFixed(2)} {account.currency}</p>
         <p>Available to pay: {account.available} {account.currency}</p>
+        {!!account.pendingCheckouts?.length && <div className="space-y-2 border-t pt-3"><p className="font-medium">Your unfinished payments</p>
+          {account.pendingCheckouts.map(attempt => <p key={attempt.id}>
+            {attempt.amount} {attempt.currency} · {attempt.status === "created" ? "Awaiting payment details" : attempt.status === "requires_action" ? "Awaiting confirmation" : attempt.status === "processing" ? "Processing funds" : "Awaiting ledger posting"}
+            {" · "}<Link className="underline" href={`/pay/receipt/${encodeURIComponent(attempt.id)}`}>Check status</Link>
+          </p>)}</div>}
         {Number(account.available) > 0
           ? <Button asChild><Link href={`/pay/${encodeURIComponent(account.eaId)}`}>Pay this account</Link></Button>
           : <p>No amount is currently available to pay.</p>}

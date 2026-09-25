@@ -367,6 +367,7 @@ export function registerLedgerPaymentAttemptRoutes(
   const safeAttempt = (a: any, extra: Record<string, unknown> = {}) => ({
     id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId,
     amount: a.amount, currency: a.currency, status: a.status,
+    canCancel: a.status === "created" && !!a.providerIntentRef && !a.ledgerPaymentId,
     ledgerPaymentId: a.ledgerPaymentId ?? null,
     statementSelection: a.statementSelection ?? [],
     creditTransfers: a.metadata?.checkoutQuote?.creditTransfers ?? [],
@@ -424,8 +425,15 @@ export function registerLedgerPaymentAttemptRoutes(
       allowPartial: loaded.settings.allowPartial, minAmount: loaded.settings.minAmount,
     };
   };
+  const ownedPending = async (eaId: string, userId: string) =>
+    (await storage.ledger.paymentAttempts.getReservations(eaId))
+      .filter(row => row.createdByUserId === userId)
+      .map(row => ({
+        id: row.id, amount: row.amount, currency: row.currency, status: row.status,
+        canCancel: row.status === "created" && !!row.providerIntentRef && !row.ledgerPaymentId,
+      }));
   app.get("/api/ledger/pay-accounts/:entityType/:entityId", requireAuth, async (req, res) => {
-    if (!(await authorizeCheckout(req, res))) return;
+    const userId = await authorizeCheckout(req, res); if (!userId) return;
     try {
       const eas = await storage.ledger.ea.getByEntity(req.params.entityType, req.params.entityId);
       const result = [];
@@ -434,14 +442,14 @@ export function registerLedgerPaymentAttemptRoutes(
           const { account, settings } = await loadCheckout(req.params.entityType, req.params.entityId, ea.id);
           const balance = parseStoredMoney(await storage.ledger.ea.getBalance(ea.id), "Balance");
           const reserved = parseStoredMoney(await storage.ledger.paymentAttempts.getReservedAmount(ea.id), "Reserved amount", { nonNegative: true, allowNumber: true });
-          result.push({ eaId: ea.id, accountId: account.id, accountName: account.name, currency: account.currencyCode, gatewayConfigId: account.gatewayConfigId, balance: balance.toFixed(2), available: Math.max(0, balance - reserved).toFixed(2), settings });
+           result.push({ eaId: ea.id, accountId: account.id, accountName: account.name, currency: account.currencyCode, gatewayConfigId: account.gatewayConfigId, balance: balance.toFixed(2), available: Math.max(0, balance - reserved).toFixed(2), settings, pendingCheckouts: await ownedPending(ea.id, userId) });
         } catch { /* ineligible accounts are not exposed */ }
       }
       return res.json(result);
     } catch (e) { return error(res, 500, e instanceof Error ? e.message : "Failed to load payment accounts"); }
   });
   app.get("/api/ledger/checkout/:entityType/:entityId/:eaId", requireAuth, async (req, res) => {
-    if (!(await authorizeCheckout(req, res))) return;
+    const userId = await authorizeCheckout(req, res); if (!userId) return;
     try {
       const loaded = await loadCheckout(req.params.entityType, req.params.entityId, req.params.eaId);
       const auth = await storage.variables.getByName(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE);
@@ -466,6 +474,7 @@ export function registerLedgerPaymentAttemptRoutes(
         account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode, gatewayConfigId: loaded.account.gatewayConfigId },
         balance: input.balance, reserved: input.reserved, available: quote.available,
         invoices: input.invoices, selectionInput: input, quote,
+        pendingCheckouts: await ownedPending(loaded.ea.id, userId),
         readiness: {
           paymentAuthorization: authorization.success ? "ready" : "configuration_required",
           methodPermission: methodPermission ? "allowed" : "denied",
@@ -649,16 +658,40 @@ export function registerLedgerPaymentAttemptRoutes(
     try {
       const resolved = await resolveGateway(attempt.gatewayConfigId);
       if (cancel) {
-        if (!attempt.providerIntentRef || !resolved.plugin.cancelPayment) return error(res, 409, "Payment cannot be canceled");
-        const result = await resolved.plugin.cancelPayment(resolved.context, attempt.providerIntentRef);
-        await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, evidenceFromPayment(result));
+        // Hold the same attempt lock as webhook settlement while checking the
+        // local state and asking the provider. A processing webhook cannot
+        // slip between the local check and the cancellation transition.
+        const outcome = await runInTransaction(async () => {
+          await storage.ledger.paymentAttempts.lockAttempt(attempt.id);
+          const fresh = await storage.ledger.paymentAttempts.get(attempt.id);
+          if (!fresh || fresh.status !== "created" || fresh.ledgerPaymentId)
+            return { message: "This payment is already processing or complete; check its status before paying again" };
+          if (!fresh.providerIntentRef || !resolved.plugin.cancelPayment || !resolved.plugin.retrievePayment)
+            return { message: "Payment cannot be canceled automatically. Contact support with the confirmation number" };
+          const current = await resolved.plugin.retrievePayment(resolved.context, fresh.providerIntentRef);
+          if (current.status !== "created") {
+            await processPaymentEvidence(fresh.id, fresh.gatewayConfigId, evidenceFromPayment(current));
+            return { message: "Provider confirmation has begun or this payment has ended. Check its updated status" };
+          }
+          // A simultaneous provider confirmation may still win; only its
+          // confirmed canceled response can release the reservation.
+          const canceled = await resolved.plugin.cancelPayment(resolved.context, fresh.providerIntentRef);
+          await processPaymentEvidence(fresh.id, fresh.gatewayConfigId, evidenceFromPayment(canceled));
+          const saved = await storage.ledger.paymentAttempts.get(fresh.id);
+          if (canceled.status !== "canceled" || saved?.status !== "canceled" || saved.ledgerPaymentId)
+            return { message: "Cancellation could not be confirmed. Check the payment status" };
+          return { saved };
+        });
+        return "saved" in outcome && outcome.saved
+          ? res.json(safeAttempt(outcome.saved))
+          : error(res, 409, outcome.message ?? "Cancellation could not be confirmed");
       } else if (attempt.providerIntentRef && resolved.plugin.retrievePayment) {
         const result = await resolved.plugin.retrievePayment(resolved.context, attempt.providerIntentRef);
         await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, evidenceFromPayment(result));
       }
       return res.json(await receipt(await storage.ledger.paymentAttempts.get(attempt.id)));
     } catch (e) {
-      if (e instanceof PaymentCancellationError) return error(res, 409, e.message);
+      if (e instanceof PaymentCancellationError) return error(res, 409, "Provider could not cancel this payment. Check its status or contact support");
       return error(res, 502, "Payment provider could not be reconciled");
     }
   };

@@ -442,6 +442,28 @@ describe("shared checkout", () => {
       statementSelection: [{ invoiceNumber: "COBRA-SEP", amount: "500.00" }] }));
   });
 
+  it("keeps a draft discoverable on returning to zero-available checkout after leaving secure entry", async () => {
+    await render();
+    await clickCheckboxContaining("I authorize");
+    await submit();
+    expect(text()).toContain("New card entry");
+    expect(apiRequest.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
+    await act(async () => { root?.unmount(); });
+    container?.remove();
+    root = null;
+    container = null;
+    const input: CheckoutSelectionInput = { ...selectionInput, reserved: "125.00", reservations: [
+      { amount: "125.00", statementSelection: [] },
+    ] };
+    workerFixture = { ...fixture(input), pendingCheckouts: [
+      { id: "session-1", amount: "125.00", currency: "USD", status: "created" },
+    ] } as typeof checkout;
+    await render();
+    expect(text()).toContain("No payment is currently available");
+    expect(document.querySelector('a[href="/pay/receipt/session-1"]')).toBeTruthy();
+    expect(apiRequest.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
+  });
+
   it("offers only full balance when partial selection is disabled", async () => {
     workerFixture = fixture({ ...selectionInput, allowPartial: false });
     await render();
@@ -648,6 +670,42 @@ describe("shared payment receipt", () => {
   const receipt = (status: string, extra: Record<string, unknown> = {}) => ({
     id: "session-1", entityType: "worker", entityId: "worker-1", eaId: "ea-1",
     amount: "12.50", currency: "USD", status, ...extra,
+  });
+
+  it("explicitly abandons a provider-confirmed draft and refreshes the available balance", async () => {
+    let current = receipt("created", { canCancel: true });
+    apiRequest.mockImplementation((method: string, url: string) => {
+      if (method === "POST" && url.endsWith("/cancel")) {
+        current = receipt("canceled", { canCancel: false });
+        return Promise.resolve(current);
+      }
+      return Promise.resolve(current);
+    });
+    await render("receipt");
+    expect(button("Abandon this payment")).toBeTruthy();
+    expect(apiRequest.mock.calls.filter(([method]) => method === "POST")).toHaveLength(0);
+    await act(async () => { button("Abandon this payment").click(); });
+    await settle();
+    expect(text()).toContain("Payment canceled");
+    expect(container?.querySelector('a[href="/pay/ea-1"]')).toBeTruthy();
+    expect(queryClient!.getQueryState(["worker-online-pay-accounts"])?.isInvalidated ?? true).toBe(true);
+  });
+
+  it("keeps the status/support path when cancellation fails, and blocks processing abandonment", async () => {
+    let current = receipt("created", { canCancel: true });
+    apiRequest.mockImplementation((method: string) => method === "POST"
+      ? Promise.reject(new Error("Provider unavailable"))
+      : Promise.resolve(current));
+    await render("receipt");
+    await act(async () => { button("Abandon this payment").click(); });
+    await settle();
+    expect(text()).toContain("Provider unavailable");
+    expect(text()).toContain("Check status");
+    current = receipt("processing", { canCancel: false });
+    await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout-receipt"] }); });
+    await settle();
+    expect(text()).toContain("Payment processing");
+    expect(Array.from(container!.querySelectorAll("button")).some(b => b.textContent?.includes("Abandon"))).toBe(false);
   });
 
   it.each([

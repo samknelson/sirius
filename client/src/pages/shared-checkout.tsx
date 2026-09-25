@@ -24,6 +24,7 @@ type Checkout = {
   payComponentId: string | null; reusableMethodsSupported: boolean; settings: { allowPartial: boolean; minAmount: number };
   authorization: { version: string; text: string } | null; readiness?: Readiness;
   selectionInput: CheckoutSelectionInput; quote: CheckoutQuote;
+  pendingCheckouts?: { id: string; amount: string; currency: string; status: string }[];
 };
 type Method = { id: string; gatewayConfigId: string; isActive: boolean; providerError?: string; providerDetails?: { card?: { brand: string; last4: string }; us_bank_account?: { bank_name: string; last4: string } } };
 type Session = { id: string; status: string; clientSecret: string | null; publicConfig?: Record<string, unknown> };
@@ -148,6 +149,9 @@ export default function SharedCheckoutPage() {
   return <main className="mx-auto w-full max-w-xl space-y-4 p-4 sm:p-6" aria-label="Checkout">
     <header><h1 className="text-2xl font-semibold">Make a payment</h1><p className="mt-1 break-words text-muted-foreground">{data.account.name}</p></header>
     <Card><CardContent className="space-y-1 pt-6 text-sm"><p>Posted balance: {money(data.quote.postedBalance, currency)}</p><p>Pending payments: {money(data.quote.pendingPayments, currency)}</p><p className="font-medium">Available to pay: {money(data.quote.available, currency)}</p></CardContent></Card>
+    {!!data.pendingCheckouts?.length && <Card><CardHeader><CardTitle className="text-lg">Your unfinished payments</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">
+      {data.pendingCheckouts.map(attempt => <p key={attempt.id}>{money(attempt.amount, attempt.currency)} · {attempt.status === "created" ? "Awaiting payment details" : attempt.status === "requires_action" ? "Awaiting confirmation" : attempt.status === "processing" ? "Processing funds" : "Awaiting ledger posting"} · <Link href={`/pay/receipt/${encodeURIComponent(attempt.id)}`} className="underline">Check status</Link></p>)}
+    </CardContent></Card>}
     {Number(data.quote.available) <= 0 ? <Alert><AlertDescription>No payment is currently available. Pending payments or account credits may be covering this balance.</AlertDescription></Alert> : <>
       <Card><CardHeader><CardTitle className="text-lg">Choose what to pay</CardTitle></CardHeader><CardContent className="space-y-3">
         <label className="flex items-start gap-3 rounded-md border p-3"><input type="radio" name="payment-choice" checked={choice === "full"} disabled={frozen} onChange={() => change(() => setChoice("full"))} /><span><span className="block font-medium">Pay full balance</span><span className="text-sm text-muted-foreground">Apply the current payable balance across eligible statements and account debt.</span></span></label>
