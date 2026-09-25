@@ -14,3 +14,9 @@ Assert initial viewport geometry before clicking or focusing the control being t
 **Why:** Browser automation can scroll an offscreen control into view before interacting with it, masking a first-load placement defect. An isolated sidebar without its normal-flow header can also pass while the real page fails.
 
 **How to apply:** Check bounding rectangles and document scroll position before interaction; cover both saved menu states, variable-height headers, and asynchronous siblings above the tested layout. ResizeObserver reports size changes, not position-only shifts caused by newly inserted siblings.
+
+Compare rich-editor output at the persistence boundary, not raw live `innerHTML`, and wait for the specific preview request containing the new content rather than the first preview frame.
+
+**Why:** The browser's CSS serialization can add whitespace and semicolons that the editor's normalized saved HTML omits. A previous preview frame can already exist while a debounced new PDF request has not run.
+
+**How to apply:** In browser fixtures, assert image identity and structure across saved/reopened values; for an asynchronous preview, observe its incoming request or rendered document tied to the changed source before claiming success.

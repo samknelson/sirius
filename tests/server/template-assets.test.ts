@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import http from "node:http";
+import { z } from "zod";
 
 const state = vi.hoisted(() => {
   const data = {
@@ -8,6 +9,7 @@ const state = vi.hoisted(() => {
     objects: new Map<string, Buffer>(),
     files: new Map<string, any>(),
     upload: vi.fn(),
+    failCreate: false,
     LocalProvider: class {
       async read(path: string) {
         const content = data.objects.get(path);
@@ -23,6 +25,7 @@ vi.mock("../../server/storage", () => ({
   storage: {
     files: {
       create: vi.fn(async (file: any) => {
+        if (state.failCreate) throw new Error("metadata unavailable");
         const saved = { ...file, id: "asset-id", status: "live" };
         state.files.set(`${file.fileSystemId}:${file.storagePath}`, saved);
         return saved;
@@ -30,12 +33,23 @@ vi.mock("../../server/storage", () => ({
       getByStoragePath: vi.fn(async (path: string, filesystemId: string) =>
         state.files.get(`${filesystemId}:${path}`)),
     },
+    authIdentities: { getByProviderAndExternalId: vi.fn(async (_provider: string, sub: string) =>
+      sub === "unresolved" ? null : { id: "identity", userId: sub }) },
+    users: { getUser: vi.fn(async (id: string) => ({ id, isActive: id !== "inactive", email: "staff@example.invalid" })) },
   },
 }));
 
 vi.mock("@shared/schema", () => ({
-  insertFileSchema: { parse: (value: unknown) => value },
+  insertFileSchema: z.object({
+    fileName: z.string(), storagePath: z.string(), mimeType: z.string(),
+    size: z.number(), uploadedBy: z.string(), fileSystemId: z.string(),
+    entityType: z.string(), entityId: z.null(), metadata: z.object({ purpose: z.literal("letter-template") }),
+  }),
 }));
+vi.mock("../../server/auth/index", () => ({
+  providerRegistry: { getDefault: () => ({ type: "local" }) },
+}));
+vi.mock("../../server/middleware/request-context", () => ({ getRequestContext: () => null }));
 
 vi.mock("../../server/services/files", () => {
   class FileSystemNotConfiguredError extends Error {}
@@ -72,7 +86,8 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
 }));
 
 vi.mock("../../server/logger", () => ({
-  logger: { error: vi.fn(), warn: vi.fn() },
+  logger: { error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+  storageLogger: { info: vi.fn() },
 }));
 
 vi.mock("../../server/utils/content-disposition", () => ({
@@ -91,6 +106,10 @@ vi.mock("../../server/config/env-registry", () => ({
 vi.mock("../../server/services/comm/letter-images", () => ({
   MAX_LETTER_IMAGE_BYTES: 1024 * 1024,
   rasterImageType(bytes: Buffer) {
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff && bytes[3] === 0xc0) {
+      if (bytes.readUInt16BE(9) > 0 && bytes.readUInt16BE(7) > 0) return "image/jpeg";
+      throw new Error("Letter image refused: invalid JPEG dimensions.");
+    }
     const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
     if (bytes.length < 24 || !bytes.subarray(0, 8).equals(signature) ||
         bytes.toString("ascii", 12, 16) !== "IHDR") {
@@ -125,7 +144,9 @@ function auth(permissionStaff = true) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    (req as any).user = { id: userId };
+    (req as any).user = { claims: { sub: userId }, providerType: "local",
+      ...(userId === "unresolved" ? {} : { dbUser: { id: userId, isActive: userId !== "inactive" } }) };
+    (req as any).session = {};
     next();
   };
   const requirePermission = (permission: string) =>
@@ -158,6 +179,7 @@ beforeEach(async () => {
   state.objects.clear();
   state.files.clear();
   state.upload.mockReset();
+  state.failCreate = false;
   const app = express();
   const authMiddleware = auth();
   registerFileRoutes(app, authMiddleware.requireAuth, authMiddleware.requirePermission);
@@ -191,9 +213,16 @@ describe("POST /api/template-assets", () => {
       body: form,
     });
     expect(response.status).toBe(403);
+    expect(state.upload).not.toHaveBeenCalled();
     await new Promise<void>((resolve, reject) =>
       deniedServer.close((error) => error ? reject(error) : resolve()),
     );
+  });
+
+  it("requires a resolved active database identity before writing bytes", async () => {
+    expect((await upload(pngBytes(), "image/png", { "x-user": "unresolved" })).status).toBe(401);
+    expect((await upload(pngBytes(), "image/png", { "x-user": "inactive" })).status).toBe(401);
+    expect(state.upload).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported MIME and content that does not match its MIME", async () => {
@@ -224,5 +253,22 @@ describe("POST /api/template-assets", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("image/png");
     expect(Buffer.from(await served.arrayBuffer())).toEqual(pngBytes());
+    expect(state.files.values().next().value.uploadedBy).toBe("staff");
+  });
+  it("accepts JPEG and serves it as JPEG", async () => {
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 1, 0, 1, 1, 1, 0x11, 0, 0xff, 0xd9]);
+    const response = await upload(bytes, "image/jpeg");
+    expect(response.status).toBe(201);
+    const { url } = await response.json();
+    const served = await fetch(`${baseUrl}${new URL(url).pathname}`);
+    expect(served.headers.get("content-type")).toBe("image/jpeg");
+    expect(Buffer.from(await served.arrayBuffer())).toEqual(bytes);
+  });
+  it("rejects oversized images and removes objects if metadata creation fails", async () => {
+    expect((await upload(Buffer.concat([pngBytes(), Buffer.alloc(1024 * 1024)]))).status).toBe(413);
+    state.failCreate = true;
+    expect((await upload()).status).toBe(500);
+    expect(state.objects.size).toBe(0);
+    expect(state.files.size).toBe(0);
   });
 });

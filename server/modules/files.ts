@@ -21,6 +21,7 @@ import {
   PUBLIC_URL_LOCAL_FALLBACK,
 } from "../config/env-registry";
 import { randomUUID } from "node:crypto";
+import { getEffectiveUser } from "./masquerade";
 import {
   MAX_LETTER_IMAGE_BYTES,
   rasterImageType,
@@ -99,6 +100,10 @@ export function registerFileRoutes(
     async (req, res) => {
       if (!req.file) return res.status(400).json({ message: "No file provided in field 'file'." });
       try {
+        const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
+        if (!dbUser?.id || !dbUser.isActive) {
+          return res.status(401).json({ message: "An active database user is required to upload template images." });
+        }
         const contentType = req.file.mimetype.toLowerCase();
         if (contentType !== "image/png" && contentType !== "image/jpeg") {
           return res.status(415).json({ message: "Template images must be PNG or JPEG." });
@@ -145,7 +150,7 @@ export function registerFileRoutes(
             storagePath: uploaded.storagePath,
             mimeType: detectedType,
             size: uploaded.size,
-            uploadedBy: (req.user as any)?.id,
+            uploadedBy: dbUser.id,
             entityType: "template-asset",
             entityId: null,
             fileSystemId: filesystem.id,

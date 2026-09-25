@@ -21,6 +21,10 @@ const saves = [];
 const reads = [];
 const templateQueries = [];
 const renders = [];
+const postalPreviewBodies = [];
+let uploads = 0;
+let uploadFailure = false;
+let uploadDelayMs = 0;
 let stored = { bodyHtml: "", description: "", templateId: "", fileUrl: "", color: false, doubleSided: false, mailType: "usps_first_class" };
 const imageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
 const managedImageUrl = "https://assets.example.invalid/public-files/public/letter-template-assets/fixture.png";
@@ -85,7 +89,8 @@ function api(url, method, body) {
     }
     if (method === "PUT") {
       assert.equal(url.search, "?medium=postal");
-      assert.deepEqual(body, { ...stored, ...content });
+      assert.deepEqual({ ...body, bodyHtml: content.bodyHtml }, { ...stored, ...content });
+      if (body.bodyHtml !== content.bodyHtml) assert.match(body.bodyHtml, /<img src="https:\/\/assets\.example\.invalid/);
       saves.push(structuredClone(body));
       stored = structuredClone(body);
       return stored;
@@ -139,10 +144,15 @@ try {
       if (url.pathname.startsWith("/api/")) {
         if (url.pathname === "/api/template-assets" && request.method() === "POST") {
           assert.match(request.headers()["content-type"], /multipart\/form-data/);
+          uploads++;
+          if (uploadDelayMs) await new Promise(resolve => setTimeout(resolve, uploadDelayMs));
+          if (uploadFailure) return await request.respond({ status: 503, contentType: "application/json",
+            body: JSON.stringify({ message: "Template image storage is unavailable." }) });
           return await request.respond({ status: 201, contentType: "application/json", body: JSON.stringify({ url: managedImageUrl }) });
         }
         // PDF generation is outside this regression. Serve an inert local PDF, never a provider.
         if (url.pathname === "/api/comm/postal/preview" && request.method() === "POST") {
+          postalPreviewBodies.push(JSON.parse(request.postData()).body);
           return await request.respond({ status: 200, contentType: "application/pdf", body: "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF" });
         }
         const result = api(url, request.method(), request.postData() ? JSON.parse(request.postData()) : undefined);
@@ -189,6 +199,21 @@ try {
     await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
     await page.keyboard.sendCharacter(text);
   };
+  const dropImage = async (id, mime = "image/png", paragraph = 0) => page.$eval(sel(id), (el, { bytes, mime, paragraph }) => {
+    const text = el.querySelectorAll("p")[paragraph]?.firstChild;
+    if (!text) throw new Error("Expected a paragraph at the drop point");
+    const range = document.createRange();
+    range.setStart(text, Math.min(5, text.textContent.length));
+    range.collapse(true);
+    const point = range.getBoundingClientRect();
+    const dataTransfer = new DataTransfer();
+    const binary = atob(bytes);
+    dataTransfer.items.add(new File([Uint8Array.from(binary, c => c.charCodeAt(0))], "dropped.png", { type: mime }));
+    el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer,
+      clientX: point.left, clientY: point.top + point.height / 2 }));
+    el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer,
+      clientX: point.left, clientY: point.top + point.height / 2 }));
+  }, { bytes: imageBytes.toString("base64"), mime, paragraph });
   async function exerciseStudio(openId) {
     await click(openId);
     assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "true");
@@ -245,6 +270,40 @@ try {
     assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} img`, el => el.getAttribute("src")), managedImageUrl);
     await click("studio-editor-bodyHtml-undo");
     await expectFields(content);
+    // A direct file drop uses the same managed upload without opening Images.
+    const uploadsBeforeDrop = uploads;
+    await dropImage("studio-editor-bodyHtml");
+    await page.waitForSelector(`${sel("studio-editor-bodyHtml")} img`);
+    assert.equal(uploads, uploadsBeforeDrop + 1);
+    assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} p img`, el => el.getAttribute("src")), managedImageUrl,
+      "Dropped image lands inside the paragraph at the pointer, not at document end");
+    assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} img`, el => el.complete && el.naturalWidth > 0), true);
+    assert.doesNotMatch(await value("studio-editor-bodyHtml"), /blob:|data:image/);
+    await click("studio-editor-bodyHtml-undo");
+    await expectFields(content);
+    const uploadsBeforeUnsupported = uploads;
+    await dropImage("studio-editor-bodyHtml", "image/gif");
+    await page.waitForFunction(() => document.querySelector('[role="alert"]')?.textContent?.includes("Drop one PNG or JPEG image."));
+    assert.equal(uploads, uploadsBeforeUnsupported);
+    await expectFields(content);
+    uploadFailure = true;
+    await dropImage("studio-editor-bodyHtml");
+    await page.waitForFunction(() => document.querySelector('[role="alert"]')?.textContent?.includes("Template image storage is unavailable."));
+    assert.equal(await value("studio-editor-bodyHtml"), content.bodyHtml);
+    uploadFailure = false;
+    uploadDelayMs = 600;
+    await dropImage("studio-editor-bodyHtml");
+    await page.waitForFunction(() => document.body.textContent.includes("Uploading image…"));
+    await dropImage("studio-editor-bodyHtml");
+    await page.waitForFunction(() => document.body.textContent.includes("Wait for the current image upload to finish."));
+    await click("button-load-template-saved-postal");
+    await click("button-load-template-confirm");
+    await page.waitForSelector(sel("dialog-load-letter-template"), { hidden: true });
+    await new Promise(resolve => setTimeout(resolve, 750));
+    await expectFields(content);
+    assert.equal(await page.$(`${sel("studio-editor-bodyHtml")} img`), null,
+      "An upload finishing after the document was replaced cannot insert into the new document");
+    uploadDelayMs = 0;
     // Edit this document away and back to the next template's exact bytes.
     // Loading that template is still a new document, not an onChange echo.
     await click("studio-editor-bodyHtml-raw-mode");
@@ -353,14 +412,30 @@ try {
 
   await page.goto(`${origin}/bulk/bulk-fixture/message`);
   await exerciseStudio("button-open-studio-postal");
+  await dropImage("studio-editor-bodyHtml");
+  await page.waitForSelector(`${sel("studio-editor-bodyHtml")} img`);
+  const savedBodyWithImage = await value("studio-editor-bodyHtml");
+  await click("button-studio-panel-preview");
+  await page.waitForFunction(() => !!document.querySelector('[data-testid="studio-preview-postal-bodyHtml-page"]'));
+  await bounded("Postal managed image preview", new Promise(resolve => {
+    const check = () => postalPreviewBodies.some(body => body.includes(managedImageUrl))
+      ? resolve() : setTimeout(check, 100);
+    check();
+  }), 10000);
+  assert.ok(postalPreviewBodies.some(body => body.includes(managedImageUrl)),
+    "Postal PDF preview receives the managed image URL");
   await click("button-studio-done");
   await click("button-save-postal-message");
   await page.waitForFunction(() => document.body.textContent.includes("Message content saved"));
   assert.equal(saves.length, 1);
+  assert.equal(saves[0].bodyHtml.replace(/max-width:\s*100%;?/g, "max-width:100%"),
+    savedBodyWithImage.replace(/max-width:\s*100%;?/g, "max-width:100%"));
   const readCount = reads.length;
   await page.reload();
   await click("button-open-studio-postal");
-  await expectFields(content);
+  await page.waitForSelector(`${sel("studio-editor-bodyHtml")} img`);
+  assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} img`, el => el.getAttribute("src")), managedImageUrl);
+  assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} img`, el => el.complete && el.naturalWidth > 0), true);
   assert.ok(reads.length > readCount, "Reopen must fetch stored content, not retain client state");
   assert.deepEqual(reads.at(-1), saves[0]);
   assert.deepEqual([...new Set(templateQueries)].sort(), [...contexts].sort());
@@ -374,6 +449,15 @@ try {
   await page.setViewport({ width: 1024, height: 720 });
   await page.goto(`${origin}/email-studio-fixture`);
   await page.waitForSelector(sel("dialog-template-studio"), { visible: true });
+  await dropImage("studio-editor-bodyHtml", "image/png", 1);
+  await page.waitForSelector(`${sel("studio-editor-bodyHtml")} img`);
+  await click("button-studio-toggle-right-column");
+  await click("button-studio-panel-preview");
+  await page.waitForFunction(url => document.querySelector('[data-testid="studio-preview-email-body"]')?.srcdoc.includes(url), {}, managedImageUrl);
+  const emailPreviewFrame = await (await page.$(sel("studio-preview-email-body"))).contentFrame();
+  await emailPreviewFrame.waitForSelector("img");
+  assert.equal(await emailPreviewFrame.$eval("img", el => el.getAttribute("src")), managedImageUrl);
+  await click("button-studio-toggle-right-column");
   assert.equal(await page.$eval("#studio-right-column", el => getComputedStyle(el).display), "none",
     "Email editor opens with the full writing canvas");
   const emailToolbar = `[data-template-design-toolbar]`;

@@ -15,7 +15,8 @@ import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
 import { TemplateDesignTools } from "./template-design-tools";
 import { captureBookmark, restoreBookmark, TemplateEditorHistory } from "./template-editor-history";
-import { moveImageInFlow, resizeImageBy } from "./template-image-tools";
+import { moveImageInFlow, resizeImageBy, safeDesignUrl } from "./template-image-tools";
+import { insertAtSelection } from "./template-table-tools";
 
 const SPECIAL_CHARACTERS = [
   { name: 'Copyright', symbol: '©' },
@@ -308,6 +309,11 @@ export function SimpleHtmlEditor({
   const [rawHtml, setRawHtml] = useState(value);
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
+  const [dropError, setDropError] = useState("");
+  const [dropping, setDropping] = useState(false);
+  const dropPending = useRef(false);
+  const documentGeneration = useRef(0);
+  useEffect(() => () => { documentGeneration.current++; }, []);
   const toolSelectionLocked = useRef(false);
   const history = useRef(new TemplateEditorHistory());
   useEffect(() => {
@@ -431,7 +437,13 @@ export function SimpleHtmlEditor({
       }
       representedDom.current = { node: editor, value };
       if (templateMode) {
-        if (!ownEcho) history.current.reset({ html: rendered });
+        if (!ownEcho) {
+          documentGeneration.current++;
+          dropPending.current = false;
+          setDropping(false);
+          setDropError("");
+          history.current.reset({ html: rendered });
+        }
         else if (history.current.entries[history.current.index]?.html !== rendered) history.current.push({ html: rendered });
         setSelectionVersion((version) => version + 1);
       }
@@ -570,6 +582,59 @@ export function SimpleHtmlEditor({
         editorRef.current?.focus();
         saveRichSelection();
         handleInput();
+      }
+    }
+  };
+
+  const dropLocalImage = async (event: React.DragEvent<HTMLDivElement>) => {
+    const transfer = event.dataTransfer;
+    // Native image moves have their own handler and history path.
+    if (!templateMode || transfer.types.includes("text/template-image") ||
+        editorRef.current?.querySelector('[data-template-moving-image="true"]')) return;
+    if (!transfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (disabled || rawMode) { setDropError("Switch to the enabled visual editor to drop an image."); return; }
+    if (dropPending.current) { setDropError("Wait for the current image upload to finish."); return; }
+    if (transfer.files.length !== 1 || !["image/png", "image/jpeg"].includes(transfer.files[0].type)) {
+      setDropError("Drop one PNG or JPEG image."); return;
+    }
+    const file = transfer.files[0];
+    if (!uploadImage) { setDropError("Image upload is not configured."); return; }
+    const editor = editorRef.current;
+    if (!editor) return;
+    const point = (document as Document & { caretPositionFromPoint?: (x: number, y: number) =>
+      { offsetNode: Node; offset: number } | null }).caretPositionFromPoint?.(event.clientX, event.clientY);
+    const range = point ? document.createRange() : document.caretRangeFromPoint?.(event.clientX, event.clientY);
+    if (point) range!.setStart(point.offsetNode, point.offset);
+    if (!range || !editor.contains(range.startContainer)) {
+      setDropError("Drop the image inside the template body."); return;
+    }
+    range.collapse(true);
+    const generation = documentGeneration.current;
+    dropPending.current = true;
+    setDropping(true);
+    setDropError("");
+    try {
+      const url = await uploadImage(file);
+      if (!safeDesignUrl(url, true)) throw new Error("Image upload did not return a reusable HTTPS URL.");
+      if (documentGeneration.current !== generation || editorRef.current !== editor ||
+          !editor.isConnected || !editor.contains(range.startContainer)) return;
+      lastRichRangeRef.current = range.cloneRange();
+      execute(() => {
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = file.name;
+        image.style.maxWidth = "100%";
+        insertAtSelection(editor, image);
+      });
+    } catch (error) {
+      if (documentGeneration.current === generation && editor.isConnected)
+        setDropError(error instanceof Error ? error.message : "Image upload failed.");
+    } finally {
+      if (documentGeneration.current === generation) {
+        dropPending.current = false;
+        if (editor.isConnected) setDropping(false);
       }
     }
   };
@@ -1167,6 +1232,13 @@ export function SimpleHtmlEditor({
             }
           }}
           onPaste={handleTemplatePaste}
+          onDragOver={event => {
+            if (templateMode && event.dataTransfer.types.includes("Files")) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = disabled || rawMode ? "none" : "copy";
+            }
+          }}
+          onDrop={dropLocalImage}
           onContextMenu={event => {
             if (!templateMode || disabled) return;
             event.preventDefault();
@@ -1206,6 +1278,11 @@ export function SimpleHtmlEditor({
           data-testid={testId}
           suppressContentEditableWarning
         />
+      )}
+      {templateMode && !rawMode && (dropError || dropping) && (
+        <p role={dropError ? "alert" : "status"} className={cn("px-3 py-1 text-xs", dropError && "text-destructive")}>
+          {dropError || "Uploading image…"}
+        </p>
       )}
 
       {contextMenu && templateMode && !rawMode && (
