@@ -8,7 +8,6 @@ import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 import { buildTestRequestHeaders } from "./test-request-auth";
 import { executeWsTestHttp } from "./test-request-http";
-import { requiresFreemanBearerAuthorization } from "../../middleware/webservice-auth";
 import { buildWsTestUrl, DEFAULT_WS_TEST_BASE, isLocalWsTestBase } from "@shared/utils/ws-test-url";
 import { sendIfMaintenanceRefusal } from "../../services/maintenance-flag";
 
@@ -449,66 +448,10 @@ export function registerWebServiceAdminRoutes(
         return res.status(400).json({ message: "The test request is too large" });
       }
 
-      // A remote instance is the authority on its own credentials, client
-      // status, grants, and service availability. Never count that traffic as
-      // local usage or make a remote credential pass this database's checks.
-      let credentialId: string | undefined;
-      if (local) {
-      // Freeman bearer is the sole checked credential for configured clients.
-      // Its client id is only a selector, so no secret or credential-active
-      // check may turn it back into a second factor.
-      const usesFreemanBearer = requiresFreemanBearerAuthorization(client);
-      const validation = usesFreemanBearer
-        ? { valid: true, credential: await storage.wsClientCredentials.getByClientKey(clientKey) }
-        : await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
-      if (!validation.valid || !validation.credential) {
-        return res.json({
-          success: false,
-          status: 401,
-          error: "Invalid credentials",
-          message: usesFreemanBearer
-            ? "The provided client ID is incorrect"
-            : "The provided client ID or secret is incorrect",
-          duration: Date.now() - startTime,
-        });
-      }
-
-      if (!usesFreemanBearer && !validation.credential.isActive) {
-        return res.json({
-          success: false,
-          status: 401,
-          error: "Credential inactive",
-          message: "The credential is not active",
-          duration: Date.now() - startTime,
-        });
-      }
-
-      // Check if credential belongs to this client
-      if (validation.credential.clientId !== client.id) {
-        return res.json({
-          success: false,
-          status: 401,
-          error: "Credential mismatch",
-          message: "The credential does not belong to this client",
-          duration: Date.now() - startTime,
-        });
-      }
-
-      // Check client status
-      if (client.status !== "active") {
-        return res.json({
-          success: false,
-          status: 403,
-          error: "Client inactive",
-          message: `Client is ${client.status}`,
-          duration: Date.now() - startTime,
-        });
-      }
-      credentialId = validation.credential.id;
-      }
-
-      // Make the internal request with auth headers
-      const headers = buildTestRequestHeaders(client, clientKey, clientSecret, bearerToken);
+      // The selected client supplies only the authentication HEADER FORMAT.
+      // The target web service, including this instance's dispatcher, decides
+      // whether the credentials, client status, and grant actually permit it.
+      const headers = buildTestRequestHeaders(client, clientKey, clientSecret, method, bearerToken);
       let response;
       try {
         response = await executeWsTestHttp(target, method, headers, requestBody, local);
@@ -529,7 +472,6 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      if (credentialId) await storage.wsClientCredentials.recordUsage(credentialId);
       // A remote service may echo credentials in its reply. Do not return or
       // log those echoes via the admin test response.
       const scrub = (text: string) => [clientKey, clientSecret, bearerToken]
