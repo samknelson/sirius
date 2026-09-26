@@ -12,6 +12,10 @@ import { entityFilesConfigSchema } from "../../services/entity-files/config";
 import { entityNotesConfigSchema } from "../../services/entity-notes/config";
 import { authSettingsSchema } from "../../auth/auth-settings";
 import {
+  SESSION_IDLE_TIMEOUT_VARIABLE,
+  sessionIdleTimeoutSchema,
+} from "../../auth/session-idle-timeout";
+import {
   isEnvironmentVariableSecret,
   ENV_RELEASE_SENTINEL,
 } from "../../config/env-registry";
@@ -127,6 +131,7 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Auth settings: provisioning modes + SAML role mappings (admin read/write).
   // Role existence is additionally validated by PUT /api/admin/auth-settings.
   auth_settings: { schema: authSettingsSchema },
+  [SESSION_IDLE_TIMEOUT_VARIABLE]: { schema: sessionIdleTimeoutSchema },
 
 
   // Entity file attachments framework: per-context {file_system, directory,

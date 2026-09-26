@@ -138,3 +138,8 @@
 - [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
 - [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
+- [Idle-session status checks](idle-session-status-checks.md) — polling the current idle deadline must be read-only; only explicit or normal authenticated activity may renew it.
+- [Configured external auth fails closed](configured-external-auth-fail-closed.md) — saved external-auth selection is the contract; disabled/unavailable verifier must refuse, never fall back to a default credential mode.
+- [Credentials in SPA entry URLs](spa-entry-url-credentials.md) — remove before app bootstrap, set initial no-referrer policy, dispatch once, and never retain in query caches or page state.
+- [Permission-dependent public response caching](permission-dependent-public-response-caching.md) — viewer-specific enrichment needs private/no-store + Vary: Cookie and a viewer-scoped browser query key.
+- [Retained assignment generations](retained-assignment-generations.md) — a durable assignment ID can represent successive fillings, even in the same crew; stale actions need the filling's generation.

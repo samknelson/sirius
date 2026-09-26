@@ -5,9 +5,9 @@ description: Why server code that runs fine under tsx dies with "X is not a func
 
 A module-initialization cycle that Node's native ESM loader tolerates will
 throw under Vite's SSR transform, which is what the Vitest test runner uses.
-The symptom is a `TypeError: <someExport> is not a function` raised from the
-*top level* of a module that imports the export from a barrel, with a stack
-that walks back through the cycle.
+The symptom is a `TypeError: <someExport> is not a function` or a top-level
+read of a supposedly defined config failing on `undefined`, with a stack that
+walks back through an import barrel cycle.
 
 **Why:** Node ESM hoists `export function` declarations, so in a cycle the
 function binding already exists when the other module's body runs. Vite's SSR

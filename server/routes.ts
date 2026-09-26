@@ -11,6 +11,7 @@ import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
 import { buildTimeZoneContext } from "./modules/system/timezone";
 import { registerAuthSettingsRoutes } from "./modules/auth-settings";
+import { getSessionIdleTimeoutSettings } from "./auth/session-idle-timeout";
 import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
@@ -132,6 +133,7 @@ import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/benef
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerT631ArrivalRoutes } from "./modules/sitespecific/t631/arrive";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
@@ -265,6 +267,31 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       console.error("Failed to fetch user info:", error);
       res.status(500).json({ message: "Failed to fetch user info" });
     }
+  });
+
+  app.get("/api/auth/session-idle", requireAuth, async (req, res) => {
+    const settings = await getSessionIdleTimeoutSettings(storage);
+    const session = req.session as any;
+    session.sessionIdleReadOnlyCheck = true;
+    const lastActivityMs = Date.parse(session.sessionIdleLastActivityAt ?? "");
+    res.json({
+      enabled: settings.enabled,
+      deadline: settings.enabled && Number.isFinite(lastActivityMs)
+        ? new Date(lastActivityMs + settings.timeoutMinutes * 60_000).toISOString()
+        : null,
+    });
+  });
+
+  app.post("/api/auth/session-idle/continue", requireAuth, async (req, res) => {
+    const settings = await getSessionIdleTimeoutSettings(storage);
+    const now = new Date();
+    (req.session as any).sessionIdleLastActivityAt = now.toISOString();
+    res.json({
+      enabled: settings.enabled,
+      deadline: settings.enabled
+        ? new Date(now.getTime() + settings.timeoutMinutes * 60_000).toISOString()
+        : null,
+    });
   });
 
   // Register access policy evaluation routes
@@ -1656,6 +1683,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register T631 Client routes
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
+  registerT631ArrivalRoutes(app);
 
   // Register Freeman Second Shift routes
   registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);

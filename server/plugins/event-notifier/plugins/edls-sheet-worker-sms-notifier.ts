@@ -135,6 +135,8 @@ async function resolveAccessToken(workerId: string): Promise<string | null> {
  */
 interface ResolvedAssignment {
   assignmentId: string;
+  crewId: string;
+  generationId: string;
   data: unknown;
 }
 
@@ -559,7 +561,12 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
         kind: "assigned",
         workerId: group[0].workerId,
         accessUuid,
-        covered: group.map((t) => ({ assignmentId: t.assignmentId, data: t.data })),
+        covered: group.map((t) => ({
+          assignmentId: t.assignmentId,
+          crewId: t.crewId,
+          generationId: t.generationId,
+          data: t.data,
+        })),
       });
       recipients.push({ contactId });
     }
@@ -662,6 +669,8 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
         assignment.assignmentId,
         comm.id,
         assignment.data,
+        assignment.crewId,
+        assignment.generationId,
       );
     }
   },

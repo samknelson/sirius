@@ -41,6 +41,11 @@ export interface WorkerIdStorage {
    */
   getWorkerIdsByTypeAndDigits(typeId: string, digits: string): Promise<WorkerId[]>;
   /**
+   * Rows whose value becomes `value` after stripping only leading non-numeric
+   * characters. Results are stable so callers may deliberately take the first.
+   */
+  getWorkerIdsByTypeAndLeadingNonNumericPrefix(typeId: string, value: string): Promise<WorkerId[]>;
+  /**
    * All rows for a type whose value equals `value` OR equals `value` with a
    * single leading letter (case-insensitive), e.g. "118637" also matches
    * "I118637" / "O118637". Returns every match so callers can prefer the
@@ -131,6 +136,22 @@ export function createWorkerIdStorage(): WorkerIdStorage {
           eq(workerIds.typeId, typeId),
           sql`regexp_replace(${workerIds.value}, '[^0-9]', '', 'g') = ${digits}`,
         ));
+    },
+
+    async getWorkerIdsByTypeAndLeadingNonNumericPrefix(
+      typeId: string,
+      value: string,
+    ): Promise<WorkerId[]> {
+      if (!value) return [];
+      const client = getClient();
+      return client
+        .select()
+        .from(workerIds)
+        .where(and(
+          eq(workerIds.typeId, typeId),
+          sql`regexp_replace(${workerIds.value}, '^[^0-9]+', '') = ${value}`,
+        ))
+        .orderBy(workerIds.id);
     },
 
     async getWorkerIdsByTypeAndValueWithOptionalPrefix(typeId: string, value: string): Promise<WorkerId[]> {

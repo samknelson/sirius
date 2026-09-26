@@ -88,7 +88,9 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
         const exists = sql`EXISTS (
           SELECT 1
           FROM edls_assignments filter_ea
-          WHERE filter_ea.worker_id = w.id AND filter_ea.ymd = ${params.referenceYmd}
+          WHERE filter_ea.worker_id = w.id
+            AND filter_ea.crew_id IS NOT NULL
+            AND filter_ea.ymd = ${params.referenceYmd}
         )`;
         conditions.push(params.currentAssignment === "include" ? exists : sql`NOT ${exists}`);
       }
@@ -96,7 +98,9 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
         const exists = sql`EXISTS (
           SELECT 1
           FROM edls_assignments filter_ea
-          WHERE filter_ea.worker_id = w.id AND filter_ea.ymd > ${params.referenceYmd}
+          WHERE filter_ea.worker_id = w.id
+            AND filter_ea.crew_id IS NOT NULL
+            AND filter_ea.ymd > ${params.referenceYmd}
         )`;
         conditions.push(params.nextAssignment === "include" ? exists : sql`NOT ${exists}`);
       }

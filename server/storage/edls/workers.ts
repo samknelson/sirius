@@ -11,7 +11,7 @@ export interface WorkerEdlsStorage {
   getByWorker(workerId: string): Promise<WorkerEdls | undefined>;
   /**
    * Whether this worker has ANY EDLS presence: a `worker_edls` row — active
-   * or not — or at least one assignment, on any sheet, at any date.
+   * or not — or at least one crew-backed assignment, on any sheet, at any date.
    *
    * Deliberately broader than the scheduling population `worker_edls.active`
    * describes. It answers "is EDLS any of this person's business", which is
@@ -45,7 +45,11 @@ export function createWorkerEdlsStorage(): WorkerEdlsStorage {
       const result = await client.execute(sql`
         SELECT
           EXISTS (SELECT 1 FROM worker_edls we WHERE we.worker_id = ${workerId})
-          OR EXISTS (SELECT 1 FROM edls_assignments ea WHERE ea.worker_id = ${workerId})
+          OR EXISTS (
+            SELECT 1
+            FROM edls_assignments ea
+            WHERE ea.worker_id = ${workerId} AND ea.crew_id IS NOT NULL
+          )
           AS "present"
       `);
       return (result.rows[0] as { present: boolean } | undefined)?.present === true;

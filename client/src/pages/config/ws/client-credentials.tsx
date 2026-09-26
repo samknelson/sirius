@@ -154,7 +154,7 @@ function CredentialsContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Label</TableHead>
-                  <TableHead>Client Key</TableHead>
+                  <TableHead>Client ID</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last Used</TableHead>
                     <RecordMetadataAccess adminBypass>
@@ -279,7 +279,7 @@ function CredentialsContent() {
           </Alert>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Client Key</Label>
+              <Label>Client ID</Label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-muted p-2 rounded text-sm break-all" data-testid="text-new-client-key">
                   {newCredential?.clientKey}

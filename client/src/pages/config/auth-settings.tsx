@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -41,6 +42,12 @@ interface AuthSettings {
 interface AuthSettingsResponse {
   providers: { type: string; isDefault: boolean }[];
   settings: AuthSettings;
+  sessionIdleTimeout: SessionIdleTimeoutSettings;
+}
+
+interface SessionIdleTimeoutSettings {
+  enabled: boolean;
+  timeoutMinutes: number;
 }
 
 interface Role {
@@ -74,15 +81,20 @@ export default function AuthSettingsPage() {
   });
 
   const [settings, setSettings] = useState<AuthSettings | null>(null);
+  const [sessionIdleTimeout, setSessionIdleTimeout] =
+    useState<SessionIdleTimeoutSettings | null>(null);
   useEffect(() => {
-    if (data?.settings && settings === null) {
+    if (data?.settings && data.sessionIdleTimeout && settings === null) {
       setSettings(data.settings);
+      setSessionIdleTimeout(data.sessionIdleTimeout);
     }
   }, [data, settings]);
 
   const saveMutation = useMutation({
-    mutationFn: async (next: AuthSettings) =>
-      apiRequest("PUT", "/api/admin/auth-settings", { settings: next }),
+    mutationFn: async (next: {
+      settings: AuthSettings;
+      sessionIdleTimeout: SessionIdleTimeoutSettings;
+    }) => apiRequest("PUT", "/api/admin/auth-settings", next),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/auth-settings"] });
       toast({ title: "Auth settings saved" });
@@ -96,7 +108,7 @@ export default function AuthSettingsPage() {
     },
   });
 
-  if (isLoading || !settings) {
+  if (isLoading || !settings || !sessionIdleTimeout) {
     return (
       <div className="space-y-4 p-2">
         <Skeleton className="h-32 w-full" />
@@ -125,6 +137,10 @@ export default function AuthSettingsPage() {
   const mappingsValid = settings.samlRoleMappings.every(
     (m) => m.attribute.trim() !== "" && m.roleId !== "",
   );
+  const idleTimeoutValid =
+    Number.isInteger(sessionIdleTimeout.timeoutMinutes) &&
+    sessionIdleTimeout.timeoutMinutes >= 5 &&
+    sessionIdleTimeout.timeoutMinutes <= 43200;
 
   return (
     <div className="space-y-6 p-2">
@@ -296,10 +312,59 @@ export default function AuthSettingsPage() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Session Idle Timeout</CardTitle>
+          <CardDescription>
+            Sign users out after a period without authenticated activity. Changes apply
+            to existing signed-in users on their next request; the normal session
+            lifetime remains the maximum.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="session-idle-timeout-enabled"
+              checked={sessionIdleTimeout.enabled}
+              onCheckedChange={(enabled) =>
+                setSessionIdleTimeout({ ...sessionIdleTimeout, enabled })
+              }
+              data-testid="switch-session-idle-timeout"
+            />
+            <Label htmlFor="session-idle-timeout-enabled">
+              Sign users out after inactivity
+            </Label>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="session-idle-timeout-minutes">Timeout (minutes)</Label>
+            <Input
+              id="session-idle-timeout-minutes"
+              type="number"
+              min={5}
+              max={43200}
+              step={1}
+              value={sessionIdleTimeout.timeoutMinutes}
+              onChange={(event) =>
+                setSessionIdleTimeout({
+                  ...sessionIdleTimeout,
+                  timeoutMinutes: Number(event.target.value),
+                })
+              }
+              disabled={!sessionIdleTimeout.enabled}
+              className="w-40"
+              data-testid="input-session-idle-timeout-minutes"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter 5 to 43,200 minutes (30 days).
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <div>
         <Button
-          onClick={() => saveMutation.mutate(settings)}
-          disabled={saveMutation.isPending || !mappingsValid}
+          onClick={() => saveMutation.mutate({ settings, sessionIdleTimeout })}
+          disabled={saveMutation.isPending || !mappingsValid || !idleTimeoutValid}
           data-testid="button-save-auth-settings"
         >
           {saveMutation.isPending ? "Saving..." : "Save Settings"}
@@ -307,6 +372,11 @@ export default function AuthSettingsPage() {
         {!mappingsValid && (
           <p className="text-sm text-destructive mt-1">
             Every mapping needs an attribute and a role.
+          </p>
+        )}
+        {!idleTimeoutValid && (
+          <p className="text-sm text-destructive mt-1">
+            Session timeout must be a whole number from 5 to 43,200 minutes.
           </p>
         )}
       </div>

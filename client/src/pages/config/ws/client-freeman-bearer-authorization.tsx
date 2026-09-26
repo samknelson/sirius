@@ -96,15 +96,16 @@ function FreemanBearerAuthorizationContent() {
           <AlertTitle>Required request headers</AlertTitle>
           <AlertDescription className="space-y-2">
             <p>
-              When this client uses Freeman Bearer Authorization, every request must include all
-              three headers:
+              When this client uses Freeman Bearer Authorization, every request must include:
             </p>
             <pre className="overflow-x-auto rounded-md bg-muted p-3 text-sm text-foreground">
-              <code>{`X-WS-Client-Key: <client key>
-X-WS-Client-Secret: <client secret>
+              <code>{`X-WS-Client-ID: <client id>
 Authorization: Bearer <token>`}</code>
             </pre>
-            <p>HTTP Basic authentication cannot be used because Authorization carries the Bearer token.</p>
+            <p>
+              X-WS-Client-Secret is not required or checked. HTTP Basic authentication cannot be
+              used because Authorization carries the bearer token.
+            </p>
           </AlertDescription>
         </Alert>
         {isLoading ? (

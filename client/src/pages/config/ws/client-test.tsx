@@ -20,6 +20,22 @@ import {
   wsServiceLabel,
   wsServiceAddress,
 } from "./use-ws-services";
+import { buildWsTestUrl, DEFAULT_WS_TEST_BASE, isLocalWsTestBase } from "@shared/utils/ws-test-url";
+
+function parseQueryParams(value: string): Record<string, string> | undefined {
+  if (!value.trim()) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("Invalid query parameters JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+      || Object.values(parsed).some((item) => typeof item !== "string")) {
+    throw new Error("Query parameters must be a JSON object of strings");
+  }
+  return parsed as Record<string, string>;
+}
 
 export function generateCurlCommand(options: {
   baseUrl: string;
@@ -56,8 +72,10 @@ export function generateCurlCommand(options: {
     parts.push(`-X ${method}`);
   }
   
-  parts.push(`-H "X-WS-Client-Key: ${clientKey || '<YOUR_CLIENT_KEY>'}"`);
-  parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  parts.push(`-H "X-WS-Client-ID: ${clientKey || '<YOUR_CLIENT_ID>'}"`);
+  if (bearerToken === undefined) {
+    parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  }
   if (bearerToken !== undefined) {
     parts.push(`-H "Authorization: Bearer ${bearerToken || '<YOUR_BEARER_TOKEN>'}"`);
   }
@@ -113,6 +131,7 @@ function TestContent() {
   const [operation, setOperation] = useState("");
   const [queryParams, setQueryParams] = useState("");
   const [requestBody, setRequestBody] = useState("");
+  const [baseUrlInput, setBaseUrlInput] = useState(DEFAULT_WS_TEST_BASE);
   const [testResult, setTestResult] = useState<TestResponse | null>(null);
   const { client, hasTabAccess } = useWsClientLayout();
   const needsFreemanBearer = shouldShowFreemanBearerInput(
@@ -141,14 +160,7 @@ function TestContent() {
 
   const testMutation = useMutation({
     mutationFn: async () => {
-      let parsedQueryParams: Record<string, string> | undefined;
-      if (queryParams.trim()) {
-        try {
-          parsedQueryParams = JSON.parse(queryParams);
-        } catch {
-          throw new Error("Invalid query parameters JSON");
-        }
-      }
+      const parsedQueryParams = parseQueryParams(queryParams);
 
       let parsedBody: unknown | undefined;
       if (requestBody.trim() && ["POST", "PUT", "PATCH"].includes(method)) {
@@ -164,7 +176,8 @@ function TestContent() {
         clientSecret,
         ...(needsFreemanBearer ? { bearerToken } : {}),
         method,
-        configRef: configId,
+        baseUrl: baseUrlInput,
+        configRef: selectedConfig ? wsServiceAddress(selectedConfig) : configId,
         operation,
         queryParams: parsedQueryParams,
         body: parsedBody,
@@ -197,7 +210,10 @@ function TestContent() {
     }
   };
 
-  const canExecute = clientKey.trim() && clientSecret.trim() && configId && operation;
+  const canExecute = clientKey.trim()
+    && (needsFreemanBearer ? bearerToken.trim() : clientSecret.trim())
+    && configId
+    && operation;
   const [copied, setCopied] = useState(false);
 
   // The public address. Prefer the alias: configuration ids are minted per
@@ -206,21 +222,33 @@ function TestContent() {
   const origin = typeof window !== "undefined"
     ? `${window.location.protocol}//${window.location.host}`
     : "";
-  const baseUrl = `${origin}/api/ws/${address}`;
-  const path = `/${operation || "<operation>"}`;
+  let requestUrl = "";
+  let baseUrlError = "";
+  let queryError = "";
+  let parsedPreviewQuery: Record<string, string> | undefined;
+  try {
+    parsedPreviewQuery = parseQueryParams(queryParams);
+  } catch (error) {
+    queryError = error instanceof Error ? error.message : "Invalid query parameters";
+  }
+  try {
+    requestUrl = buildWsTestUrl(baseUrlInput, address, operation || "<operation>", parsedPreviewQuery, origin);
+  } catch (error) {
+    baseUrlError = error instanceof Error ? error.message : "Invalid base URL";
+  }
 
   const curlCommand = useMemo(() => {
     return generateCurlCommand({
-      baseUrl,
+      baseUrl: requestUrl,
       method,
-      path,
-      queryParams,
+      path: "",
+      queryParams: "",
       requestBody,
       clientKey,
       clientSecret,
       bearerToken: needsFreemanBearer ? bearerToken.trim() : undefined,
     });
-  }, [baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
+  }, [requestUrl, method, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
 
   const handleCopyCurl = async () => {
     try {
@@ -246,21 +274,23 @@ function TestContent() {
               Credentials
             </CardTitle>
             <CardDescription>
-              Enter your client credentials. The secret is only shown once when created.
+              {needsFreemanBearer
+                ? "Enter the client ID and Freeman bearer token."
+                : "Enter your client credentials. The secret is only shown once when created."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="client-key">Client Key</Label>
+              <Label htmlFor="client-key">Client ID</Label>
               <Input
                 id="client-key"
                 value={clientKey}
                 onChange={(e) => setClientKey(e.target.value)}
-                placeholder="Enter client key"
+                placeholder="Enter client ID"
                 data-testid="input-client-key"
               />
             </div>
-            <div className="space-y-2">
+            {!needsFreemanBearer && <div className="space-y-2">
               <Label htmlFor="client-secret">Client Secret</Label>
               <Input
                 id="client-secret"
@@ -270,7 +300,7 @@ function TestContent() {
                 placeholder="Enter client secret"
                 data-testid="input-client-secret"
               />
-            </div>
+            </div>}
             {needsFreemanBearer && (
               <div className="space-y-2">
                 <Label htmlFor="bearer-token">Freeman Bearer Token</Label>
@@ -293,11 +323,38 @@ function TestContent() {
             <CardTitle>Request</CardTitle>
             <CardDescription>
               {selectedConfig
-                ? `${baseUrl}${path}`
+                ? requestUrl || baseUrlError
                 : "Choose one of the web services this client has been granted"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ws-test-base-url">Base URL</Label>
+              <Input
+                id="ws-test-base-url"
+                type="text"
+                value={baseUrlInput}
+                onChange={(event) => { setBaseUrlInput(event.target.value); setTestResult(null); }}
+                autoComplete="off"
+                spellCheck={false}
+                data-testid="input-ws-test-base-url"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use /api/ws/ for this site, or a full address such as https://other.example/api/ws/.
+                An origin alone uses /api/ws/. Remote requests send the credentials entered above to that server.
+              </p>
+              {baseUrlError && <p className="text-sm text-destructive" role="alert">{baseUrlError}</p>}
+              {baseUrlInput.trim().toLowerCase().startsWith("http://") && (
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  HTTP sends credentials without encryption. Use HTTPS when possible.
+                </p>
+              )}
+              {selectedConfig && !selectedConfig.alias && !isLocalWsTestBase(baseUrlInput) && (
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  This service has no alias. Its ID may not exist on another instance.
+                </p>
+              )}
+            </div>
             {grantedConfigs.length === 0 ? (
               <Alert data-testid="alert-no-grants">
                 <AlertDescription>
@@ -385,6 +442,7 @@ function TestContent() {
                 rows={2}
                 data-testid="input-query-params"
               />
+              {queryError && <p className="text-sm text-destructive" role="alert">{queryError}</p>}
             </div>
 
             {["POST", "PUT", "PATCH"].includes(method) && (
@@ -404,7 +462,7 @@ function TestContent() {
 
             <Button
               onClick={() => testMutation.mutate()}
-              disabled={!canExecute || testMutation.isPending}
+              disabled={!canExecute || Boolean(baseUrlError || queryError) || testMutation.isPending}
               className="w-full"
               data-testid="button-execute"
             >
@@ -429,6 +487,7 @@ function TestContent() {
                 variant="outline"
                 size="sm"
                 onClick={handleCopyCurl}
+                disabled={Boolean(baseUrlError || queryError)}
                 data-testid="button-copy-curl"
               >
                 {copied ? (
@@ -448,7 +507,7 @@ function TestContent() {
               className="bg-muted p-4 rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap break-all"
               data-testid="text-curl-command"
             >
-              {curlCommand}
+              {baseUrlError || queryError || curlCommand}
             </pre>
           </CardContent>
         </Card>

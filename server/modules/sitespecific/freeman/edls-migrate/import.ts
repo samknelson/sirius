@@ -36,6 +36,7 @@ import {
   FREEMAN_EDLS_FETCH_SHEETS_OPERATION,
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
 } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
+import { importedJobNumber } from "./job-number";
 
 export const FREEMAN_MIGRATE_STATUSES = ["draft", "request", "lock", "reserved"] as const;
 export type FreemanMigrateStatus = (typeof FREEMAN_MIGRATE_STATUSES)[number];
@@ -50,6 +51,21 @@ const EPOCH = "1970-01-01T00:00:00.000Z";
 // strtotime("1970-01-01...") is 0, which its legacy truthiness check treats as
 // a failure. January 2 still includes all realistic EDLS history.
 const INITIAL_START_DATE = "1970-01-02T00:00:00.000Z";
+const INITIAL_START_YMD = INITIAL_START_DATE.slice(0, 10);
+
+const resetMigrateStateSchema = z.object({
+  startDate: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a start date in YYYY-MM-DD format.")
+    .refine(
+      (value) => {
+        if (value < INITIAL_START_YMD) return false;
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(parsed.getTime())
+          && parsed.toISOString().slice(0, 10) === value;
+      },
+      `Choose a real calendar date on or after ${INITIAL_START_YMD}.`,
+    ),
+}).strict();
 
 const progressSchema = z.object({
   startDate: z.string(),
@@ -325,7 +341,7 @@ function sourceIdentity(source: unknown): { nid?: string; title: string } {
   const sheet = record(source);
   return {
     nid: sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id")) ?? undefined,
-    title: text(pick(sheet, "title", "name", "job_number", "jobNumber")) ?? "Untitled sheet",
+    title: importedJobNumber(sheet),
   };
 }
 
@@ -420,9 +436,9 @@ function statusFailure(error: unknown): FreemanMigrateError {
   };
 }
 
-function initialState(): FreemanMigrateState {
+function initialState(startDate = INITIAL_START_DATE): FreemanMigrateState {
   return { statuses: Object.fromEntries(FREEMAN_MIGRATE_STATUSES.map((status) => [
-    status, { startDate: INITIAL_START_DATE, page: 0, sweepStartedAt: null },
+    status, { startDate, page: 0, sweepStartedAt: null },
   ])) as FreemanMigrateState["statuses"] };
 }
 
@@ -992,7 +1008,7 @@ async function reconcileSheet(
   if (live) {
     await client.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"freeman-edls:" + nid}, 0))`);
   }
-  const title = text(pick(sheet, "title", "name", "job_number", "jobNumber")) ?? `Freeman ${nid}`;
+  const title = importedJobNumber(sheet);
   const ymd = parseDate(pick(sheet, "ymd", "date", "start_date", "startDate"));
   const departmentName = text(pick(sheet, "dept", "department", "department_name", "departmentName"));
   const departmentId = await resolveNamed(optionsDepartment, departmentName, live) ?? (await resolveNamed(optionsDepartment, "Freeman Migration", live));
@@ -1467,22 +1483,20 @@ export async function getFreemanMigrateStatus() {
     warning: "Legacy paging uses mutable offsets; records can move during a sweep. Failed sheets do not stop later pages; fix the cause and use Start Over to replay them.",
   };
 }
-export async function resetFreemanMigrateStatus() {
+export async function resetFreemanMigrateStatus(raw: unknown) {
+  const input = resetMigrateStateSchema.parse(raw);
+  const startDate = `${input.startDate}T00:00:00.000Z`;
   const control = await readRunControl();
   if (isActiveLifecycle(control.lifecycle)) {
     throw new FreemanMigrateConflictError("Migration progress cannot be reset while a live run is active.");
   }
   return withFreemanMigrateLock(async () => {
     await assertNoActiveFreemanMigrate();
-    const state = initialState();
+    const state = initialState(startDate);
     await writeState(state);
     await writeRunControl(emptyRunControl());
     await writeStopRequest(false);
-    return {
-      variableName: FREEMAN_MIGRATE_STATUS_VARIABLE,
-      statuses: state.statuses,
-      warning: "Legacy paging uses mutable offsets; records can move during a sweep. Use Start Over for an idempotent replay.",
-    };
+    return getFreemanMigrateStatus();
   });
 }
 

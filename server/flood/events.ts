@@ -238,12 +238,50 @@ export const edlsScheduleAnswerFloodEvent: FloodEventDefinition = {
   },
 };
 
+/**
+ * Public T631 arrival authentication throttles. These are deliberately
+ * independent so operators can tune repeated guesses for one worker separately
+ * from bursts originating at one address. Only failed remote authentication
+ * attempts are recorded by the arrival route.
+ */
+export const T631_ARRIVAL_WORKER_FLOOD_EVENT = "t631-arrival-worker";
+export const T631_ARRIVAL_IP_FLOOD_EVENT = "t631-arrival-ip";
+
+const T631_ARRIVAL_FLOOD_THRESHOLD = 5;
+const T631_ARRIVAL_FLOOD_WINDOW_SECONDS = 60;
+
+export const t631ArrivalWorkerFloodEvent: FloodEventDefinition = {
+  name: T631_ARRIVAL_WORKER_FLOOD_EVENT,
+  threshold: T631_ARRIVAL_FLOOD_THRESHOLD,
+  windowSeconds: T631_ARRIVAL_FLOOD_WINDOW_SECONDS,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.workerIdInput) {
+      throw new Error("workerIdInput is required for t631-arrival-worker flood event");
+    }
+    return context.workerIdInput;
+  },
+};
+
+export const t631ArrivalIpFloodEvent: FloodEventDefinition = {
+  name: T631_ARRIVAL_IP_FLOOD_EVENT,
+  threshold: T631_ARRIVAL_FLOOD_THRESHOLD,
+  windowSeconds: T631_ARRIVAL_FLOOD_WINDOW_SECONDS,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.ip) {
+      throw new Error("ip is required for t631-arrival-ip flood event");
+    }
+    return context.ip;
+  },
+};
+
 export function registerFloodEvents(): void {
   registerFloodEvent(quicksearchFloodEvent);
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
   registerFloodEvent(localPasswordChangeFloodEvent);
   registerFloodEvent(edlsScheduleAnswerFloodEvent);
+  registerFloodEvent(t631ArrivalWorkerFloodEvent);
+  registerFloodEvent(t631ArrivalIpFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }

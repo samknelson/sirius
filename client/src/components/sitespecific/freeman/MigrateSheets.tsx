@@ -142,6 +142,7 @@ const RUN_KEY = "/api/sitespecific/freeman/edls-migrate/import/run";
 const RESET_KEY = "/api/sitespecific/freeman/edls-migrate/import/reset";
 const START_KEY = "/api/sitespecific/freeman/edls-migrate/import/start";
 const STOP_KEY = "/api/sitespecific/freeman/edls-migrate/import/stop";
+const INITIAL_START_DATE = "1970-01-02";
 type MigrationRequestFailureBody = {
   message?: string;
   stage?: string;
@@ -334,6 +335,7 @@ export default function MigrateSheets() {
   const [limit, setLimit] = useState("100");
   const [latestRun, setLatestRun] = useState<RunResponse | null>(null);
   const [runFailure, setRunFailure] = useState<MigrationRequestError | null>(null);
+  const [resetStartDate, setResetStartDate] = useState(INITIAL_START_DATE);
   const statusQuery = useQuery<StatusResponse>({
     queryKey: [STATUS_KEY],
     refetchInterval: (query) => {
@@ -366,7 +368,11 @@ export default function MigrateSheets() {
     },
   });
   const resetMutation = useMutation({
-    mutationFn: () => requestJson<StatusResponse>(RESET_KEY, { method: "POST" }),
+    mutationFn: (startDate: string) => requestJson<StatusResponse>(RESET_KEY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate }),
+    }),
     onSuccess: (status) => {
       setLatestRun(null);
       queryClient.setQueryData([STATUS_KEY], status);
@@ -538,12 +544,31 @@ export default function MigrateSheets() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Reset import cursors?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This starts paging again from the beginning. Existing nid mappings are preserved, but a later live run may revisit records and update them.
+                    This resets all four active statuses to page zero on the selected date. Existing nid mappings are preserved, but a later live run may revisit records and update them.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="freeman-reset-start-date">Migration start date</Label>
+                  <Input
+                    id="freeman-reset-start-date"
+                    type="date"
+                    min={INITIAL_START_DATE}
+                    value={resetStartDate}
+                    onChange={(event) => setResetStartDate(event.target.value)}
+                    data-testid="input-import-reset-start-date"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Applies to Draft, Requested, Scheduled, and Reserved. Freeman cannot accept January 1, 1970.
+                  </p>
+                </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => resetMutation.mutate()}>Reset and start over</AlertDialogAction>
+                  <AlertDialogAction
+                    disabled={!resetStartDate || resetStartDate < INITIAL_START_DATE}
+                    onClick={() => resetMutation.mutate(resetStartDate)}
+                  >
+                    Reset and start over
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
