@@ -72,7 +72,7 @@ const OUTBOUND_MODULES = [
   "server/services/comm/validators/address.ts",
   "server/services/objectStorage.ts",
   "server/services/container-facts.ts",
-  "server/modules/webservices/admin.ts",
+  "server/modules/webservices/test-request-http.ts",
   "server/services/files/providers/s3.ts",
   "server/services/files/providers/replit.ts",
   "server/services/files/providers/local.ts",
@@ -783,11 +783,11 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
     getContainerFacts:
       "Assembles container diagnostics, including the restricted metadata endpoint.",
   },
-  "server/modules/webservices/admin.ts": {
-    registerWebServiceAdminRoutes:
-      "The test-operation route calls this same application through a localhost URL.",
-    executeWebServiceTestRequest:
-      "The admin test-operation route calls this same application through a localhost URL.",
+  "server/modules/webservices/test-request-http.ts": {
+    executeWsTestHttp:
+      "An admin-entered test destination cannot be a registered vendor operation. The " +
+      "transport pins vetted public DNS addresses, refuses redirects and private targets, " +
+      "and calls the shared maintenance refusal before any request is sent.",
   },
   "server/services/files/providers/s3.ts": {
     constructor:
