@@ -7,7 +7,10 @@ import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 import { buildTestRequestHeaders } from "./test-request-auth";
+import { executeWsTestHttp } from "./test-request-http";
 import { requiresFreemanBearerAuthorization } from "../../middleware/webservice-auth";
+import { buildWsTestUrl, DEFAULT_WS_TEST_BASE, isLocalWsTestBase } from "@shared/utils/ws-test-url";
+import { sendIfMaintenanceRefusal } from "../../services/maintenance-flag";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
@@ -398,15 +401,16 @@ export function registerWebServiceAdminRoutes(
   // === Test Execution ===
 
   const testRequestSchema = z.object({
-    clientKey: z.string().min(1, "Client ID is required"),
-    clientSecret: z.string().optional().default(""),
+    clientKey: z.string().min(1, "Client ID is required").max(8192),
+    clientSecret: z.string().max(8192).optional().default(""),
     bearerToken: z.string().max(8192, "Bearer token is too long").optional(),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+    baseUrl: z.string().max(2048).optional().default(DEFAULT_WS_TEST_BASE),
     /** Configuration id (or alias) — the first segment of the public URL. */
-    configRef: z.string().min(1, "Configuration is required"),
+    configRef: z.string().min(1, "Configuration is required").max(200),
     /** Declared operation name — the second segment of the public URL. */
-    operation: z.string().min(1, "Operation is required"),
-    queryParams: z.record(z.string()).optional(),
+    operation: z.string().min(1, "Operation is required").max(200),
+    queryParams: z.record(z.string().max(4096)).optional(),
     body: z.unknown().optional(),
   });
 
@@ -427,8 +431,29 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body } = parseResult.data;
+      const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body, baseUrl } = parseResult.data;
+      const local = isLocalWsTestBase(baseUrl);
+      let target: string;
+      try {
+        target = buildWsTestUrl(
+          baseUrl, configRef, operation, queryParams,
+          local ? `http://127.0.0.1:${getEnvironmentVariable("PORT") || 5000}` : "",
+        );
+      } catch (error) {
+        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid base URL" });
+      }
+      const requestBody = body !== undefined && ["POST", "PUT", "PATCH"].includes(method)
+        ? JSON.stringify(body)
+        : undefined;
+      if ((requestBody?.length ?? 0) > 128 * 1024 || target.length > 8192) {
+        return res.status(400).json({ message: "The test request is too large" });
+      }
 
+      // A remote instance is the authority on its own credentials, client
+      // status, grants, and service availability. Never count that traffic as
+      // local usage or make a remote credential pass this database's checks.
+      let credentialId: string | undefined;
+      if (local) {
       // Freeman bearer is the sole checked credential for configured clients.
       // Its client id is only a selector, so no secret or credential-active
       // check may turn it back into a second factor.
@@ -479,64 +504,65 @@ export function registerWebServiceAdminRoutes(
           duration: Date.now() - startTime,
         });
       }
-
-      // The public address of the operation. Grant, enabled and operation
-      // checks are deliberately NOT repeated here — the dispatcher is the one
-      // authority on them, so the test screen shows exactly what an outside
-      // caller would get.
-      const fullPath = `/api/ws/${encodeURIComponent(configRef)}/${encodeURIComponent(operation)}`;
-
-      // Build query string
-      const queryString = queryParams && Object.keys(queryParams).length > 0
-        ? "?" + new URLSearchParams(queryParams).toString()
-        : "";
-
-      const internalUrl = `http://localhost:${getEnvironmentVariable("PORT") || 5000}${fullPath}${queryString}`;
+      credentialId = validation.credential.id;
+      }
 
       // Make the internal request with auth headers
       const headers = buildTestRequestHeaders(client, clientKey, clientSecret, bearerToken);
-
-      const fetchOptions: RequestInit = {
-        method,
-        headers,
-      };
-
-      if (body && ["POST", "PUT", "PATCH"].includes(method)) {
-        fetchOptions.body = JSON.stringify(body);
-      }
-
-      const response = await fetch(internalUrl, fetchOptions);
-      const responseText = await response.text();
-
-      let responseData: unknown;
+      let response;
       try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        responseData = responseText;
+        response = await executeWsTestHttp(target, method, headers, requestBody, local);
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        // Do not relay low-level errors: they can contain the target address,
+        // request data, or credential fragments. Known refusal messages are
+        // fixed strings; everything else is a connection failure.
+        const message = error instanceof Error && [
+          "Private or local targets are not allowed",
+          "Request timed out",
+          "Response is too large (1 MB limit)",
+        ].includes(error.message) ? error.message : "Could not connect to the selected server";
+        return res.json({
+          success: false, status: 0, error: "Request failed", message,
+          duration: Date.now() - startTime,
+          requestInfo: { method, url: local ? new URL(target).pathname + new URL(target).search : target },
+        });
       }
 
-      // Record credential usage
-      await storage.wsClientCredentials.recordUsage(validation.credential.id);
+      if (credentialId) await storage.wsClientCredentials.recordUsage(credentialId);
+      // A remote service may echo credentials in its reply. Do not return or
+      // log those echoes via the admin test response.
+      const scrub = (text: string) => [clientKey, clientSecret, bearerToken]
+        .filter((value): value is string => Boolean(value && value.length >= 3))
+        .reduce((result, value) => result
+          .replaceAll(value, "[REDACTED]")
+          .replaceAll(encodeURIComponent(value), "[REDACTED]"), text);
+      const safeData = typeof response.data === "string"
+        ? scrub(response.data)
+        : JSON.parse(scrub(JSON.stringify(response.data)));
+      const safeHeaders = Object.fromEntries(
+        Object.entries(response.headers).map(([key, value]) => [key, scrub(value)]),
+      );
 
       res.json({
-        success: response.ok,
+        success: response.status >= 200 && response.status < 300,
         status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        data: responseData,
+        statusText: scrub(response.statusText),
+        headers: safeHeaders,
+        data: safeData,
         duration: Date.now() - startTime,
         requestInfo: {
           method,
-          url: fullPath + queryString,
+          url: local ? new URL(target).pathname + new URL(target).search : target,
         },
       });
     } catch (error) {
-      console.error("Failed to execute test request:", error);
+      // Never log a request containing admin-entered credentials.
       res.json({
         success: false,
         status: 500,
         error: "Internal error",
-        message: error instanceof Error ? error.message : "An unexpected error occurred",
+        message: "Unable to complete the test request",
         duration: Date.now() - startTime,
       });
     }

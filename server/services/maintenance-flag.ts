@@ -63,7 +63,8 @@ export type ExternalService =
   | "T631"
   | "Freeman EDLS"
   | "Freeman Authorization"
-  | "BTU";
+  | "BTU"
+  | "Web service test";
 
 let maintenanceActive = false;
 
