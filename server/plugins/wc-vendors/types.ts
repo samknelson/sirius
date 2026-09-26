@@ -215,6 +215,7 @@ export const WC_VENDOR_OPERATION_CATALOG = {
   sirius_dispatch_group_search: "sitespecific.t631.dispatch-group.search",
   sirius_dispatch_facility_dropdown: "sitespecific.t631.facility.list",
   sirius_edls_server_tos_list: "sitespecific.t631.tos.list",
+  sirius_teamsters631_switch_authenticate: "sitespecific.t631.server_switch.authenticate",
 } as const;
 
 /** Stable aliases used by migration/contract tests and admin tooling. */
@@ -231,13 +232,14 @@ export function canonicalizeWcVendorOperationName(name: string): string {
 export const normalizeWcVendorOperationName = canonicalizeWcVendorOperationName;
 
 /**
- * Canonical ids are lowercase dotted paths. Hyphens are allowed inside a
- * segment because service.test-connection is a public framework contract.
+ * Canonical ids are lowercase dotted paths. Hyphens and underscores are
+ * allowed inside a segment because both spellings exist in public vendor
+ * contracts (for example service.test-connection and fetch_sheets).
  */
 export function isCanonicalWcVendorOperationName(name: string): boolean {
   return (
     name === "service.test-connection" ||
-    /^(?:[a-z][a-z0-9-]*\.)+[a-z][a-z0-9-]*$/.test(name)
+    /^(?:[a-z][a-z0-9_-]*\.)+[a-z][a-z0-9_-]*$/.test(name)
   );
 }
 

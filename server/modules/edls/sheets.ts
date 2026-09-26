@@ -553,6 +553,7 @@ export function registerEdlsSheetsRoutes(
   const createAssignmentSchema = z.object({
     workerId: z.string().min(1, "Worker ID is required"),
   });
+  const assignmentGenerationSchema = z.object({ generationId: z.string().uuid() });
 
   app.post("/api/edls/sheets/:sheetId/crews/:crewId/assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.edit', req => req.params.sheetId), async (req, res) => {
     try {
@@ -597,7 +598,7 @@ export function registerEdlsSheetsRoutes(
         crewId,
         workerId: parsed.data.workerId,
         ymd: sheet.ymd as string,
-      });
+      }, sheetId);
       
       res.status(201).json(assignment);
     } catch (error: any) {
@@ -623,6 +624,11 @@ export function registerEdlsSheetsRoutes(
     async (req, res) => {
       try {
         const { sheetId, assignmentId } = req.params;
+        const generation = assignmentGenerationSchema.safeParse(req.body);
+        if (!generation.success) {
+          res.status(400).json({ message: "Assignment version is required" });
+          return;
+        }
         
         const sheet = await storage.edlsSheets.get(sheetId);
         if (!sheet) {
@@ -636,13 +642,17 @@ export function registerEdlsSheetsRoutes(
           return;
         }
         
-        const crew = await storage.edlsCrews.get(assignment.crewId);
+        const crew = assignment.crewId ? await storage.edlsCrews.get(assignment.crewId) : undefined;
         if (!crew || crew.sheetId !== sheetId) {
           res.status(404).json({ message: "Assignment not found on this sheet" });
           return;
         }
         
-        await storage.edlsAssignments.delete(assignmentId);
+        const cleared = await storage.edlsAssignments.delete(assignmentId, crew.id, generation.data.generationId);
+        if (!cleared) {
+          res.status(404).json({ message: "Assignment not found on this sheet" });
+          return;
+        }
         res.status(204).send();
       } catch (error) {
         console.error("Failed to delete assignment:", error);
@@ -672,19 +682,26 @@ export function registerEdlsSheetsRoutes(
           return;
         }
         
-        const crew = await storage.edlsCrews.get(assignment.crewId);
+        const crew = assignment.crewId ? await storage.edlsCrews.get(assignment.crewId) : undefined;
         if (!crew || crew.sheetId !== sheetId) {
           res.status(404).json({ message: "Assignment not found on this sheet" });
           return;
         }
         
-        const parsed = updateAssignmentExtraSchema.safeParse(req.body);
+        const parsed = updateAssignmentExtraSchema.extend({
+          generationId: z.string().uuid(),
+        }).safeParse(req.body);
         if (!parsed.success) {
           res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
           return;
         }
         
-        const updated = await storage.edlsAssignments.updateData(assignmentId, parsed.data);
+        const { generationId, ...data } = parsed.data;
+        const updated = await storage.edlsAssignments.updateData(assignmentId, data, crew.id, generationId);
+        if (!updated) {
+          res.status(404).json({ message: "Assignment not found on this sheet" });
+          return;
+        }
         res.json(updated);
       } catch (error) {
         console.error("Failed to update assignment:", error);
@@ -907,7 +924,7 @@ export function registerEdlsSheetsRoutes(
         let successCount = 0;
         
         for (const assignment of sourceAssignments) {
-          const newCrewId = crewIdMap.get(assignment.crewId);
+          const newCrewId = assignment.crewId ? crewIdMap.get(assignment.crewId) : undefined;
           if (!newCrewId) {
             failedAssignments.push({
               workerId: assignment.workerId,

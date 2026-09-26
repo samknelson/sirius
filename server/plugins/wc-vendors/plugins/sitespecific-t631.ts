@@ -26,6 +26,38 @@ import { WcVendorError } from "../errors";
 export const T631_PLUGIN_ID = "sitespecific-t631";
 export const T631_COMPONENT = "sitespecific.t631.client";
 
+interface T631ServerSwitchAuthenticateArgs {
+  worker_id: string;
+  token: string;
+}
+
+type T631NoArgsAction =
+  | "sitespecific.t631.service.ping"
+  | "sitespecific.t631.worker.list"
+  | "sitespecific.t631.dispatch-group.search"
+  | "sitespecific.t631.facility.list"
+  | "sitespecific.t631.tos.list";
+
+type T631RemoteOperationDeclarations = {
+  [N in T631NoArgsAction]: WcVendorOperationDeclaration<void, T631FetchResult>;
+} & {
+  "sitespecific.t631.server_switch.authenticate": WcVendorOperationDeclaration<
+    T631ServerSwitchAuthenticateArgs,
+    T631FetchResult
+  >;
+};
+
+function requiredStringArgument(
+  args: T631ServerSwitchAuthenticateArgs,
+  key: keyof T631ServerSwitchAuthenticateArgs,
+): string {
+  const value = typeof args?.[key] === "string" ? args[key].trim() : "";
+  if (!value) {
+    throw new WcVendorError(400, `${key} is required.`);
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 // The operations this vendor declares
 // ---------------------------------------------------------------------------
@@ -88,10 +120,55 @@ const t631RemoteOperations = {
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_edls_server_tos_list"),
   },
-} satisfies Record<
-  string,
-  WcVendorOperationDeclaration<never, T631FetchResult>
->;
+  "sitespecific.t631.server_switch.authenticate": {
+    description: "authenticate a worker for the T631 server switch",
+    needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: {
+        type: "object",
+        properties: {
+          worker_id: {
+            type: "string",
+            title: "Worker ID",
+            minLength: 1,
+            pattern: "\\S",
+          },
+          token: {
+            type: "string",
+            title: "Token",
+            minLength: 1,
+            pattern: "\\S",
+          },
+        },
+        required: ["worker_id", "token"],
+        additionalProperties: false,
+      },
+      uiSchema: {
+        token: {
+          "ui:widget": "password",
+        },
+      },
+      effect: "read",
+    },
+    run: (ctx: WcVendorContext, args: T631ServerSwitchAuthenticateArgs) => {
+      const workerId = requiredStringArgument(args, "worker_id");
+      const token = requiredStringArgument(args, "token");
+      return performT631Fetch(ctx, "sirius_teamsters631_switch_authenticate", {
+        requestBody: [
+          "sirius_teamsters631_switch_authenticate",
+          workerId,
+          token,
+        ],
+        diagnosticsBody: [
+          "sirius_teamsters631_switch_authenticate",
+          workerId,
+          REDACTED,
+        ],
+        sensitiveValues: [token],
+      });
+    },
+  },
+} satisfies T631RemoteOperationDeclarations;
 
 type T631OperationContract = {
   [N in keyof typeof t631RemoteOperations]: {
@@ -104,10 +181,16 @@ declare module "../types" {
   interface WcVendorOperations extends T631OperationContract {}
 }
 
-export type T631Action = keyof typeof t631RemoteOperations;
-export const T631_ACTIONS = Object.keys(t631RemoteOperations) as [
+export type T631Action = T631NoArgsAction;
+export const T631_ACTIONS: [
   T631Action,
   ...T631Action[],
+] = [
+  "sitespecific.t631.service.ping",
+  "sitespecific.t631.worker.list",
+  "sitespecific.t631.dispatch-group.search",
+  "sitespecific.t631.facility.list",
+  "sitespecific.t631.tos.list",
 ];
 
 export interface T631RequestDiagnostics {
@@ -340,6 +423,11 @@ function credentialScrubber(secrets: string[]): CredentialScrubber {
 async function performT631Fetch(
   ctx: WcVendorContext,
   action: string,
+  requestOverride?: {
+    requestBody: unknown[];
+    diagnosticsBody: unknown[];
+    sensitiveValues?: string[];
+  },
 ): Promise<T631FetchResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
@@ -357,12 +445,16 @@ async function performT631Fetch(
     credential.accessToken,
     credential.employerToken,
     basicAuth,
+    ...(requestOverride?.sensitiveValues ?? []),
   ]);
 
   let requestBody: unknown[];
   let diagnosticsBody: unknown[];
 
-  if (action === "sirius_service_ping") {
+  if (requestOverride) {
+    requestBody = requestOverride.requestBody;
+    diagnosticsBody = requestOverride.diagnosticsBody;
+  } else if (action === "sirius_service_ping") {
     const echoText = randomBytes(6).toString("hex");
     requestBody = [action, "Echo Text Follows", echoText];
     diagnosticsBody = [action, "Echo Text Follows", echoText];
@@ -377,7 +469,7 @@ async function performT631Fetch(
     diagnosticsBody = [action, settings.employerId, REDACTED];
   }
 
-  const requestDiagnostics: T631RequestDiagnostics = {
+  const requestDiagnostics = scrub.deep<T631RequestDiagnostics>({
     url: settings.url,
     method: "POST",
     headers: {
@@ -385,7 +477,7 @@ async function performT631Fetch(
       Authorization: `Basic ${REDACTED}`,
     },
     body: diagnosticsBody,
-  };
+  });
 
   try {
     const response = await fetch(settings.url, {

@@ -24,6 +24,7 @@ import express from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const validateSecret = vi.fn();
+const getByClientKey = vi.fn();
 const recordUsage = vi.fn();
 const getClient = vi.fn();
 const isIpAllowed = vi.fn();
@@ -33,7 +34,7 @@ const configGetByKind = vi.fn();
 
 vi.mock('../../server/storage', () => ({
   storage: {
-    wsClientCredentials: { validateSecret, recordUsage },
+    wsClientCredentials: { validateSecret, getByClientKey, recordUsage },
     wsClients: { get: getClient },
     wsClientIpRules: { isIpAllowed },
     wsClientGrants: { has: grantHas },
@@ -89,7 +90,7 @@ const CONFIG = {
 
 /** Headers for a credential that would authenticate successfully. */
 const GOOD_CREDENTIALS = {
-  'x-ws-client-key': 'key',
+  'x-ws-client-id': 'key',
   'x-ws-client-secret': 'secret',
 };
 
@@ -123,6 +124,7 @@ beforeEach(() => {
   setMaintenanceActive(false);
 
   validateSecret.mockResolvedValue({ valid: true, credential: { id: 'cred-1', clientId: 'client-1' } });
+  getByClientKey.mockResolvedValue({ id: 'cred-1', clientId: 'client-1' });
   recordUsage.mockResolvedValue(undefined);
   getClient.mockResolvedValue({ id: 'client-1', name: 'Partner', status: 'active', ipAllowlistEnabled: false });
   isIpAllowed.mockResolvedValue(true);

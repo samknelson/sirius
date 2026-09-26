@@ -16,14 +16,30 @@ export const FREEMAN_EDLS_MIGRATE_OPERATION =
   "sitespecific.freeman.edls.migrate";
 export const FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION =
   "sirius_freeman_rawdata";
+export const FREEMAN_EDLS_FETCH_SHEETS_OPERATION =
+  "sitespecific.freeman.edls.fetch_sheets";
+export const FREEMAN_EDLS_FETCH_SHEETS_ACTION =
+  "sirius_freeman_edls_passport_export";
 const FREEMAN_EDLS_MIGRATE_PING_ACTION = "sirius_service_ping";
 const FREEMAN_EDLS_MIGRATE_TIMEOUT_MS = 15_000;
+const FREEMAN_EDLS_CREDENTIAL_KEYS = [
+  "accessToken",
+  "employerToken",
+] as const;
+const FREEMAN_EDLS_MIN_TOKEN_LENGTH = 8;
 
 export interface FreemanEdlsRawDataArgs {
   table: string;
   orderColumn: string;
   limit: number;
   offset: number;
+}
+
+export interface FreemanEdlsFetchSheetsArgs {
+  start_date?: string;
+  page?: number;
+  limit?: number;
+  status?: string;
 }
 
 export interface FreemanEdlsRequestDiagnostics {
@@ -65,7 +81,12 @@ export interface FreemanEdlsResult {
 interface FreemanEdlsSettings {
   url: string;
   accountId: string;
-  accessCode: string;
+  employerId: string;
+}
+
+interface FreemanEdlsCredential {
+  accessToken: string;
+  employerToken: string;
 }
 
 class FreemanEdlsConfigurationError extends WcVendorError {
@@ -84,31 +105,88 @@ function configData(ctx: WcVendorContext): Record<string, unknown> {
 
 function readSettings(ctx: WcVendorContext): FreemanEdlsSettings {
   const data = configData(ctx);
-  const url = typeof data.url === "string" ? data.url.trim() : "";
-  const accountId =
-    typeof data.accountId === "string" ? data.accountId.trim() : "";
-  const accessCode = ctx.credential.value;
-  const missing: string[] = [];
-  if (!url) missing.push("url");
-  if (!accountId) missing.push("accountId");
-  if (!accessCode) missing.push("credential");
+  const read = (key: keyof FreemanEdlsSettings): string =>
+    typeof data[key] === "string" ? data[key].trim() : "";
+  const settings = {
+    url: read("url"),
+    accountId: read("accountId"),
+    employerId: read("employerId"),
+  };
+  const missing = (Object.keys(settings) as (keyof FreemanEdlsSettings)[]).filter(
+    (key) => !settings[key],
+  );
   if (missing.length > 0) {
     throw new FreemanEdlsConfigurationError(
       `Freeman EDLS connection '${ctx.config.name ?? ctx.config.id}' is missing: ${missing.join(", ")}.`,
     );
   }
-  return { url, accountId, accessCode };
+  return settings;
+}
+
+function readCredential(ctx: WcVendorContext): FreemanEdlsCredential {
+  const secretName = ctx.credential.secretName ?? "(unnamed)";
+  const shape =
+    `a JSON object carrying ${FREEMAN_EDLS_CREDENTIAL_KEYS.join(" and ")}`;
+  const raw = ctx.credential.value.trim();
+  if (!raw) {
+    throw new FreemanEdlsConfigurationError(
+      `Freeman EDLS credential secret '${secretName}' is not set. Create it as ${shape}.`,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new FreemanEdlsConfigurationError(
+      `Freeman EDLS credential secret '${secretName}' is not valid JSON. It must be ${shape}.`,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new FreemanEdlsConfigurationError(
+      `Freeman EDLS credential secret '${secretName}' must be ${shape}.`,
+    );
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const missing = FREEMAN_EDLS_CREDENTIAL_KEYS.filter((key) => {
+    const value = record[key];
+    return typeof value !== "string" || value.trim() === "";
+  });
+  if (missing.length > 0) {
+    throw new FreemanEdlsConfigurationError(
+      `Freeman EDLS credential secret '${secretName}' is missing: ${missing.join(", ")}. ` +
+        `It must be ${shape}.`,
+    );
+  }
+
+  const tooShort = FREEMAN_EDLS_CREDENTIAL_KEYS.filter(
+    (key) =>
+      (record[key] as string).trim().length <
+      FREEMAN_EDLS_MIN_TOKEN_LENGTH,
+  );
+  if (tooShort.length > 0) {
+    throw new FreemanEdlsConfigurationError(
+      `Freeman EDLS credential secret '${secretName}' has an implausibly short value for: ` +
+        `${tooShort.join(", ")}. Each token must be at least ` +
+        `${FREEMAN_EDLS_MIN_TOKEN_LENGTH} characters.`,
+    );
+  }
+
+  return {
+    accessToken: (record.accessToken as string).trim(),
+    employerToken: (record.employerToken as string).trim(),
+  };
 }
 
 const REDACTED = "(redacted)";
 
 function credentialScrubber(
-  accountId: string,
-  accessCode: string,
+  secrets: readonly string[],
 ): { text(value: string): string; deep<T>(value: T): T } {
-  const basic = Buffer.from(`${accountId}:${accessCode}`).toString("base64");
   const candidates = new Set<string>();
-  for (const secret of [accessCode, basic]) {
+  for (const secret of secrets) {
+    if (!secret) continue;
     candidates.add(secret);
     candidates.add(JSON.stringify(secret).slice(1, -1));
   }
@@ -162,6 +240,44 @@ function echoReturned(parsed: unknown, token: string): boolean {
   );
 }
 
+function fetchSheetsFilters(
+  args: FreemanEdlsFetchSheetsArgs,
+): Record<string, string | number> {
+  const filters: Record<string, string | number> = {};
+  if (args.start_date !== undefined) {
+    const startDate = args.start_date.trim();
+    if (!startDate) {
+      throw new WcVendorError(400, "start_date must be a non-empty string.");
+    }
+    filters.start_date = startDate;
+  }
+  if (args.page !== undefined) {
+    if (!Number.isInteger(args.page) || args.page < 0) {
+      throw new WcVendorError(400, "page must be a non-negative integer.");
+    }
+    filters.page = String(args.page);
+  }
+  if (args.limit !== undefined) {
+    if (
+      !Number.isInteger(args.limit) ||
+      args.limit < 1 ||
+      args.limit > 100
+    ) {
+      throw new WcVendorError(
+        400,
+        "limit must be an integer between 1 and 100.",
+      );
+    }
+    filters.limit = String(args.limit);
+  }
+  const status = args.status === undefined ? "lock" : args.status.trim();
+  if (!status) {
+    throw new WcVendorError(400, "status must be a non-empty string.");
+  }
+  filters.status = status;
+  return filters;
+}
+
 async function performFreemanEdlsRequest(
   ctx: WcVendorContext,
   action: string,
@@ -171,7 +287,15 @@ async function performFreemanEdlsRequest(
   const started = Date.now();
   const timestamp = new Date().toISOString();
   const settings = readSettings(ctx);
-  const scrub = credentialScrubber(settings.accountId, settings.accessCode);
+  const credential = readCredential(ctx);
+  const basic = Buffer.from(
+    `${settings.accountId}:${credential.accessToken}`,
+  ).toString("base64");
+  const scrub = credentialScrubber([
+    credential.accessToken,
+    credential.employerToken,
+    basic,
+  ]);
   const body = [action, ...args];
   const request: FreemanEdlsRequestDiagnostics = {
     url: settings.url,
@@ -181,7 +305,7 @@ async function performFreemanEdlsRequest(
       Authorization: `Basic ${REDACTED}`,
     },
     authUser: settings.accountId,
-    body,
+    body: scrub.deep(body),
   };
   const base = { action, request, timestamp };
   const echo =
@@ -195,9 +319,7 @@ async function performFreemanEdlsRequest(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${Buffer.from(
-          `${settings.accountId}:${settings.accessCode}`,
-        ).toString("base64")}`,
+        Authorization: `Basic ${basic}`,
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(FREEMAN_EDLS_MIGRATE_TIMEOUT_MS),
@@ -302,9 +424,58 @@ const remoteOperations = {
         String(args.offset),
       ]),
   },
+  [FREEMAN_EDLS_FETCH_SHEETS_OPERATION]: {
+    description: "read Freeman EDLS sheets for data migration",
+    needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: {
+        type: "object",
+        properties: {
+          start_date: {
+            type: "string",
+            minLength: 1,
+            description:
+              "Date and time in any format accepted by PHP strtotime().",
+          },
+          page: {
+            type: "integer",
+            minimum: 0,
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+          },
+          status: {
+            type: "string",
+            minLength: 1,
+            default: "lock",
+          },
+        },
+        additionalProperties: false,
+      },
+      effect: "read",
+    },
+    run: (
+      ctx: WcVendorContext,
+      args: FreemanEdlsFetchSheetsArgs,
+    ) => {
+      const settings = readSettings(ctx);
+      const credential = readCredential(ctx);
+      return performFreemanEdlsRequest(
+        ctx,
+        FREEMAN_EDLS_FETCH_SHEETS_ACTION,
+        [
+          settings.employerId,
+          credential.employerToken,
+          JSON.stringify(fetchSheetsFilters(args)),
+        ],
+      );
+    },
+  },
 } satisfies Record<
   string,
-  WcVendorOperationDeclaration<FreemanEdlsRawDataArgs, FreemanEdlsResult>
+  WcVendorOperationDeclaration<unknown, FreemanEdlsResult>
 >;
 
 type FreemanEdlsOperationContract = {
@@ -327,7 +498,10 @@ const freemanEdlsMigrateVendorPlugin: WcVendorPlugin = {
   credential: {
     secretName: "required",
     setupGuidance:
-      "The named secret must contain the legacy Freeman EDLS access code used as the HTTP Basic password.",
+      "Enter the environment-secret name here, not a token or JSON value. " +
+      "The value stored in that secret must be a JSON object containing both Freeman EDLS tokens:",
+    setupExample:
+      '{"accessToken":"<access-token>","employerToken":"<employer-token>"}',
   },
   configFields: [
     {
@@ -339,6 +513,12 @@ const freemanEdlsMigrateVendorPlugin: WcVendorPlugin = {
     {
       name: "accountId",
       label: "Account ID",
+      type: "string",
+      required: true,
+    },
+    {
+      name: "employerId",
+      label: "Employer ID",
       type: "string",
       required: true,
     },

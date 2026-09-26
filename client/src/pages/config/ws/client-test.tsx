@@ -56,8 +56,10 @@ export function generateCurlCommand(options: {
     parts.push(`-X ${method}`);
   }
   
-  parts.push(`-H "X-WS-Client-Key: ${clientKey || '<YOUR_CLIENT_KEY>'}"`);
-  parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  parts.push(`-H "X-WS-Client-ID: ${clientKey || '<YOUR_CLIENT_ID>'}"`);
+  if (bearerToken === undefined) {
+    parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  }
   if (bearerToken !== undefined) {
     parts.push(`-H "Authorization: Bearer ${bearerToken || '<YOUR_BEARER_TOKEN>'}"`);
   }
@@ -197,7 +199,10 @@ function TestContent() {
     }
   };
 
-  const canExecute = clientKey.trim() && clientSecret.trim() && configId && operation;
+  const canExecute = clientKey.trim()
+    && (needsFreemanBearer ? bearerToken.trim() : clientSecret.trim())
+    && configId
+    && operation;
   const [copied, setCopied] = useState(false);
 
   // The public address. Prefer the alias: configuration ids are minted per
@@ -246,21 +251,23 @@ function TestContent() {
               Credentials
             </CardTitle>
             <CardDescription>
-              Enter your client credentials. The secret is only shown once when created.
+              {needsFreemanBearer
+                ? "Enter the client ID and Freeman bearer token."
+                : "Enter your client credentials. The secret is only shown once when created."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="client-key">Client Key</Label>
+              <Label htmlFor="client-key">Client ID</Label>
               <Input
                 id="client-key"
                 value={clientKey}
                 onChange={(e) => setClientKey(e.target.value)}
-                placeholder="Enter client key"
+                placeholder="Enter client ID"
                 data-testid="input-client-key"
               />
             </div>
-            <div className="space-y-2">
+            {!needsFreemanBearer && <div className="space-y-2">
               <Label htmlFor="client-secret">Client Secret</Label>
               <Input
                 id="client-secret"
@@ -270,7 +277,7 @@ function TestContent() {
                 placeholder="Enter client secret"
                 data-testid="input-client-secret"
               />
-            </div>
+            </div>}
             {needsFreemanBearer && (
               <div className="space-y-2">
                 <Label htmlFor="bearer-token">Freeman Bearer Token</Label>

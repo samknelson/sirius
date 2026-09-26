@@ -135,12 +135,15 @@ function registerDashboardKind(): void {
  * repo — see `server/plugins/_core/README.md` → "Plugin registration
  * convention".)
  */
-export async function initializeDashboardPluginSystem(): Promise<void> {
+export function registerDashboardPluginSystem(): void {
   registerDashboardKind();
   logger.info("Dashboard plugins registered", {
     service: "dashboard-plugins",
     plugins: dashboardPluginRegistry.getAll().map((p) => p.id),
   });
+}
+
+export async function reconcileDashboardPluginSystem(): Promise<void> {
   await dashboardPluginRegistry.backfillFromLegacyVariables();
   // Split any old per-role welcome-message content (consolidated config rows
   // and/or legacy `welcome_message_<roleId>` variables) into the unified
@@ -160,6 +163,11 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
   // shape. Runs AFTER the role backfill so every row has its envelope role
   // available to pick the right legacy list.
   await migrateReportsSettings();
+}
+
+export async function initializeDashboardPluginSystem(): Promise<void> {
+  registerDashboardPluginSystem();
+  await reconcileDashboardPluginSystem();
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).

@@ -55,15 +55,23 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     A new repo-wide rule is added to the `RULES` table in that file — never
     as its own workflow.
 
--   **`npm test` is the test suite** (Vitest; `npm run test:watch` to
-    watch). Tests live in `tests/<subject>/*.test.ts`, grouped by subject
-    (`tests/html/`, `tests/auth/`, `tests/env/`, `tests/edi/`), and reuse the `@` /
-    `@shared` path aliases. A new test goes in the suite for its subject,
-    or a new subject directory — **not** in a new script under
-    `scripts/dev/`. Tests do not run as a completion gate; run them on
-    demand and before merging. *Whether* a test should be written at all
-    is settled by the non-negotiable rule "A regression test must earn
-    its place" below.
+-   **Vitest is selective by default.** During development, run one subject
+    or file (`npm test -- tests/<subject>`) or run `npm run test:affected`
+    (optionally `-- <base-ref>`; default `origin/main`). The affected command
+    uses Vitest's import graph and falls back to the full suite for declared
+    broad-impact files such as schemas, registries, test configuration, and
+    package configuration. Run `npm run test:slow` only when auditing suite
+    cost; it reports tests over 250 ms and files over 2 seconds.
+-   **Do not repeatedly run the full suite during a task.** Focused or
+    affected tests are the normal iterative check. At most one full-suite run
+    belongs at final validation, and only when the change is broad enough to
+    warrant it. A subject run is enough for a contained change. If the user
+    explicitly says to skip the suite, honor that instruction and rely on the
+    other applicable checks.
+-   Tests live in `tests/<subject>/*.test.ts`, grouped by subject, and reuse
+    the `@` / `@shared` path aliases. Tests do not run as a completion gate.
+    *Whether* a test should be written at all is settled by the non-negotiable
+    rule "A regression test must earn its place" below.
 
 -   **`scripts/dev/` holds developer checks only.** Operational tools and
     data audits a human runs deliberately live in `scripts/tools/`;
@@ -400,6 +408,22 @@ disqualifying, not debatable:
     usually means it is testing plumbing rather than a rule.
 -   An existing suite already covers the same invariant from another
     angle.
+-   It is site-specific behavior. The only exceptions are a settled security,
+    financial, irreversible-data, or externally enforced contract where all
+    six admission criteria above also hold.
+-   It asserts one page or component's labels, rendering, visibility,
+    navigation, styling, or wiring. Use typecheck, lint, build, and manual
+    preview; test a settled reusable UX framework at its boundary instead.
+-   It singles out one plugin, provider, notifier, vendor, or other member of
+    a family. A family invariant belongs in one parameterized contract or
+    conformance suite that obtains its cases from the shared registry.
+
+**Cost budget.** A normal unit test should take a fraction of a second. Review
+every test over 250 ms and every file over 2 seconds with
+`npm run test:slow`. A justified database or integration check that cannot
+meet that budget should not silently burden the default suite: prefer a
+one-time verification, a cheaper boundary test, or an explicitly invoked
+operational audit. Line coverage and case count are not goals.
 
 **Lint rule or test?** Two mechanisms, and the choice is not taste:
 

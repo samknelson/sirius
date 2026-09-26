@@ -33,6 +33,8 @@ export interface TabDefinition {
   hrefTemplate: string;
   policyId?: string;
   permission?: string;
+  /** Allow administrators through this tab-linked client route without the named permission. */
+  adminBypass?: boolean;
   component?: string;
   /** Hide this tab while its framework area is switched off. */
   entityContext?: TabEntityContext;
@@ -260,7 +262,7 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'worker' } },
   { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'worker.delete', adminBypass: true },
 ];
 
 /**
@@ -885,6 +887,15 @@ export function flattenTabTree(tree: HierarchicalTab[], parentId?: string): Flat
   return result;
 }
 
+export function hasTabPermission(
+  tab: Pick<TabDefinition, 'permission' | 'adminBypass'>,
+  hasPermission: (permission: string) => boolean,
+): boolean {
+  return !tab.permission
+    || hasPermission(tab.permission)
+    || (tab.adminBypass === true && hasPermission('admin'));
+}
+
 /**
  * Get flattened tabs for an entity type (for backend batch checking)
  */
@@ -957,6 +968,7 @@ export function isChildOf(childId: string, parentId: string, tree: HierarchicalT
 export interface TabAccessRequirements {
   policyId?: string;
   permission?: string;
+  adminBypass?: boolean;
   component?: string;
   entityContext?: TabEntityContext;
 }
@@ -979,6 +991,7 @@ export function getTabAccessRequirements(
   return {
     policyId: tab.policyId,
     permission: tab.permission,
+    adminBypass: tab.adminBypass,
     component: tab.component,
     entityContext: tab.entityContext,
   };

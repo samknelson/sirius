@@ -140,3 +140,26 @@ export function registerDenormPlugin(plugin: DenormPlugin): void {
 export function getDenormPlugin(id: string): DenormPlugin | undefined {
   return denormPluginRegistry.get(id);
 }
+
+/**
+ * Recompute one entity without pretending that a domain event occurred.
+ *
+ * Importers sometimes need to establish source rows without firing the normal
+ * event because other listeners on that event have business effects (for
+ * example, HOURS_SAVED can create charges). This still routes the write through
+ * the owning plugin and the shared status-row transaction.
+ */
+export async function recomputeDenormEntity(
+  pluginId: string,
+  entityId: string,
+): Promise<void> {
+  const plugin = denormPluginRegistry.get(pluginId);
+  if (!plugin) throw new Error(`Unknown denorm plugin: ${pluginId}`);
+  const configs = await storage.pluginConfigs.getByKindAndPlugin(
+    "denorm",
+    pluginId,
+  );
+  const config = configs[0];
+  if (!config) throw new Error(`No denorm config found for plugin ${pluginId}`);
+  await applyComputed(plugin, config.id, entityId, await plugin.compute(entityId));
+}

@@ -14,6 +14,7 @@ import {
 } from "../../config/env-registry";
 import {
   WcVendorError,
+  WcVendorNoAssignedOperationError,
   WcVendorRequestError,
 } from "../../plugins/wc-vendors/errors";
 import {
@@ -71,7 +72,11 @@ export class WcVendorResolutionError extends WcVendorError {
 
 // Raised inside the kind, caught out here: a route wants one name for "the
 // provider was not reached", whatever the reason.
-export { WcVendorError, WcVendorRequestError };
+export {
+  WcVendorError,
+  WcVendorNoAssignedOperationError,
+  WcVendorRequestError,
+};
 
 /** No enabled connection exists for the plugin a caller named. */
 export class WcVendorNoDefaultError extends WcVendorResolutionError {
@@ -298,11 +303,7 @@ async function resolveAnyWcVendor(
     // unambiguous route. With several unusable assignments there is no single
     // connection whose refusal can truthfully explain the route as a whole.
     if (assigned.length === 1) return resolveWcVendor(assigned[0].id);
-    throw new WcVendorRequestError(
-      501,
-      `No enabled webclient vendor configuration is assigned to '${operation}'. ` +
-        `Assign exactly one configuration to this operation.`,
-    );
+    throw new WcVendorNoAssignedOperationError(operation);
   }
   if (candidates.length > 1) {
     throw new WcVendorRequestError(

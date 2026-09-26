@@ -11,6 +11,7 @@ import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
 import { buildTimeZoneContext } from "./modules/system/timezone";
 import { registerAuthSettingsRoutes } from "./modules/auth-settings";
+import { getSessionIdleTimeoutSettings } from "./auth/session-idle-timeout";
 import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
@@ -132,6 +133,7 @@ import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/benef
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerT631ArrivalRoutes } from "./modules/sitespecific/t631/arrive";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
@@ -154,37 +156,11 @@ import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
 import { isAuthenticated } from "./auth";
 import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
+import { requirePermission, requirePermissionOrAdmin } from "./middleware/require-permission";
+import { registerWorkerDeleteRoute } from "./modules/workers/delete";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
-
-// Permission middleware
-const requirePermission = (permissionKey: string) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const user = req.user as any;
-    if (!user || !user.claims) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    
-    // Get database user ID from external ID, respecting masquerade
-    const session = req.session as any;
-    const { getEffectiveUser } = await import("./modules/masquerade");
-    const { dbUser } = await getEffectiveUser(session, user);
-    if (!dbUser) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    const hasPermission = await storage.users.userHasPermission(
-      dbUser.id,
-      permissionKey,
-    );
-    if (!hasPermission) {
-      return res.status(403).json({ message: "Insufficient permissions" });
-    }
-
-    next();
-  };
-};
 
 export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   // Unauthorized route for failed logins
@@ -291,6 +267,31 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       console.error("Failed to fetch user info:", error);
       res.status(500).json({ message: "Failed to fetch user info" });
     }
+  });
+
+  app.get("/api/auth/session-idle", requireAuth, async (req, res) => {
+    const settings = await getSessionIdleTimeoutSettings(storage);
+    const session = req.session as any;
+    session.sessionIdleReadOnlyCheck = true;
+    const lastActivityMs = Date.parse(session.sessionIdleLastActivityAt ?? "");
+    res.json({
+      enabled: settings.enabled,
+      deadline: settings.enabled && Number.isFinite(lastActivityMs)
+        ? new Date(lastActivityMs + settings.timeoutMinutes * 60_000).toISOString()
+        : null,
+    });
+  });
+
+  app.post("/api/auth/session-idle/continue", requireAuth, async (req, res) => {
+    const settings = await getSessionIdleTimeoutSettings(storage);
+    const now = new Date();
+    (req.session as any).sessionIdleLastActivityAt = now.toISOString();
+    res.json({
+      enabled: settings.enabled,
+      deadline: settings.enabled
+        ? new Date(now.getTime() + settings.timeoutMinutes * 60_000).toISOString()
+        : null,
+    });
   });
 
   // Register access policy evaluation routes
@@ -1221,22 +1222,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // DELETE /api/workers/:id - Delete a worker (requires staff permission)
-  app.delete("/api/workers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const deleted = await storage.workers.deleteWorker(id);
-      
-      if (!deleted) {
-        res.status(404).json({ message: "Worker not found" });
-        return;
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete worker" });
-    }
-  });
+  registerWorkerDeleteRoute(app, requireAuth, requirePermissionOrAdmin);
 
   // Employer routes (protected with authentication and permissions)
   
@@ -1697,6 +1683,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register T631 Client routes
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
+  registerT631ArrivalRoutes(app);
 
   // Register Freeman Second Shift routes
   registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);

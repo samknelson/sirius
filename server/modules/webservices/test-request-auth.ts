@@ -13,12 +13,13 @@ export function buildTestRequestHeaders(
   bearerToken?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    "X-WS-Client-Key": clientKey,
-    "X-WS-Client-Secret": clientSecret,
+    "X-WS-Client-ID": clientKey,
     "Content-Type": "application/json",
   };
-  if (requiresFreemanBearerAuthorization(client) && bearerToken?.trim()) {
-    headers.Authorization = `Bearer ${bearerToken.trim()}`;
+  if (requiresFreemanBearerAuthorization(client)) {
+    if (bearerToken?.trim()) headers.Authorization = `Bearer ${bearerToken.trim()}`;
+  } else {
+    headers["X-WS-Client-Secret"] = clientSecret;
   }
   return headers;
 }

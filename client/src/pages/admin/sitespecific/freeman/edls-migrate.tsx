@@ -6,7 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import EdlsMigrateSweep from "@/components/sitespecific/freeman/EdlsMigrateSweep";
+import MigrateSheets from "@/components/sitespecific/freeman/MigrateSheets";
+import FullResetCard from "@/components/sitespecific/freeman/FullResetCard";
 
 export default function FreemanEdlsMigratePage() {
   usePageTitle("Freeman EDLS Migration");
@@ -21,13 +22,14 @@ export default function FreemanEdlsMigratePage() {
           </CardTitle>
           <CardDescription>
             The Freeman EDLS connection is configured and tested under the shared web-client
-            Vendors admin area. This page fetches legacy sheets into staging for inspection;
-            nothing is imported yet.
+            Vendors admin area. Use the controlled importer below to migrate sheets by legacy
+            status in test or live mode.
           </CardDescription>
         </CardHeader>
       </Card>
 
-      <EdlsMigrateSweep />
+      <MigrateSheets />
+      <FullResetCard />
     </div>
   );
 }

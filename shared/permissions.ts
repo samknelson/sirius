@@ -186,6 +186,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'worker.delete',
+      description: 'Permanently delete workers',
+      module: 'core'
+    },
+    {
       key: 'worker',
       description: 'Worker role - can view and manage their own worker profile',
       module: 'core'
