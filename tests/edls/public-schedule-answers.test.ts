@@ -20,8 +20,13 @@ interface Scenario {
   visibleAssignments: Array<{
     assignmentId: string;
     generationId: string;
+    ymd: string;
     sheetStatus: string;
     accepted: boolean | null;
+    sheetTitle?: string;
+    crewTitle?: string;
+    location?: string;
+    supervisor?: { email: string };
   }>;
   setAcceptedResult: boolean;
 }
@@ -145,6 +150,7 @@ beforeEach(() => {
     visibleAssignments: [{
       assignmentId: ASSIGNMENT_ID,
       generationId: GENERATION_ID,
+      ymd: "2026-09-26",
       sheetStatus: "lock",
       accepted: null,
     }],
@@ -207,14 +213,41 @@ async function answer(
 }
 
 describe("public EDLS schedule answers", () => {
-  it("offers Requested sheets in the same public schedule window", async () => {
+  it("offers Draft and Requested sheets in the same public schedule window", async () => {
     const res = await schedule();
 
     expect(getAssignmentsForWorker).toHaveBeenCalledWith(
       WORKER_ID,
-      expect.objectContaining({ sheetStatuses: ["request", "lock", "reserved"] }),
+      expect.objectContaining({ sheetStatuses: ["draft", "request", "lock", "reserved"] }),
     );
     expect(res.json).toHaveBeenCalled();
+  });
+
+  it.each(["draft", "request"])("does not disclose %s job or crew details in the public response", async (status) => {
+    scenario.visibleAssignments[0] = {
+      ...scenario.visibleAssignments[0],
+      sheetStatus: status,
+      sheetTitle: "PRIVATE JOB TITLE",
+      crewTitle: "PRIVATE CREW TITLE",
+      location: "PRIVATE LOCATION",
+      supervisor: { email: "PRIVATE SUPERVISOR" },
+    };
+
+    const res = await schedule();
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.assignments).toEqual([{
+      assignmentId: ASSIGNMENT_ID,
+      ymd: "2026-09-26",
+      sheetStatus: status,
+    }]);
+    expect(JSON.stringify(payload)).not.toContain("PRIVATE");
+    expect(getManyMetadata).toHaveBeenCalledWith([]);
+  });
+
+  it("still sends full details for a Scheduled assignment", async () => {
+    scenario.visibleAssignments[0].sheetTitle = "Confirmed job";
+    const res = await schedule();
+    expect(res.json.mock.calls[0][0].assignments[0].sheetTitle).toBe("Confirmed job");
   });
 
   it("returns only the assignment's modification date, without actor or unrelated metadata", async () => {
@@ -293,13 +326,20 @@ describe("public EDLS schedule answers", () => {
     expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, accepted, GENERATION_ID);
   });
 
-  it.each([true, false])("refuses direct Requested answers (accepted=%s)", async (accepted) => {
-    scenario.visibleAssignments[0].sheetStatus = "request";
-    expect(await answer(ACCESS_TOKEN, ASSIGNMENT_ID, accepted)).toEqual({
+  it.each(["draft", "request"])("refuses direct %s answers", async (status) => {
+    scenario.visibleAssignments[0].sheetStatus = status;
+    const result = await answer(ACCESS_TOKEN);
+    expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
+    expect(setAccepted).not.toHaveBeenCalled();
+  });
+
+  it("refuses an answer if a Scheduled sheet turns Draft before the guarded write", async () => {
+    setAccepted.mockResolvedValueOnce(false); // Storage rechecks the sheet under its lock.
+    expect(await answer(ACCESS_TOKEN, ASSIGNMENT_ID, true)).toEqual({
       status: 403,
       body: { message: "Access denied" },
     });
-    expect(setAccepted).not.toHaveBeenCalled();
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, true, GENERATION_ID);
   });
 
   it.each([

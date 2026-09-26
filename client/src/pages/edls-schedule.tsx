@@ -14,13 +14,19 @@ import { assignmentUpdateAge } from "@/lib/assignment-update-age";
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;
 
-interface ScheduleAssignment {
+type ReviewScheduleAssignment = {
+  assignmentId: string;
+  ymd: string;
+  sheetStatus: "draft" | "request";
+};
+
+interface ConfirmedScheduleAssignment {
   assignmentId: string;
   generationId: string;
   ymd: string;
   sheetId: string;
   sheetTitle: string;
-  sheetStatus: string;
+  sheetStatus: "lock" | "reserved";
   updatedAt: string | null;
   crewId: string;
   crewTitle: string;
@@ -42,6 +48,8 @@ interface ScheduleAssignment {
   accepted?: boolean | null;
   data: Record<string, unknown> | null;
 }
+
+type ScheduleAssignment = ReviewScheduleAssignment | ConfirmedScheduleAssignment;
 
 interface PublicWorkerSchedule {
   workerName: string;
@@ -74,7 +82,7 @@ function formatTime(time: string | null | undefined): string {
  * The time this worker is due: the per-assignment override when one was
  * entered, otherwise the crew's start time.
  */
-function effectiveStartTime(assignment: ScheduleAssignment): string {
+function effectiveStartTime(assignment: ConfirmedScheduleAssignment): string {
   const override = assignment.data && typeof (assignment.data as { startTime?: unknown }).startTime === "string"
     ? (assignment.data as { startTime: string }).startTime
     : null;
@@ -106,7 +114,7 @@ function AssignmentAnswer({
   assignment,
 }: {
   scheduleId: string;
-  assignment: ScheduleAssignment;
+  assignment: ConfirmedScheduleAssignment;
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -191,7 +199,7 @@ export function AssignmentDetails({
   scheduleId: string;
   now: number;
 }) {
-  if (assignment.sheetStatus === "request") {
+  if (assignment.sheetStatus === "draft" || assignment.sheetStatus === "request") {
     return (
       <div
         className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
@@ -203,6 +211,8 @@ export function AssignmentDetails({
       </div>
     );
   }
+
+  if (assignment.sheetStatus !== "lock" && assignment.sheetStatus !== "reserved") return null;
 
   return (
     <div className="space-y-4" data-testid={`assignment-${assignment.assignmentId}`}>
@@ -256,6 +266,64 @@ function AccessDenied() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+interface ScheduleDay {
+  ymd: string;
+  relative?: "Today" | "Tomorrow";
+  assignments: ScheduleAssignment[];
+}
+
+export function ScheduleDayCard({ day, scheduleId, now }: { day: ScheduleDay; scheduleId: string; now: number }) {
+  // Cleared rows have no sheet/crew; never render their former assignment.
+  // Also refuse unexpected statuses rather than exposing full details.
+  const visibleAssignments = day.assignments.filter((assignment) => {
+    // Review responses intentionally omit sheet/crew ids. If they are present
+    // but null (a cleared row), this is not an active assignment.
+    if ("sheetId" in assignment) return Boolean(assignment.sheetId && assignment.crewId);
+    return assignment.sheetStatus === "draft" || assignment.sheetStatus === "request";
+  });
+
+  return (
+    <Card
+      className={day.relative ? "border-2 border-blue-500 dark:border-blue-400" : undefined}
+      data-testid={`card-day-${day.ymd}`}
+    >
+      <CardHeader className={day.relative ? "flex-row flex-wrap items-start gap-2 space-y-0" : undefined}>
+        <CardTitle
+          className={day.relative === "Today" ? "text-xl" : "text-lg"}
+          data-testid={`text-day-heading-${day.ymd}`}
+        >
+          {formatDayHeading(day.ymd)}
+        </CardTitle>
+        {day.relative && (
+          <Badge
+            variant="outline"
+            className="ml-auto shrink-0 border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-200"
+            data-testid={`badge-day-${day.ymd}`}
+          >
+            {day.relative}'s Schedule
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {visibleAssignments.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid={`text-no-assignment-${day.ymd}`}>
+            No assignment
+          </p>
+        ) : (
+          visibleAssignments.map((assignment) => (
+            <AssignmentDetails
+              key={assignment.assignmentId}
+              assignment={assignment}
+              scheduleId={scheduleId}
+              now={now}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -326,45 +394,7 @@ export default function EdlsSchedulePage() {
       )}
 
       {days.map((day) => (
-        <Card
-          key={day.ymd}
-          className={day.relative ? "border-2 border-blue-500 dark:border-blue-400" : undefined}
-          data-testid={`card-day-${day.ymd}`}
-        >
-          <CardHeader className={day.relative ? "flex-row flex-wrap items-start gap-2 space-y-0" : undefined}>
-            <CardTitle
-              className={day.relative === "Today" ? "text-xl" : "text-lg"}
-              data-testid={`text-day-heading-${day.ymd}`}
-            >
-              {formatDayHeading(day.ymd)}
-            </CardTitle>
-            {day.relative && (
-              <Badge
-                variant="outline"
-                className="ml-auto shrink-0 border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-200"
-                data-testid={`badge-day-${day.ymd}`}
-              >
-                {day.relative}'s Schedule
-              </Badge>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {day.assignments.length === 0 ? (
-              <p className="text-sm text-muted-foreground" data-testid={`text-no-assignment-${day.ymd}`}>
-                No assignments
-              </p>
-            ) : (
-              day.assignments.map((assignment) => (
-                <AssignmentDetails
-                  key={assignment.assignmentId}
-                  assignment={assignment}
-                  scheduleId={id}
-                  now={now}
-                />
-              ))
-            )}
-          </CardContent>
-        </Card>
+        <ScheduleDayCard key={day.ymd} day={day} scheduleId={id} now={now} />
       ))}
     </div>
   );

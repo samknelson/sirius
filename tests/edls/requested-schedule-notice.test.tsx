@@ -2,7 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { AssignmentDetails } from "../../client/src/pages/edls-schedule";
+import { AssignmentDetails, ScheduleDayCard } from "../../client/src/pages/edls-schedule";
 
 const assignment = {
   assignmentId: "assignment-1",
@@ -28,13 +28,19 @@ const assignment = {
 };
 
 const notice = "The assignment for this day is being reviewed. This page will be updated when the assignment is final.";
+type Status = "draft" | "request" | "lock" | "reserved";
+type DayAssignments = React.ComponentProps<typeof ScheduleDayCard>["day"]["assignments"];
 
-function renderAssignment(sheetStatus: string, accepted: boolean | null = null) {
+function renderAssignment(sheetStatus: Status, accepted: boolean | null = null) {
+  const visibleAssignment: DayAssignments[number] =
+    sheetStatus === "draft" || sheetStatus === "request"
+      ? { assignmentId: assignment.assignmentId, ymd: assignment.ymd, sheetStatus }
+      : { ...assignment, sheetStatus, accepted };
   const client = new QueryClient();
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <AssignmentDetails
-        assignment={{ ...assignment, sheetStatus, accepted }}
+        assignment={visibleAssignment}
         scheduleId="schedule-1"
         now={Date.parse("2026-09-24T13:00:00.000Z")}
       />
@@ -42,9 +48,21 @@ function renderAssignment(sheetStatus: string, accepted: boolean | null = null) 
   );
 }
 
-describe("Requested EDLS assignment on the public schedule", () => {
-  it("shows only the review notice, without draft details, answer controls, or update age", () => {
-    const html = renderAssignment("request");
+function renderDay(assignments: DayAssignments) {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <ScheduleDayCard
+        day={{ ymd: assignment.ymd, relative: "Today", assignments }}
+        scheduleId="schedule-1"
+        now={Date.parse("2026-09-24T13:00:00.000Z")}
+      />
+    </QueryClientProvider>,
+  );
+}
+
+describe("EDLS assignment states on the public schedule", () => {
+  it.each(["draft", "request"])("shows only the review notice for %s, without details or answers", (status) => {
+    const html = renderAssignment(status as Status);
     expect(html).toContain(notice);
     expect(html).not.toContain("Private job details");
     expect(html).not.toContain("Private crew details");
@@ -56,16 +74,46 @@ describe("Requested EDLS assignment on the public schedule", () => {
   });
 
   it.each(["lock", "reserved"])("returns to the assignment and answer view when %s", (status) => {
-    const html = renderAssignment(status);
+    const html = renderAssignment(status as Status);
     expect(html).not.toContain(notice);
     expect(html).toContain("Private job details");
     expect(html).toContain("button-accept");
+    expect(html).toContain("button-decline");
     expect(html).toContain("text-updated");
   });
 
-  it("still shows an already recorded answer on a Reserved assignment", () => {
-    const html = renderAssignment("reserved", true);
-    expect(html).toContain("You accepted this assignment.");
+  it.each([
+    ["lock", true, "accepted"],
+    ["reserved", false, "declined"],
+  ])("shows the recorded answer on %s rather than answer controls", (status, accepted, wording) => {
+    const html = renderAssignment(status as Status, accepted);
+    expect(html).toContain(`You ${wording} this assignment.`);
     expect(html).not.toContain("button-accept");
+    expect(html).not.toContain("button-decline");
+  });
+
+  it("shows No assignment on an empty day or one with only a cleared row", () => {
+    for (const assignments of [
+      [],
+      [{ ...assignment, sheetStatus: "lock" as const, sheetId: null as unknown as string, crewId: null as unknown as string }],
+    ]) {
+      const html = renderDay(assignments);
+      expect(html).toContain("No assignment");
+      expect(html).not.toContain(notice);
+      expect(html).not.toContain("Private job details");
+      expect(html).not.toContain("button-accept");
+    }
+  });
+
+  it("handles a reviewed and a scheduled assignment independently on the same day", () => {
+    const html = renderDay([
+      { assignmentId: assignment.assignmentId, ymd: assignment.ymd, sheetStatus: "draft" },
+      { ...assignment, assignmentId: "assignment-2", sheetStatus: "lock", sheetTitle: "Scheduled job" },
+    ]);
+    expect(html).toContain(notice);
+    expect(html).toContain("Scheduled job");
+    expect(html).toContain("button-accept-assignment-2");
+    expect(html).not.toContain("button-accept-assignment-1");
+    expect(html).not.toContain("No assignment");
   });
 });

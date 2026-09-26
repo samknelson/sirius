@@ -14,20 +14,29 @@ import {
   checkAccess,
 } from "../../services/access-policy-evaluator";
 
-/** Requested assignments remain visible as review notices; Draft and Trash stay hidden. */
-const PUBLIC_SHEET_STATUSES = ["request", "lock", "reserved"];
+/** Draft and Requested assignments are review notices; Trash stays hidden. */
+const PUBLIC_SHEET_STATUSES = ["draft", "request", "lock", "reserved"];
 
-/** Requested is under review; Locked and Reserved can receive a worker's final answer. */
+/** Draft and Requested are under review; Scheduled and Reserved can receive a final answer. */
 const ANSWERABLE_SHEET_STATUSES = ["lock", "reserved"];
 
 /** Number of calendar days shown, counting today. */
 const SCHEDULE_DAYS = 7;
 
+type ReviewScheduleAssignment = Pick<AssignmentForWorker, "assignmentId" | "ymd"> & {
+  sheetStatus: "draft" | "request";
+};
+
+type ConfirmedScheduleAssignment = AssignmentForWorker & {
+  sheetStatus: "lock" | "reserved";
+  updatedAt: string | null;
+};
+
 export interface PublicWorkerSchedule {
   workerName: string;
   startYmd: string;
   endYmd: string;
-  assignments: Array<AssignmentForWorker & { updatedAt: string | null }>;
+  assignments: Array<ReviewScheduleAssignment | ConfirmedScheduleAssignment>;
   workerBackPath?: string;
 }
 
@@ -154,16 +163,32 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         }
         const contact = await storage.contacts.getContact(worker.contactId);
 
-        // "Updated" is this assignment record's provenance, not a derived
-        // max over its crew or sheet (whose edits have their own history).
+        // Review notices must not expose unconfirmed job, crew, location, or
+        // other detail fields even in the public JSON response. Only confirmed
+        // assignments need an update age.
         const metadata = await entityMetadataStorage.getMany(
-          resolved.assignments.map((assignment) => assignment.assignmentId),
+          resolved.assignments
+            .filter((assignment) => assignment.sheetStatus === "lock" || assignment.sheetStatus === "reserved")
+            .map((assignment) => assignment.assignmentId),
         );
-        const assignments = resolved.assignments.map((assignment) => {
+        const assignments: PublicWorkerSchedule["assignments"] = resolved.assignments.map((assignment) => {
+          if (assignment.sheetStatus === "draft" || assignment.sheetStatus === "request") {
+            return {
+              assignmentId: assignment.assignmentId,
+              ymd: assignment.ymd,
+              sheetStatus: assignment.sheetStatus,
+            };
+          }
+          // The storage read is restricted to PUBLIC_SHEET_STATUSES; never
+          // publish full details for a newly added or unexpected status.
+          if (assignment.sheetStatus !== "lock" && assignment.sheetStatus !== "reserved") {
+            throw new Error("Unexpected EDLS public schedule sheet status");
+          }
           const record = metadata.get(assignment.assignmentId);
           const modified = record?.contextId === "edls_assignments" ? record.modified.date : null;
           return {
             ...assignment,
+            sheetStatus: assignment.sheetStatus,
             updatedAt: modified && Number.isFinite(modified.getTime())
               ? modified.toISOString()
               : null,
