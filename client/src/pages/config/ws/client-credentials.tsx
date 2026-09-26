@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,8 +56,14 @@ function CredentialsContent() {
   const [newCredential, setNewCredential] = useState<NewCredentialResponse | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [copiedCredentialId, setCopiedCredentialId] = useState<string | null>(null);
+  const rowCopyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteCredTarget, setDeleteCredTarget] = useState<CredentialWithoutHash | null>(null);
   const [credForm, setCredForm] = useState({ label: "" });
+
+  useEffect(() => () => {
+    if (rowCopyTimeout.current) clearTimeout(rowCopyTimeout.current);
+  }, []);
 
   const { data: credentials = [], isLoading: credentialsLoading } = useQuery<CredentialWithoutHash[]>({
     queryKey: ["/api/admin/ws-clients", params.id, "credentials"],
@@ -122,6 +128,20 @@ function CredentialsContent() {
     }
   };
 
+  const copyCredentialId = async (cred: CredentialWithoutHash) => {
+    try {
+      await navigator.clipboard.writeText(cred.clientKey);
+      if (rowCopyTimeout.current) clearTimeout(rowCopyTimeout.current);
+      setCopiedCredentialId(cred.id);
+      toast({ title: "Client ID copied", description: "The full Client ID is on your clipboard." });
+      rowCopyTimeout.current = setTimeout(() => setCopiedCredentialId(null), 2000);
+    } catch {
+      if (rowCopyTimeout.current) clearTimeout(rowCopyTimeout.current);
+      setCopiedCredentialId(null);
+      toast({ title: "Could not copy Client ID", description: "Copy the Client ID from the row instead.", variant: "destructive" });
+    }
+  };
+
   return (
     <>
       <Card data-testid="card-credentials">
@@ -169,10 +189,23 @@ function CredentialsContent() {
                     <TableCell data-testid={`text-cred-label-${cred.id}`}>
                       {cred.label || <span className="text-muted-foreground">No label</span>}
                     </TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded" data-testid={`text-cred-key-${cred.id}`}>
-                        {cred.clientKey.slice(0, 8)}...
-                      </code>
+                    <TableCell className="max-w-[260px]">
+                      <div className="flex items-start gap-1">
+                        <code className="min-w-0 flex-1 break-all whitespace-normal rounded bg-muted px-2 py-1 text-xs" data-testid={`text-cred-key-${cred.id}`}>
+                          {cred.clientKey}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => copyCredentialId(cred)}
+                          aria-label={copiedCredentialId === cred.id ? `Copied Client ID ${cred.clientKey}` : `Copy Client ID ${cred.clientKey}`}
+                          title={copiedCredentialId === cred.id ? "Copied Client ID" : "Copy Client ID"}
+                          data-testid={`button-copy-cred-key-${cred.id}`}
+                        >
+                          {copiedCredentialId === cred.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {cred.isActive ? (
