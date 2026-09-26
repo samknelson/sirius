@@ -255,6 +255,7 @@ describe("public EDLS schedule answers", () => {
     getManyMetadata.mockResolvedValue(new Map([
       [ASSIGNMENT_ID, {
         contextId: "edls_assignments",
+        rev: 4,
         modified: { date, personName: "Private Staff Name" },
         created: { date: new Date("2020-01-01T00:00:00.000Z"), personName: null },
       }],
@@ -264,49 +265,56 @@ describe("public EDLS schedule answers", () => {
 
     expect(getManyMetadata).toHaveBeenCalledWith([ASSIGNMENT_ID]);
     expect(payload.assignments[0].generationId).toBe(GENERATION_ID);
+    expect(payload.assignments[0].revision).toBe(4);
     expect(payload.assignments[0].updatedAt).toBe("2026-09-24T12:12:00.000Z");
     expect(JSON.stringify(payload)).not.toContain("Private Staff Name");
     expect(JSON.stringify(payload)).not.toContain("2020-01-01");
   });
 
-  it("does not invent an update date for missing, unrelated, or invalid metadata", async () => {
-    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt).toBeNull();
+  it("does not invent revision or update date for missing, unrelated, or invalid metadata", async () => {
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: null, updatedAt: null }));
     getManyMetadata.mockResolvedValue(new Map([
-      [ASSIGNMENT_ID, { contextId: "edls_sheets", modified: { date: new Date() } }],
+      [ASSIGNMENT_ID, { contextId: "edls_sheets", rev: 9, modified: { date: new Date() } }],
     ]));
-    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt).toBeNull();
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: null, updatedAt: null }));
     getManyMetadata.mockResolvedValue(new Map([
-      [ASSIGNMENT_ID, { contextId: "edls_assignments", modified: { date: new Date(NaN) } }],
+      [ASSIGNMENT_ID, { contextId: "edls_assignments", rev: 0, modified: { date: new Date(NaN) } }],
     ]));
-    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt).toBeNull();
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: null, updatedAt: null }));
   });
 
-  it("refreshes the update date after a recorded answer, but not after a refused attempt", async () => {
+  it("refreshes the revision and update date after a recorded answer, but not after a refused attempt", async () => {
     let modifiedAt = new Date("2026-09-24T11:00:00.000Z");
+    let rev = 4;
     getManyMetadata.mockImplementation(async () => new Map([
       [ASSIGNMENT_ID, {
         contextId: "edls_assignments",
+        rev,
         modified: { date: modifiedAt },
       }],
     ]));
     setAccepted.mockImplementation(async () => {
       if (!scenario.setAcceptedResult) return false;
       modifiedAt = new Date("2026-09-24T12:00:00.000Z");
+      rev++;
       scenario.visibleAssignments[0].accepted = true;
       return true;
     });
 
-    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt)
-      .toBe("2026-09-24T11:00:00.000Z");
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: 4, updatedAt: "2026-09-24T11:00:00.000Z" }));
     expect((await answer(ACCESS_TOKEN)).status).toBe(200);
-    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt)
-      .toBe("2026-09-24T12:00:00.000Z");
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: 5, updatedAt: "2026-09-24T12:00:00.000Z" }));
 
     scenario.visibleAssignments[0].accepted = null;
     scenario.setAcceptedResult = false;
     expect((await answer(ACCESS_TOKEN)).status).toBe(403);
-    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt)
-      .toBe("2026-09-24T12:00:00.000Z");
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: 5, updatedAt: "2026-09-24T12:00:00.000Z" }));
   });
 
   it("records an answer for an assignment shown to the current AAT token", async () => {

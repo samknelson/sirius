@@ -11,6 +11,7 @@ const assignment = {
   sheetId: "sheet-1",
   sheetTitle: "Private job details",
   sheetStatus: "request",
+  revision: 4,
   updatedAt: "2026-09-24T12:00:00.000Z",
   crewId: "crew-1",
   crewTitle: "Private crew details",
@@ -71,6 +72,7 @@ describe("EDLS assignment states on the public schedule", () => {
     expect(html).not.toContain("button-accept");
     expect(html).not.toContain("button-decline");
     expect(html).not.toContain("text-updated");
+    expect(html).not.toContain("Rev. #");
   });
 
   it.each(["lock", "reserved"])("returns to the assignment and answer view when %s", (status) => {
@@ -80,6 +82,7 @@ describe("EDLS assignment states on the public schedule", () => {
     expect(html).toContain("button-accept");
     expect(html).toContain("button-decline");
     expect(html).toContain("text-updated");
+    expect(html).toContain("(Rev. #4, updated 1 hour ago)");
   });
 
   it.each([

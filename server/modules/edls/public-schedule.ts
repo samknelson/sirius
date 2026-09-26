@@ -29,6 +29,7 @@ type ReviewScheduleAssignment = Pick<AssignmentForWorker, "assignmentId" | "ymd"
 
 type ConfirmedScheduleAssignment = AssignmentForWorker & {
   sheetStatus: "lock" | "reserved";
+  revision: number | null;
   updatedAt: string | null;
 };
 
@@ -165,7 +166,7 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
 
         // Review notices must not expose unconfirmed job, crew, location, or
         // other detail fields even in the public JSON response. Only confirmed
-        // assignments need an update age.
+        // assignments need an update age and revision.
         const metadata = await entityMetadataStorage.getMany(
           resolved.assignments
             .filter((assignment) => assignment.sheetStatus === "lock" || assignment.sheetStatus === "reserved")
@@ -185,10 +186,14 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
             throw new Error("Unexpected EDLS public schedule sheet status");
           }
           const record = metadata.get(assignment.assignmentId);
-          const modified = record?.contextId === "edls_assignments" ? record.modified.date : null;
+          const ownMetadata = record?.contextId === "edls_assignments" ? record : null;
+          const modified = ownMetadata?.modified.date;
           return {
             ...assignment,
             sheetStatus: assignment.sheetStatus,
+            revision: ownMetadata && Number.isSafeInteger(ownMetadata.rev) && ownMetadata.rev > 0
+              ? ownMetadata.rev
+              : null,
             updatedAt: modified && Number.isFinite(modified.getTime())
               ? modified.toISOString()
               : null,

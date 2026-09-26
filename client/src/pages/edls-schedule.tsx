@@ -27,6 +27,7 @@ interface ConfirmedScheduleAssignment {
   sheetId: string;
   sheetTitle: string;
   sheetStatus: "lock" | "reserved";
+  revision: number | null;
   updatedAt: string | null;
   crewId: string;
   crewTitle: string;
@@ -243,7 +244,7 @@ export function AssignmentDetails({
         className="text-right text-xs text-muted-foreground"
         data-testid={`text-updated-${assignment.assignmentId}`}
       >
-        {assignmentUpdateAge(assignment.updatedAt, now)}
+        {assignmentUpdateAge(assignment.updatedAt, now, assignment.revision)}
       </p>
     </div>
   );
