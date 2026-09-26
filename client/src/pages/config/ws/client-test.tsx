@@ -20,7 +20,7 @@ import {
   wsServiceLabel,
   wsServiceAddress,
 } from "./use-ws-services";
-import { buildWsTestUrl, DEFAULT_WS_TEST_BASE, isLocalWsTestBase } from "@shared/utils/ws-test-url";
+import { buildWsTestUrl } from "@shared/utils/ws-test-url";
 
 function parseQueryParams(value: string): Record<string, string> | undefined {
   if (!value.trim()) return undefined;
@@ -131,7 +131,6 @@ function TestContent() {
   const [operation, setOperation] = useState("");
   const [queryParams, setQueryParams] = useState("");
   const [requestBody, setRequestBody] = useState("");
-  const [baseUrlInput, setBaseUrlInput] = useState(DEFAULT_WS_TEST_BASE);
   const [testResult, setTestResult] = useState<TestResponse | null>(null);
   const { client, hasTabAccess } = useWsClientLayout();
   const needsFreemanBearer = shouldShowFreemanBearerInput(
@@ -176,7 +175,6 @@ function TestContent() {
         clientSecret,
         ...(needsFreemanBearer ? { bearerToken } : {}),
         method,
-        baseUrl: baseUrlInput,
         configRef: selectedConfig ? wsServiceAddress(selectedConfig) : configId,
         operation,
         queryParams: parsedQueryParams,
@@ -219,11 +217,7 @@ function TestContent() {
   // The public address. Prefer the alias: configuration ids are minted per
   // database, so a copied cURL built on an id only works here.
   const address = selectedConfig ? wsServiceAddress(selectedConfig) : "<service>";
-  const origin = typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.host}`
-    : "";
-  let requestUrl = "";
-  let baseUrlError = "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   let queryError = "";
   let parsedPreviewQuery: Record<string, string> | undefined;
   try {
@@ -231,15 +225,11 @@ function TestContent() {
   } catch (error) {
     queryError = error instanceof Error ? error.message : "Invalid query parameters";
   }
-  try {
-    requestUrl = buildWsTestUrl(baseUrlInput, address, operation || "<operation>", parsedPreviewQuery, origin);
-  } catch (error) {
-    baseUrlError = error instanceof Error ? error.message : "Invalid base URL";
-  }
+  const requestUrl = buildWsTestUrl(address, operation || "<operation>", parsedPreviewQuery);
 
   const curlCommand = useMemo(() => {
     return generateCurlCommand({
-      baseUrl: requestUrl,
+      baseUrl: `${origin}${requestUrl}`,
       method,
       path: "",
       queryParams: "",
@@ -248,7 +238,7 @@ function TestContent() {
       clientSecret,
       bearerToken: needsFreemanBearer ? bearerToken.trim() : undefined,
     });
-  }, [requestUrl, method, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
+  }, [origin, requestUrl, method, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
 
   const handleCopyCurl = async () => {
     try {
@@ -323,38 +313,11 @@ function TestContent() {
             <CardTitle>Request</CardTitle>
             <CardDescription>
               {selectedConfig
-                ? requestUrl || baseUrlError
+                ? requestUrl
                 : "Choose one of the web services this client has been granted"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="ws-test-base-url">Base URL</Label>
-              <Input
-                id="ws-test-base-url"
-                type="text"
-                value={baseUrlInput}
-                onChange={(event) => { setBaseUrlInput(event.target.value); setTestResult(null); }}
-                autoComplete="off"
-                spellCheck={false}
-                data-testid="input-ws-test-base-url"
-              />
-              <p className="text-xs text-muted-foreground">
-                Use /api/ws/ for this site, or a full address such as https://other.example/api/ws/.
-                An origin alone uses /api/ws/. Remote requests send the credentials entered above to that server.
-              </p>
-              {baseUrlError && <p className="text-sm text-destructive" role="alert">{baseUrlError}</p>}
-              {baseUrlInput.trim().toLowerCase().startsWith("http://") && (
-                <p className="text-sm text-amber-700 dark:text-amber-300">
-                  HTTP sends credentials without encryption. Use HTTPS when possible.
-                </p>
-              )}
-              {selectedConfig && !selectedConfig.alias && !isLocalWsTestBase(baseUrlInput) && (
-                <p className="text-sm text-amber-700 dark:text-amber-300">
-                  This service has no alias. Its ID may not exist on another instance.
-                </p>
-              )}
-            </div>
             {grantedConfigs.length === 0 ? (
               <Alert data-testid="alert-no-grants">
                 <AlertDescription>
@@ -462,7 +425,7 @@ function TestContent() {
 
             <Button
               onClick={() => testMutation.mutate()}
-              disabled={!canExecute || Boolean(baseUrlError || queryError) || testMutation.isPending}
+              disabled={!canExecute || Boolean(queryError) || testMutation.isPending}
               className="w-full"
               data-testid="button-execute"
             >
@@ -487,7 +450,7 @@ function TestContent() {
                 variant="outline"
                 size="sm"
                 onClick={handleCopyCurl}
-                disabled={Boolean(baseUrlError || queryError)}
+                disabled={Boolean(queryError)}
                 data-testid="button-copy-curl"
               >
                 {copied ? (
@@ -507,7 +470,7 @@ function TestContent() {
               className="bg-muted p-4 rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap break-all"
               data-testid="text-curl-command"
             >
-              {baseUrlError || queryError || curlCommand}
+              {queryError || curlCommand}
             </pre>
           </CardContent>
         </Card>

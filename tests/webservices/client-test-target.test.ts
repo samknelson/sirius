@@ -1,86 +1,90 @@
 import { createServer } from "node:http";
+import express from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildWsTestUrl, normalizeWsTestBase } from "../../shared/utils/ws-test-url";
-import {
-  executeWsTestHttp,
-  isSafeRemoteAddress,
-  resolveRemoteTarget,
-} from "../../server/modules/webservices/test-request-http";
+import { buildWsTestUrl } from "../../shared/utils/ws-test-url";
+import { executeWsTestHttp } from "../../server/modules/webservices/test-request-http";
 import { generateCurlCommand } from "../../client/src/pages/config/ws/client-test";
 import { setMaintenanceActive } from "../../server/services/maintenance-flag";
+import { installServiceRoleOwnershipGuard } from "../../server/services/service-roles";
+
+const { port } = vi.hoisted(() => ({ port: { value: "5000" } }));
+vi.mock("../../server/config/env-registry", () => ({
+  getEnvironmentVariable: (name: string) => name === "PORT" ? port.value : undefined,
+}));
 
 describe("web service test URL", () => {
-  it("keeps the relative default but resolves it for a copied terminal command", () => {
-    expect(buildWsTestUrl("/api/ws/", "service", "run")).toBe("/api/ws/service/run");
-    expect(buildWsTestUrl("/api/ws/", "service", "run", { page: "two words" }, "https://this.example"))
-      .toBe("https://this.example/api/ws/service/run?page=two+words");
+  it("constructs only the local path with encoded query parameters", () => {
+    expect(buildWsTestUrl("service", "run")).toBe("/api/ws/service/run");
+    expect(buildWsTestUrl("service", "run", { page: "two words" }))
+      .toBe("/api/ws/service/run?page=two+words");
   });
 
-  it("accepts another origin or an alternate gateway path without duplicating /api/ws/", () => {
-    expect(buildWsTestUrl("https://remote.example", "alias", "lookup"))
-      .toBe("https://remote.example/api/ws/alias/lookup");
-    expect(buildWsTestUrl("https://remote.example/gateway/ws/", "alias", "lookup"))
-      .toBe("https://remote.example/gateway/ws/alias/lookup");
-    expect(buildWsTestUrl("https://remote.example/api/ws/", "name with space", "lookup"))
-      .toBe("https://remote.example/api/ws/name%20with%20space/lookup");
+  it("refuses path traversal through service and operation names", () => {
+    expect(() => buildWsTestUrl("..", "run")).toThrow("Invalid web service address");
+    expect(() => buildWsTestUrl("service", ".")).toThrow("Invalid web service address");
   });
 
-  it("copies the same alternate target, method, query, and credentials into cURL", () => {
+  it("copies this site's address, method, query, and credentials into cURL", () => {
     const command = generateCurlCommand({
-      baseUrl: buildWsTestUrl("https://remote.example/gateway/ws/", "alias", "lookup", { page: "2" }),
+      baseUrl: `https://this.example${buildWsTestUrl("alias", "lookup", { page: "2" })}`,
       method: "POST", path: "", queryParams: "",
       requestBody: '{"test":true}', clientKey: "client-1", clientSecret: "secret-1",
     });
-    expect(command).toContain('"https://remote.example/gateway/ws/alias/lookup?page=2"');
+    expect(command).toContain('"https://this.example/api/ws/alias/lookup?page=2"');
     expect(command).toContain('X-WS-Client-ID: client-1');
     expect(command).toContain('X-WS-Client-Secret: secret-1');
     expect(command).toContain("-d '{\"test\":true}'");
   });
-
-  it.each([
-    "http://user:password@example.com",
-    "https://example.com/path?token=secret",
-    "https://example.com/#fragment",
-    "file:///tmp/data",
-    "//example.com/api/ws/",
-    "/admin/",
-  ])("refuses unsupported base URLs: %s", (base) => {
-    expect(() => normalizeWsTestBase(base)).toThrow();
-  });
 });
 
-describe("outbound target guard", () => {
-  afterEach(() => setMaintenanceActive(false));
+describe("local-only test transport", () => {
+  afterEach(() => { setMaintenanceActive(false); port.value = "5000"; });
 
   it("refuses even local test requests during maintenance before connecting", async () => {
     setMaintenanceActive(true);
-    await expect(executeWsTestHttp("http://127.0.0.1:1/api/ws/test/run", "GET", {}, undefined, true))
+    await expect(executeWsTestHttp("/api/ws/test/run", "GET", {}, undefined))
       .rejects.toThrow("Web service test is unavailable: the site is in maintenance mode");
   });
 
-  it.each(["127.0.0.1", "10.2.3.4", "169.254.169.254", "192.168.1.1",
-    "0.0.0.0", "::1", "::ffff:127.0.0.1", "fc00::1", "fe80::1"])(
-    "blocks private and metadata address %s", (address) => {
-      expect(isSafeRemoteAddress(address)).toBe(false);
-    },
-  );
-
-  it("refuses any host that resolves to even one private address", async () => {
-    const resolver = vi.fn(async () => [
-      { address: "8.8.8.8", family: 4 },
-      { address: "127.0.0.1", family: 4 },
-    ]);
-    await expect(resolveRemoteTarget(new URL("https://remote.example/api/ws/"), resolver as any))
-      .rejects.toThrow("Private or local targets");
-    expect(resolver).toHaveBeenCalledOnce();
-    await expect(resolveRemoteTarget(new URL("https://127.0.0.1/api/ws/"), resolver as any))
-      .rejects.toThrow("Private or local targets");
-    expect(resolver).toHaveBeenCalledOnce();
+  it.each(["https://remote.example/api/ws/test/run", "//remote.example/api/ws/test/run",
+    "/api/ws/../admin", "/api/admin/test"])("refuses a non-dispatcher path: %s", async (path) => {
+    await expect(executeWsTestHttp(path, "GET", {}, undefined))
+      .rejects.toThrow("Only local web services can be tested");
   });
 
-  it("does not follow a redirect to another host and bounds response size", async () => {
+  it("reaches the dispatcher on an api-user-only process without opening it to normal traffic", async () => {
+    const app = express();
+    installServiceRoleOwnershipGuard(app, {
+      ids: ["api-user"],
+      has: (role) => role === "api-user",
+    });
+    app.get("/api/ws/:configRef/:operation", (_req, res) => {
+      res.status(401).json({ message: "Credential rejected by local dispatcher" });
+    });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("No test port");
+      port.value = String(address.port);
+      const ordinaryRequest = await fetch(`http://127.0.0.1:${port.value}/api/ws/test/inspect`);
+      expect(ordinaryRequest.status).toBe(503);
+      expect((await ordinaryRequest.json()).code).toBe("SERVICE_ROLE_NOT_ASSIGNED");
+
+      const testRequest = await executeWsTestHttp("/api/ws/test/inspect", "GET", {}, undefined);
+      expect(testRequest.status).toBe(401);
+      expect(testRequest.data).toEqual({ message: "Credential rejected by local dispatcher" });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("calls the local dispatcher, does not follow redirects, and bounds response size", async () => {
     const server = createServer((req, res) => {
-      if (req.url === "/redirect") {
+      if (req.url === "/api/ws/test/inspect?page=2") {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end('{"message":"Not authorized"}');
+      } else if (req.url === "/api/ws/test/redirect") {
         res.writeHead(302, { location: "http://127.0.0.1:1/metadata" });
         res.end();
       } else {
@@ -91,11 +95,14 @@ describe("outbound target guard", () => {
     try {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("No test port");
-      const base = `http://127.0.0.1:${address.port}`;
-      const redirected = await executeWsTestHttp(`${base}/redirect`, "GET", {}, undefined, true);
+      port.value = String(address.port);
+      const denied = await executeWsTestHttp("/api/ws/test/inspect?page=2", "GET", {}, undefined);
+      expect(denied.status).toBe(401);
+      expect(denied.data).toEqual({ message: "Not authorized" });
+      const redirected = await executeWsTestHttp("/api/ws/test/redirect", "GET", {}, undefined);
       expect(redirected.status).toBe(302);
       expect(redirected.headers.location).toBe("http://127.0.0.1:1/metadata");
-      await expect(executeWsTestHttp(`${base}/large`, "GET", {}, undefined, true))
+      await expect(executeWsTestHttp("/api/ws/test/large", "GET", {}, undefined))
         .rejects.toThrow("Response is too large");
     } finally {
       server.close();

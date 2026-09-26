@@ -3,12 +3,11 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
 import { entityMetadataStorage } from "../../storage/system/entity-metadata";
-import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 import { buildTestRequestHeaders } from "./test-request-auth";
 import { executeWsTestHttp } from "./test-request-http";
-import { buildWsTestUrl, DEFAULT_WS_TEST_BASE, isLocalWsTestBase } from "@shared/utils/ws-test-url";
+import { buildWsTestUrl } from "@shared/utils/ws-test-url";
 import { sendIfMaintenanceRefusal } from "../../services/maintenance-flag";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
@@ -404,7 +403,6 @@ export function registerWebServiceAdminRoutes(
     clientSecret: z.string().max(8192).optional().default(""),
     bearerToken: z.string().max(8192, "Bearer token is too long").optional(),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-    baseUrl: z.string().max(2048).optional().default(DEFAULT_WS_TEST_BASE),
     /** Configuration id (or alias) — the first segment of the public URL. */
     configRef: z.string().min(1, "Configuration is required").max(200),
     /** Declared operation name — the second segment of the public URL. */
@@ -430,16 +428,12 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body, baseUrl } = parseResult.data;
-      const local = isLocalWsTestBase(baseUrl);
+       const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body } = parseResult.data;
       let target: string;
       try {
-        target = buildWsTestUrl(
-          baseUrl, configRef, operation, queryParams,
-          local ? `http://127.0.0.1:${getEnvironmentVariable("PORT") || 5000}` : "",
-        );
+         target = buildWsTestUrl(configRef, operation, queryParams);
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid base URL" });
+         return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid web service address" });
       }
       const requestBody = body !== undefined && ["POST", "PUT", "PATCH"].includes(method)
         ? JSON.stringify(body)
@@ -449,30 +443,29 @@ export function registerWebServiceAdminRoutes(
       }
 
       // The selected client supplies only the authentication HEADER FORMAT.
-      // The target web service, including this instance's dispatcher, decides
+      // The local dispatcher decides
       // whether the credentials, client status, and grant actually permit it.
       const headers = buildTestRequestHeaders(client, clientKey, clientSecret, method, bearerToken);
       let response;
       try {
-        response = await executeWsTestHttp(target, method, headers, requestBody, local);
+        response = await executeWsTestHttp(target, method, headers, requestBody);
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         // Do not relay low-level errors: they can contain the target address,
         // request data, or credential fragments. Known refusal messages are
         // fixed strings; everything else is a connection failure.
         const message = error instanceof Error && [
-          "Private or local targets are not allowed",
           "Request timed out",
           "Response is too large (1 MB limit)",
-        ].includes(error.message) ? error.message : "Could not connect to the selected server";
+        ].includes(error.message) ? error.message : "Could not connect to the local web service";
         return res.json({
           success: false, status: 0, error: "Request failed", message,
           duration: Date.now() - startTime,
-          requestInfo: { method, url: local ? new URL(target).pathname + new URL(target).search : target },
+          requestInfo: { method, url: target },
         });
       }
 
-      // A remote service may echo credentials in its reply. Do not return or
+      // The service may echo credentials in its reply. Do not return or
       // log those echoes via the admin test response.
       const scrub = (text: string) => [clientKey, clientSecret, bearerToken]
         .filter((value): value is string => Boolean(value && value.length >= 3))
@@ -495,7 +488,7 @@ export function registerWebServiceAdminRoutes(
         duration: Date.now() - startTime,
         requestInfo: {
           method,
-          url: local ? new URL(target).pathname + new URL(target).search : target,
+          url: target,
         },
       });
     } catch (error) {

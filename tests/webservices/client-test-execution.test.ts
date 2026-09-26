@@ -45,13 +45,13 @@ const app = {
 };
 registerWebServiceAdminRoutes(app as any, (() => {}) as any, (() => () => {}) as any);
 
-async function execute(baseUrl = "/api/ws/", overrides: Record<string, unknown> = {}) {
+async function execute(overrides: Record<string, unknown> = {}) {
   const json = vi.fn();
   const res = { json, status: vi.fn().mockReturnThis() };
   await handler({
     params: { id: "client-1" },
     body: {
-      baseUrl, clientKey: "remote-client", clientSecret: "remote-secret",
+      clientKey: "remote-client", clientSecret: "remote-secret",
       method: "POST", configRef: "portable-alias", operation: "inspect",
       queryParams: { page: "2" }, body: { test: true },
       ...overrides,
@@ -82,13 +82,13 @@ describe("admin web service test execution", () => {
     expect(validateSecret).not.toHaveBeenCalled();
     expect(getByClientKey).not.toHaveBeenCalled();
     expect(executeWsTestHttp).toHaveBeenCalledWith(
-      "http://127.0.0.1:5000/api/ws/portable-alias/inspect?page=2",
+      "/api/ws/portable-alias/inspect?page=2",
       "POST", expect.objectContaining({
         "X-WS-Client-ID": "remote-client",
         "X-WS-Client-Secret": "remote-secret",
         "Content-Type": "application/json",
       }),
-      '{"test":true}', true,
+      '{"test":true}',
     );
     expect(recordUsage).not.toHaveBeenCalled();
     expect(data.success).toBe(false);
@@ -120,7 +120,7 @@ describe("admin web service test execution", () => {
       data: { freemanBearerAuthorizationConfigId: "auth-config" },
     });
     getByClientKey.mockResolvedValue(null);
-    const { data } = await execute("/api/ws/", { bearerToken: "entered-token" });
+    const { data } = await execute({ bearerToken: "entered-token" });
     expect(getByClientKey).not.toHaveBeenCalled();
     expect(validateSecret).not.toHaveBeenCalled();
     expect(executeWsTestHttp).toHaveBeenCalledWith(
@@ -129,38 +129,48 @@ describe("admin web service test execution", () => {
         "X-WS-Client-ID": "remote-client",
         Authorization: "Bearer entered-token",
       }),
-      expect.any(String), true,
+      expect.any(String),
     );
     expect(executeWsTestHttp.mock.calls[0][2]).not.toHaveProperty("X-WS-Client-Secret");
     expect(data.success).toBe(true);
   });
 
   it("sends the same GET headers as cURL without an unnecessary content type", async () => {
-    await execute("/api/ws/", { method: "GET" });
+    await execute({ method: "GET" });
     expect(executeWsTestHttp.mock.calls[0][2]).not.toHaveProperty("Content-Type");
     expect(executeWsTestHttp.mock.calls[0][3]).toBeUndefined();
   });
 
-  it("lets a remote server judge credentials without recording local usage", async () => {
+  it("ignores a manually supplied remote base URL and sends only to the local dispatcher", async () => {
     validateSecret.mockResolvedValue({ valid: false });
-    const { data } = await execute("https://remote.example/gateway/ws/");
+    const { data } = await execute({
+      baseUrl: "https://remote.example/gateway/ws/",
+      target: "https://remote.example/elsewhere",
+    });
     expect(validateSecret).not.toHaveBeenCalled();
     expect(recordUsage).not.toHaveBeenCalled();
     expect(executeWsTestHttp).toHaveBeenCalledWith(
-      "https://remote.example/gateway/ws/portable-alias/inspect?page=2",
-      "POST", expect.anything(), '{"test":true}', false,
+      "/api/ws/portable-alias/inspect?page=2",
+      "POST", expect.anything(), '{"test":true}',
     );
-    expect(data.requestInfo.url).toBe("https://remote.example/gateway/ws/portable-alias/inspect?page=2");
+    expect(data.requestInfo.url).toBe("/api/ws/portable-alias/inspect?page=2");
     expect(data.success).toBe(true);
   });
 
-  it("relays remote refusal, but redacts echoed credentials", async () => {
+  it("refuses traversal through a crafted service reference before sending", async () => {
+    const { data, res } = await execute({ configRef: ".." });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(data.message).toBe("Invalid web service address");
+    expect(executeWsTestHttp).not.toHaveBeenCalled();
+  });
+
+  it("shows local refusal but redacts echoed credentials", async () => {
     executeWsTestHttp.mockResolvedValue({
       status: 403, statusText: "remote-secret refused",
       headers: { "x-result": "remote-secret" },
       data: { message: "remote-secret refused" },
     });
-    const { data } = await execute("https://remote.example/");
+    const { data } = await execute();
     expect(data.success).toBe(false);
     expect(data.status).toBe(403);
     expect(JSON.stringify(data)).not.toContain("remote-secret");
@@ -168,15 +178,15 @@ describe("admin web service test execution", () => {
 
   it("returns a safe connection error without leaking credentials", async () => {
     executeWsTestHttp.mockRejectedValue(new Error("remote-secret in low-level error"));
-    const { data } = await execute("https://remote.example/");
+    const { data } = await execute();
     expect(data.success).toBe(false);
     expect(data.status).toBe(0);
     expect(JSON.stringify(data)).not.toContain("remote-secret");
   });
 
-  it("preserves the shared maintenance refusal instead of reporting a remote outage", async () => {
+  it("preserves the shared maintenance refusal instead of reporting an outage", async () => {
     executeWsTestHttp.mockRejectedValue(new MaintenanceModeError("Web service test", "execute request"));
-    const { data, res } = await execute("https://remote.example/");
+    const { data, res } = await execute();
     expect(res.status).toHaveBeenCalledWith(503);
     expect(data.maintenance).toBe(true);
     expect(recordUsage).not.toHaveBeenCalled();
