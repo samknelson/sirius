@@ -3,19 +3,22 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   componentState,
   scenario,
+  ensureAccessUuid,
   wcRequest,
   checkFlood,
   recordFloodEvent,
   logError,
   logWarn,
 } = vi.hoisted(() => ({
-  componentState: { enabled: true },
+  componentState: { enabled: true, edls: true, aat: true },
   scenario: {
     typeId: "t631-type" as string | null,
     exact: new Map<string, { workerId: string }>(),
     normalized: [] as Array<{ workerId: string }>,
     workerName: "Example Worker",
+    accessUuid: "c611ff80-4180-48e4-9505-54d7eb4a287e",
   },
+  ensureAccessUuid: vi.fn(),
   wcRequest: vi.fn(),
   checkFlood: vi.fn(),
   recordFloodEvent: vi.fn(),
@@ -37,10 +40,14 @@ vi.mock("../../server/storage", () => ({
     workers: {
       getWorkerDisplayName: vi.fn(async () => scenario.workerName),
     },
+    workerAat: { ensureAccessUuid },
+    workerEdls: { hasEdlsPresence: vi.fn(async () => true) },
   },
 }));
 
 vi.mock("../../server/modules/components", () => ({
+  isComponentEnabled: vi.fn(async (id: string) =>
+    id === "edls" ? componentState.edls : componentState.aat),
   requireComponent: () =>
     async (_req: unknown, res: any, next: () => void) => {
       if (componentState.enabled) {
@@ -61,6 +68,7 @@ vi.mock("../../server/logger", () => ({
 }));
 
 import { storage } from "../../server/storage";
+import { scheduleDestination } from "../../client/src/lib/t631-arrival-request";
 import { registerT631ArrivalRoutes } from "../../server/modules/sitespecific/t631/arrive";
 import { redactSensitiveUrlQuery } from "../../server/utils/redact-url-query";
 import {
@@ -100,10 +108,18 @@ beforeAll(() => {
 
 beforeEach(() => {
   componentState.enabled = true;
+  componentState.edls = true;
+  componentState.aat = true;
   scenario.typeId = "t631-type";
   scenario.exact = new Map();
   scenario.normalized = [];
   scenario.workerName = "Example Worker";
+  scenario.accessUuid = "c611ff80-4180-48e4-9505-54d7eb4a287e";
+  ensureAccessUuid.mockReset();
+  ensureAccessUuid.mockImplementation(async () => ({
+    record: { accessUuid: scenario.accessUuid },
+    issued: false,
+  }));
   wcRequest.mockReset();
   checkFlood.mockReset();
   recordFloodEvent.mockReset();
@@ -119,14 +135,22 @@ beforeEach(() => {
   });
   vi.mocked(storage.workerIds.getTypeIdBySiriusId).mockClear();
   vi.mocked(storage.workerIds.getWorkerIdByTypeAndValue).mockClear();
+  vi.mocked(storage.workerEdls.hasEdlsPresence).mockReset();
+  vi.mocked(storage.workerEdls.hasEdlsPresence).mockResolvedValue(true);
   vi.mocked(
     storage.workerIds.getWorkerIdsByTypeAndLeadingNonNumericPrefix,
   ).mockClear();
 });
 
 async function post(body: unknown, ip = "203.0.113.10") {
-  const result: { status: number; body?: any } = { status: 200 };
+  const result: { status: number; body?: any; headers: Record<string, string> } = {
+    status: 200, headers: {},
+  };
   const res = {
+    set(name: string, value: string) {
+      result.headers[name] = value;
+      return res;
+    },
     status(code: number) {
       result.status = code;
       return res;
@@ -219,12 +243,13 @@ describe("public T631 arrival route", () => {
     expect(response.status).toBe(403);
     expect(response.body.error).toBe("component_disabled");
     expect(wcRequest).not.toHaveBeenCalled();
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
   });
 
   it("returns a 200 display error for missing public inputs", async () => {
     const response = await post({ worker_id: "666666" });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       status: 200,
       body: {
         authenticated: false,
@@ -246,15 +271,23 @@ describe("public T631 arrival route", () => {
     );
     expect(checkFlood).not.toHaveBeenCalled();
     expect(recordFloodEvent).not.toHaveBeenCalled();
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
   });
 
   it("prefers an exact worker ID and does not run either fallback", async () => {
     scenario.exact.set("666666", { workerId: "worker-exact" });
     const response = await post({ worker_id: "666666", token: "secret" });
 
-    expect(response.body.message).toBe(
-      "Showing schedule for worker [Example Worker].",
-    );
+    expect(response.body).toEqual({
+      authenticated: true,
+      message: "Opening worker schedule.",
+      accessUuid: scenario.accessUuid,
+    });
+    expect(response.headers).toMatchObject({
+      "Cache-Control": "private, no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    expect(ensureAccessUuid).toHaveBeenCalledExactlyOnceWith("worker-exact");
     expect(storage.workerIds.getWorkerIdByTypeAndValue).toHaveBeenCalledTimes(1);
     expect(
       storage.workerIds.getWorkerIdsByTypeAndLeadingNonNumericPrefix,
@@ -295,9 +328,77 @@ describe("public T631 arrival route", () => {
       args: { worker_id: "666666", token: "secret" },
       mode: "force",
     });
-    expect(storage.workers.getWorkerDisplayName).toHaveBeenCalledWith(
-      "worker-first",
+    expect(ensureAccessUuid).toHaveBeenCalledExactlyOnceWith("worker-first");
+  });
+
+  it("uses an issued key and resolves a changed key on the next arrival", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    ensureAccessUuid.mockImplementation(async () => ({
+      record: { accessUuid: scenario.accessUuid },
+      issued: true,
+    }));
+    const first = await post({ worker_id: "666666", token: "secret" });
+    expect(scheduleDestination(first.body)).toBe(`/edls-sched/${scenario.accessUuid}`);
+    scenario.accessUuid = "672e393b-4ea6-4f5a-9dd8-a38c20f15c3b";
+    const second = await post({ worker_id: "666666", token: "secret" });
+    expect(scheduleDestination(second.body)).toBe(`/edls-sched/${scenario.accessUuid}`);
+    expect(ensureAccessUuid).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(second)).not.toContain("secret");
+  });
+
+  it.each(["edls", "aat"] as const)(
+    "never issues a link when the %s schedule component is disabled",
+    async (component) => {
+      scenario.exact.set("666666", { workerId: "worker-exact" });
+      componentState[component] = false;
+      const response = await post({ worker_id: "666666", token: "secret" });
+      expect(response.body).toEqual({
+        authenticated: false,
+        message: "The worker schedule is not available right now.",
+      });
+      expect(ensureAccessUuid).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not issue a link that the public schedule would deny", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    vi.mocked(storage.workerEdls.hasEdlsPresence).mockResolvedValue(false);
+    const response = await post({ worker_id: "666666", token: "secret" });
+    expect(response.body).toEqual({
+      authenticated: false,
+      message: "The worker schedule is not available right now.",
+    });
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
+  });
+
+  it("refuses invalid keys and failed issuance without leaking credentials", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    for (const badKey of ["", "https://elsewhere.example", "../other-worker"]) {
+      scenario.accessUuid = badKey;
+      const response = await post({ worker_id: "666666", token: "secret" });
+      expect(response.body.authenticated).toBe(false);
+      expect(response.body.accessUuid).toBeUndefined();
+      expect(JSON.stringify(response)).not.toContain("secret");
+    }
+    ensureAccessUuid.mockRejectedValue(new Error("secret and worker credential"));
+    const response = await post({ worker_id: "666666", token: "secret" });
+    expect(response.body).toEqual({
+      authenticated: false,
+      message: "The worker schedule could not be opened. Please try again later.",
+    });
+    expect(logError).toHaveBeenCalledWith(
+      "T631 public arrival schedule access failed",
+      { source: "sitespecific-t631-arrive" },
     );
+  });
+
+  it("accepts only a successful, canonical local schedule destination", () => {
+    const valid = { authenticated: true, message: "Opening", accessUuid: scenario.accessUuid };
+    expect(scheduleDestination(valid)).toBe(`/edls-sched/${scenario.accessUuid}`);
+    expect(scheduleDestination({ ...valid, authenticated: false })).toBeNull();
+    expect(scheduleDestination({ ...valid, accessUuid: "//elsewhere.example" })).toBeNull();
+    expect(scheduleDestination({ ...valid, accessUuid: `${valid.accessUuid}?token=secret` })).toBeNull();
+    expect(scheduleDestination({ ...valid, accessUuid: "../admin" })).toBeNull();
   });
 
   it("passes the original nonblank token to the Webclient operation", async () => {
@@ -324,6 +425,7 @@ describe("public T631 arrival route", () => {
     expect(wcRequest).not.toHaveBeenCalled();
     expect(checkFlood).not.toHaveBeenCalled();
     expect(recordFloodEvent).not.toHaveBeenCalled();
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -340,7 +442,7 @@ describe("public T631 arrival route", () => {
       "203.0.113.10",
     );
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       status: 200,
       body: {
         authenticated: false,
@@ -350,6 +452,7 @@ describe("public T631 arrival route", () => {
     expect(checkFlood).toHaveBeenCalledTimes(2);
     expect(wcRequest).not.toHaveBeenCalled();
     expect(recordFloodEvent).not.toHaveBeenCalled();
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
   });
 
   it("records both token-free buckets after a failed remote authentication", async () => {
@@ -375,6 +478,7 @@ describe("public T631 arrival route", () => {
       context,
     );
     expect(JSON.stringify(recordFloodEvent.mock.calls)).not.toContain("secret");
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
   });
 
   it("records neither bucket after successful authentication", async () => {
@@ -435,7 +539,7 @@ describe("public T631 arrival route", () => {
 
     const response = await post({ worker_id: "666666", token: "secret" });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       status: 200,
       body: {
         authenticated: false,

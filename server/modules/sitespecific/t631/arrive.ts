@@ -1,10 +1,10 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
+import { isUuid } from "@shared/utils/uuid";
 import { storage } from "../../../storage";
-import { requireComponent } from "../../components";
+import { isComponentEnabled, requireComponent } from "../../components";
 import { logger } from "../../../logger";
 import { wcRequest } from "../../../services/webclient";
-import type { T631FetchResult } from "../../../plugins/wc-vendors/plugins/sitespecific-t631";
 import { WcVendorNoAssignedOperationError } from "../../../services/webclient/wc-vendor-context";
 import { checkFlood, recordFloodEvent } from "../../../flood/service";
 import {
@@ -20,6 +20,8 @@ const arrivalRequestSchema = z.object({
 export interface T631ArrivalResult {
   authenticated: boolean;
   message: string;
+  /** Redacted by the shared HTTP response-preview logger. */
+  accessUuid?: string;
 }
 
 async function resolveWorkerId(typeId: string, value: string): Promise<string | undefined> {
@@ -128,10 +130,40 @@ async function arrive(
     return authenticationFailed(workerIdInput);
   }
 
-  const workerName = await storage.workers.getWorkerDisplayName(workerId);
+  if (!(await isComponentEnabled("edls")) || !(await isComponentEnabled("worker.aat"))) {
+    return {
+      authenticated: false,
+      message: "The worker schedule is not available right now.",
+    };
+  }
+
+  try {
+    // The public schedule refuses workers without EDLS presence. Do not
+    // issue a bearer link that would just land on its access-denied page.
+    if (!(await storage.workerEdls.hasEdlsPresence(workerId))) {
+      return {
+        authenticated: false,
+        message: "The worker schedule is not available right now.",
+      };
+    }
+    const { record } = await storage.workerAat.ensureAccessUuid(workerId);
+    if (!isUuid(record.accessUuid)) {
+      throw new Error("Worker schedule access UUID is missing or invalid");
+    }
+    return {
+      authenticated: true,
+      message: "Opening worker schedule.",
+      accessUuid: record.accessUuid,
+    };
+  } catch {
+    // Never put a key or the incoming T631 token in an error response or log.
+    logger.error("T631 public arrival schedule access failed", {
+      source: "sitespecific-t631-arrive",
+    });
+  }
   return {
-    authenticated: true,
-    message: `Showing schedule for worker [${workerName}].`,
+    authenticated: false,
+    message: "The worker schedule could not be opened. Please try again later.",
   };
 }
 
@@ -151,6 +183,8 @@ export function registerT631ArrivalRoutes(app: Express): void {
     "/api/public/sitespecific/t631/arrive",
     t631Component,
     async (req: Request, res: Response) => {
+      res.set("Cache-Control", "private, no-store");
+      res.set("Referrer-Policy", "no-referrer");
       const parsed = arrivalRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(200).json({

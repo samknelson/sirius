@@ -1,6 +1,16 @@
 export interface T631ArrivalResponse {
   authenticated: boolean;
   message: string;
+  accessUuid?: string;
+}
+
+/** Reject anything except a worker schedule URL with a canonical access key. */
+export function scheduleDestination(result: T631ArrivalResponse): string | null {
+  const key = result.accessUuid;
+  return result.authenticated && typeof key === "string"
+    && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(key)
+    ? `/edls-sched/${key}`
+    : null;
 }
 
 interface T631ArrivalCredentials {
@@ -53,6 +63,8 @@ export function initializeT631ArrivalRequest(): void {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
     body: JSON.stringify({
       worker_id: workerId,
       token: credentials.token,
