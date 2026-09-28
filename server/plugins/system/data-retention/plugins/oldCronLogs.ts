@@ -1,5 +1,5 @@
-import { lt } from "drizzle-orm";
-import { cronJobRuns } from "@shared/schema";
+import { and, eq, lt } from "drizzle-orm";
+import { jobRuns } from "@shared/schema";
 import { storage } from "../../../../storage";
 import { registerDataRetentionPlugin } from "../registry";
 
@@ -25,9 +25,9 @@ registerDataRetentionPlugin({
 
     const oldRuns = await storage.readOnly.query(async (client) =>
       client
-        .select({ id: cronJobRuns.id })
-        .from(cronJobRuns)
-        .where(lt(cronJobRuns.startedAt, cutoffDate)),
+        .select({ id: jobRuns.id })
+        .from(jobRuns)
+        .where(and(eq(jobRuns.pluginKind, "cron"), lt(jobRuns.startedAt, cutoffDate))),
     );
 
     if (mode === "test") {
@@ -40,7 +40,7 @@ registerDataRetentionPlugin({
 
     let deletedCount = 0;
     for (const run of oldRuns) {
-      const deleted = await storage.cronJobRuns.delete(run.id);
+      const deleted = await storage.jobRuns.delete(run.id);
       if (deleted) deletedCount++;
     }
 

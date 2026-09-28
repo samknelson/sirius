@@ -12,10 +12,11 @@ import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
  * `plugin_configs` + `plugin_configs_cron` envelope. `name` is the plugin id
- * (the stable cron job name that keys `cron_job_runs.jobName`); `settings` is
- * the operator-saved `data`.
+ * (the stable cron plugin id); the configuration id identifies the particular
+ * configured instance, and `settings` is the operator-saved `data`.
  */
 interface ScheduledCronJob {
+  configurationId: string;
   name: string;
   schedule: string;
   enabled: boolean;
@@ -131,6 +132,7 @@ class CronScheduler {
   private toScheduledJob(envelope: PluginConfigWithSubsidiary): ScheduledCronJob {
     const subsidiary = envelope.subsidiary as { schedule?: string } | null;
     return {
+      configurationId: envelope.config.id,
       name: envelope.config.pluginId,
       schedule: subsidiary?.schedule ?? '',
       enabled: envelope.config.enabled,
@@ -178,12 +180,15 @@ class CronScheduler {
     });
   }
 
-  async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
+  async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<string> {
     const startedAt = new Date();
 
     // Create run record - id and startedAt are auto-generated
-    const run = await storage.cronJobRuns.create({
-      jobName: job.name,
+    const run = await storage.jobRuns.create({
+      configurationId: job.configurationId,
+      pluginKind: "cron",
+      pluginId: job.name,
+      operation: "execute",
       status: 'running',
       mode,
       triggeredBy: triggeredBy || null,
@@ -218,13 +223,13 @@ class CronScheduler {
           });
 
           // Update run as skipped
-          await storage.cronJobRuns.update(runId, {
+          await storage.jobRuns.update(runId, {
             status: 'skipped',
             completedAt: new Date(),
             output: JSON.stringify({ message: skipMessage, requiredComponent }),
           });
 
-          return;
+          return runId;
         }
       }
 
@@ -233,6 +238,7 @@ class CronScheduler {
 
       // Execute the plugin
       const summary = await executeCronPlugin(job.name, {
+        configurationId: job.configurationId,
         jobId: job.name,
         jobName: job.name,
         triggeredBy,
@@ -252,7 +258,7 @@ class CronScheduler {
       };
 
       // Update run as successful
-      await storage.cronJobRuns.update(runId, {
+      await storage.jobRuns.update(runId, {
         status: 'success',
         completedAt: new Date(),
         output: JSON.stringify(outputData),
@@ -265,12 +271,13 @@ class CronScheduler {
         duration: executionTimeMs,
         summary,
       });
+      return runId;
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       // Update run as failed
-      await storage.cronJobRuns.update(runId, {
+      await storage.jobRuns.update(runId, {
         status: 'error',
         completedAt: new Date(),
         error: errorMessage,
@@ -288,17 +295,17 @@ class CronScheduler {
     }
   }
 
-  async manualRun(jobName: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
-    const [config] = await storage.pluginConfigs.getByKindAndPlugin('cron', jobName);
-
-    if (!config) {
+  async manualRun(configurationId: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<string> {
+    const envelope = await storage.pluginConfigs.getWithSubsidiary(configurationId);
+    if (!envelope || envelope.config.pluginKind !== "cron") {
       logger.error('Attempted to run non-existent cron job', {
         service: 'cron-scheduler',
-        jobName,
+        configurationId,
       });
-      throw new Error(`Cron job not found: ${jobName}`);
+      throw new Error(`Cron job not found for configuration: ${configurationId}`);
     }
 
+    const jobName = envelope.config.pluginId;
     if (!cronPluginRegistry.has(jobName)) {
       logger.error('Attempted to run cron job with no registered plugin', {
         service: 'cron-scheduler',
@@ -311,12 +318,7 @@ class CronScheduler {
       );
     }
 
-    const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
-    const job = this.toScheduledJob(
-      envelope ?? { config, subsidiary: null },
-    );
-
-    await this.executeJob(job, true, triggeredBy, mode);
+    return this.executeJob(this.toScheduledJob(envelope), true, triggeredBy, mode);
   }
 
   isJobScheduled(jobName: string): boolean {

@@ -7,7 +7,7 @@ describe("entity metadata eligibility", () => {
     "ledger_ea",
     "ledger_gateway_customers",
     "winston_logs",
-    "cron_job_runs",
+    "job_runs",
     "worker_msh_denorm",
     "worker_dispatch_elig_denorm_denorm_id",
   ])("rejects process table %s", (tableName) => {

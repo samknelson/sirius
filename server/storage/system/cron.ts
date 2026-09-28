@@ -1,174 +1,131 @@
-import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
-import { cronJobRuns, users, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
+import { createNoopValidator } from "../utils/validation";
+import { getClient } from "../transaction-context";
+import { jobRuns, users, type JobRun, type InsertJobRun } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 
-/**
- * Stub validator - add validation logic here when needed
- */
-export const validate = createNoopValidator<InsertCronJobRun, CronJobRun>();
+export const validate = createNoopValidator<InsertJobRun, JobRun>();
 
-export type CronJobRunWithUser = CronJobRun & {
+export type JobRunWithUser = JobRun & {
   userFirstName?: string | null;
   userLastName?: string | null;
   userEmail?: string | null;
 };
 
-export interface CronJobRunStorage {
-  list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]>;
-  getById(id: string): Promise<CronJobRunWithUser | undefined>;
-  getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined>;
-  getLastSuccessfulLiveRun(jobName: string): Promise<CronJobRun | undefined>;
-  create(run: InsertCronJobRun): Promise<CronJobRun>;
-  update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined>;
+export interface JobRunStorage {
+  list(filters?: { configurationId?: string; pluginKind?: string; pluginId?: string; status?: string }): Promise<JobRunWithUser[]>;
+  getById(id: string): Promise<JobRunWithUser | undefined>;
+  getLatestByConfigurationId(configurationId: string): Promise<JobRunWithUser | undefined>;
+  getLatestByPlugin(pluginKind: string, pluginId: string): Promise<JobRunWithUser | undefined>;
+  getLastSuccessfulLiveRun(configurationId: string): Promise<JobRun | undefined>;
+  create(run: InsertJobRun): Promise<JobRun>;
+  update(id: string, updates: Partial<InsertJobRun>): Promise<JobRun | undefined>;
   delete(id: string): Promise<boolean>;
-  deleteByJobName(jobName: string): Promise<number>;
 }
 
-export function createCronJobRunStorage(): CronJobRunStorage {
+const withUser = {
+  id: jobRuns.id,
+  configurationId: jobRuns.configurationId,
+  pluginKind: jobRuns.pluginKind,
+  pluginId: jobRuns.pluginId,
+  operation: jobRuns.operation,
+  status: jobRuns.status,
+  mode: jobRuns.mode,
+  output: jobRuns.output,
+  error: jobRuns.error,
+  startedAt: jobRuns.startedAt,
+  completedAt: jobRuns.completedAt,
+  triggeredBy: jobRuns.triggeredBy,
+  userFirstName: users.firstName,
+  userLastName: users.lastName,
+  userEmail: users.email,
+};
+
+export function createJobRunStorage(): JobRunStorage {
   return {
-    async list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]> {
-      const client = getClient();
+    async list(filters): Promise<JobRunWithUser[]> {
       const conditions = [];
-      
-      if (filters?.jobName) {
-        conditions.push(eq(cronJobRuns.jobName, filters.jobName));
-      }
-      if (filters?.status) {
-        conditions.push(eq(cronJobRuns.status, filters.status));
-      }
+      if (filters?.configurationId) conditions.push(eq(jobRuns.configurationId, filters.configurationId));
+      if (filters?.pluginKind) conditions.push(eq(jobRuns.pluginKind, filters.pluginKind));
+      if (filters?.pluginId) conditions.push(eq(jobRuns.pluginId, filters.pluginId));
+      if (filters?.status) conditions.push(eq(jobRuns.status, filters.status));
 
-      const query = client
-        .select({
-          id: cronJobRuns.id,
-          jobName: cronJobRuns.jobName,
-          status: cronJobRuns.status,
-          mode: cronJobRuns.mode,
-          output: cronJobRuns.output,
-          error: cronJobRuns.error,
-          startedAt: cronJobRuns.startedAt,
-          completedAt: cronJobRuns.completedAt,
-          triggeredBy: cronJobRuns.triggeredBy,
-          userFirstName: users.firstName,
-          userLastName: users.lastName,
-          userEmail: users.email,
-        })
-        .from(cronJobRuns)
-        .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
-        .orderBy(desc(cronJobRuns.startedAt));
-
-      if (conditions.length > 0) {
-        return query.where(and(...conditions));
-      } else {
-        return query;
-      }
+      const query = getClient()
+        .select(withUser)
+        .from(jobRuns)
+        .leftJoin(users, eq(jobRuns.triggeredBy, users.id))
+        .orderBy(desc(jobRuns.startedAt));
+      return conditions.length ? query.where(and(...conditions)) : query;
     },
 
-    async getById(id: string): Promise<CronJobRunWithUser | undefined> {
-      const client = getClient();
-      const [run] = await client
-        .select({
-          id: cronJobRuns.id,
-          jobName: cronJobRuns.jobName,
-          status: cronJobRuns.status,
-          mode: cronJobRuns.mode,
-          output: cronJobRuns.output,
-          error: cronJobRuns.error,
-          startedAt: cronJobRuns.startedAt,
-          completedAt: cronJobRuns.completedAt,
-          triggeredBy: cronJobRuns.triggeredBy,
-          userFirstName: users.firstName,
-          userLastName: users.lastName,
-          userEmail: users.email,
-        })
-        .from(cronJobRuns)
-        .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
-        .where(eq(cronJobRuns.id, id));
-      return run || undefined;
+    async getById(id): Promise<JobRunWithUser | undefined> {
+      const [run] = await getClient()
+        .select(withUser)
+        .from(jobRuns)
+        .leftJoin(users, eq(jobRuns.triggeredBy, users.id))
+        .where(eq(jobRuns.id, id));
+      return run;
     },
 
-    async getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined> {
-      const client = getClient();
-      const [run] = await client
-        .select({
-          id: cronJobRuns.id,
-          jobName: cronJobRuns.jobName,
-          status: cronJobRuns.status,
-          mode: cronJobRuns.mode,
-          output: cronJobRuns.output,
-          error: cronJobRuns.error,
-          startedAt: cronJobRuns.startedAt,
-          completedAt: cronJobRuns.completedAt,
-          triggeredBy: cronJobRuns.triggeredBy,
-          userFirstName: users.firstName,
-          userLastName: users.lastName,
-          userEmail: users.email,
-        })
-        .from(cronJobRuns)
-        .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
-        .where(eq(cronJobRuns.jobName, jobName))
-        .orderBy(desc(cronJobRuns.startedAt))
+    async getLatestByConfigurationId(configurationId): Promise<JobRunWithUser | undefined> {
+      const [run] = await getClient()
+        .select(withUser)
+        .from(jobRuns)
+        .leftJoin(users, eq(jobRuns.triggeredBy, users.id))
+        .where(eq(jobRuns.configurationId, configurationId))
+        .orderBy(desc(jobRuns.startedAt))
         .limit(1);
-      return run || undefined;
+      return run;
     },
 
-    /**
-     * The most recent run of this job that actually did its work: live mode,
-     * finished successfully. A job that decides what to do from how long it has
-     * been since it last ran needs exactly this and not `getLatestByJobName` —
-     * that one answers with the run currently in flight (the scheduler inserts
-     * the row before executing), with a test run, or with a run that failed.
-     */
-    async getLastSuccessfulLiveRun(jobName: string): Promise<CronJobRun | undefined> {
-      const client = getClient();
-      const [run] = await client
+    // Display-only history: legacy rows have no provable configuration ID,
+    // but still belong to the plugin's timeline. Never use this for dueness.
+    async getLatestByPlugin(pluginKind, pluginId): Promise<JobRunWithUser | undefined> {
+      const [run] = await getClient()
+        .select(withUser)
+        .from(jobRuns)
+        .leftJoin(users, eq(jobRuns.triggeredBy, users.id))
+        .where(and(eq(jobRuns.pluginKind, pluginKind), eq(jobRuns.pluginId, pluginId)))
+        .orderBy(desc(jobRuns.startedAt))
+        .limit(1);
+      return run;
+    },
+
+    // Only this configuration's completed live successes count. A running,
+    // failed, test or previous configuration's run cannot consume a cron tick.
+    async getLastSuccessfulLiveRun(configurationId): Promise<JobRun | undefined> {
+      const [run] = await getClient()
         .select()
-        .from(cronJobRuns)
-        .where(
-          and(
-            eq(cronJobRuns.jobName, jobName),
-            eq(cronJobRuns.status, 'success'),
-            eq(cronJobRuns.mode, 'live'),
-          ),
-        )
-        .orderBy(desc(cronJobRuns.startedAt))
+        .from(jobRuns)
+        .where(and(
+          eq(jobRuns.configurationId, configurationId),
+          eq(jobRuns.pluginKind, "cron"),
+          eq(jobRuns.operation, "execute"),
+          eq(jobRuns.status, "success"),
+          eq(jobRuns.mode, "live"),
+        ))
+        .orderBy(desc(jobRuns.startedAt))
         .limit(1);
-      return run || undefined;
+      return run;
     },
 
-    async create(insertRun: InsertCronJobRun): Promise<CronJobRun> {
+    async create(insertRun): Promise<JobRun> {
       validate.validateOrThrow(insertRun);
-      const client = getClient();
-      const [run] = await client
-        .insert(cronJobRuns)
-        .values(insertRun)
+      const [run] = await getClient().insert(jobRuns).values(insertRun).returning();
+      return run;
+    },
+
+    async update(id, updates): Promise<JobRun | undefined> {
+      const [run] = await getClient()
+        .update(jobRuns)
+        .set(updates)
+        .where(eq(jobRuns.id, id))
         .returning();
       return run;
     },
 
-    async update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined> {
-      const client = getClient();
-      const [run] = await client
-        .update(cronJobRuns)
-        .set(updates)
-        .where(eq(cronJobRuns.id, id))
-        .returning();
-      return run || undefined;
+    async delete(id): Promise<boolean> {
+      const rows = await getClient().delete(jobRuns).where(eq(jobRuns.id, id)).returning();
+      return rows.length > 0;
     },
-
-    async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(cronJobRuns).where(eq(cronJobRuns.id, id)).returning();
-      return result.length > 0;
-    },
-
-    async deleteByJobName(jobName: string): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .delete(cronJobRuns)
-        .where(eq(cronJobRuns.jobName, jobName))
-        .returning();
-      return result.length;
-    }
   };
 }

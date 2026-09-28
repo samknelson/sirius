@@ -26,6 +26,14 @@ timestamps and defaulted ones land in the same column offset from each other.
 Both zones must be set together — the pg pool sets the session zone on every
 connection checkout.
 
+**Ad hoc script trap:** a one-off `tsx -e` process that imports storage without
+running app initialization may use UTC while the live app writes in the site
+zone. Its `timestamp without time zone` rows can sort hours apart from app rows
+created at the same instant. **Why:** the site-zone bootstrap is not present in
+the standalone process. **How to apply:** do not infer a migration boundary from
+naive `started_at` values written by mixed processes; establish each process's
+zone and verify the rows around the proposed cutoff before correcting data.
+
 ## The decision
 
 The site zone is `process.env.TZ`, registered as an environment variable and

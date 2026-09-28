@@ -2650,13 +2650,15 @@ export const createRateHistorySchema = (minEntries = 1) => {
   return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
 };
 
-// Cron job run history. Configuration for cron jobs now lives in
-// plugin_configs (plugin_kind='cron') + plugin_configs_cron; `jobName` here is
-// the cron plugin id (the former cron_jobs.name). No FK — the legacy cron_jobs
-// table has been dropped and run history is retained independently.
-export const cronJobRuns = pgTable("cron_job_runs", {
+// Shared run history for configured jobs. Snapshots remain after a configuration
+// is deleted, while the nullable FK identifies the exact configuration when it
+// still exists. Cron runs use operation='execute'; Oneoffs can also use preflight.
+export const jobRuns = pgTable("job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobName: text("job_name").notNull(),
+  configurationId: varchar("configuration_id").references(() => pluginConfigs.id, { onDelete: "set null" }),
+  pluginKind: varchar("plugin_kind").notNull(),
+  pluginId: text("plugin_id").notNull(),
+  operation: varchar("operation").notNull().default("execute"),
   status: varchar("status").notNull(), // 'running', 'success', 'error'
   mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
@@ -2664,15 +2666,18 @@ export const cronJobRuns = pgTable("cron_job_runs", {
   startedAt: timestamp("started_at").default(sql`now()`).notNull(),
   completedAt: timestamp("completed_at"),
   triggeredBy: varchar("triggered_by"), // 'scheduler' or user id
-});
+}, (table) => [
+  index("job_runs_configuration_started_idx").on(table.configurationId, table.startedAt),
+  index("job_runs_kind_plugin_started_idx").on(table.pluginKind, table.pluginId, table.startedAt),
+]);
 
-export const insertCronJobRunSchema = createInsertSchema(cronJobRuns).omit({
+export const insertJobRunSchema = createInsertSchema(jobRuns).omit({
   id: true,
   startedAt: true,
 });
 
-export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
-export type CronJobRun = typeof cronJobRuns.$inferSelect;
+export type InsertJobRun = z.infer<typeof insertJobRunSchema>;
+export type JobRun = typeof jobRuns.$inferSelect;
 
 /**
  * Reusable tokenized message templates.
