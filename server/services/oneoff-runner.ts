@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { jobRuns, type JobRun, type PluginConfig } from "@shared/schema";
 import { db } from "../storage/db";
 import { getClient, runInTransaction, runOutsideTransaction } from "../storage/transaction-context";
@@ -7,7 +7,6 @@ import { requestContext } from "../middleware/request-context";
 import type { OneoffAction, OneoffPlugin, OneoffProgress } from "../plugins/system/oneoff/types";
 
 const STALE_MS = 60_000;
-const CONFIRM_MS = 10 * 60_000;
 const controllers = new Map<string, AbortController>();
 
 export class OneoffRefusal extends Error {
@@ -248,9 +247,12 @@ export async function startOneoff(
       eq(jobRuns.pluginId, plugin.metadata.id), eq(jobRuns.operation, "preflight"),
       eq(jobRuns.status, "success"), eq(jobRuns.confirmationHash, hash(confirmationToken)),
       isNull(jobRuns.confirmationUsedAt),
+      // job_runs.started_at is a timestamp without time zone. Drizzle reads
+      // it as UTC, while the database writes the site's local wall clock.
+      // Compare both sides in PostgreSQL's session zone, not against Date.now().
+      gte(jobRuns.startedAt, sql`LOCALTIMESTAMP - INTERVAL '10 minutes'`),
     )).limit(1);
-    if (!approved || approved.startedAt.getTime() < Date.now() - CONFIRM_MS ||
-        approved.triggeredBy !== actorId ||
+    if (!approved || approved.triggeredBy !== actorId ||
         canonicalJson(approved.input) !== canonicalJson(payload(actionId, input))) {
       throw new OneoffRefusal(409, "Preflight expired or inputs changed. Run preflight again.");
     }

@@ -13,6 +13,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Square,
+  X,
   XCircle,
 } from "lucide-react";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -139,6 +140,7 @@ export default function OneoffAdminPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [jsonInput, setJsonInput] = useState("{}");
+  const submittingRef = useRef(false);
 
   const configsQuery = useQuery<OneoffConfig[]>({
     queryKey: ["/api/plugins/oneoff/configs"],
@@ -236,6 +238,7 @@ export default function OneoffAdminPage() {
       }) as Promise<{ runId: string }>;
     },
     onSuccess: ({ runId }) => {
+      submittingRef.current = false;
       setSelectedRun(runId);
       setConfirmOpen(false);
       setPrepared(null);
@@ -243,7 +246,10 @@ export default function OneoffAdminPage() {
       void statusQuery.refetch();
       toast({ title: "Job started", description: `Run ${runId} has been submitted.` });
     },
-    onError: (error: unknown) => toast({ title: "Could not start job", description: getApiErrorMessage(error, "The run was rejected."), variant: "destructive" }),
+    onError: (error: unknown) => {
+      submittingRef.current = false;
+      toast({ title: "Could not start job", description: getApiErrorMessage(error, "The run was rejected."), variant: "destructive" });
+    },
   });
   const cancelMutation = useMutation({
     mutationFn: async (runId: string) => apiRequest("POST", `/api/oneoff/runs/${encodeURIComponent(runId)}/cancel`),
@@ -280,6 +286,7 @@ export default function OneoffAdminPage() {
     preflightMutation.mutate(next);
   };
   const startRun = () => {
+    if (submittingRef.current) return;
     if (!prepared || !selectedConfig || !selectedAction
       || prepared.configId !== selectedConfig.id
       || prepared.actionId !== selectedAction.id
@@ -288,6 +295,7 @@ export default function OneoffAdminPage() {
       toast({ title: "Preflight expired", description: "Input changed. Run preflight again before execution.", variant: "destructive" });
       return;
     }
+    submittingRef.current = true;
     runMutation.mutate(prepared);
   };
 
@@ -544,9 +552,21 @@ export default function OneoffAdminPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={confirmOpen} onOpenChange={(open) => { setConfirmOpen(open); if (!open) setPrepared(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+      <AlertDialog open={confirmOpen} onOpenChange={(open) => {
+        if (!open && submittingRef.current) return;
+        setConfirmOpen(open);
+        if (!open) setPrepared(null);
+      }}>
+        <AlertDialogContent onEscapeKeyDown={(event) => { if (submittingRef.current) event.preventDefault(); }}>
+          <AlertDialogCancel
+            aria-label="Close run confirmation"
+            title="Close"
+            disabled={runMutation.isPending}
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </AlertDialogCancel>
+          <AlertDialogHeader className="pr-9">
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-[#b66a42]" />
               {prepared?.result.destructive ? "Confirm destructive operation" : "Confirm operation"}
@@ -565,8 +585,8 @@ export default function OneoffAdminPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={runMutation.isPending}>Review again</AlertDialogCancel>
-            <AlertDialogAction onClick={(event) => { event.preventDefault(); startRun(); }} disabled={runMutation.isPending}>
+            <AlertDialogCancel disabled={runMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); startRun(); }} disabled={runMutation.isPending || submittingRef.current}>
               {runMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {runMutation.isPending ? "Starting…" : "Confirm and execute"}
             </AlertDialogAction>

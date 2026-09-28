@@ -101,6 +101,14 @@ const { state, db, columns } = vi.hoisted(() => {
     if (condition.kind === "eq") return actual === condition.value;
     if (condition.kind === "isNull") return actual == null;
     if (condition.kind === "lt") return actual != null && actual < condition.value;
+    if (condition.kind === "gte") {
+      // The SQL compares raw wall-clock timestamps in the database session,
+      // not the Date object Drizzle returned after interpreting them as UTC.
+      if (!condition.value.strings.join("").includes("LOCALTIMESTAMP - INTERVAL '10 minutes'")) {
+        throw new Error("Confirmation freshness must be checked in the database session");
+      }
+      return (row.databaseStartedAt ?? actual) >= new Date(Date.now() - 10 * 60_000);
+    }
     return false;
   }
   return { state, db, columns };
@@ -120,6 +128,7 @@ vi.mock("drizzle-orm", () => ({
   and: (...parts: any[]) => ({ kind: "and", parts }),
   or: (...parts: any[]) => ({ kind: "or", parts }),
   eq: (column: any, value: any) => ({ kind: "eq", column, value }),
+  gte: (column: any, value: any) => ({ kind: "gte", column, value }),
   isNull: (column: any) => ({ kind: "isNull", column }),
   lt: (column: any, value: any) => ({ kind: "lt", column, value }),
   sql: Object.assign((strings: TemplateStringsArray, ...values: any[]) => ({ strings, values }), {
@@ -224,6 +233,30 @@ describe("Oneoff runner authorization and lifecycle", () => {
     await expect(startOneoff(config, registered, "inspect", { key: "value" }, approved.confirmationToken, "actor-1"))
       .rejects.toMatchObject({ statusCode: 409 });
     expect(state.lockCalls.length).toBeGreaterThan(0);
+  });
+
+  it("accepts a fresh site-local timestamp even when Drizzle reads it seven hours old", async () => {
+    const registered = plugin();
+    const approved = await preflightOneoff(config, registered, "inspect", {}, "actor");
+    const preflight = state.runs.find((run) => run.id === approved.runId);
+    // PostgreSQL's local timestamp still represents a fresh row to its own
+    // session; the app receives a Date shifted by the site's UTC offset.
+    preflight.databaseStartedAt = new Date();
+    preflight.startedAt = new Date(Date.now() - 7 * 60 * 60_000);
+    await startOneoff(config, registered, "inspect", {}, approved.confirmationToken, "actor");
+    await waitFor(() => state.runs.at(-1)?.status !== "running");
+    expect(state.runs.at(-1)?.status).toBe("success");
+  });
+
+  it("still rejects a confirmation after ten minutes in the database clock", async () => {
+    const registered = plugin();
+    const approved = await preflightOneoff(config, registered, "inspect", {}, "actor");
+    const preflight = state.runs.find((run) => run.id === approved.runId);
+    preflight.startedAt = new Date(Date.now() - 7 * 60 * 60_000);
+    preflight.databaseStartedAt = new Date(Date.now() - 10 * 60_000 - 1000);
+    await expect(startOneoff(config, registered, "inspect", {}, approved.confirmationToken, "actor"))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(preflight.confirmationUsedAt).toBeNull();
   });
 
   it("invalidates an older approval when a second preflight has the same row count", async () => {

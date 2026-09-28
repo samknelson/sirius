@@ -20,6 +20,17 @@ TZ=America/New_York   12:00Z -> stored 08:00     "08:00" read back -> 12:00Z
 Writes and reads agree as long as the process zone is stable, and the process
 zone is the *only* thing that decides what stored history means.
 
+**Drizzle read-path exception:** A live `job_runs.started_at` defaulted by
+PostgreSQL was stored as 07:xx in an America/Los_Angeles session, but a
+Drizzle `.select()` exposed it as 07:xxZ even with Node `TZ` set to
+America/Los_Angeles: it appeared seven hours old. The low-level driver
+observation above does not guarantee every ORM mapping follows it.
+**Why:** a JS `Date` comparison can immediately expire a freshly approved
+operation even though both database and Node have the same configured zone.
+**How to apply:** compare a naive column to the database's `LOCALTIMESTAMP`
+inside SQL for time-limited decisions; verify the ORM read mapping before
+using `.getTime()` on other naive columns for elapsed time.
+
 **The matching hazard:** a column default of `now()` is evaluated by POSTGRES,
 using the *session* TimeZone, not Node's. If the two disagree, app-written
 timestamps and defaulted ones land in the same column offset from each other.
