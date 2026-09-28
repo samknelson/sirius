@@ -267,6 +267,7 @@ const CronJobRun = lazy(() => import("@/pages/cron-job-run"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
+import { OneoffLayout } from "@/components/layouts/OneoffLayout";
 import UserRolesLayout from "@/components/layouts/UserRolesLayout";
 const UsersListPage = lazy(() => import("@/pages/config/users/list"));
 const RolesPage = lazy(() => import("@/pages/config/users/roles"));
@@ -375,6 +376,7 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const OneoffAdminPage = lazy(() => import("@/pages/admin/oneoff"));
+const OneoffInstructionsPage = lazy(() => import("@/pages/admin/oneoff-instructions"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const WcStatusPage = lazy(() => import("@/pages/admin/wc-status"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
@@ -3809,11 +3811,25 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/admin/oneoff/instructions">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OneoffLayout activeTab="oneoff-instructions">
+                <OneoffInstructionsPage />
+              </OneoffLayout>
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/oneoff">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <OneoffAdminPage />
+              <OneoffLayout activeTab="oneoff-operations">
+                <OneoffAdminPage />
+              </OneoffLayout>
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -10,6 +10,7 @@ import {
   WC_ADMIN_ENTITY_ID,
   RECORD_METADATA_ADMIN_ENTITY_ID,
   USER_ROLES_ADMIN_ENTITY_ID,
+  ONEOFF_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -523,6 +524,15 @@ export function useUserRolesTabAccess(enabled = true) {
   return useTabAccess({
     entityType: 'user_roles',
     entityId: USER_ROLES_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/** Tab access for the singleton Oneoff administration page. */
+export function useOneoffTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'oneoff',
+    entityId: ONEOFF_ADMIN_ENTITY_ID,
     enabled,
   });
 }

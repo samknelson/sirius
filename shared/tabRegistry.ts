@@ -126,7 +126,9 @@ export type TabEntityType =
    * User role administration. A single admin page, not a row, so the entity id
    * is the constant {@link USER_ROLES_ADMIN_ENTITY_ID}.
    */
-  | 'user_roles';
+  | 'user_roles'
+  /** The singleton Oneoff operations page and its developer instructions. */
+  | 'oneoff';
 
 /**
  * Tab check request for batch access evaluation
@@ -821,6 +823,13 @@ export const userRolesTabTree: HierarchicalTab[] = [
   { id: 'provider-users', label: 'Provider Users', hrefTemplate: '/admin/users/roles/providers', permission: 'admin' },
 ];
 
+export const ONEOFF_ADMIN_ENTITY_ID = 'admin';
+
+export const oneoffTabTree: HierarchicalTab[] = [
+  { id: 'oneoff-operations', label: 'Operations', hrefTemplate: '/admin/oneoff', permission: 'admin' },
+  { id: 'oneoff-instructions', label: 'Instructions', hrefTemplate: '/admin/oneoff/instructions', permission: 'admin' },
+];
+
 /**
  * Entity tab trees by type
  */
@@ -863,6 +872,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   wc: wcTabTree,
   record_metadata: recordMetadataTabTree,
   user_roles: userRolesTabTree,
+  oneoff: oneoffTabTree,
 };
 
 /**
