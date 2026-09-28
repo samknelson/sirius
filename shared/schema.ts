@@ -2663,6 +2663,13 @@ export const jobRuns = pgTable("job_runs", {
   mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
   error: text("error"),
+  input: jsonb("input"),
+  progress: jsonb("progress"),
+  checkpoint: jsonb("checkpoint"),
+  heartbeatAt: timestamp("heartbeat_at"),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
+  confirmationHash: text("confirmation_hash"),
+  confirmationUsedAt: timestamp("confirmation_used_at"),
   startedAt: timestamp("started_at").default(sql`now()`).notNull(),
   completedAt: timestamp("completed_at"),
   triggeredBy: varchar("triggered_by"), // 'scheduler' or user id

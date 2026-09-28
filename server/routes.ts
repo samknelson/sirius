@@ -461,6 +461,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
+  const { registerOneoffRoutes } = await import("./modules/system/oneoff");
+  registerOneoffRoutes(app, requireAuth);
 
   // Register event bus introspection routes (debug component)
   registerEventBusIntrospectRoutes(app);

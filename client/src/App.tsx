@@ -374,6 +374,7 @@ const FileBrowserPage = lazy(() => import("@/pages/admin/file-browser"));
 const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-detail"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
+const OneoffAdminPage = lazy(() => import("@/pages/admin/oneoff"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const WcStatusPage = lazy(() => import("@/pages/admin/wc-status"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
@@ -3803,6 +3804,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DenormConfigsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/oneoff">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OneoffAdminPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
