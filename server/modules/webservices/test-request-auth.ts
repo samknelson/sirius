@@ -10,12 +10,13 @@ export function buildTestRequestHeaders(
   client: WsClient,
   clientKey: string,
   clientSecret: string,
+  method: string,
   bearerToken?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     "X-WS-Client-ID": clientKey,
-    "Content-Type": "application/json",
   };
+  if (["POST", "PUT", "PATCH"].includes(method)) headers["Content-Type"] = "application/json";
   if (requiresFreemanBearerAuthorization(client)) {
     if (bearerToken?.trim()) headers.Authorization = `Bearer ${bearerToken.trim()}`;
   } else {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, CalendarDays } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   takeT631ArrivalRequest,
+  scheduleDestination,
   type T631ArrivalResponse,
 } from "@/lib/t631-arrival-request";
 
@@ -18,7 +19,17 @@ export default function T631ArrivalPage() {
   useEffect(() => {
     let active = true;
     request.current?.then((result) => {
-      if (active) setData(result);
+      if (!active) return;
+      const destination = scheduleDestination(result);
+      if (destination) {
+        // A fresh arrival always resolves the worker's current key. Do not
+        // retain the arrival URL in browser history or cache a redirect.
+        window.location.replace(destination);
+        return;
+      }
+      setData(result.authenticated
+        ? { authenticated: false, message: "The worker schedule could not be opened. Please try again later." }
+        : result);
     });
     return () => {
       active = false;
@@ -36,27 +47,23 @@ export default function T631ArrivalPage() {
 
   return (
     <ArrivalCard
-      error={!data?.authenticated}
       message={data.message}
     />
   );
 }
 
 function ArrivalCard({
-  error,
   message,
 }: {
-  error: boolean;
   message: string;
 }) {
-  const Icon = error ? AlertCircle : CalendarDays;
   return (
     <div className="container mx-auto max-w-3xl p-6">
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <Icon className={error ? "h-6 w-6 text-destructive" : "h-6 w-6"} />
-            <CardTitle>{error ? "Unable to show schedule" : "Worker Schedule"}</CardTitle>
+            <AlertCircle className="h-6 w-6 text-destructive" />
+            <CardTitle>Unable to show schedule</CardTitle>
           </div>
         </CardHeader>
         <CardContent>

@@ -91,7 +91,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
   // body must not be answered "your request is bad" when the real answer is
   // "the site is down". Scoped to the web service mount; the site itself stays
   // browsable during maintenance.
-  if (roles.has("api-ws")) {
+  if (roles.has("api-ws") || roles.has("api-user")) {
     installWebServiceMaintenanceGate(app);
   }
 
@@ -570,7 +570,10 @@ export async function bootstrapApp(
     const { registerRoutes } = await import("./routes");
     await registerRoutes(app, server);
   }
-  if (roles.has("api-ws")) {
+  // api-user also needs the dispatcher for its local-only admin test. The
+  // ownership guard lets only loopback requests with this process's private
+  // test token reach it when api-ws is not an assigned traffic role.
+  if (roles.has("api-ws") || roles.has("api-user")) {
     registerWebServiceDispatcher(app);
   }
 
