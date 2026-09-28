@@ -409,7 +409,7 @@ export default function OneoffAdminPage() {
                 </div>
                 <Button onClick={requestPreflight} disabled={!selectedId || !selectedAction || actionsQuery.isLoading || actionsQuery.isError || preflightMutation.isPending || runMutation.isPending || Boolean(activeId) || statusQuery.data?.blockedByOtherConfiguration}>
                   {preflightMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                  {preflightMutation.isPending ? "Checking…" : "Run preflight"}
+                  {preflightMutation.isPending ? "Checking…" : "Execute"}
                 </Button>
               </div>
             )}
