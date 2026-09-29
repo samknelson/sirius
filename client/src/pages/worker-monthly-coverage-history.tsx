@@ -1,13 +1,22 @@
 import { useEffect } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { renderIcon } from "@/components/ui/icon-picker";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Month {
   year: number;
   month: number;
   label: string;
+}
+
+interface BenefitIcon {
+  name: string;
+  icon: string | null;
+  color: string | null;
 }
 
 export interface MonthlyCoverageRow {
@@ -20,6 +29,9 @@ export interface MonthlyCoverageRow {
   medical: string[];
   dental: string[];
   other: string[];
+  medicalBenefitIcons?: BenefitIcon[];
+  dentalBenefitIcons?: BenefitIcon[];
+  otherBenefitIcons?: BenefitIcon[];
   charge: string | null;
 }
 
@@ -36,6 +48,21 @@ function formatHours(value: number | null | undefined): string {
   return value === null || value === undefined
     ? "Unavailable"
     : `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} hours`;
+}
+
+function NamedBenefit({ benefit }: { benefit: BenefitIcon }) {
+  return (
+    <div className="flex min-w-0 max-w-full items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/20 text-muted-foreground"
+        style={benefit.color ? { color: benefit.color } : undefined}
+      >
+        {renderIcon(benefit.icon ?? undefined, "h-4 w-4") ?? <Star className="h-4 w-4" />}
+      </span>
+      <span className="min-w-0 break-words text-muted-foreground">{benefit.name}</span>
+    </div>
+  );
 }
 
 export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string }) {
@@ -109,17 +136,42 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
               <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2" data-testid="monthly-coverage-card-columns">
                 <section aria-label={`Benefits for ${row.coverageMonth.label}`} className="min-w-0 rounded-md border bg-background p-3">
                   <h4 className="font-semibold">Benefits received for {row.coverageMonth.label}</h4>
-                  <dl className="mt-3 space-y-2">
-                    <div className="min-w-0">
-                      <dt className="font-medium">Medical</dt>
-                      <dd className="break-words text-muted-foreground">{row.medical.length ? row.medical.join(", ") : "No recorded medical benefit"}</dd>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3" data-testid="monthly-medical-dental-benefits">
+                    {row.medical.length
+                      ? (row.medicalBenefitIcons ?? row.medical.map((name) => ({ name, icon: null, color: null })))
+                        .map((benefit) => <NamedBenefit key={`medical-${benefit.name}`} benefit={benefit} />)
+                      : <span className="text-muted-foreground">No recorded medical benefit</span>}
+                    {row.dental.length
+                      ? (row.dentalBenefitIcons ?? row.dental.map((name) => ({ name, icon: null, color: null })))
+                        .map((benefit) => <NamedBenefit key={`dental-${benefit.name}`} benefit={benefit} />)
+                      : <span className="text-muted-foreground">No recorded dental benefit</span>}
+                  </div>
+                  {row.other.length > 0 && (
+                    <div className="mt-3">
+                      <p className="font-medium">Other recorded benefits:</p>
+                      <TooltipProvider>
+                        <ul className="mt-2 flex flex-wrap gap-2" aria-label="Other recorded benefits">
+                          {(row.otherBenefitIcons ?? row.other.map((name) => ({ name, icon: null, color: null }))).map((benefit, index) => (
+                            <li key={`${benefit.name}-${index}`}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    tabIndex={0}
+                                    aria-label={benefit.name}
+                                    className="inline-flex h-8 w-8 cursor-help items-center justify-center rounded-full bg-muted/20 text-muted-foreground"
+                                    style={benefit.color ? { color: benefit.color } : undefined}
+                                  >
+                                    {renderIcon(benefit.icon ?? undefined, "h-4 w-4") ?? <Star className="h-4 w-4" />}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>{benefit.name}</TooltipContent>
+                              </Tooltip>
+                            </li>
+                          ))}
+                        </ul>
+                      </TooltipProvider>
                     </div>
-                    <div className="min-w-0">
-                      <dt className="font-medium">Dental</dt>
-                      <dd className="break-words text-muted-foreground">{row.dental.length ? row.dental.join(", ") : "No recorded dental benefit"}</dd>
-                    </div>
-                  </dl>
-                  {row.other.length > 0 && <p className="mt-3 break-words"><span className="font-medium">Other recorded benefits: </span>{row.other.join(", ")}</p>}
+                  )}
                   {row.status === "inactive" && (
                     <p className="mt-3 border-t pt-3 text-muted-foreground">
                       <span className="font-medium text-foreground">Scan reason: </span>

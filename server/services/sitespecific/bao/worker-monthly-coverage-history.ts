@@ -31,8 +31,13 @@ export interface WorkerMonthlyCoverageHistoryMonth {
   medical: string[];
   dental: string[];
   other: string[];
+  medicalBenefitIcons: BenefitIcon[];
+  dentalBenefitIcons: BenefitIcon[];
+  otherBenefitIcons: Array<{ name: string; icon: string | null; color: string | null }>;
   charge: string | null;
 }
+
+type BenefitIcon = { name: string; icon: string | null; color: string | null };
 
 export interface WorkerMonthlyCoverageHistory {
   months: WorkerMonthlyCoverageHistoryMonth[];
@@ -99,22 +104,40 @@ export function deriveChargeHistory(rows: MonthlyCharge[]) {
 }
 
 export function classifyBenefitPresence(rows: BenefitPresence[]) {
-  const result = { medical: new Set<string>(), dental: new Set<string>(), other: new Set<string>() };
+  const result = {
+    medical: new Map<string, BenefitIcon>(),
+    dental: new Map<string, BenefitIcon>(),
+    other: new Map<string, BenefitIcon>(),
+  };
   for (const row of rows) {
     const name = row.benefitName?.trim();
     if (!name) continue;
     const category = `${row.benefitTypeName ?? ""} ${name}`.toLowerCase();
-    const bucket = /\bmedical\b/.test(category)
+    const group = /\bmedical\b/.test(category)
       ? result.medical
       : /\bdental\b/.test(category)
         ? result.dental
         : result.other;
-    bucket.add(name);
+    if (!group.has(name)) {
+      group.set(name, {
+        name,
+        icon: row.benefitTypeIcon ?? null,
+        color: row.benefitTypeColor ?? null,
+      });
+    }
   }
+  const sortedIcons = (group: Map<string, BenefitIcon>) =>
+    [...group.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const medicalBenefitIcons = sortedIcons(result.medical);
+  const dentalBenefitIcons = sortedIcons(result.dental);
+  const otherBenefitIcons = sortedIcons(result.other);
   return {
-    medical: [...result.medical].sort((a, b) => a.localeCompare(b)),
-    dental: [...result.dental].sort((a, b) => a.localeCompare(b)),
-    other: [...result.other].sort((a, b) => a.localeCompare(b)),
+    medical: medicalBenefitIcons.map(({ name }) => name),
+    dental: dentalBenefitIcons.map(({ name }) => name),
+    other: otherBenefitIcons.map(({ name }) => name),
+    medicalBenefitIcons,
+    dentalBenefitIcons,
+    otherBenefitIcons,
   };
 }
 
@@ -477,6 +500,9 @@ export async function buildWorkerMonthlyCoverageHistory(
       medical: benefits.medical,
       dental: benefits.dental,
       other: benefits.other,
+      medicalBenefitIcons: benefits.medicalBenefitIcons,
+      dentalBenefitIcons: benefits.dentalBenefitIcons,
+      otherBenefitIcons: benefits.otherBenefitIcons,
       charge: chargeHistory.showCharges ? chargeHistory.charges.get(ym) ?? "0.00" : null,
     });
   }

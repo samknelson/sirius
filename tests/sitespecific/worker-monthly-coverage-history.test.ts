@@ -141,14 +141,21 @@ describe("worker monthly coverage history", () => {
   it("uses only medical and dental types and preserves other plan names", () => {
     expect(classifyBenefitPresence([
       { benefitName: "Medical PPO", benefitTypeName: "Medical" },
-      { benefitName: "Medical HMO", benefitTypeName: "Medical" },
-      { benefitName: "Dental", benefitTypeName: "Dental" },
+      { benefitName: "Medical HMO", benefitTypeName: "Medical", benefitTypeIcon: "Stethoscope", benefitTypeColor: "#123456" },
+      { benefitName: "Dental", benefitTypeName: "Dental", benefitTypeIcon: "Tooth", benefitTypeColor: "#654321" },
       { benefitName: "Supplemental Medical Plan", benefitTypeName: "Supplemental" },
-      { benefitName: "Vision", benefitTypeName: "Vision" },
+      { benefitName: "Vision", benefitTypeName: "Vision", benefitTypeIcon: "Eye", benefitTypeColor: "#246a73" },
     ] as any)).toEqual({
       medical: ["Medical HMO", "Medical PPO", "Supplemental Medical Plan"],
       dental: ["Dental"],
       other: ["Vision"],
+      medicalBenefitIcons: [
+        { name: "Medical HMO", icon: "Stethoscope", color: "#123456" },
+        { name: "Medical PPO", icon: null, color: null },
+        { name: "Supplemental Medical Plan", icon: null, color: null },
+      ],
+      dentalBenefitIcons: [{ name: "Dental", icon: "Tooth", color: "#654321" }],
+      otherBenefitIcons: [{ name: "Vision", icon: "Eye", color: "#246a73" }],
     });
   });
 
@@ -245,8 +252,9 @@ describe("worker monthly coverage history", () => {
       { employerId: "employer", year: 2023, month: 10, totalHours: "77.5" },
     ]);
     mocks.getWorkerBenefitPresence.mockResolvedValue([
-      { year: 2024, month: 1, benefitName: "Medical PPO", benefitTypeName: "Medical" },
-      { year: 2024, month: 1, benefitName: "Dental Plan", benefitTypeName: "Dental" },
+      { year: 2024, month: 1, benefitName: "Medical PPO", benefitTypeName: "Medical", benefitTypeIcon: "Stethoscope", benefitTypeColor: "#123456" },
+      { year: 2024, month: 1, benefitName: "Dental Plan", benefitTypeName: "Dental", benefitTypeIcon: "Tooth", benefitTypeColor: "#654321" },
+      { year: 2024, month: 1, benefitName: "Vision", benefitTypeName: "Vision", benefitTypeIcon: "Eye", benefitTypeColor: "#246a73" },
     ]);
     mocks.getWorkerCoverageHistoryScans.mockResolvedValue([
       {
@@ -278,6 +286,9 @@ describe("worker monthly coverage history", () => {
       status: "active",
       medical: ["Medical PPO"],
       dental: ["Dental Plan"],
+      medicalBenefitIcons: [{ name: "Medical PPO", icon: "Stethoscope", color: "#123456" }],
+      dentalBenefitIcons: [{ name: "Dental Plan", icon: "Tooth", color: "#654321" }],
+      otherBenefitIcons: [{ name: "Vision", icon: "Eye", color: "#246a73" }],
       charge: "15.00",
     });
     expect(history.months[4]).toMatchObject({

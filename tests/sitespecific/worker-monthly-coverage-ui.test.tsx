@@ -49,7 +49,8 @@ describe("worker monthly coverage presentation", () => {
         months: [{
           coverageMonth: { year: 2024, month: 1, label: "January 2024" },
           workMonth: { year: 2023, month: 10, label: "October 2023" },
-          hours: null, status: "unknown", reasons: [], medical: [], dental: [], other: [], charge: null,
+          hours: null, status: "unknown", reasons: [],
+          medical: ["Legacy medical"], dental: ["Legacy dental"], other: [], charge: null,
         }],
       }] },
       isPending: false, isError: false, hasNextPage: false,
@@ -59,6 +60,9 @@ describe("worker monthly coverage presentation", () => {
     expect(html).toContain("Employer hours unavailable.");
     expect(html).toContain("Coverage for January 2024");
     expect(html).toContain('id="monthly-coverage-history"');
+    expect(html).toContain("Legacy medical");
+    expect(html).toContain("Legacy dental");
+    expect(html.match(/lucide-star/g)).toHaveLength(2);
   });
 
   it("uses a light green card for confirmed active coverage", () => {
@@ -93,7 +97,17 @@ describe("worker monthly coverage presentation", () => {
           ],
           hours: null, status: "inactive", reasons: ["Low Hours", "Unpaid Employee Contributions"],
           medical: ["Medical A", "Medical B"], dental: ["Dental A"],
-          other: ["Vision"], charge: "0.00",
+          medicalBenefitIcons: [
+            { name: "Medical A", icon: "Stethoscope", color: "#123456" },
+            { name: "Medical B", icon: "Stethoscope", color: "#123456" },
+          ],
+          dentalBenefitIcons: [{ name: "Dental A", icon: "Tooth", color: "#654321" }],
+          other: ["Vision", "Life Insurance"],
+          otherBenefitIcons: [
+            { name: "Vision", icon: "Eye", color: "#246a73" },
+            { name: "Life Insurance", icon: "Heart", color: "#ab1234" },
+          ],
+          charge: "0.00",
         }],
       }] },
       isPending: false, isError: false, hasNextPage: true, isFetchingNextPage: false,
@@ -103,14 +117,27 @@ describe("worker monthly coverage presentation", () => {
     expect(html).toContain('class="rounded-lg border p-4 text-sm bg-red-50"');
     expect(html).toContain("Posted EE-fund benefit charge");
     expect(html).toContain("$0.00");
-    expect(html).toContain("Medical A, Medical B");
+    expect(html).toContain('data-testid="monthly-medical-dental-benefits"');
+    expect(html).toContain("Medical A");
+    expect(html).toContain("Medical B");
     expect(html).toContain("Dental A");
+    expect(html).toContain("lucide-stethoscope");
+    expect(html).toContain("lucide-tooth");
+    expect(html).not.toContain('<dt class="font-medium">Medical</dt>');
+    expect(html).not.toContain('<dt class="font-medium">Dental</dt>');
+    expect(html).not.toContain("Medical A, Medical B");
     expect(html).toContain("Employer A");
     expect(html).toContain("Unknown employer (unknown)");
     expect(html).toContain("Total reported across employers:");
     expect(html).toContain("Applicable threshold:");
     expect(html).toContain("Other recorded benefits:");
-    expect(html).toContain("Vision");
+    expect(html).toContain('aria-label="Other recorded benefits"');
+    expect(html).toContain('aria-label="Vision"');
+    expect(html).toContain('aria-label="Life Insurance"');
+    expect(html).toContain("lucide-eye");
+    expect(html).toContain("lucide-heart");
+    expect(html).toContain("color:#246a73");
+    expect(html).not.toContain("Vision, Life Insurance");
     expect(html).toContain("Low Hours · Unpaid Employee Contributions");
     expect(html).toContain("Load older months");
   });
