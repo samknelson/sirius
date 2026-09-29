@@ -9,6 +9,7 @@ import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
 import { logger } from "../../logger";
 import type { AssignmentForWorker } from "../../storage/edls/assignments";
 import { entityMetadataStorage } from "../../storage/system/entity-metadata";
+import { getSystemTimeZone } from "../../config/system-timezone";
 import {
   buildContext,
   checkAccess,
@@ -35,6 +36,9 @@ type ConfirmedScheduleAssignment = AssignmentForWorker & {
 
 export interface PublicWorkerSchedule {
   workerName: string;
+  /** Instant at the end of this successful schedule read, not an assignment update time. */
+  readAt: string;
+  siteTimeZone: string;
   startYmd: string;
   endYmd: string;
   assignments: Array<ReviewScheduleAssignment | ConfirmedScheduleAssignment>;
@@ -200,17 +204,19 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
           };
         });
         const { startYmd, endYmd } = scheduleWindow();
-        const payload: PublicWorkerSchedule = {
-          workerName: formatWorkerName(contact),
-          startYmd,
-          endYmd,
-          assignments,
-        };
         const workerBackPath = await getWorkerBackPath(
           req,
           resolved.workerId,
         );
-        if (workerBackPath) payload.workerBackPath = workerBackPath;
+        const payload: PublicWorkerSchedule = {
+          workerName: formatWorkerName(contact),
+          readAt: new Date().toISOString(),
+          siteTimeZone: getSystemTimeZone(),
+          startYmd,
+          endYmd,
+          assignments,
+          ...(workerBackPath ? { workerBackPath } : {}),
+        };
         res.json(payload);
       } catch (error) {
         console.error("Failed to fetch public EDLS schedule:", error);

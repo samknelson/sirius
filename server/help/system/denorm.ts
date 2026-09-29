@@ -3,7 +3,7 @@ import type { SystemHelpEntry } from "./index";
 export const denormStatusHelp: SystemHelpEntry = {
   id: "system:denorm-status",
   paths: ["/admin/denorm"],
-  summary: "Each denorm plugin keeps a slice of data in sync. These numbers show how many records are up to date (ok), need recomputing (stale), or failed (error).",
+  summary: "Each denorm plugin keeps a slice of data in sync. These numbers show how many records are up to date (OK), need recomputing (stale), or failed (error).",
   details: `
     <h2>What is denorm?</h2>
     <p>“Denorm” means precomputed data: a plugin reads existing records, calculates a useful result, and stores that result so other parts of the site can use it without recalculating everything on every request. Each plugin is responsible for a particular type of record or calculation. This page shows whether those saved results are ready to use; it does not display the results themselves.</p>
@@ -29,7 +29,7 @@ export const denormStatusHelp: SystemHelpEntry = {
 export const denormRelationshipsHelp: SystemHelpEntry = {
   id: "system:denorm-relationships",
   paths: ["/admin/denorm/relationships"],
-  summary: "What each denorm plugin reads from and writes to, at storage-object granularity. A sole-writer target is owned outright by its plugin; a shared target is written by several cooperating writers.",
+  summary: "See what each denorm plugin reads from and writes to. A sole-writer target belongs to one plugin; a shared target can have several cooperating writers.",
   details: `
     <h2>How to read Relationships</h2>
     <p>Denorm plugins maintain saved, precomputed results derived from other data. This page maps their declared data flow, so you can see which parts of the site may be involved when a plugin recalculates. It is a map of registered plugin definitions, not a report of the records currently stored or the work recently completed.</p>
