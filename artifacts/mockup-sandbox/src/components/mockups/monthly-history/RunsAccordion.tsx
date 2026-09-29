@@ -161,6 +161,7 @@ export function RunsAccordion() {
   const initialCount = Math.min(24, MONTHLY_COVERAGE_ROWS.length);
   const [visibleCount, setVisibleCount] = useState(initialCount);
   const [openRuns, setOpenRuns] = useState<string[]>([]);
+  const [selectedMonths, setSelectedMonths] = useState<Record<string, string>>({});
   const visibleRows = MONTHLY_COVERAGE_ROWS.slice(0, visibleCount);
   const runs = useMemo(() => {
     const result: Run[] = [];
@@ -211,15 +212,18 @@ export function RunsAccordion() {
               </p>
             )}
             {runs.map((run, index) => {
-              const id = `coverage-run-${index}`;
-              const isOpen = openRuns.includes(`run-${index}`);
-              const newest = run.rows[0].coverageMonth.label;
+              const latestMonth = run.rows[0].coverageMonth;
+              const id = `coverage-run-${latestMonth.year}-${latestMonth.month}`;
+              const isOpen = openRuns.includes(id);
+              const newest = latestMonth.label;
               const oldest = run.rows[run.rows.length - 1].coverageMonth.label;
               const range = run.rows.length === 1 ? newest : `${oldest} – ${newest}`;
               const isOldestLoadedBoundary = index === runs.length - 1 && partialBoundary;
+              const monthKey = (row: MonthlyCoverageRow) => `${row.coverageMonth.year}-${row.coverageMonth.month}`;
+              const selectedRow = run.rows.find((row) => monthKey(row) === selectedMonths[id]) ?? run.rows[0];
               return (
                 <section
-                  key={`${run.status}-${newest}`}
+                  key={`${run.status}-${id}`}
                   className={`coverage-first-decision p-0${run.status === "inactive" ? " coverage-first-decision--not-covered" : run.status === "unknown" ? " coverage-first-decision--quiet" : ""}`}
                   aria-label={`${statusLabel(run.status)} coverage ${range}`}
                 >
@@ -229,7 +233,7 @@ export function RunsAccordion() {
                       id={`${id}-button`}
                       aria-expanded={isOpen}
                       aria-controls={`${id}-panel`}
-                      onClick={() => toggleRun(`run-${index}`)}
+                      onClick={() => toggleRun(id)}
                       className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     >
                       <span className={`coverage-first-status ${run.status === "active" ? "coverage-first-status--covered" : run.status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`}>
@@ -253,16 +257,35 @@ export function RunsAccordion() {
                     <div id={`${id}-panel`} role="region" aria-labelledby={`${id}-button`} className="space-y-3 px-3 pb-3 sm:px-4">
                       <p className="px-1 text-xs text-muted-foreground">
                         {run.rows.length > 1
-                          ? `${run.rows.length} consecutive coverage months with the same recorded status. Benefits and other evidence are shown month by month.`
+                          ? "Select a coverage month to see its benefits and work-month evidence. The status is the same across this period; benefits may vary by month."
                           : "Monthly decision and recorded evidence."}
                       </p>
-                      {run.rows.map((row) => (
-                        <MonthEvidence
-                          key={`${row.coverageMonth.year}-${row.coverageMonth.month}`}
-                          row={row}
-                          showCharges={MONTHLY_COVERAGE_PAGE.showCharges}
-                        />
-                      ))}
+                      {run.rows.length > 1 && (
+                        <div role="group" aria-label={`Coverage months for ${statusLabel(run.status)} ${range}`} className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                          {run.rows.map((row) => (
+                            <button
+                              key={monthKey(row)}
+                              type="button"
+                              aria-pressed={monthKey(row) === monthKey(selectedRow)}
+                              aria-controls={`${id}-selected-month`}
+                              onClick={() => setSelectedMonths((current) => ({ ...current, [id]: monthKey(row) }))}
+                              className={`rounded-md border px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                                monthKey(row) === monthKey(selectedRow)
+                                  ? "border-current bg-background font-semibold"
+                                  : "border-border bg-background/70 hover:border-current hover:bg-background"
+                              }`}
+                            >
+                              {row.coverageMonth.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div id={`${id}-selected-month`}>
+                        <p className="mb-2 px-1 text-xs text-muted-foreground" aria-live="polite">
+                          Showing {selectedRow.coverageMonth.label} coverage, based on {selectedRow.workMonth.label} work.
+                        </p>
+                        <MonthEvidence row={selectedRow} showCharges={MONTHLY_COVERAGE_PAGE.showCharges} />
+                      </div>
                     </div>
                   )}
                 </section>
