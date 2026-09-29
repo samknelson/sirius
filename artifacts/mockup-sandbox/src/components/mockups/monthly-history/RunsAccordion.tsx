@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   ChevronDown,
   Eye,
@@ -22,10 +22,41 @@ import "./_group.css";
 
 const localIcons: Record<string, LucideIcon> = { Eye, HeartPulse, Pill, Smile, Wallet };
 
-type Run = { status: MonthlyCoverageRow["status"]; rows: MonthlyCoverageRow[] };
+// Keep a preview-only no-election span so the distinction is visible beside an
+// ordinary inactive scan span. Production must use the recorded election reason.
+const PREVIEW_ROWS = MONTHLY_COVERAGE_ROWS.map((row) =>
+  row.coverageMonth.year === 2025 && row.coverageMonth.month >= 3 && row.coverageMonth.month <= 5
+    ? { ...row, reasons: ["No Election"] }
+    : row,
+);
 
-function statusLabel(status: MonthlyCoverageRow["status"]) {
-  return status === "active" ? "Active" : status === "inactive" ? "Inactive" : "Not confirmed";
+type RunStatus = MonthlyCoverageRow["status"] | "unenrolled";
+type Run = { status: RunStatus; rows: MonthlyCoverageRow[] };
+
+function isNoElectionReason(reason: string) {
+  return reason.trim() === "No Election";
+}
+
+function rowStatus(row: MonthlyCoverageRow): RunStatus {
+  const soleFailureReason = row.reasons.length === 1 && isNoElectionReason(row.reasons[0]);
+  return row.status === "inactive" && soleFailureReason ? "unenrolled" : row.status;
+}
+
+function statusLabel(status: RunStatus) {
+  if (status === "active") return "Active";
+  if (status === "inactive") return "Inactive";
+  if (status === "unenrolled") return "Unenrolled";
+  return "Not confirmed";
+}
+
+function statusStyle(status: RunStatus): CSSProperties | undefined {
+  return status === "unenrolled"
+    ? {
+        borderColor: "hsl(37 35% 68%)",
+        backgroundColor: "hsl(39 42% 93%)",
+        color: "hsl(32 38% 33%)",
+      }
+    : undefined;
 }
 
 function formatHours(value: number | null | undefined): string {
@@ -54,13 +85,13 @@ function NamedBenefit({ benefit }: { benefit: BenefitIcon }) {
   );
 }
 
-function MonthEvidence({ row, showCharges }: { row: MonthlyCoverageRow; showCharges: boolean }) {
+function MonthEvidence({ row, status, showCharges }: { row: MonthlyCoverageRow; status: RunStatus; showCharges: boolean }) {
   const benefits = (items: string[], icons: BenefitIcon[] | undefined) =>
     icons ?? items.map((name) => ({ name, icon: null, color: null }));
 
   return (
     <article
-      className={`coverage-first-decision text-sm${row.status === "inactive" ? " coverage-first-decision--not-covered" : row.status === "unknown" ? " coverage-first-decision--quiet" : ""}`}
+      className={`coverage-first-decision text-sm${status === "inactive" ? " coverage-first-decision--not-covered" : status === "unknown" || status === "unenrolled" ? " coverage-first-decision--quiet" : ""}`}
       aria-label={`Coverage for ${row.coverageMonth.label}`}
       data-testid="monthly-coverage-card"
     >
@@ -69,8 +100,12 @@ function MonthEvidence({ row, showCharges }: { row: MonthlyCoverageRow; showChar
           <p className="text-xs font-medium text-muted-foreground">Coverage month</p>
           <h4 className="text-base font-semibold">{row.coverageMonth.label}</h4>
         </div>
-        <span className={`coverage-first-status order-3 col-span-2 justify-self-center text-center sm:order-2 sm:col-span-1 ${row.status === "active" ? "coverage-first-status--covered" : row.status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`} role="status">
-          {statusLabel(row.status)}
+        <span
+          className={`coverage-first-status order-3 col-span-2 justify-self-center text-center sm:order-2 sm:col-span-1 ${status === "active" ? "coverage-first-status--covered" : status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`}
+          style={statusStyle(status)}
+          role="status"
+        >
+          {statusLabel(status)}
         </span>
         <div className="order-2 min-w-0 text-right sm:order-3">
           <p className="text-xs font-medium text-muted-foreground">Work month</p>
@@ -114,10 +149,16 @@ function MonthEvidence({ row, showCharges }: { row: MonthlyCoverageRow; showChar
               </TooltipProvider>
             </div>
           )}
-          {row.status === "inactive" && (
+          {status === "inactive" && (
             <p className="mt-3 border-t pt-3 text-muted-foreground">
               <span className="font-medium text-foreground">Scan reason: </span>
               {row.reasons.length ? row.reasons.join(" · ") : "No specific reason confirmed by the scan."}
+            </p>
+          )}
+          {status === "unenrolled" && (
+            <p className="mt-3 border-t pt-3 text-muted-foreground">
+              <span className="font-medium text-foreground">Election record: </span>
+              {row.reasons.filter(isNoElectionReason).join(" · ")}
             </p>
           )}
         </section>
@@ -158,18 +199,19 @@ function MonthEvidence({ row, showCharges }: { row: MonthlyCoverageRow; showChar
 }
 
 export function RunsAccordion() {
-  const initialCount = Math.min(24, MONTHLY_COVERAGE_ROWS.length);
+  const initialCount = Math.min(24, PREVIEW_ROWS.length);
   const [visibleCount, setVisibleCount] = useState(initialCount);
   const [openRuns, setOpenRuns] = useState<string[]>([]);
   const [selectedMonths, setSelectedMonths] = useState<Record<string, string>>({});
-  const visibleRows = MONTHLY_COVERAGE_ROWS.slice(0, visibleCount);
+  const visibleRows = PREVIEW_ROWS.slice(0, visibleCount);
   const runs = useMemo(() => {
     const result: Run[] = [];
     visibleRows.forEach((row) => {
       const latest = result[result.length - 1];
       const oldest = latest?.rows[latest.rows.length - 1]?.coverageMonth;
       const consecutive = oldest && oldest.year * 12 + oldest.month - (row.coverageMonth.year * 12 + row.coverageMonth.month) === 1;
-      if (!latest || latest.status !== row.status || !consecutive) result.push({ status: row.status, rows: [row] });
+      const status = rowStatus(row);
+      if (!latest || latest.status !== status || !consecutive) result.push({ status, rows: [row] });
       else latest.rows.push(row);
     });
     return result;
@@ -196,7 +238,8 @@ export function RunsAccordion() {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-block h-2 w-2 rounded-full bg-[hsl(170_40%_38%)]" /> Active
-              <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(8_58%_43%)]" /> Inactive
+              <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(8_58%_43%)]" /> Inactive · scan decision
+              <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(32_38%_43%)]" /> Unenrolled · no election recorded
               <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(39_22%_55%)]" /> Not confirmed
             </div>
           </CardHeader>
@@ -221,10 +264,17 @@ export function RunsAccordion() {
               const isOldestLoadedBoundary = index === runs.length - 1 && partialBoundary;
               const monthKey = (row: MonthlyCoverageRow) => `${row.coverageMonth.year}-${row.coverageMonth.month}`;
               const selectedRow = run.rows.find((row) => monthKey(row) === selectedMonths[id]) ?? run.rows[0];
+              const reasonSummary = [...new Set(run.rows.flatMap((row) => row.reasons))].filter(Boolean).join(" · ");
+              const neutralStyle = statusStyle(run.status);
               return (
                 <section
                   key={`${run.status}-${id}`}
-                  className={`coverage-first-decision p-0${run.status === "inactive" ? " coverage-first-decision--not-covered" : run.status === "unknown" ? " coverage-first-decision--quiet" : ""}`}
+                  className={`coverage-first-decision p-0${run.status === "inactive" ? " coverage-first-decision--not-covered" : run.status === "unknown" || run.status === "unenrolled" ? " coverage-first-decision--quiet" : ""}`}
+                  style={run.status === "unenrolled" ? {
+                    borderColor: "hsl(37 35% 78%)",
+                    borderLeftColor: "hsl(32 38% 43%)",
+                    backgroundColor: "hsl(39 42% 96%)",
+                  } : undefined}
                   aria-label={`${statusLabel(run.status)} coverage ${range}`}
                 >
                   <h3>
@@ -236,11 +286,19 @@ export function RunsAccordion() {
                       onClick={() => toggleRun(id)}
                       className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     >
-                      <span className={`coverage-first-status ${run.status === "active" ? "coverage-first-status--covered" : run.status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`}>
+                      <span
+                        className={`coverage-first-status ${run.status === "active" ? "coverage-first-status--covered" : run.status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`}
+                        style={neutralStyle}
+                      >
                         {statusLabel(run.status)}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold">{range}</span>
+                        {run.status === "inactive" && (
+                          <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                            Reason: {reasonSummary || "No scan reason recorded."}
+                          </span>
+                        )}
                         {isOldestLoadedBoundary && (
                           <span className="mt-1 block text-xs font-normal text-muted-foreground">
                             Older months have not loaded; this may continue further back.
@@ -287,7 +345,7 @@ export function RunsAccordion() {
                         <p className="mb-2 px-1 text-xs text-muted-foreground" aria-live="polite">
                           Showing {selectedRow.coverageMonth.label} coverage, based on {selectedRow.workMonth.label} work.
                         </p>
-                        <MonthEvidence row={selectedRow} showCharges={MONTHLY_COVERAGE_PAGE.showCharges} />
+                        <MonthEvidence row={selectedRow} status={run.status} showCharges={MONTHLY_COVERAGE_PAGE.showCharges} />
                       </div>
                     </div>
                   )}
@@ -295,7 +353,7 @@ export function RunsAccordion() {
               );
             })}
             {hasOlder && (
-              <Button variant="outline" onClick={() => setVisibleCount(MONTHLY_COVERAGE_ROWS.length)}>
+                <Button variant="outline" onClick={() => setVisibleCount(PREVIEW_ROWS.length)}>
                 Load older months
               </Button>
             )}
