@@ -1,6 +1,7 @@
 import type { Help } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
+import { oneoffHelp } from "./oneoff";
 import { trustProvidersHelp } from "./trust-providers";
 
 /**
@@ -20,6 +21,7 @@ export interface SystemHelpEntry {
 export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
+  oneoffHelp,
   trustProvidersHelp,
 ];
 
