@@ -26,7 +26,12 @@ describe("worker monthly coverage presentation", () => {
     });
     const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-a" />);
     expect(html).toContain("January 2024");
-    expect(html).toContain("Work month — October 2023");
+    expect(html).toContain('data-testid="monthly-coverage-card-header"');
+    expect(html).toContain("sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]");
+    expect(html).toMatch(/>Coverage month<\/p><h3[^>]*>January 2024<\/h3>/);
+    expect(html).toMatch(/role="status">Not confirmed<\/span><div class="order-2 min-w-0 text-right sm:order-3"><p[^>]*>Work month<\/p><p[^>]*>October 2023<\/p>/);
+    expect(html).not.toContain("Work month — October 2023");
+    expect(html).toContain(">Hours by employer</h4>");
     expect(html).toContain("Employer Name");
     expect(html).toContain("Total reported across employers:");
     expect(html).toContain("88.25 hours");

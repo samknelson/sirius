@@ -124,14 +124,18 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
               aria-label={`Coverage for ${row.coverageMonth.label}`}
               data-testid="monthly-coverage-card"
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
+              <div className="grid grid-cols-2 items-start gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]" data-testid="monthly-coverage-card-header">
+                <div className="min-w-0">
                   <p className="text-xs font-medium text-muted-foreground">Coverage month</p>
                   <h3 className="text-base font-semibold">{row.coverageMonth.label}</h3>
                 </div>
-                <span className="rounded-full border px-3 py-1 font-medium" role="status">
+                <span className="order-3 col-span-2 justify-self-center rounded-full border px-3 py-1 text-center font-medium sm:order-2 sm:col-span-1" role="status">
                   {row.status === "active" ? "Active" : row.status === "inactive" ? "Inactive" : "Not confirmed"}
                 </span>
+                <div className="order-2 min-w-0 text-right sm:order-3">
+                  <p className="text-xs font-medium text-muted-foreground">Work month</p>
+                  <p className="text-base font-semibold">{row.workMonth.label}</p>
+                </div>
               </div>
               <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2" data-testid="monthly-coverage-card-columns">
                 <section aria-label={`Benefits for ${row.coverageMonth.label}`} className="min-w-0 rounded-md border bg-background p-3">
@@ -180,8 +184,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                   )}
                 </section>
                 <section aria-label={`Work-month evidence for ${row.workMonth.label}`} className="min-w-0 rounded-md border bg-background p-3">
-                  <h4 className="font-semibold">Work month — {row.workMonth.label}</h4>
-                  <p className="mt-3 font-medium">Hours by employer</p>
+                  <h4 className="font-semibold">Hours by employer</h4>
                   {row.employerHours === null || row.employerHours === undefined ? (
                     <p className="mt-1 text-muted-foreground">Employer hours unavailable.</p>
                   ) : row.employerHours.length === 0 ? (
