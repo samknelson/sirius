@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { renderIcon } from "@/components/ui/icon-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import "@/plugins/dashboard/bao-worker-coverage/bao-worker-coverage.css";
 
 interface Month {
   year: number;
@@ -120,7 +121,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
           {rows.map((row) => (
             <article
               key={`${row.coverageMonth.year}-${row.coverageMonth.month}`}
-              className={`rounded-lg border p-4 text-sm ${row.status === "active" ? "bg-green-50" : row.status === "inactive" ? "bg-red-50" : "bg-background"}`}
+              className={`coverage-first-decision text-sm${row.status === "inactive" ? " coverage-first-decision--not-covered" : row.status === "unknown" ? " coverage-first-decision--quiet" : ""}`}
               aria-label={`Coverage for ${row.coverageMonth.label}`}
               data-testid="monthly-coverage-card"
             >
@@ -129,7 +130,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                   <p className="text-xs font-medium text-muted-foreground">Coverage month</p>
                   <h3 className="text-base font-semibold">{row.coverageMonth.label}</h3>
                 </div>
-                <span className="order-3 col-span-2 justify-self-center rounded-full border px-3 py-1 text-center font-medium sm:order-2 sm:col-span-1" role="status">
+                <span className={`coverage-first-status order-3 col-span-2 justify-self-center text-center sm:order-2 sm:col-span-1 ${row.status === "active" ? "coverage-first-status--covered" : row.status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`} role="status">
                   {row.status === "active" ? "Active" : row.status === "inactive" ? "Inactive" : "Not confirmed"}
                 </span>
                 <div className="order-2 min-w-0 text-right sm:order-3">

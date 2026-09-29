@@ -40,7 +40,8 @@ describe("worker monthly coverage presentation", () => {
     expect(html).not.toContain("not the coverage decision");
     expect(html).toContain("sm:grid-cols-2");
     expect(html).toContain("Not confirmed");
-    expect(html).toContain('class="rounded-lg border p-4 text-sm bg-background"');
+    expect(html).toContain('class="coverage-first-decision text-sm coverage-first-decision--quiet"');
+    expect(html).toContain("coverage-first-status--quiet");
     expect(html.match(/rounded-md border bg-background p-3/g)).toHaveLength(2);
     expect(html).toContain("No recorded medical benefit");
     expect(html).not.toContain("Posted EE-fund benefit charge");
@@ -70,7 +71,7 @@ describe("worker monthly coverage presentation", () => {
     expect(html.match(/lucide-star/g)).toHaveLength(2);
   });
 
-  it("uses a light green card for confirmed active coverage", () => {
+  it("matches the current-coverage green card and left-side emphasis for active coverage", () => {
     query.useInfiniteQuery.mockReturnValue({
       data: { pages: [{
         total: 1, showCharges: false, partial: false,
@@ -85,7 +86,8 @@ describe("worker monthly coverage presentation", () => {
     });
 
     const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-active" />);
-    expect(html).toContain('class="rounded-lg border p-4 text-sm bg-green-50"');
+    expect(html).toContain('class="coverage-first-decision text-sm"');
+    expect(html).toContain("coverage-first-status--covered");
     expect(html.match(/rounded-md border bg-background p-3/g)).toHaveLength(2);
   });
 
@@ -119,7 +121,8 @@ describe("worker monthly coverage presentation", () => {
     });
     const html = renderToStaticMarkup(<WorkerMonthlyCoverageHistory workerId="worker-b" />);
     expect(html).toContain("Some coverage details are unavailable");
-    expect(html).toContain('class="rounded-lg border p-4 text-sm bg-red-50"');
+    expect(html).toContain('class="coverage-first-decision text-sm coverage-first-decision--not-covered"');
+    expect(html).toContain("coverage-first-status--not-covered");
     expect(html).toContain("Posted EE-fund benefit charge");
     expect(html).toContain("$0.00");
     expect(html).toContain('data-testid="monthly-medical-dental-benefits"');

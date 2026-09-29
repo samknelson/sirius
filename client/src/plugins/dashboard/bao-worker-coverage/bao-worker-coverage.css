@@ -24,6 +24,18 @@
   padding: 1rem;
 }
 
+.coverage-first-decision--not-covered {
+  border-color: hsl(8 48% 75%);
+  border-left-color: hsl(8 58% 43%);
+  background: hsl(15 48% 95%);
+}
+
+.coverage-first-decision--quiet {
+  border-color: hsl(39 22% 78%);
+  border-left-color: hsl(39 22% 55%);
+  background: hsl(42 24% 94%);
+}
+
 .coverage-first-status {
   display: inline-flex;
   align-items: center;
