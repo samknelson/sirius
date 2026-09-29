@@ -3,6 +3,7 @@ import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
 import { oneoffHelp } from "./oneoff";
 import { trustProvidersHelp } from "./trust-providers";
+import { denormStatusHelp, denormRelationshipsHelp } from "./denorm";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -23,6 +24,8 @@ export type HelpWithSource = Help & { source: "system" | "config" };
 const entries: SystemHelpEntry[] = [
   oneoffHelp,
   trustProvidersHelp,
+  denormStatusHelp,
+  denormRelationshipsHelp,
 ];
 
 function toHelp(entry: SystemHelpEntry): HelpWithSource {

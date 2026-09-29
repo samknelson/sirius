@@ -117,6 +117,8 @@ export type TabEntityType =
    * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
    */
   | 'wc'
+  /** Denorm operations: a single admin page, not an entity record. */
+  | 'denorm'
   /**
    * The record history admin page. A single admin page, not a row, so the
    * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
@@ -795,6 +797,13 @@ export const wcTabTree: HierarchicalTab[] = [
   { id: 'wc-info', label: 'Info', hrefTemplate: '/admin/wc/info', permission: 'admin' },
 ];
 
+export const DENORM_ADMIN_ENTITY_ID = 'admin';
+
+export const denormTabTree: HierarchicalTab[] = [
+  { id: 'denorm-status', label: 'Status', hrefTemplate: '/admin/denorm', permission: 'admin' },
+  { id: 'denorm-relationships', label: 'Relationships', hrefTemplate: '/admin/denorm/relationships', permission: 'admin' },
+];
+
 /**
  * Record history across the whole system: browsing what has been recorded, and
  * filling it in for records that predate the bookkeeping.
@@ -861,6 +870,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   options: optionsTabTree,
   ws: wsTabTree,
   wc: wcTabTree,
+  denorm: denormTabTree,
   record_metadata: recordMetadataTabTree,
   user_roles: userRolesTabTree,
 };

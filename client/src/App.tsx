@@ -373,6 +373,7 @@ const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-i
 const FileBrowserPage = lazy(() => import("@/pages/admin/file-browser"));
 const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-detail"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
+const DenormRelationshipsPage = lazy(() => import("@/pages/admin/denorm").then(m => ({ default: m.DenormRelationshipsPage })));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const OneoffAdminPage = lazy(() => import("@/pages/admin/oneoff"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
@@ -3804,6 +3805,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DenormConfigsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/denorm/relationships">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormRelationshipsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

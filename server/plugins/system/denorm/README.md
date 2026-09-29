@@ -80,8 +80,8 @@ when a plugin starts using a new factory.
 ## Reviewing relationships
 
 `GET /api/denorm/relationships` (admin-gated, registry-only) serializes every
-plugin's trigger events, reads, and writes; the **Relationships** view on
-`/admin/denorm` renders them per plugin and cross-referenced per storage
+plugin's trigger events, reads, and writes; the **Relationships** page at
+`/admin/denorm/relationships` renders them per plugin and cross-referenced per storage
 object ("who reads / who writes X"). Use it to review data-flow chains when
 adding a plugin — there is deliberately no automated cycle lint, because
 legitimate component-gated cycles exist across site-specific plugins.

@@ -8,6 +8,7 @@ import {
   buildTabHref,
   WS_ADMIN_ENTITY_ID,
   WC_ADMIN_ENTITY_ID,
+  DENORM_ADMIN_ENTITY_ID,
   RECORD_METADATA_ADMIN_ENTITY_ID,
   USER_ROLES_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
@@ -502,6 +503,15 @@ export function useWcTabAccess(enabled = true) {
   return useTabAccess({
     entityType: 'wc',
     entityId: WC_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/** Tab access for the singleton denorm operations page. */
+export function useDenormTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'denorm',
+    entityId: DENORM_ADMIN_ENTITY_ID,
     enabled,
   });
 }
