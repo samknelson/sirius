@@ -36,8 +36,8 @@ describe("worker monthly coverage presentation", () => {
     expect(html).toContain("Total reported across employers:");
     expect(html).toContain("88.25 hours");
     expect(html).toContain("Applicable threshold:");
-    expect(html).toContain("The total is below the hours threshold");
-    expect(html).toContain("not the coverage decision");
+    expect(html).not.toContain("The total is below the hours threshold");
+    expect(html).not.toContain("not the coverage decision");
     expect(html).toContain("sm:grid-cols-2");
     expect(html).toContain("Not confirmed");
     expect(html).toContain('class="rounded-lg border p-4 text-sm bg-background"');

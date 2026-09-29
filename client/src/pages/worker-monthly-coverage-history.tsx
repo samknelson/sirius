@@ -202,12 +202,6 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                   <div className="mt-3 border-t pt-3">
                     <p>Total reported across employers: <strong className="tabular-nums">{formatHours(row.hours?.reported)}</strong></p>
                     <p className="mt-1">Applicable threshold: <strong className="tabular-nums">{formatHours(row.hours?.required)}</strong></p>
-                    {row.hours?.reported !== null && row.hours?.reported !== undefined &&
-                      row.hours.required !== null && row.hours.required !== undefined && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          The total {row.hours.reported >= row.hours.required ? "meets or exceeds" : "is below"} the hours threshold; this is evidence for the review, not the coverage decision.
-                        </p>
-                      )}
                     {(row.hours?.reported === null || row.hours?.reported === undefined ||
                       row.hours.required === null || row.hours.required === undefined) && (
                         <p className="mt-2 text-xs text-muted-foreground">Hours are evidence for the review; they do not by themselves determine coverage.</p>
