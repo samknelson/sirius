@@ -275,7 +275,10 @@ export function RunsAccordion() {
                                   : "border-border bg-background/70 hover:border-current hover:bg-background"
                               }`}
                             >
-                              {row.coverageMonth.label}
+                              <span className="block">{row.coverageMonth.label}</span>
+                              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                Work: {row.workMonth.label} · {formatHours(row.hours?.reported)}
+                              </span>
                             </button>
                           ))}
                         </div>
