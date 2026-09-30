@@ -142,7 +142,7 @@
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.
 - [Mockup artifact install timing](mockup-artifact-install-timing.md) — artifact workflow can start before scaffold dependencies are ready; wait for install before diagnosing missing Vite.
 - [Worker coverage month relationship](worker-coverage-month-relationship.md) — user prefers explicit work-month → coverage-month mapping and “Hours grant coverage in”; future thresholds remain separate from decisions.
-- [Monthly coverage history design direction](monthly-coverage-history-direction.md) — user chose compact status-run accordions for further design; this does not approve a production change.
+- [Monthly coverage history direction](monthly-coverage-history-direction.md) — user chose status-run accordions; sole recorded No Election is Unenrolled, never inferred from missing evidence.
 - [Historical coverage evidence](coverage-history-evidence.md) — past BAO months must not borrow today's home employer or EE charge account after either changes.
 - [Benefit History design direction](benefit-history-design-direction.md) — user chose grouped coverage eras for further design; this is not production approval, and dependent-provided benefits remain separate.
 - ContentEditable objects — [selection](contenteditable-object-selection.md) can report adjacent carets; [linked-image moves](linked-image-contenteditable-move.md) must move the whole anchor at release.
