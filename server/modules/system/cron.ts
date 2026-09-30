@@ -59,7 +59,7 @@ export function registerCronJobRoutes(
       const jobsWithRuns = await Promise.all(configs.map(async (config) => {
         const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
         const job = toLegacyCronJob(envelope ?? { config, subsidiary: null });
-        const latestRun = await storage.cronJobRuns.getLatestByJobName(job.name);
+        const latestRun = await storage.jobRuns.getLatestByPlugin("cron", job.name);
         return { ...job, latestRun };
       }));
 
@@ -80,7 +80,7 @@ export function registerCronJobRoutes(
       }
 
       const job = toLegacyCronJob(envelope);
-      const latestRun = await storage.cronJobRuns.getLatestByJobName(name);
+      const latestRun = await storage.jobRuns.getLatestByPlugin("cron", name);
 
       // Surface the plugin's default settings so read-only views can render the
       // effective config (defaults overlaid with the saved `data`). Editing now
@@ -108,7 +108,8 @@ export function registerCronJobRoutes(
         return res.status(404).json({ message: "Cron job not found" });
       }
 
-      const runs = await storage.cronJobRuns.list({ jobName: name });
+      // Include orphaned history from a previous incarnation of this singleton.
+      const runs = await storage.jobRuns.list({ pluginKind: "cron", pluginId: name });
       res.json(runs);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cron job runs" });
@@ -140,10 +141,10 @@ export function registerCronJobRoutes(
       }
 
       // Execute the job via the scheduler (which handles run creation and logging)
-      await cronScheduler.manualRun(name, dbUser.id, mode);
+      const runId = await cronScheduler.manualRun(envelope.config.id, dbUser.id, mode);
 
-      // Get the latest run for this job to return to the client
-      const latestRun = await storage.cronJobRuns.getLatestByJobName(name);
+      // Return the exact run this request started, not a concurrent latest run.
+      const latestRun = await storage.jobRuns.getById(runId);
 
       res.status(201).json(latestRun);
     } catch (error) {

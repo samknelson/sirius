@@ -67,8 +67,8 @@ import {
   fileLoggingConfig,
 } from "./files";
 import {
-  type CronJobRunStorage,
-  createCronJobRunStorage,
+  type JobRunStorage,
+  createJobRunStorage,
 } from "./system/cron";
 import {
   type PluginConfigStorage,
@@ -243,7 +243,7 @@ export interface IStorage {
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
   entityFiles: EntityFilesStorage;
-  cronJobRuns: CronJobRunStorage;
+  jobRuns: JobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
@@ -369,7 +369,7 @@ export class DatabaseStorage implements IStorage {
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
   entityFiles: EntityFilesStorage;
-  cronJobRuns: CronJobRunStorage;
+  jobRuns: JobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
@@ -554,7 +554,7 @@ export class DatabaseStorage implements IStorage {
       createEntityFilesStorage(),
       entityFilesLoggingConfig,
     );
-    this.cronJobRuns = createCronJobRunStorage();
+    this.jobRuns = createJobRunStorage();
     this.pluginConfigs = withStorageLogging(
       createPluginConfigStorage(),
       pluginConfigLoggingConfig,

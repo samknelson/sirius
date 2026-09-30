@@ -124,6 +124,10 @@ vi.mock("../../server/logger", () => ({
   logger: { warn: vi.fn() },
 }));
 
+vi.mock("../../server/config/system-timezone", () => ({
+  getSystemTimeZone: () => "America/Los_Angeles",
+}));
+
 import { registerEdlsPublicScheduleRoutes } from "../../server/modules/edls/public-schedule";
 
 type Handler = (req: any, res: any) => Promise<void>;
@@ -213,6 +217,32 @@ async function answer(
 }
 
 describe("public EDLS schedule answers", () => {
+  it("stamps each successful read with its completion instant and named site zone", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-11T18:15:00.000Z"));
+      const first = (await schedule()).json.mock.calls[0][0];
+      expect(first).toMatchObject({
+        readAt: "2026-07-11T18:15:00.000Z",
+        siteTimeZone: "America/Los_Angeles",
+      });
+
+      vi.setSystemTime(new Date("2026-07-11T18:17:00.000Z"));
+      expect((await answer(ACCESS_TOKEN)).status).toBe(200);
+      const second = (await schedule()).json.mock.calls[0][0];
+      expect(second.readAt).toBe("2026-07-11T18:17:00.000Z");
+      expect(second.siteTimeZone).toBe(first.siteTimeZone);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not expose a freshness claim for a denied schedule link", async () => {
+    const res = await schedule(REVOKED_TOKEN);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ message: "Access denied" });
+  });
+
   it("offers Draft and Requested sheets in the same public schedule window", async () => {
     const res = await schedule();
 

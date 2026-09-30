@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useDenormTabAccess } from "@/hooks/useTabAccess";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -45,66 +47,36 @@ interface DenormRelationship {
   writes: DenormWriteDeclaration[];
 }
 
-type DenormView = "status" | "relationships";
+type DenormView = "denorm-status" | "denorm-relationships";
 
 export default function DenormConfigsPage() {
-  usePageTitle("Denorm");
+  return <DenormPage activeTab="denorm-status" />;
+}
 
-  const [view, setView] = useState<DenormView>("status");
+export function DenormRelationshipsPage() {
+  return <DenormPage activeTab="denorm-relationships" />;
+}
+
+function DenormPage({ activeTab }: { activeTab: DenormView }) {
+  usePageTitle("Denorm");
+  const { tabs } = useDenormTabAccess();
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1
-          className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2"
-          data-testid="text-page-title"
-        >
-          <RefreshCw className="h-6 w-6" />
-          Denorm
-        </h1>
-        <p className="text-muted-foreground mt-2" data-testid="text-page-description">
-          {view === "status"
-            ? "Each denorm plugin keeps a slice of data in sync. These numbers show how many records are up to date (ok), need recomputing (stale), or failed (error)."
-            : "What each denorm plugin reads from and writes to, at storage-object granularity. A sole-writer target is owned outright by its plugin; a shared target is written by several cooperating writers."}
-        </p>
-      </div>
-
-      <div
-        className="inline-flex items-center rounded-md border bg-muted p-1"
-        role="tablist"
-        data-testid="segmented-denorm-view"
+      <h1
+        className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2"
+        data-testid="text-page-title"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "status"}
-          onClick={() => setView("status")}
-          className={`px-3 py-1.5 text-sm font-medium rounded-sm transition-colors ${
-            view === "status"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-          data-testid="button-view-status"
-        >
-          Status
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "relationships"}
-          onClick={() => setView("relationships")}
-          className={`px-3 py-1.5 text-sm font-medium rounded-sm transition-colors ${
-            view === "relationships"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-          data-testid="button-view-relationships"
-        >
-          Relationships
-        </button>
-      </div>
-
-      {view === "status" ? <StatusView /> : <RelationshipsView />}
+        <RefreshCw className="h-6 w-6" />
+        Denorm
+      </h1>
+      <EntityTabNavigation
+        tabs={tabs}
+        activeTab={activeTab}
+        testIdPrefix="tab-denorm-"
+        primaryTestId="tabs-denorm"
+      />
+      {activeTab === "denorm-status" ? <StatusView /> : <RelationshipsView />}
     </div>
   );
 }

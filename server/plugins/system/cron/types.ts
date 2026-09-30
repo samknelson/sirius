@@ -9,6 +9,7 @@ import type { BasePluginMetadata } from "../../_core";
  * "test" for dry-runs that must not mutate persistent state.
  */
 export interface CronJobContext {
+  configurationId: string;
   jobId: string;
   jobName: string;
   triggeredBy?: string;
@@ -41,8 +42,8 @@ export interface CronJobResult {
  */
 export interface CronPlugin {
   /**
-   * Base metadata. `id` is the cron job name (the stable identifier that keys
-   * `cron_job_runs.jobName` and the `plugin_configs` row). `requiredComponent`
+   * Base metadata. `id` is the cron plugin id; each run snapshots this id and
+   * references its exact `plugin_configs` row. `requiredComponent`
    * gates whether the job runs. `singleton` must be `true`.
    */
   metadata: BasePluginMetadata;

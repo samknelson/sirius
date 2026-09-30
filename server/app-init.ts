@@ -130,7 +130,9 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
         // IP) so the endpoint remains observable without persisting its body.
         const isWcManualRun =
           /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
-        if (capturedJsonResponse && !isWcManualRun) {
+        // Oneoff preflight responses carry a single-use confirmation credential.
+        // Neither that credential nor plugin-produced run data belongs in logs.
+        if (capturedJsonResponse && !isWcManualRun && !path.startsWith("/api/oneoff/")) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {
@@ -494,6 +496,16 @@ export async function bootstrapApp(
   // Register cron plugins (kind + adapter + self-registering plugin imports)
   initializeCronPluginSystem();
   logger.info("Cron plugins registered", { source: "startup" });
+
+  // Oneoff registrations are available before singleton config seeding. Only
+  // stale, heartbeat-less executions are marked interrupted; nothing resumes.
+  const { initializeOneoffPluginSystem } = await import("./plugins/system/oneoff");
+  initializeOneoffPluginSystem();
+  const { interruptStaleOneoffRuns } = await import("./services/oneoff-runner");
+  await runOrDeferStartupOperation("oneoff-stale-run-reconciliation", async () => {
+    await interruptStaleOneoffRuns();
+  });
+  logger.info("Oneoff plugins registered", { source: "startup" });
 
   // Register denorm plugins (kind + adapter + self-registering plugin imports)
   initializeDenormPluginSystem();

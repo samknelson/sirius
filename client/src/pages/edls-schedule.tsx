@@ -10,6 +10,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
 import { useAuth } from "@/contexts/AuthContext";
 import { assignmentUpdateAge } from "@/lib/assignment-update-age";
+import { isValidTimeZone } from "@shared/utils/timezone";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;
@@ -54,10 +55,49 @@ type ScheduleAssignment = ReviewScheduleAssignment | ConfirmedScheduleAssignment
 
 interface PublicWorkerSchedule {
   workerName: string;
+  readAt: string;
+  siteTimeZone: string;
   startYmd: string;
   endYmd: string;
   assignments: ScheduleAssignment[];
   workerBackPath?: string;
+}
+
+/** Keep the formatted clock and its IANA label in the same, server-reported zone. */
+export function formatScheduleFreshness(readAt: string, siteTimeZone: string): string | null {
+  const instant = new Date(readAt);
+  if (!Number.isFinite(instant.getTime()) || !isValidTimeZone(siteTimeZone)) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: siteTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
+  const [year, month, day, hour, minute, period] = [
+    part("year"), part("month"), part("day"), part("hour"), part("minute"), part("dayPeriod"),
+  ];
+  if (!year || !month || !day || !hour || !minute || !period) return null;
+  return `Current as of ${year}-${month}-${day} ${hour}:${minute} ${period} ${siteTimeZone}`;
+}
+
+export function ScheduleHeading({ schedule }: { schedule: PublicWorkerSchedule }) {
+  const freshness = formatScheduleFreshness(schedule.readAt, schedule.siteTimeZone);
+  return (
+    <div>
+      <h1 className="text-2xl font-bold" data-testid="text-schedule-title">
+        Upcoming Schedule for {schedule.workerName}
+      </h1>
+      {freshness && (
+        <p className="text-sm text-muted-foreground" data-testid="text-schedule-freshness">
+          {freshness}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** All card dates use the same yearless weekday and month/day format. */
@@ -383,9 +423,7 @@ export default function EdlsSchedulePage() {
 
   return (
     <div className="container mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-2xl font-bold" data-testid="text-schedule-title">
-        Upcoming Schedule for {data.workerName}
-      </h1>
+      <ScheduleHeading schedule={data} />
       {data.workerBackPath && (
         <Link href={data.workerBackPath}>
           <Button type="button" variant="outline" data-testid="button-back-to-worker">
