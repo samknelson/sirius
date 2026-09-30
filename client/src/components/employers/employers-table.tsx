@@ -423,12 +423,13 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                         {employer.companyName}
                       </div>
                     )}
-                    <span
-                      className="text-sm font-medium text-foreground"
+                    <Link
+                      href={`/employers/${employer.id}`}
+                      className="text-sm font-medium text-primary hover:underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                       data-testid={`text-employer-name-${employer.id}`}
                     >
                       {employer.name}
-                    </span>
+                    </Link>
                     {!employer.isActive && (
                       <span
                         className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
