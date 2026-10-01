@@ -253,6 +253,8 @@ function assertRealCalendarDate(
   }
 }
 
+const ADDRESS_FIELD_IDS = new Set(['addressLine1', 'addressLine2', 'city', 'state', 'postalCode']);
+
 export abstract class FeedWizard extends BaseWizard {
   isFeed: boolean = true;
 
@@ -276,7 +278,10 @@ export abstract class FeedWizard extends BaseWizard {
 
     for (const field of fields) {
       const value = row[field.id];
-      const isEmpty = value === null || value === undefined || value === '';
+      // Address processing uses toString().trim(); check the same emptiness
+      // here without rewriting the input or changing non-address validation.
+      const isEmpty = value === null || value === undefined || value === '' ||
+        (ADDRESS_FIELD_IDS.has(field.id) && value.toString().trim() === '');
 
       // Check required fields
       const isRequired = field.required || 
