@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Response } from "express";
 import fs from "fs";
 import path from "path";
 import { type Server } from "http";
@@ -13,6 +13,31 @@ export function log(message: string, source = "express") {
   });
 
   console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+/** Finish the dev SPA response without setting headers after an async transform. */
+export async function sendDevHtml(
+  res: Response,
+  next: NextFunction,
+  render: () => Promise<string>,
+  fixStacktrace: (error: Error) => void,
+): Promise<void> {
+  if (res.headersSent || res.writableEnded) return;
+
+  // Session middleware can flush headers during render. Set the HTML headers
+  // before the first await; after that, only the body needs to be written.
+  res.status(200).type("html");
+  try {
+    const page = await render();
+    if (!res.writableEnded) res.end(page);
+  } catch (error) {
+    fixStacktrace(error as Error);
+    if (res.headersSent) {
+      if (!res.writableEnded) res.end();
+      return;
+    }
+    next(error);
+  }
 }
 
 export async function setupVite(app: Express, server: Server) {
@@ -53,8 +78,7 @@ export async function setupVite(app: Express, server: Server) {
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
-
-    try {
+    await sendDevHtml(res, next, async () => {
       const clientTemplate = path.resolve(
         import.meta.dirname,
         "..",
@@ -68,12 +92,8 @@ export async function setupVite(app: Express, server: Server) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e as Error);
-      next(e);
-    }
+      return vite.transformIndexHtml(url, template);
+    }, (error) => vite.ssrFixStacktrace(error));
   });
 }
 

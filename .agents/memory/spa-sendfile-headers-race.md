@@ -31,3 +31,20 @@ boundary, not elimination of the upstream auth/session timing race — only chas
 the upstream race if the callback-error log stays non-trivial after deploy. This
 is production-only behavior; the dev workflow uses the Vite dev server, so the
 path cannot be exercised locally.
+
+## Development HTML transform boundary
+
+**Rule:** Stage status and HTML content type before asynchronous template work;
+after rendering, write only the body. A transform failure after headers flush
+must not be forwarded to middleware that attempts another header write.
+
+**Why:** the development preview logged repeated header-write errors at the SPA
+fallback after its awaited Vite transform, despite successful fresh-session GETs.
+The earlier writer was not conclusively identified; the same logs also contained
+Vite CORS header-write failures. A successful unauthenticated screenshot therefore
+does not rule out a response-ownership race.
+
+**How to apply:** distinguish this development async-transform boundary from
+the production `sendFile` race. Verify a header flush while rendering is pending,
+and that a completed response is not written again. Retain normal error forwarding
+when headers have not flushed.
