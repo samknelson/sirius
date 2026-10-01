@@ -1,0 +1,115 @@
+name: Deploy to Production
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Manual dispatch ONLY, with a typed confirmation on top of the "Prod" GitHub
+# Environment's required-reviewer gate. There is deliberately no push or tag
+# trigger: keying prod off a branch push would ship whatever last landed.
+# Pick the ref to deploy via the `ref` input (or the branch selector, which is
+# what an empty `ref` falls back to).
+#
+# Pipeline: confirm → build-and-test.yml (Docker build + push to the prod ECR
+# repos) → deploy-to-environment.yml (register new task revisions, roll both
+# ECS services, wait for stability, roll back on failure).
+#
+# Topology matches Development and UAT — ONE image, pushed to BOTH ECR repos
+# (fm-fls-ui-ecr-prod-use2 / fm-fls-api-ecr-prod-use2) and rolled out to BOTH
+# ECS services (fm-fls-ui-prod-use2 / fm-fls-api-prod-use2) behind the ALB at
+# fls.freeman.com. Prod runs desired_count=2 per service, so the rollout is
+# slower than dev/uat — hence the longer stability timeout below.
+#
+# Environment name aligns with Terraform (fm-workloads-fls/envs/prod.tfvars): prod.
+# ("Prod" hits the wildcard branch of the env → short-code case statements in
+# both reusable workflows, which lowercases it to `prod`.)
+#
+# PROD-SPECIFIC BEHAVIOR TO KNOW BEFORE RUNNING THIS:
+#   * ECR is IMMUTABLE in prod. build-and-test.yml therefore pushes only the
+#     :<sha> tag (no moving `prod-latest`) and reuses an already-published
+#     image rather than re-pushing it.
+#   * ALLOW_EMPTY_DB_BOOTSTRAP is not set to 1 in prod — the schema is NOT
+#     auto-created on first boot. The prod database must be seeded deliberately
+#     before the first deploy, or every task will fail to start.
+#   * runMigrations() runs at boot in every task with no advisory lock, and
+#     prod runs 4 tasks (2 UI + 2 API). Concurrent DDL is possible during a
+#     rollout that carries migrations.
+#
+# Requires on the "Prod" GitHub Environment:
+#   Secrets:   AWS_ROLE_ARN     # OIDC role in the prod account
+#   Variables: ECS_CLUSTER      = fm-fls-ecs-prod-use2
+#              ENVIRONMENT_URL  = https://fls.freeman.com   (optional)
+#              APP_*            # app config — deploy-to-environment.yml REPLACES
+#                               # the task definition environment with the APP_*
+#                               # set on this Environment. Mirror UAT's APP_*
+#                               # vars/secrets (with prod values) before the
+#                               # first run, or the container boots unconfigured.
+#   Protection: required reviewers (configured), and the deployment branch
+#               policy must include whichever branch this workflow is run from.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to deploy (branch, tag, or full SHA). Blank = the branch selected above.'
+        required: false
+        default: ''
+        type: string
+      confirm:
+        description: 'Type "deploy to prod" to confirm.'
+        required: true
+        default: ''
+        type: string
+
+concurrency:
+  # One prod rollout at a time; queue rather than cancel, because cancelling
+  # mid-rollout would leave ECS half-updated.
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  confirm:
+    name: Confirm intent
+    runs-on: ubuntu-latest
+    # Cheap typo guard that runs before the reviewer gate, so a mistyped
+    # dispatch fails immediately instead of paging an approver.
+    steps:
+    - name: Check confirmation phrase
+      run: |
+        if [ "${{ inputs.confirm }}" != "deploy to prod" ]; then
+          echo "::error::Confirmation phrase did not match. Type exactly: deploy to prod"
+          exit 1
+        fi
+        echo "Confirmed. Deploying ref '${{ inputs.ref || github.ref_name }}' to Production."
+
+  build-prod:
+    name: Build for Production
+    needs: confirm
+    uses: ./.github/workflows/build-and-test.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'Prod'
+      ref: ${{ inputs.ref }}
+    secrets: inherit
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: build-prod
+    uses: ./.github/workflows/deploy-to-environment.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'Prod'
+      ui-image-uri: ${{ needs.build-prod.outputs.ui-image-uri }}
+      api-image-uri: ${{ needs.build-prod.outputs.api-image-uri }}
+      # Empty string where the prod ws ECR repo does not exist yet, which
+      # deploy-to-environment.yml treats as "roll ui and api only". Passing it
+      # unconditionally is what stops prod silently skipping the ws service
+      # once the three-service split is applied in fm-workloads-fls.
+      ws-image-uri: ${{ needs.build-prod.outputs.ws-image-uri }}
+      rollback-on-failure: true
+      # Longer than UAT's 20: prod runs 2 tasks per service, so the rolling
+      # replacement plus health-check settling takes proportionally longer.
+      stability-timeout-minutes: 30
+    secrets: inherit
