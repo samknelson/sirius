@@ -5,7 +5,7 @@ import type { SessionHistoryStorage } from "../storage/system/session-history";
 import { logger } from "../logger";
 
 export function createSessionHistoryHandler(
-  history: SessionHistoryStorage,
+  history: Pick<SessionHistoryStorage, "create">,
   isEnabled: () => boolean = () => isComponentEnabledSync("system.session_history"),
 ) {
   return async (transition: SessionTransitionPayload & { created?: boolean }): Promise<void> => {
@@ -35,7 +35,7 @@ export function createSessionHistoryHandler(
 
 let initialized = false;
 
-export function initializeSessionHistoryListener(history: SessionHistoryStorage): void {
+export function initializeSessionHistoryListener(history: Pick<SessionHistoryStorage, "create">): void {
   if (initialized) return;
   initialized = true;
   const handler = createSessionHistoryHandler(history);

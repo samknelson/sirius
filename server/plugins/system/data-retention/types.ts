@@ -1,4 +1,5 @@
 import type { BasePluginMetadata } from "../../_core";
+import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
 /**
  * Execution mode for a retention plugin's `cleanup`. `test` is a dry run: the
@@ -24,7 +25,7 @@ export interface DataRetentionResult {
  * (`data-retention` cron plugin) that runs them all.
  *
  * Contract:
- *   - `cleanup(mode)` finds the expired rows (typically via an inline
+ *   - `cleanup(mode, settings)` finds the expired rows (typically via an inline
  *     read-only query — declare `needsReadOnlyDb: true` in metadata) and, in
  *     `live` mode, deletes them ONE ROW AT A TIME through the owning storage
  *     module's per-row delete method (never bulk delete-with-criteria SQL).
@@ -40,9 +41,18 @@ export interface DataRetentionResult {
 export interface DataRetentionPlugin {
   /** Base metadata. `id` is the stable identifier keying the config row. */
   metadata: BasePluginMetadata;
+  /** Optional editable settings, offered by the generic plugin admin form. */
+  configSchema?: JsonSchema;
+  uiSchema?: UiSchema;
+  /** Existing plugins default to enabled; destructive opt-in policies may override. */
+  defaultEnabled?: boolean;
+  getDefaultSettings?(): Record<string, unknown>;
   /** Find expired rows and (in `live` mode) delete them per-row. */
-  cleanup(mode: DataRetentionMode): Promise<DataRetentionResult>;
+  cleanup(mode: DataRetentionMode, settings?: Record<string, unknown>): Promise<DataRetentionResult>;
 }
 
-/** Manifest entry shape for data-retention plugins (base metadata only). */
-export interface DataRetentionManifestEntry extends BasePluginMetadata {}
+/** Manifest includes optional settings schemas for the generic admin form. */
+export interface DataRetentionManifestEntry extends BasePluginMetadata {
+  configSchema?: JsonSchema;
+  uiSchema?: UiSchema;
+}

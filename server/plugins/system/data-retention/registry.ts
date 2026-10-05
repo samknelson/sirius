@@ -14,7 +14,11 @@ export const dataRetentionPluginRegistry = new PluginRegistry<
 >({
   kind: "data-retention",
   getMetadata: (p) => p.metadata,
-  toManifestEntry: (p) => ({ ...p.metadata }),
+  toManifestEntry: (p) => ({
+    ...p.metadata,
+    configSchema: p.configSchema,
+    uiSchema: p.uiSchema,
+  }),
 });
 
 /** Self-registration helper used by each plugin file under `./plugins/`. */

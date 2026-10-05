@@ -1,6 +1,6 @@
 ---
 name: Anonymous session history
-description: Product scope and the owner's no-logging/no-metadata constraint for session history.
+description: Anonymous capture scope, no-logging/no-metadata storage, and explicit opt-in for destructive retention.
 ---
 
 Session history is intended to support anonymous sessions, not only successful user logins.
@@ -14,3 +14,9 @@ All runtime history-table access must use its dedicated storage layer, with neit
 **Why:** The owner explicitly required this separation; history observations must not produce another audit/history record or touch the associated user's provenance.
 
 **How to apply:** Preserve this rule when adding future history reads, writes, or maintenance. Existing live-session logging is a different concern and is not subject to this exclusion.
+
+Introducing session-history retention must require explicit operator opt-in, even when the history component is already enabled. Preserve existing policies' enablement rather than changing the shared defaults for all retention plugins.
+
+**Why:** A software update must not silently delete previously accumulated observations. The shared retention framework originally seeds policies enabled, so component gating alone does not protect against surprise deletion.
+
+**How to apply:** Give new destructive observation-cleanup policies their own disabled initial configuration; honor saved operator choices on later boots. Keep schema bring-up and verification separate from enabling cleanup.
