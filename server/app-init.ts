@@ -7,6 +7,7 @@ import { logger } from "./logger";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { initializeSessionHistoryListener } from "./services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
@@ -277,6 +278,7 @@ export async function bootstrapApp(
   // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
   // without writing anything. See `server/services/bringup.ts`.
   await runSchemaBringUp();
+  initializeSessionHistoryListener(storage.sessionHistory);
 
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that

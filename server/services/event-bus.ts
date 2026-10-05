@@ -59,6 +59,9 @@ export class EventBusEmitDepthExceededError extends Error {
  * third spelling: new events use the convention above.
  */
 export enum EventType {
+  SESSION_SAVE_AFTER = "session.save.after",
+  SESSION_TOUCH_AFTER = "session.touch.after",
+  SESSION_DELETE_AFTER = "session.delete.after",
   HOURS_SAVED = "hours.saved",
   PAYMENT_SAVED = "payment.saved",
   WMB_SAVED = "wmb.saved",
@@ -120,6 +123,27 @@ export interface HoursSavedPayload {
   hours: number;
   employmentStatusId: string;
   home: boolean;
+}
+
+/** Minimal immutable snapshot of the row version actually mutated. No session JSON. */
+export interface SessionTransitionPayload {
+  readonly sid: string;
+  readonly previousUserId: string | null;
+  readonly userId: string | null;
+  readonly previousIp: string | null;
+  readonly ip: string | null;
+  readonly occurredAt: string;
+}
+
+export interface SessionSaveAfterPayload extends SessionTransitionPayload {
+  readonly created: boolean;
+}
+
+export interface SessionDeleteAfterPayload {
+  readonly sid: string;
+  readonly userId: string | null;
+  readonly ip: string | null;
+  readonly occurredAt: string;
 }
 
 export interface PaymentSavedPayload {
@@ -577,6 +601,9 @@ export interface LogPayload {
 }
 
 export interface EventPayloadMap {
+  [EventType.SESSION_SAVE_AFTER]: SessionSaveAfterPayload;
+  [EventType.SESSION_TOUCH_AFTER]: SessionTransitionPayload;
+  [EventType.SESSION_DELETE_AFTER]: SessionDeleteAfterPayload;
   [EventType.HOURS_SAVED]: HoursSavedPayload;
   [EventType.PAYMENT_SAVED]: PaymentSavedPayload;
   [EventType.WMB_SAVED]: WmbSavedPayload;

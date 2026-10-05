@@ -1,5 +1,6 @@
 import type { Express, RequestHandler, Request } from "express";
 import passport from "passport";
+import { captureRequestIpContext } from "../middleware/request-context";
 import session from "express-session";
 import { StorageSessionStore } from "./session-store";
 import { loadAuthConfig, getProviderConfig } from "./config";
@@ -90,6 +91,7 @@ export async function setupAuth(app: Express): Promise<void> {
   const config = getAuthConfig();
 
   app.set("trust proxy", 1);
+  app.use(captureRequestIpContext);
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());

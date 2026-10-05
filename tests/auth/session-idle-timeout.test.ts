@@ -103,6 +103,21 @@ describe("session idle timeout settings", () => {
     expect(fakes.upsertSession).not.toHaveBeenCalled();
   });
 
+  it("observes an anonymous session IP without rolling expiry or recreating a session", async () => {
+    const expire = new Date(NOW.getTime() + 60_000);
+    await touchSession(new StorageSessionStore({ ttlMs: 60_000 }), { cookie: { expires: expire } });
+    expect(fakes.touchSession).toHaveBeenCalledWith("sid-1", expire, { ipOnly: true });
+    expect(fakes.upsertSession).not.toHaveBeenCalled();
+  });
+
+  it("does not observe IP on an anonymous read-only idle-status poll", async () => {
+    await touchSession(new StorageSessionStore({ ttlMs: 60_000 }), {
+      cookie: {}, sessionIdleReadOnlyCheck: true,
+    });
+    expect(fakes.touchSession).not.toHaveBeenCalled();
+    expect(fakes.upsertSession).not.toHaveBeenCalled();
+  });
+
   it("rejects an idle session without renewing it", async () => {
     fakes.settingValue = { enabled: true, timeoutMinutes: 30 };
     fakes.sessionData = authenticatedSession(new Date(NOW.getTime() - 31 * 60_000).toISOString());

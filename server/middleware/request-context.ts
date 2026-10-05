@@ -49,6 +49,15 @@ export function getRequestContext(): RequestContext | undefined {
 }
 
 /**
+ * Session loading and auth-provider routes run before effective-user context
+ * capture. Give those paths the same client-IP source without resolving an
+ * actor early or mutating/creating an express-session payload.
+ */
+export function captureRequestIpContext(req: Request, _res: Response, next: NextFunction): void {
+  requestContext.run({ ...getRequestContext(), ipAddress: getClientIp(req) }, next);
+}
+
+/**
  * Whether notifications are currently suppressed for this async scope. Read by
  * the event-notifier dispatcher. Returns false when there is no ambient
  * context (e.g. cron jobs, startup tasks), preserving the notify-by-default
