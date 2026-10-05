@@ -1314,6 +1314,13 @@ export {
 } from "./schema/system/sftp-client-schema";
 
 export {
+  sessionHistory,
+  insertSessionHistorySchema,
+  type SessionHistory,
+  type InsertSessionHistory,
+} from "./schema/system/session-history-schema";
+
+export {
   pluginConfigsTrustProviderEdi,
   insertPluginConfigTrustProviderEdiSchema,
   type PluginConfigTrustProviderEdi,

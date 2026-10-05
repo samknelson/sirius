@@ -986,7 +986,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Session History",
     description: "Persistent history of user login sessions",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/system/session-history-schema.ts",
+      tables: ["session_history"]
+    }
   },
   {
     id: "system.sftp.client",
