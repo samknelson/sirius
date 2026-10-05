@@ -982,6 +982,13 @@ export const componentRegistry: ComponentDefinition[] = [
     ],
   },
   {
+    id: "system.session_history",
+    name: "Session History",
+    description: "Persistent history of user login sessions",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "system.sftp.client",
     name: "SFTP Client",
     description: "SFTP client for secure file transfers",
