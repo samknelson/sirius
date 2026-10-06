@@ -20,3 +20,9 @@ Introducing session-history retention must require explicit operator opt-in, eve
 **Why:** A software update must not silently delete previously accumulated observations. The shared retention framework originally seeds policies enabled, so component gating alone does not protect against surprise deletion.
 
 **How to apply:** Give new destructive observation-cleanup policies their own disabled initial configuration; honor saved operator choices on later boots. Keep schema bring-up and verification separate from enabling cleanup.
+
+New-IP sign-in notifications must silently establish a baseline when the account has no prior valid IP observations in retained history.
+
+**Why:** The owner explicitly chose not to alert on the first observed IP, including when retention leaves no previous IP history.
+
+**How to apply:** Distinguish no known IPs from an unseen IP relative to an existing baseline. Scope knowledge to the actual signing-in account; do not use anonymous or other accounts' observations as its baseline.
