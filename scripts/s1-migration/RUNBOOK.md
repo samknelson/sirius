@@ -1233,6 +1233,27 @@ findings. Reports stay aggregates-only (no names/PII), and say when
 
 ## 11. One-command daily sync (`sync.ts`) — full-fleet gates
 
+### Post-import historical WMB lifecycle events
+
+The common sync includes a separately timed event-only phase after successful
+fleet/parity processing and before aggregate recording and lock/fence cleanup.
+It reuses the historical one-off reconciler, processes every worker page, and
+reports separate `wmbEvents` counts/status/completeness in console output,
+aggregate run history and scheduled completion/failure alerts.
+
+Production activation is **disabled** in `sync-config.ts` pending remote test
+proof and deployment of the tested pinned image/task revision. Never enable
+application crons, replay scans, or change the production schedule to run this
+phase. See [the proof and recovery procedure](../../docs/wmb-historical-event-backfill.md).
+
+The loader's actual pinned inclusive horizon, fresh completed staging evidence,
+complete span traversal, zero rejected spans (even allowed rejects), and zero
+verification failures are required for a live event phase. Missing/unsafe proof
+fails an enabled phase and the overall sync. `--skip-stage` cannot supply fresh
+stage proof. Dry runs skip events explicitly, since hypothetical loader writes
+are not stored history. The synthetic fleet smoke now asserts cutoff refusal
+for its deliberate rejects/skip-stage runs; it is not activation evidence.
+
     npx tsx scripts/s1-migration/sync.ts --mode daily [--profile production] \
         [--dry-run] [--force-reconcile] [--skip-stage] [--skip-seeders] [--keep-going]
 

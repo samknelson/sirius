@@ -8,6 +8,10 @@ import {
   sanitizeDailySummary,
   summaryMessage,
 } from "../../scripts/s1-migration/lib/daily-automation";
+import { emptyWmbPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
+
+const disabledWmb = { ...emptyWmbPhase(false), status: "disabled" as const,
+  reason: "awaiting-tested-image-activation" };
 
 const passing = {
   command: "sync",
@@ -19,7 +23,8 @@ const passing = {
   skipStage: false,
   skipSeeders: true,
   keepGoing: false,
-  gates: { stage: "pass", fleet: "pass", findingsMode: "pass", parity: "pass" },
+  gates: { stage: "pass", fleet: "pass", findingsMode: "pass", parity: "pass", wmbEvents: "disabled" },
+  wmbEvents: disabledWmb,
   fleetTotals: { created: 1, unchanged: 20, rejected: 0 },
   findingsByKind: {},
 };
@@ -85,7 +90,27 @@ describe("scheduled S1 daily automation", () => {
     expect(() => assertScheduledDailyReport({ ...passing, gates: { ...passing.gates, parity: "skipped" } }))
       .toThrow(/parity gate/);
     expect(() => assertScheduledDailyReport({ ...passing, gates: {} })).toThrow(/stage gate/);
-    expect(() => assertScheduledDailyReport({ ...passing, result: "FAIL", gates: { fleet: "fail" } }))
+    expect(() => assertScheduledDailyReport({ ...passing, result: "FAIL", gates: { fleet: "fail", wmbEvents: "disabled" } }))
       .not.toThrow();
+  });
+
+  it("includes separate event counters and removes untrusted fields from alerts", () => {
+    const summary = sanitizeDailySummary({ ...passing, wmbEvents: {
+      ...disabledWmb, credentials: "must-not-leak", workersSample: ["must-not-leak"],
+    } });
+    expect(summary.wmbEvents.status).toBe("disabled");
+    expect(summaryMessage(summary)).not.toContain("must-not-leak");
+    expect(() => sanitizeDailySummary({ ...passing, wmbEvents: {
+      ...disabledWmb, reason: "credential=must-not-leak",
+    } })).toThrow("malformed WMB");
+    expect(() => sanitizeDailySummary({ ...passing, wmbEvents: {
+      ...disabledWmb, totals: { ...disabledWmb.totals, failed: -1 },
+    } })).toThrow("malformed WMB");
+    expect(() => sanitizeDailySummary({ ...passing, wmbEvents: {
+      ...disabledWmb, status: "pass",
+    } })).toThrow("malformed WMB");
+    expect(() => sanitizeDailySummary({ ...passing, wmbEvents: {
+      ...disabledWmb, status: "fail", reason: "page-execution-failed",
+    }, gates: { ...passing.gates, wmbEvents: "fail" } })).toThrow("PASS requires WMB");
   });
 });

@@ -1353,6 +1353,16 @@ async function main() {
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;
+  report.historicalEventEvidence = {
+    inclusiveCutoff: ymKey(OPEN_END_THROUGH),
+    complete: !DRY_RUN && (report.staged as number) > 0 &&
+      progressDone === report.staged && rejectedNids.length === 0 &&
+      Object.values(rejects.counts).every(count => count === 0) && verifyFailures === 0,
+    stagedSpans: report.staged,
+    processedSpans: progressDone,
+    rejectedSpans: rejectedNids.length,
+    verifyFailures,
+  };
 
   const result = buildLoaderResult({
     loader: LOADER,

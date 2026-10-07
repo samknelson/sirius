@@ -138,6 +138,8 @@ export interface StepPolicy {
 }
 
 export interface SyncProfile {
+  /** Production stays off until remote proof and pinned-image deployment. */
+  historicalWmbEvents: boolean;
   /** Extra args for stage.ts. The orchestrator always prepends --mode. */
   stageArgs: string[];
   /** Dev-only: staged-fake seed scripts that must re-run after EVERY restage
@@ -185,6 +187,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
   /** Dev rehearsal target — RUNBOOK §4 dev columns (seeded synthetic traps
    * make most classes fire exactly once so the gates stay exercised). */
   dev: {
+    historicalWmbEvents: true,
     stageArgs: [],
     postStageSeeds: [
       { script: "dev/seed-beneficiary-fakes.ts", afterStep: "contacts-workers" },
@@ -262,6 +265,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
    * ruling; a class not listed fails the run (fail closed) and needs triage
    * + a ruling before being added here in a reviewed commit. */
   production: {
+    historicalWmbEvents: false,
     stageArgs: [],
     postStageSeeds: [],
     // Daily dual-run policy (§4 row 9, amended 2026-08-09): omit the flag —

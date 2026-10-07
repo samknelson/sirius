@@ -205,6 +205,8 @@ ENV NODE_ENV=production
 # (other sites run this image in their own zone). RUNBOOK §12 step 0.
 ENV TZ=America/Los_Angeles
 WORKDIR /app
+RUN test -f scripts/oneoffs/backfill-wmb-events.ts \
+    && test -f scripts/s1-migration/lib/wmb-event-phase.ts
 USER node
 
 # No default command: every invocation is an explicit runbook step passed as
