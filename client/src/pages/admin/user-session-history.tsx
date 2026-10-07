@@ -129,6 +129,7 @@ function SessionHistoryForUser({ userId }: { userId: string }) {
                   <TableRow>
                     <TableHead className="min-w-[210px]">Date &amp; time</TableHead>
                     <TableHead className="min-w-[150px]">IP address</TableHead>
+                    <TableHead className="min-w-[240px]">Device</TableHead>
                     <TableHead className="min-w-[280px]">Session reference</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -140,6 +141,9 @@ function SessionHistoryForUser({ userId }: { userId: string }) {
                       </TableCell>
                       <TableCell className="font-mono text-sm text-muted-foreground">
                         {entry.ip || <span className="font-sans italic">Not recorded</span>}
+                      </TableCell>
+                      <TableCell className="min-w-[240px] max-w-[480px] break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                        {entry.userAgent || <span className="italic">Not recorded</span>}
                       </TableCell>
                       <TableCell className="break-all font-mono text-xs text-muted-foreground">
                         {entry.sessionReference}

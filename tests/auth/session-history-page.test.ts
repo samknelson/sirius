@@ -17,8 +17,8 @@ describe("safe user session history pages", () => {
       return sql.includes("count(")
         ? { rows: [[3]] }
         : { rows: [
-          ["row-b", "2026-10-05 12:00:00", null, "synthetic-cookie-secret"],
-          ["row-a", "2026-10-05 12:00:00", "192.0.2.1", "synthetic-cookie-secret"],
+          ["row-b", "2026-10-05 12:00:00", null, "synthetic-cookie-secret", null],
+          ["row-a", "2026-10-05 12:00:00", "192.0.2.1", "synthetic-cookie-secret", "Browser/1 (supplied)"],
         ] };
     });
     const page = await createSessionHistoryStorage().getUserPage("target-user", { page: 2, pageSize: 2 });
@@ -33,9 +33,13 @@ describe("safe user session history pages", () => {
     expect(page).toMatchObject({ total: 3, page: 2, pageSize: 2, totalPages: 2 });
     expect(page.entries[0].sessionReference).toMatch(/^[a-f0-9]{64}$/);
     expect(page.entries[0].sessionReference).toBe(page.entries[1].sessionReference);
-    expect(Object.keys(page.entries[0]).sort()).toEqual(["id", "ip", "sessionReference", "timestamp"]);
+    expect(Object.keys(page.entries[0]).sort()).toEqual(["id", "ip", "sessionReference", "timestamp", "userAgent"]);
+    expect(page.entries.map(entry => entry.userAgent)).toEqual([null, "Browser/1 (supplied)"]);
     expect(JSON.stringify(page)).not.toContain("synthetic-cookie-secret");
-    expect(queries[1].sql).not.toContain('"data"');
+    expect(queries[1].sql).toContain("jsonb_typeof");
+    expect(queries[1].sql).toContain("'{device,user_agent}'");
+    expect(queries[1].sql).not.toContain("authenticationSessionReference");
+    expect(queries[1].sql).not.toMatch(/,\s*"data"\s*(,|from)/);
   });
 
   it.each([{ page: 0, pageSize: 25 }, { page: 1.5, pageSize: 25 }, { page: 1, pageSize: 101 }, { page: 1, pageSize: 0 }, { page: Number.MAX_SAFE_INTEGER, pageSize: 100 }])(

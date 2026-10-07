@@ -133,6 +133,8 @@ export interface SessionTransitionPayload {
   readonly userId: string | null;
   readonly previousIp: string | null;
   readonly ip: string | null;
+  readonly previousUserAgent?: string | null;
+  readonly userAgent?: string | null;
   readonly occurredAt: string;
 }
 

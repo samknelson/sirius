@@ -11,6 +11,7 @@ export interface UserSessionHistoryEntry {
   id: string;
   timestamp: string;
   ip: string | null;
+  userAgent: string | null;
   sessionReference: string;
 }
 

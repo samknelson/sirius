@@ -5,6 +5,7 @@ import { sessions } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 import { getRequestContext } from "../../middleware/request-context";
+import { suppliedSessionUserAgent } from "@shared/session-device";
 import { normalizeSessionIp } from "../../auth/session-ip";
 import { getSessionAuthenticationContext } from "../../auth/session-authentication-context";
 import { eventBus, EventType, type EventPayloadMap } from "../../services/event-bus";
@@ -160,20 +161,24 @@ export function createSessionStorage(): SessionStorage {
         for (let attempt = 0; attempt < 3; attempt++) {
           const locked = await client.execute(sql`
             SELECT sess #>> '{passport,user,dbUser,id}' AS old_user_id,
-                   sess ->> '_sessionClientIp' AS old_ip
+                   sess ->> '_sessionClientIp' AS old_ip,
+                   sess -> '_sessionClientUserAgent' AS old_user_agent
             FROM sessions WHERE sid = ${sid} FOR UPDATE
           `);
           if (locked.rows.length > 0) {
-            const previous = locked.rows[0] as { old_user_id: string | null; old_ip: string | null };
+            const previous = locked.rows[0] as { old_user_id: string | null; old_ip: string | null; old_user_agent: unknown };
             const previousIp = normalizeSessionIp(previous.old_ip);
             const ip = normalizeSessionIp(getRequestContext()?.ipAddress) ?? previousIp;
+            const previousUserAgent = suppliedSessionUserAgent(previous.old_user_agent);
+            const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent) ?? previousUserAgent;
             await client
               .update(sessions)
-              .set({ sess: withSessionIp(sess, ip), expire })
+              .set({ sess: withSessionClientDetails(sess, ip, userAgent), expire })
               .where(eq(sessions.sid, sid));
             announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
               sid, created: false, previousUserId: previous.old_user_id,
               userId: newUserId ?? null, previousIp, ip,
+              previousUserAgent, userAgent,
               signInHistoryManaged: getSessionAuthenticationContext()?.historyManaged === true &&
                 getSessionAuthenticationContext()?.userId === newUserId,
               occurredAt: new Date().toISOString(),
@@ -185,15 +190,17 @@ export function createSessionStorage(): SessionStorage {
             };
           }
           const ip = normalizeSessionIp(getRequestContext()?.ipAddress);
+          const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent);
           const inserted = await client
             .insert(sessions)
-            .values({ sid, sess: withSessionIp(sess, ip), expire })
+            .values({ sid, sess: withSessionClientDetails(sess, ip, userAgent), expire })
             .onConflictDoNothing()
             .returning({ sid: sessions.sid });
           if (inserted.length > 0) {
             announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
               sid, created: true, previousUserId: null, userId: newUserId ?? null,
               previousIp: null, ip, occurredAt: new Date().toISOString(),
+              previousUserAgent: null, userAgent,
               signInHistoryManaged: getSessionAuthenticationContext()?.historyManaged === true &&
                 getSessionAuthenticationContext()?.userId === newUserId,
             });
@@ -209,24 +216,32 @@ export function createSessionStorage(): SessionStorage {
         const client = getClient();
         const locked = await client.execute(sql`
           SELECT sess #>> '{passport,user,dbUser,id}' AS user_id,
-                 sess ->> '_sessionClientIp' AS old_ip
+                 sess ->> '_sessionClientIp' AS old_ip,
+                 sess -> '_sessionClientUserAgent' AS old_user_agent
           FROM sessions WHERE sid = ${sid} FOR UPDATE
         `);
         if (locked.rows.length === 0) return;
-        const previous = locked.rows[0] as { user_id: string | null; old_ip: string | null };
+        const previous = locked.rows[0] as { user_id: string | null; old_ip: string | null; old_user_agent: unknown };
         const previousIp = normalizeSessionIp(previous.old_ip);
         const ip = normalizeSessionIp(getRequestContext()?.ipAddress) ?? previousIp;
-        if (options?.ipOnly && ip === previousIp) return;
+        const previousUserAgent = suppliedSessionUserAgent(previous.old_user_agent);
+        const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent) ?? previousUserAgent;
+        // ipOnly is the existing no-idle-renewal API; observe device changes
+        // here too, but do not extend the expiry just to capture them.
+        if (options?.ipOnly && ip === previousIp && userAgent === previousUserAgent) return;
         await client
           .update(sessions)
           .set({
             ...(options?.ipOnly ? {} : { expire }),
-            sess: sql`jsonb_set(${sessions.sess}, '{_sessionClientIp}', ${JSON.stringify(ip)}::jsonb)`,
+            sess: sql`jsonb_set(
+              jsonb_set(${sessions.sess}, '{_sessionClientIp}', ${JSON.stringify(ip)}::jsonb),
+              '{_sessionClientUserAgent}', ${JSON.stringify(userAgent)}::jsonb)`,
           })
           .where(eq(sessions.sid, sid));
         announceSessionMutation(EventType.SESSION_TOUCH_AFTER, {
           sid, previousUserId: previous.user_id, userId: previous.user_id,
           previousIp, ip, occurredAt: new Date().toISOString(),
+          previousUserAgent, userAgent,
         });
       });
     },
@@ -276,9 +291,13 @@ function storedSessionIp(sess: unknown): string | null {
   return normalizeSessionIp((sess as Record<string, unknown> | null)?._sessionClientIp);
 }
 
-function withSessionIp(sess: unknown, ip: string | null): unknown {
-  // This reserved property is storage-owned: never trust a caller's stale copy.
-  return { ...(sess as Record<string, unknown>), _sessionClientIp: ip };
+function withSessionClientDetails(sess: unknown, ip: string | null, userAgent: string | null): unknown {
+  // These reserved properties are storage-owned: never trust a stale caller.
+  return {
+    ...(sess as Record<string, unknown>),
+    _sessionClientIp: ip,
+    _sessionClientUserAgent: userAgent,
+  };
 }
 
 function announceSessionMutation<T extends EventType>(event: T, payload: EventPayloadMap[T]): void {

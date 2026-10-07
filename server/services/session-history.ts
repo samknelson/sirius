@@ -3,6 +3,7 @@ import { isComponentEnabledSync } from "./component-cache";
 import { runOutsideTransaction } from "../storage/transaction-context";
 import type { SessionHistoryStorage } from "../storage/system/session-history";
 import { logger } from "../logger";
+import { suppliedSessionUserAgent, withSessionUserAgent } from "../../shared/session-device";
 
 export function createSessionHistoryHandler(
   history: Pick<SessionHistoryStorage, "create">,
@@ -15,7 +16,9 @@ export function createSessionHistoryHandler(
     if (
       !transition.created &&
       transition.previousUserId === transition.userId &&
-      transition.previousIp === transition.ip
+      transition.previousIp === transition.ip &&
+      (suppliedSessionUserAgent(transition.userAgent) === null ||
+        transition.previousUserAgent === transition.userAgent)
     ) return;
 
     try {
@@ -26,7 +29,7 @@ export function createSessionHistoryHandler(
         userId: transition.userId,
         ip: transition.ip,
         timestamp: new Date(transition.occurredAt),
-        data: null,
+        data: withSessionUserAgent(null, transition.userAgent),
       }));
     } catch {
       // Driver errors may contain query parameters (including a cookie sid).
@@ -59,7 +62,7 @@ export function initializeSessionHistoryListener(history: Pick<SessionHistorySto
 }
 
 export async function recordSuccessfulSignIn(
-  observation: Omit<SignInAfterPayload, "ipDecision"> & { sid: string; authenticationSessionReference?: string },
+  observation: Omit<SignInAfterPayload, "ipDecision"> & { sid: string; authenticationSessionReference?: string; userAgent?: string | null },
 ): Promise<void> {
   let ipDecision: SignInAfterPayload["ipDecision"] = null;
   try {
@@ -68,7 +71,7 @@ export async function recordSuccessfulSignIn(
       ipDecision = await runOutsideTransaction(() => signInHistory!.recordSignIn({
         id: observation.occurrenceId, sid: observation.sid,
         userId: observation.userId, ip: observation.ip,
-        timestamp: new Date(observation.occurredAt), data: null,
+        timestamp: new Date(observation.occurredAt), data: withSessionUserAgent(null, observation.userAgent),
         authenticationSessionReference: observation.authenticationSessionReference,
       }));
     }

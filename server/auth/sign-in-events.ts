@@ -27,6 +27,7 @@ export const observeSuccessfulSignIns: RequestHandler = (req, _res, next) => {
       return original.call(req, user, options, done!);
     }
     const ip = normalizeSessionIp(getRequestContext()?.ipAddress);
+    const userAgent = getRequestContext()?.userAgent;
     runWithSessionAuthentication({ reason: "sign-in", userId, historyManaged: true }, () => {
       original.call(req, user, options, (error: unknown) => {
         if (error) return done(error);
@@ -37,7 +38,7 @@ export const observeSuccessfulSignIns: RequestHandler = (req, _res, next) => {
           try {
             const { recordSuccessfulSignIn } = await import("../services/session-history");
             await recordSuccessfulSignIn({
-              sid: req.sessionID, userId: userId!, ip,
+              sid: req.sessionID, userId: userId!, ip, userAgent,
               occurrenceId: randomUUID(), occurredAt: new Date().toISOString(),
               authenticationSessionReference: (user as AuthenticatedUser).authenticationSessionReference,
             });

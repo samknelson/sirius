@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { normalizeSessionIp } from "../../auth/session-ip";
 import type { SignInIpDecision } from "../../services/event-bus";
 import { sessionHistoryPagingSchema, type UserSessionHistoryPage } from "@shared/session-history";
+import { sessionHistoryDataObject } from "@shared/session-device";
 
 export interface SessionHistoryStorage {
   create(entry: InsertSessionHistory): Promise<void>;
@@ -56,7 +57,10 @@ export function createSessionHistoryStorage(): SessionHistoryStorage {
         // The event occurrence id is a non-bearer UUID, not the cookie SID.
         await getClient().insert(sessionHistory).values({
           ...rowEntry, ip,
-          data: reference ? { authenticationSessionReference: reference } : rowEntry.data,
+          data: reference ? {
+            ...sessionHistoryDataObject(rowEntry.data),
+            authenticationSessionReference: reference,
+          } : rowEntry.data,
         });
         return decision;
       });
@@ -97,6 +101,12 @@ export function createSessionHistoryStorage(): SessionHistoryStorage {
         timestamp: sessionHistory.timestamp,
         ip: sessionHistory.ip,
         sid: sessionHistory.sid,
+        // Extract only a correctly typed public descriptive field, not the
+        // full JSON (which includes private authentication correlation).
+        userAgent: sql<string | null>`CASE
+          WHEN jsonb_typeof(${sessionHistory.data} #> '{device,user_agent}') = 'string'
+          THEN NULLIF(${sessionHistory.data} #>> '{device,user_agent}', '')
+          ELSE NULL END`,
       }).from(sessionHistory).where(scope)
         .orderBy(desc(sessionHistory.timestamp), desc(sessionHistory.id))
         .limit(pageSize).offset((page - 1) * pageSize);
@@ -106,6 +116,7 @@ export function createSessionHistoryStorage(): SessionHistoryStorage {
           id: row.id,
           timestamp: row.timestamp.toISOString(),
           ip: row.ip,
+          userAgent: row.userAgent,
           sessionReference: createHash("sha256").update("session-history-reference:").update(row.sid).digest("hex"),
         })),
         total, page, pageSize, totalPages: Math.ceil(total / pageSize),

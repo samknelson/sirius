@@ -63,6 +63,24 @@ describe("session history capture", () => {
     expect(fakes.enabled).not.toHaveBeenCalled();
   });
 
+  it("records anonymous device-only changes and preserves supplied text", async () => {
+    const create = vi.fn();
+    await createSessionHistoryHandler({ create })({
+      ...transition, previousUserAgent: "Browser/1", userAgent: "Browser/2 (supplied)",
+    });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      userId: null, data: { device: { user_agent: "Browser/2 (supplied)" } },
+    }));
+  });
+
+  it.each([undefined, null, "", "Browser/1"])("ignores absent or unchanged device details: %s", async userAgent => {
+    const create = vi.fn();
+    await createSessionHistoryHandler({ create })({
+      ...transition, previousUserAgent: "Browser/1", userAgent,
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("consults runtime enablement and never touches disabled storage", async () => {
     const create = vi.fn();
     const handler = createSessionHistoryHandler({ create });
@@ -102,8 +120,13 @@ describe("session history capture", () => {
       sid: "synthetic-cookie-canary", occurrenceId: "occurrence",
       userId: "internal-user", ip: "192.0.2.1", occurredAt: transition.occurredAt,
       authenticationSessionReference: "a".repeat(64),
+      userAgent: "Browser/1 (supplied)",
     });
     expect(fakes.recordSignIn).toHaveBeenCalledOnce();
+    expect(fakes.recordSignIn).toHaveBeenCalledWith(expect.objectContaining({
+      data: { device: { user_agent: "Browser/1 (supplied)" } },
+      authenticationSessionReference: "a".repeat(64),
+    }));
     const [event, payload] = fakes.emit.mock.calls[0];
     expect(event).toBe("auth.sign-in.after");
     expect(payload.ipDecision).toBe("new-ip");
@@ -139,7 +162,18 @@ describe("session address normalization", () => {
       socket: { remoteAddress: "127.0.0.1" },
     } as unknown as Parameters<typeof captureRequestIpContext>[0];
     captureRequestIpContext(req, {} as Parameters<typeof captureRequestIpContext>[1], () => {
-      expect(getRequestContext()).toEqual({ ipAddress: "192.0.2.1" });
+      expect(getRequestContext()).toEqual({ ipAddress: "192.0.2.1", userAgent: null });
+    });
+    expect(getRequestContext()).toBeUndefined();
+  });
+
+  it("captures supplied User-Agent before authentication without changing it", () => {
+    const req = {
+      headers: { "user-agent": "ExampleBrowser/4.2 (Example OS; supplied)" },
+      socket: { remoteAddress: "192.0.2.1" },
+    } as unknown as Parameters<typeof captureRequestIpContext>[0];
+    captureRequestIpContext(req, {} as Parameters<typeof captureRequestIpContext>[1], () => {
+      expect(getRequestContext()?.userAgent).toBe(req.headers["user-agent"]);
     });
     expect(getRequestContext()).toBeUndefined();
   });

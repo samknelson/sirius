@@ -7,7 +7,7 @@ const fakes = vi.hoisted(() => ({
 }));
 vi.mock("../../server/services/session-history", () => ({ recordSuccessfulSignIn: fakes.record }));
 vi.mock("../../server/middleware/request-context", () => ({
-  getRequestContext: () => ({ ipAddress: "::ffff:192.0.2.10", userId: "not-the-session-owner" }),
+  getRequestContext: () => ({ ipAddress: "::ffff:192.0.2.10", userId: "not-the-session-owner", userAgent: "Browser/1 (supplied)" }),
 }));
 vi.mock("../../server/logger", () => ({ logger: { error: fakes.error } }));
 
@@ -40,6 +40,7 @@ describe("observation of the existing Passport login boundary", () => {
     expect(fakes.record).toHaveBeenCalledWith(expect.objectContaining({
       userId: "actual-session-owner", ip: "192.0.2.10",
       sid: "synthetic-cookie-only-for-storage",
+      userAgent: "Browser/1 (supplied)",
       occurrenceId: expect.stringMatching(/^[a-f0-9-]{36}$/),
     }));
   });
