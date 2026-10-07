@@ -149,3 +149,4 @@
 - [Session-history boundaries](session-history-anonymous-scope.md) — anonymous capture, no storage audit/metadata, opt-in retention; the first observed IP silently establishes an alert baseline.
 - [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
 - [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
+- [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.

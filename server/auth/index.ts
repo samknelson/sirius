@@ -16,6 +16,7 @@ import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { observeSuccessfulSignIns } from "./sign-in-events";
+import { createDeviceCookieMiddleware } from "./device-cookie";
 
 const getStorage = () => require("../storage").storage;
 
@@ -93,6 +94,7 @@ export async function setupAuth(app: Express): Promise<void> {
 
   app.set("trust proxy", 1);
   app.use(captureRequestIpContext);
+  app.use(createDeviceCookieMiddleware());
   app.use(getSession());
   app.use(passport.initialize());
   app.use(observeSuccessfulSignIns);

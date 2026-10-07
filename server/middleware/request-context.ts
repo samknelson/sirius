@@ -23,6 +23,8 @@ export interface RequestContext {
   ipAddress?: string;
   /** Supplied User-Agent, not a parsed or verified device identity. */
   userAgent?: string | null;
+  /** Verified browser-profile UUID; not a credential or physical-device identity. */
+  deviceId?: string;
   /**
    * When true, the event-notifier dispatcher skips sending notifications for
    * events fired within this async scope. Set either by the
@@ -161,6 +163,7 @@ export async function captureRequestContext(req: Request, res: Response, next: N
   const context: RequestContext = {
     ipAddress: getClientIp(req),
     userAgent: suppliedSessionUserAgent(req.headers['user-agent']),
+    deviceId: getRequestContext()?.deviceId,
   };
 
   // Client opt-in (e.g. bulk-update flows): suppress notifications that this

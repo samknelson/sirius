@@ -268,7 +268,7 @@ export function EnvVariableRow({
           {variable.changeTakesEffect === "restart" && (
             <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
               <RotateCw className="h-3 w-3 mt-0.5 shrink-0" />
-              Read once while the app starts — saving a new value here does not
+              Cached by the running app — saving a new value here does not
               change the running app until it is restarted.
             </p>
           )}

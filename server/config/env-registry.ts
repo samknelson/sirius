@@ -634,6 +634,7 @@ registerEnvironmentVariables([
   { name: "AWS_REGION", description: "AWS region, injected by ECS. Read by the RDS IAM token signer when DB_IAM_AUTH is on; a token cannot be signed without it.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "AWS_DEFAULT_REGION", description: "Fallback AWS region (CLI/SDK convention) used by the RDS IAM token signer when AWS_REGION is absent.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "SESSION_SECRET", description: "Express session signing secret.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "DEVICE_COOKIE_HMAC", description: "Browser identifier signing key (at least 32 UTF-8 bytes). Generated and persisted on first browser use when unset. Independent of login sessions; not a trusted-device credential. Edits, deletion, or rotation require restarting all instances and invalidate old signatures.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "SESSION_TTL", description: "Session time-to-live in milliseconds.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "ALLOW_INSECURE_SESSION_SECRET", description: "Set to 1 to permit the fixed insecure session-secret fallback in non-prod deploys.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "ALLOW_EMPTY_DB_BOOTSTRAP", description: "Set to 1 to let boot create the full schema on a completely empty database.", secret: false, category: "core", changeTakesEffect: "restart", },
