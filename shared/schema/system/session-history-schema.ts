@@ -8,8 +8,8 @@ export const sessionHistory = pgTable("session_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   // History survives logout/expiry; sid is deliberately not a live-session FK.
   sid: varchar("sid").notNull(),
-  // Anonymous sessions have no user; deleting a user removes their history.
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  // Only user-associated observations are retained; user deletion cascades.
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   ip: varchar("ip", { length: 45 }),
   // Verified browser-profile label only; neither a credential nor a device FK.
   deviceId: uuid("device_id"),

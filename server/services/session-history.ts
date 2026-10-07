@@ -11,6 +11,10 @@ export function createSessionHistoryHandler(
   isEnabled: () => boolean = () => isComponentEnabledSync("system.session_history"),
 ) {
   return async (transition: SessionTransitionPayload & { created?: boolean; signInHistoryManaged?: boolean }): Promise<void> => {
+    // Live sessions can be anonymous, but their history is not retained.
+    // In particular, do not attribute logout to the previous user.
+    const userId = transition.userId;
+    if (!userId) return;
     // The login observer records this exact opening after Passport succeeds;
     // do not race it by inserting the same IP first via the mutation listener.
     if (transition.signInHistoryManaged) return;
@@ -30,7 +34,7 @@ export function createSessionHistoryHandler(
       const deviceId = getRequestContext()?.deviceId ?? null;
       await runOutsideTransaction(() => history.create({
         sid: transition.sid,
-        userId: transition.userId,
+        userId,
         ip: transition.ip,
         deviceId,
         timestamp: new Date(transition.occurredAt),

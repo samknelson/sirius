@@ -16,6 +16,12 @@ export interface SessionHistoryStorage {
   getUserPage(userId: string, paging: { page: number; pageSize: number }): Promise<UserSessionHistoryPage>;
 }
 
+function requireUserId(userId: unknown): asserts userId is string {
+  if (typeof userId !== "string" || !userId.trim()) {
+    throw new Error("Session history requires a user");
+  }
+}
+
 /**
  * Internal lifecycle observations, not directly maintained records.
  * Deliberately no storage logging wrapper/configuration or entity metadata.
@@ -29,12 +35,14 @@ export function createSessionHistoryStorage(): SessionHistoryStorage {
   }
   return {
     async create(entry) {
+      requireUserId(entry.userId);
       await runInTransaction(async () => {
-        if (entry.userId) await lockUser(entry.userId);
+        await lockUser(entry.userId);
         await getClient().insert(sessionHistory).values({ ...entry, ip: normalizeSessionIp(entry.ip) });
       });
     },
     async recordSignIn(entry) {
+      requireUserId(entry.userId);
       return runInTransaction(async () => {
         await lockUser(entry.userId);
         const { authenticationSessionReference, ...rowEntry } = entry;

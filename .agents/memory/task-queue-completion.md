@@ -25,4 +25,4 @@ In Build mode, `markTaskInProgress({taskRef})` can activate a main-directed queu
 
 **Why:** The skill describes only resuming implemented work, but a verified call on a main-directed queued task returned an active main assignment. Earlier conclusions that there was no available activation control were incorrect.
 
-**How to apply:** On explicit authorization to work here, try this supported callback before writing code. Confirm the returned assignment is active in the main project, then implement and call completion for that same task. If activation is rejected, explain the actual rejection rather than recommending duplicate background work or claiming no activation control exists.
+**How to apply:** An explicit "build here" request in Build mode is the go-ahead; do not ask for another confirmation. Activate through this callback before writing code, confirm the returned assignment is active in the main project, then implement and call completion for that same task. A queue update alone is not authorization. If activation is rejected, explain the actual rejection rather than recommending duplicate background work or claiming no activation control exists.

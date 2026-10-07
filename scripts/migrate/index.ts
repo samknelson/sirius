@@ -190,6 +190,7 @@ import "./components/worker.aat/001_create_worker_aat";
 import "./components/bulk/001_drop_email_body_text";
 import "./components/system.session_history/001_create_session_history";
 import "./components/system.session_history/002_add_device_id";
+import "./components/system.session_history/003_require_user_id";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

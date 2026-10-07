@@ -23,6 +23,7 @@ vi.mock("../../server/services/event-bus", () => ({
 vi.mock("../../server/logger", () => ({ logger: { error: vi.fn() } }));
 import { createSessionStorage } from "../../server/storage/system/sessions";
 import { createSessionHistoryStorage } from "../../server/storage/system/session-history";
+import { insertSessionHistorySchema, type InsertSessionHistory } from "../../shared/schema/system/session-history-schema";
 
 beforeEach(() => {
   state.context = { ipAddress: "192.0.2.1", userAgent: "Browser/2" };
@@ -98,6 +99,21 @@ describe("live-session device observations", () => {
 });
 
 describe("history sign-in metadata", () => {
+  it("requires a user in the generated insertion schema", () => {
+    const entry = { sid: "synthetic", userId: "actual-user" };
+    expect(insertSessionHistorySchema.safeParse(entry).success).toBe(true);
+    expect(insertSessionHistorySchema.safeParse({ sid: entry.sid }).success).toBe(false);
+    expect(insertSessionHistorySchema.safeParse({ ...entry, userId: null }).success).toBe(false);
+  });
+  it.each([null, undefined, "", "   "])("refuses invalid user associations before either write: %s", async userId => {
+    const queries: string[] = [];
+    state.client = drizzle(async sql => { queries.push(sql); return { rows: [] }; });
+    const storage = createSessionHistoryStorage();
+    const entry = { id: "occurrence", sid: "synthetic", userId } as unknown as InsertSessionHistory & { id: string; userId: string };
+    await expect(storage.create(entry)).rejects.toThrow("Session history requires a user");
+    await expect(storage.recordSignIn(entry)).rejects.toThrow("Session history requires a user");
+    expect(queries).toEqual([]);
+  });
   it.each([false, true])("merges device metadata alongside Clerk correlation (restored=%s)", async restored => {
     const queries: { sql: string; params: unknown[] }[] = [];
     state.client = drizzle(async (sql, params) => {

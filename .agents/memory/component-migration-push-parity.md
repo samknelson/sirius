@@ -26,3 +26,17 @@ build the table, snapshot `pg_constraint` + `pg_indexes`, `DROP` it, run the
 migration's `up()`, snapshot again, and require the two to be equal. Then run
 boot drift enforcement with the component enabled, and re-run `up()` once more
 to prove the `tableExists` guard makes it idempotent.
+
+Schema upgrades need lifecycle coverage, not just a successful boot with the
+component already enabled. Verify fresh enablement and re-enabling retained old
+tables, both with and without saved schema-state metadata.
+
+**Why:** Disabled components retain their tables by default and skip startup
+migrations. An upgrade can therefore pass enabled-instance checks yet prevent
+re-enablement when schema verification sees the old table before its migration.
+Missing state metadata is not evidence that the physical tables are new.
+
+**How to apply:** Check actual table presence when ordering creation, migrations,
+and verification. Existing complete schemas need their authored upgrades before
+comparison against the new declaration; fresh or partially present schemas also
+need creation ordering considered. Never drop retained data just to bypass drift.

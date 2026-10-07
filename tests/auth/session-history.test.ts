@@ -24,8 +24,8 @@ import { captureRequestIpContext, getRequestContext, requestContext } from "../.
 const transition = {
   sid: "synthetic-session",
   created: false,
-  previousUserId: null,
-  userId: null,
+  previousUserId: "internal-user",
+  userId: "internal-user",
   previousIp: "192.0.2.1",
   ip: "192.0.2.1",
   occurredAt: "2026-10-05T12:00:00.000Z",
@@ -40,8 +40,7 @@ beforeEach(() => {
 describe("session history capture", () => {
   it.each([
     { created: true },
-    { userId: "internal-user" },
-    { previousUserId: "internal-user" },
+    { previousUserId: null },
     { previousUserId: "first-user", userId: "second-user" },
     { ip: "192.0.2.2" },
     { userId: "internal-user", ip: "192.0.2.2" },
@@ -57,6 +56,22 @@ describe("session history capture", () => {
     expect(fakes.outside).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { created: true, previousUserId: null, userId: null },
+    { previousUserId: null, userId: null, ip: "192.0.2.2" },
+    { previousUserId: null, userId: null, previousUserAgent: "Browser/1", userAgent: "Browser/2" },
+    { previousUserId: "internal-user", userId: null },
+    { previousUserId: "internal-user", userId: null, created: true, ip: "192.0.2.2", userAgent: "Browser/2" },
+    { userId: "" },
+  ])("skips anonymous history without storage access or errors: %o", async change => {
+    const create = vi.fn();
+    await createSessionHistoryHandler({ create })({ ...transition, ...change });
+    expect(create).not.toHaveBeenCalled();
+    expect(fakes.outside).not.toHaveBeenCalled();
+    expect(fakes.enabled).not.toHaveBeenCalled();
+    expect(fakes.error).not.toHaveBeenCalled();
+  });
+
   it("ignores unchanged saves and touches before consulting the component", async () => {
     const create = vi.fn();
     await createSessionHistoryHandler({ create })(transition);
@@ -66,7 +81,7 @@ describe("session history capture", () => {
 
   it.each([
     { created: true },
-    { userId: "internal-user" },
+    { previousUserId: null },
     { ip: "192.0.2.2" },
     { previousUserAgent: "Browser/1", userAgent: "Browser/2" },
   ])("retains the verified request UUID on an existing observation: %o", async change => {
@@ -100,13 +115,13 @@ describe("session history capture", () => {
     expect(create.mock.calls.map(([entry]) => entry.deviceId)).toEqual([first, second]);
   });
 
-  it("records anonymous device-only changes and preserves supplied text", async () => {
+  it("records authenticated device-only changes and preserves supplied text", async () => {
     const create = vi.fn();
     await createSessionHistoryHandler({ create })({
       ...transition, previousUserAgent: "Browser/1", userAgent: "Browser/2 (supplied)",
     });
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      userId: null, data: { device: { user_agent: "Browser/2 (supplied)" } },
+      userId: "internal-user", data: { device: { user_agent: "Browser/2 (supplied)" } },
     }));
   });
 
