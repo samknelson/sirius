@@ -93,6 +93,7 @@ import {
 
 const MIGRATION_LOCK_KEY = 727001; // same key as bootstrap-target/seed-trust-config
 import { assertFleetVersions } from "./lib/fleet-version-check";
+import { emptyWmbPhase, runWmbEventPhase } from "./lib/wmb-event-phase";
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -323,6 +324,8 @@ async function main() {
     parityMonths: months,
     timeZone, // aggregate runtime evidence — diagnose a mismatched run from s1_staging.runs alone
     target: describeDatabaseTarget(resolveDatabaseUrl()),
+    wmbEvents: { ...emptyWmbPhase(DRY_RUN),
+      ...(profile.historicalWmbEvents ? {} : { status: "disabled", reason: "awaiting-tested-image-activation" }) },
   };
   let writeFence: AppWriteFenceLease | undefined;
   let aggregateRunId: number | undefined;
@@ -382,6 +385,7 @@ async function main() {
     const finalFreezeBlocked: Array<{ step: string; kinds: Record<string, number> }> = [];
     const seedRuns: Array<{ script: string; afterStep: string; exitCode: number }> = [];
     let aborted = false;
+    let coverageDetail: Record<string, unknown> | null = null;
 
     for (const step of FLEET) {
       if (shouldSkipSeeder(MODE, SKIP_SEEDERS, step.id)) {
@@ -407,8 +411,9 @@ async function main() {
       if (step.supportsAllowFindings && allowFindings.length > 0) {
         args.push("--allow-findings", allowFindings.join(","));
       }
-      if (step.id === "benefit-history" && profile.openEndThrough !== "current-la-month") {
-        args.push("--open-end-through", profile.openEndThrough);
+      if (step.id === "benefit-history") {
+        // Pin once, including a run crossing a calendar-month boundary.
+        args.push("--open-end-through", horizon);
       }
       if (step.extraArgs?.length) args.push(...step.extraArgs);
       if (pol.extraArgs?.length) args.push(...pol.extraArgs);
@@ -416,6 +421,7 @@ async function main() {
       console.log(`\n[sync] ── ${step.id} (${step.script}${args.length ? " " + args.join(" ") : ""})`);
       const run = runChild(step.script, args, path.join(tmpDir, `${step.id}.json`));
       const { env, contractErrors } = validateEnvelope(step, run, forcedThisRun);
+      if (step.id === "benefit-history") coverageDetail = env?.detail ?? null;
 
       const stepFailures: string[] = [];
       if (run.exitCode !== 0) stepFailures.push(`process exit ${run.exitCode}`);
@@ -611,11 +617,33 @@ async function main() {
         allowUnresolved,
       };
     }
+    // Separate post-import phase, outside all record loops and before aggregate
+    // persistence. The existing advisory lock and write fence are still held.
+    console.log("[sync] historical WMB event phase: evaluating complete stored-history evidence");
+    const wmbEvents = await runWmbEventPhase({
+      enabled: profile.historicalWmbEvents,
+      dryRun: DRY_RUN,
+      stagingComplete: (report.stage as { status?: string } | undefined)?.status === "pass",
+      importSucceeded: !aborted && failures.length === 0 &&
+        fleetGateStatus(fleetRecords as Array<{ id: string; status: string }>, MODE, SKIP_SEEDERS) === "pass",
+      detail: coverageDetail, horizon,
+    });
+    report.wmbEvents = wmbEvents;
+    console.log(`[sync] historical WMB event phase: ${JSON.stringify(wmbEvents)}`);
+    if (wmbEvents.status === "fail") failures.push(`historical WMB events: ${wmbEvents.reason}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     failures.push(`sync aborted by an unexpected error: ${message.split("\n")[0]}`);
     console.error(`[sync] unexpected error: ${message.split("\n")[0]}`);
   } finally {
+    // Event reconciliation can schedule storage metadata/log work. Drain it
+    // while the fence and migration lock are held, including failure paths.
+    try {
+      const { drainStorageSideEffects } = await import("../../server/storage/drain-storage-side-effects");
+      await drainStorageSideEffects();
+    } catch {
+      failures.push("historical WMB storage side-effect drain failed");
+    }
     // --- 4. One aggregate run report, always ------------------------------
     const durationSec = Math.round((Date.now() - startedAt.getTime()) / 100) / 10;
     report.durationSec = durationSec;
@@ -633,6 +661,7 @@ async function main() {
             : "pass"
           : "pass (daily: ruled findings surface for triage)",
       parity: (report.parity as { status?: string } | undefined)?.status ?? "not-run",
+      wmbEvents: (report.wmbEvents as { status: string }).status,
     };
     report.gates = gates;
 

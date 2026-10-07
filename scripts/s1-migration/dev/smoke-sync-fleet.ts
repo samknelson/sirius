@@ -8,21 +8,22 @@
  *   2. lock     — hold advisory lock 727001 on the target; `sync` must refuse
  *                 to run concurrently (fast exit 1, nothing written).
  *   3. initial  — `sync --mode daily --profile dev` (full: stage from the dev
- *                 synthetic MariaDB → seeds → fleet → parity). Expect PASS,
- *                 zero findings, one persisted runs row.
+ *                 synthetic MariaDB → seeds → fleet → parity). Loader gates
+ *                 pass, but WMB inference refuses the deliberately rejected
+ *                 history; expect FAIL and one persisted aggregate runs row.
  *   4. dryrun   — `sync --mode daily --dry-run --force-reconcile --skip-stage`:
  *                 flags must be forwarded + echoed (contract-checked), parity
  *                 skipped, NO runs row recorded.
  *   5. mutate   — fleet-smoke-mutate --apply (S1-side adds/edits/deletes across
  *                 people/config/beneficiaries/cardchecks/elections/months/money
  *                 incl. source deletions), then `sync --mode daily --skip-stage`:
- *                 expect PASS with updated/deleted movement, all three
+ *                 expect WMB cutoff refusal with updated/deleted movement, all three
  *                 report-only finding kinds surfaced for triage, parity PASS.
  *   6. modes    — `sync --mode final-freeze --skip-stage` must FAIL (exit 1,
  *                 findings gate) while fleet+parity gates PASS — the retained
  *                 deletions block the freeze until resolved. Then restore the
  *                 S1 side (fleet-smoke-mutate --restore) and re-run final-freeze:
- *                 expect PASS with zero findings (convergence after resolution).
+ *                 expect loader convergence but WMB refuses missing stage proof.
  *   7. cleanup  — drop the throwaway DB (kept on failure for debugging).
  *
  * Usage:
@@ -191,8 +192,13 @@ async function phaseInitial() {
   console.log("\n═══ PHASE initial (full sync: stage → fleet → parity) ═══");
   const rf = path.join(RESULT_DIR, "initial.json");
   const r = run(SYNC, ["--mode", "daily", "--profile", "dev"], { resultFile: rf });
-  expect(r.exit === 0, "initial daily sync exits 0");
-  expect(r.report?.result === "PASS", "initial report result=PASS");
+  expect(r.exit !== 0, "initial daily sync refuses incomplete synthetic coverage history");
+  expect(r.report?.result === "FAIL", "initial report result=FAIL (historical cutoff refusal)");
+  expect(r.report?.wmbEvents?.status === "fail" &&
+    r.report?.wmbEvents?.reason === "unsafe-or-missing-complete-history-evidence" &&
+    r.report?.wmbEvents?.workers === 0,
+    "allowed T17 rejects do not authorize historical event inference");
+  expect(r.report?.failures?.length === 1, "only the deliberate WMB history refusal fails the initial run");
   expect(r.report?.gates?.stage === "pass", "stage gate pass (count-verified)");
   expect(r.report?.gates?.fleet === "pass", "fleet gate pass (all loaders: envelope+rejects+verify)");
   expect(r.report?.gates?.parity === "pass", "parity gate pass (balance 0¢ + ruled months)");
@@ -249,8 +255,10 @@ async function phaseMutate() {
   if (r.exit !== 0) throw new Error(`fleet-smoke-mutate --apply failed (exit ${r.exit})`);
   const rf = path.join(RESULT_DIR, "mutate-sync.json");
   r = run(SYNC, ["--mode", "daily", "--profile", "dev", "--skip-stage"], { resultFile: rf });
-  expect(r.exit === 0, "post-mutation daily sync exits 0 (findings are report-only in daily mode)");
-  expect(r.report?.result === "PASS", "post-mutation daily report result=PASS");
+  expect(r.exit !== 0, "post-mutation daily sync refuses a cutoff without completed stage evidence");
+  expect(r.report?.result === "FAIL", "post-mutation report result=FAIL (event phase only)");
+  expect(r.report?.wmbEvents?.reason === "missing-completed-stage-evidence", "skip-stage cannot authorize inferred endings");
+  expect(r.report?.failures?.length === 1, "other loader and parity gates remain successful");
   expect((r.report?.fleetTotals?.updated ?? 0) >= 3, `fleet updated>=3 (got ${r.report?.fleetTotals?.updated})`);
   expect((r.report?.fleetTotals?.deleted ?? 0) >= 2, `fleet deleted>=2 (got ${r.report?.fleetTotals?.deleted})`);
   const fk = r.report?.findingsByKind ?? {};
@@ -285,8 +293,10 @@ async function phaseModes() {
 
   const rf2 = path.join(RESULT_DIR, "final-freeze-pass.json");
   r = run(SYNC, ["--mode", "final-freeze", "--profile", "dev", "--skip-stage"], { resultFile: rf2 });
-  expect(r.exit === 0, "final-freeze sync exits 0 after the S1 side is restored (resolved)");
-  expect(r.report?.result === "PASS", "final-freeze report result=PASS after resolution");
+  expect(r.exit !== 0, "final-freeze still refuses event inference without stage proof");
+  expect(r.report?.result === "FAIL", "final-freeze report result=FAIL only for missing event stage proof");
+  expect(r.report?.wmbEvents?.reason === "missing-completed-stage-evidence", "restore does not fabricate complete stage evidence");
+  expect(r.report?.failures?.length === 1, "findings resolution leaves only the expected WMB refusal");
   expect(r.report?.writeFence?.status === "acquired", "second wet sync acquires after failed run cleanup");
   {
     const fk2: Record<string, number> = r.report?.findingsByKind ?? { missing: 1 };

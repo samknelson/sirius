@@ -1,3 +1,5 @@
+import type { WmbEventPhase } from "./wmb-event-phase";
+
 export const DAILY_SYNC_COMMAND = [
   "npx",
   "tsx",
@@ -36,6 +38,7 @@ export type DailySyncReport = {
   gates?: unknown;
   fleetTotals?: unknown;
   findingsByKind?: unknown;
+  wmbEvents?: unknown;
 };
 
 export type SanitizedDailySummary = {
@@ -45,6 +48,7 @@ export type SanitizedDailySummary = {
   gates: Record<string, string>;
   counters: Record<string, number>;
   findingsByKind: Record<string, number>;
+  wmbEvents: WmbEventPhase;
 };
 
 function stringMap(value: unknown): Record<string, string> {
@@ -63,6 +67,52 @@ function numberMap(value: unknown): Record<string, number> {
   );
 }
 
+/** Explicit allowlist, not a spread of child data: alerts must never expose
+ * worker samples, benefit IDs, SQL or untrusted exception strings. */
+export function sanitizedWmbEvents(value: unknown): WmbEventPhase {
+  if (!value || typeof value !== "object") throw new Error("missing WMB event phase");
+  const phase = value as WmbEventPhase;
+  const statuses = ["pass", "fail", "disabled", "skipped"];
+  const reasons = ["awaiting-tested-image-activation", "coverage-not-completed",
+    "dry-run-no-verified-stored-history-cutoff", "unsafe-or-missing-complete-history-evidence",
+    "missing-completed-stage-evidence",
+    "invalid-traversal-bound", "malformed-page-result", "malformed-event-totals",
+    "inconsistent-event-totals", "worker-reconciliation-failed", "unfinished-traversal",
+    "stalled-or-invalid-cursor", "page-limit-exceeded", "page-execution-failed"];
+  const counterKeys = ["created", "unchanged", "removed", "skipped"] as const;
+  const validCounters = (counts: unknown, keys: readonly string[]) =>
+    !!counts && typeof counts === "object" && keys.every(key => {
+      const count = (counts as Record<string, unknown>)[key];
+      return typeof count === "number" && Number.isSafeInteger(count) && count >= 0;
+    });
+  if (!statuses.includes(phase.status) || phase.basis !== "stored-coverage" ||
+      !["live", "preview"].includes(phase.mode) ||
+      (phase.cutoff !== null && (typeof phase.cutoff !== "string" ||
+        !/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(phase.cutoff))) ||
+      !Number.isFinite(phase.durationSec) || phase.durationSec < 0 ||
+      !Number.isSafeInteger(phase.pages) || phase.pages < 0 ||
+      !Number.isSafeInteger(phase.workers) || phase.workers < 0 ||
+      typeof phase.complete !== "boolean" ||
+      (phase.reason !== null && !reasons.includes(phase.reason)) ||
+      !validCounters(phase.totals, [...counterKeys, "failed"]) ||
+      !phase.byType || !["start", "restart", "terminate"].every(type =>
+        validCounters(phase.byType[type as keyof typeof phase.byType], counterKeys)) ||
+      (phase.status === "pass" && (!phase.complete || !phase.cutoff || phase.totals.failed !== 0 || phase.reason !== null)) ||
+      (phase.status !== "pass" && (phase.complete || phase.reason === null))) {
+    throw new Error("malformed WMB event phase");
+  }
+  const counts = (data: Record<string, number>) =>
+    Object.fromEntries(counterKeys.map(key => [key, data[key]])) as Omit<WmbEventPhase["totals"], "failed">;
+  return {
+    status: phase.status, reason: phase.reason, mode: phase.mode, basis: "stored-coverage",
+    cutoff: phase.cutoff, durationSec: phase.durationSec, pages: phase.pages,
+    workers: phase.workers, complete: phase.complete,
+    totals: { ...counts(phase.totals), failed: phase.totals.failed },
+    byType: { start: counts(phase.byType.start), restart: counts(phase.byType.restart),
+      terminate: counts(phase.byType.terminate) },
+  };
+}
+
 export function assertScheduledDailyReport(report: DailySyncReport): void {
   const violations: string[] = [];
   if (report.command !== "sync") violations.push("command must be sync");
@@ -73,6 +123,11 @@ export function assertScheduledDailyReport(report: DailySyncReport): void {
   if (report.skipSeeders !== true) violations.push("skipSeeders must be true");
   if (report.keepGoing !== false) violations.push("keepGoing must be false");
   if (report.result !== "PASS" && report.result !== "FAIL") violations.push("result must be PASS or FAIL");
+  const wmbEvents = sanitizedWmbEvents(report.wmbEvents);
+  if (stringMap(report.gates).wmbEvents !== wmbEvents.status) violations.push("WMB event gate does not match phase");
+  if (report.result === "PASS" && !["pass", "disabled"].includes(wmbEvents.status)) {
+    violations.push("PASS requires WMB events pass or explicitly disabled");
+  }
   if (report.result === "PASS") {
     const gates = stringMap(report.gates);
     for (const gate of ["stage", "fleet", "parity"]) {
@@ -96,6 +151,7 @@ export function sanitizeDailySummary(report: DailySyncReport): SanitizedDailySum
     gates: stringMap(report.gates),
     counters: numberMap(report.fleetTotals),
     findingsByKind,
+    wmbEvents: sanitizedWmbEvents(report.wmbEvents),
   };
 }
 

@@ -1,0 +1,106 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { runHistoricalBackfill } from "../../scripts/oneoffs/backfill-wmb-events";
+import type { TrustWmbEventsStorage } from "../../server/storage/trust/wmb-events";
+import { emptyWmbPhase, runWmbEventPhase, validatedCoverageCutoff } from "../../scripts/s1-migration/lib/wmb-event-phase";
+import { PROFILES } from "../../scripts/s1-migration/sync-config";
+
+const detail = {
+  openEndThrough: "2031-03",
+  historicalEventEvidence: { inclusiveCutoff: "2031-03", complete: true,
+    stagedSpans: 3, processedSpans: 3, rejectedSpans: 0, verifyFailures: 0 },
+};
+const input = { enabled: true, dryRun: false, importSucceeded: true, stagingComplete: true, detail, horizon: "2031-03" };
+const makePage = (after = "", next: string | null = null) => ({
+  mode: "live", basis: "stored-coverage", cutoff: "2031-03",
+  workers: 1, afterWorker: after, lastWorker: next ?? `${after}z`,
+  totals: { created: 1, unchanged: 0, removed: 0, skipped: 0, failed: 0 },
+  byTypeBenefitMonth: [{ type: "terminate", benefitId: "b", month: "2031-02",
+    created: 1, unchanged: 0, removed: 0, skipped: 0, samples: [] }],
+  nextAfterWorker: next, incomplete: next !== null,
+});
+
+describe("post-import historical WMB phase", () => {
+  it("requires real complete coverage evidence, not merely an allowed-reject success", () => {
+    expect(validatedCoverageCutoff(detail, input.horizon)).toBe(input.horizon);
+    for (const patch of [{ complete: false }, { rejectedSpans: 1 }, { processedSpans: 2 },
+      { inclusiveCutoff: "2031-04" }, { stagedSpans: 0 }, { verifyFailures: 1 }]) {
+      expect(validatedCoverageCutoff({ ...detail,
+        historicalEventEvidence: { ...detail.historicalEventEvidence, ...patch } }, input.horizon)).toBeNull();
+    }
+    expect(validatedCoverageCutoff(null, input.horizon)).toBeNull();
+    expect(validatedCoverageCutoff(detail, "2031-13")).toBeNull();
+  });
+
+  it("never reconciles failed/incomplete imports or dry-run hypothetical changes", async () => {
+    const page = vi.fn();
+    expect((await runWmbEventPhase({ ...input, importSucceeded: false }, page)).status).toBe("skipped");
+    expect((await runWmbEventPhase({ ...input, enabled: false }, page)).status).toBe("disabled");
+    const preview = await runWmbEventPhase({ ...input, dryRun: true }, page);
+    expect(preview).toMatchObject({ status: "skipped", mode: "preview", basis: "stored-coverage" });
+    expect((await runWmbEventPhase({ ...input, detail: null }, page)).status).toBe("fail");
+    expect((await runWmbEventPhase({ ...input, stagingComplete: false }, page)).reason).toBe("missing-completed-stage-evidence");
+    expect(page).not.toHaveBeenCalled();
+  });
+
+  it("traverses every page, aggregates separately, and retries from the beginning", async () => {
+    const page = vi.fn().mockResolvedValueOnce(makePage("", "a"))
+      .mockResolvedValueOnce(makePage("a", "b")).mockResolvedValueOnce(makePage("b"));
+    const result = await runWmbEventPhase(input, page, 1);
+    expect(result).toMatchObject({ status: "pass", complete: true, pages: 3, workers: 3,
+      totals: { created: 3, failed: 0 }, byType: { terminate: { created: 3 } } });
+    expect(page.mock.calls[1][0]).toContain("--after-worker=a");
+    expect(page.mock.calls[0][0]).toContain("--live");
+    const retry = vi.fn().mockResolvedValue(makePage());
+    await runWmbEventPhase(input, retry);
+    expect(retry.mock.calls[0][0]).not.toEqual(expect.arrayContaining(["--after-worker=b"]));
+  });
+
+  it("fails on exceptions, worker failures, malformed results, stalled cursors and bounded unfinished traversal", async () => {
+    const exception = await runWmbEventPhase(input, vi.fn().mockRejectedValue(new Error("credential=secret")));
+    expect(exception.reason).toBe("page-execution-failed");
+    expect(JSON.stringify(exception)).not.toContain("secret");
+    for (const page of [
+      null,
+      { ...makePage(), workers: -1 },
+      { ...makePage(), cutoff: "2031-04" },
+      { ...makePage(), totals: { ...makePage().totals, failed: 1 }, incomplete: true },
+      { ...makePage(), incomplete: true },
+      { ...makePage("", "a"), nextAfterWorker: "" },
+      { ...makePage(), byTypeBenefitMonth: [] },
+      { ...makePage(), totals: { ...makePage().totals, created: NaN } },
+    ]) {
+      const result = await runWmbEventPhase(input, vi.fn().mockResolvedValue(page), 1);
+      expect(result.status).toBe("fail");
+      expect(result.complete).toBe(false);
+    }
+    const bounded = await runWmbEventPhase(input, vi.fn().mockResolvedValue(makePage("", "a")), 1, 1);
+    expect(bounded.reason).toBe("page-limit-exceeded");
+  });
+
+  it("validates workers before writes and treats a malformed worker decision as failure", async () => {
+    const target = { pageHistoricalWorkers: vi.fn().mockResolvedValue(["z", "a"]),
+      reconcileHistoricalWorker: vi.fn() } as unknown as TrustWmbEventsStorage;
+    await expect(runHistoricalBackfill(["--cutoff=2031-03", "--live"], target)).rejects.toThrow("invalid-worker-page");
+    expect(target.reconcileHistoricalWorker).not.toHaveBeenCalled();
+    vi.mocked(target.pageHistoricalWorkers).mockResolvedValue(["a"]);
+    vi.mocked(target.reconcileHistoricalWorker).mockResolvedValue([{ change: "oops" }] as never);
+    const page = await runHistoricalBackfill(["--cutoff=2031-03"], target);
+    expect(page.totals.failed).toBe(1);
+    expect(page.incomplete).toBe(true);
+    expect(target.reconcileHistoricalWorker).toHaveBeenCalledWith("a", 2031 * 12 + 3, undefined, true);
+  });
+
+  it("keeps production disabled, packages the reconciler, and runs before result/fence cleanup without cron activation", () => {
+    expect(PROFILES.production.historicalWmbEvents).toBe(false);
+    const sync = readFileSync("scripts/s1-migration/sync.ts", "utf8");
+    const invoke = sync.indexOf("const wmbEvents = await runWmbEventPhase");
+    expect(invoke).toBeGreaterThan(sync.indexOf("report.fleetTotals = totals"));
+    expect(invoke).toBeLessThan(sync.indexOf("aggregateRunId = await recordRun"));
+    expect(invoke).toBeLessThan(sync.indexOf("await finalizeWriteFenceReport"));
+    expect(sync).not.toContain("initializeCronPluginSystem");
+    expect(sync).not.toContain("backfillAllDenorm");
+    expect(readFileSync("Dockerfile", "utf8")).toContain("test -f scripts/oneoffs/backfill-wmb-events.ts");
+    expect(emptyWmbPhase(false).totals.failed).toBe(0);
+  });
+});

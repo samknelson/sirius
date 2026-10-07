@@ -6,6 +6,7 @@ import { storage } from "../../server/storage/database";
 import { runHistoricalBackfill } from "../../scripts/oneoffs/backfill-wmb-events";
 import { isInferredTermination } from "../../server/storage/trust/wmb-events";
 import { inferHistoricalEvents, monthKey } from "../../server/services/wmb-historical-inference";
+import { runWmbEventPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
 
 const label = `historical-wmb-${Date.now()}`;
 let workerId = "", benefitId = "", employerA = "", employerB = "";
@@ -168,6 +169,60 @@ describe("historical WMB event-only backfill", () => {
       expect(firstEvents.some(e => e.month === 2 && e.year === 2031)).toBe(true);
     } finally {
       await storage.trustBenefits.deleteTrustBenefit(other.id);
+    }
+  });
+
+  it("runs the integrated post-import phase across stored worker pages and converges on corrections", async () => {
+    const second = await storage.workers.createWorker(`${label} integrated`);
+    const crons = async () => (await storage.pluginConfigs.getByKind("cron"))
+      .map(row => ({ id: row.id, enabled: row.enabled })).sort((a, b) => a.id.localeCompare(b.id));
+    try {
+      await getClient().insert(trustWmb).values([
+        { workerId: second.id, employerId: employerA, benefitId, year: 2034, month: 1 },
+        { workerId: second.id, employerId: employerA, benefitId, year: 2034, month: 3 },
+      ]);
+      const storedCoverage = await getClient().select().from(trustWmb).where(eq(trustWmb.workerId, second.id));
+      const cronsBefore = await crons();
+      const queueBefore = await queue();
+      const args = { enabled: true, dryRun: false, importSucceeded: true, stagingComplete: true, horizon: "2034-03",
+        detail: { openEndThrough: "2034-03",
+          historicalEventEvidence: { inclusiveCutoff: "2034-03", complete: true,
+            stagedSpans: 2, processedSpans: 2, rejectedSpans: 0, verifyFailures: 0 } } };
+      // Real storage paging/reconciliation, bounded to fixture benefit. This
+      // is local DB proof, NOT remote S1 fleet or tested ECS image proof.
+      const page = (argv: string[]) => runHistoricalBackfill([...argv, `--benefit=${benefitId}`]);
+      const first = await runWmbEventPhase(args, page, 1);
+      expect(first).toMatchObject({ status: "pass", complete: true, cutoff: "2034-03" });
+      expect(first.pages).toBeGreaterThanOrEqual(2);
+      expect(first.workers).toBeGreaterThanOrEqual(2);
+      const ended = await storage.trustWmbEvents.listByWorkerAndType(second.id, "terminate");
+      expect(ended.map(row => [row.year, row.month, row.data])).toEqual([
+        [2034, 2, { provenance: "coverage_inferred", failedPlugins: [] }],
+      ]);
+      const repeat = await runWmbEventPhase(args, page, 1);
+      expect(repeat).toMatchObject({ status: "pass", totals: { created: 0, removed: 0, failed: 0 } });
+      expect(await storage.trustWmbEvents.listByWorkerAndType(second.id, "terminate")).toEqual(ended);
+      expect(await getClient().select().from(trustWmb).where(eq(trustWmb.workerId, second.id))).toEqual(storedCoverage);
+      const preview = await runWmbEventPhase({ ...args, dryRun: true }, page, 1);
+      expect(preview.status).toBe("skipped");
+      expect(await storage.trustWmbEvents.listByWorkerAndType(second.id, "terminate")).toEqual(ended);
+      await getClient().insert(trustWmb).values({
+        workerId: second.id, employerId: employerA, benefitId, year: 2034, month: 2,
+      });
+      const corrected = await runWmbEventPhase(args, page, 1);
+      expect(corrected.totals.removed).toBeGreaterThanOrEqual(2); // restart + inferred ending
+      expect(await storage.trustWmbEvents.listByWorkerAndType(second.id, "terminate")).toEqual([]);
+      expect((await events("terminate")).some(row =>
+        row.year === 2031 && row.month === 2 && !isInferredTermination(row.data))).toBe(true);
+      expect(await queue()).toEqual(queueBefore);
+      expect(await crons()).toEqual(cronsBefore);
+      console.log(JSON.stringify({ evidence: "local-post-import-phase-fixture",
+        cutoff: first.cutoff, pages: first.pages, workers: first.workers,
+        initial: { durationSec: first.durationSec, totals: first.totals },
+        rerun: { durationSec: repeat.durationSec, totals: repeat.totals },
+        corrected: corrected.totals, cronsUnchanged: true }));
+    } finally {
+      await storage.workers.deleteWorker(second.id);
     }
   });
 });
