@@ -14,3 +14,9 @@ All project task proposals belong in the main conversation as standard draft car
 **Why:** The owner explicitly clarified this project's workflow after confusion between direct chat implementation, queued task records, and a dependent background task.
 
 **How to apply:** Propose without starting work. Before implementing a tracked task here, verify that its assignment is recognized for this session; if not, explain the tracking limitation before changing code. Never start duplicate work alongside an existing background task. Dependency edits can release accepted queued work automatically, so make that consequence clear and obtain consent before releasing a background job.
+
+A main-chat-directed task may still be queued while the conversation remains in Plan mode. A queued menu offering background execution does not mean the owner originally selected background execution.
+
+**Why:** The owner selected "build here", but the resulting main-directed queued entry still offered only background execution or cancellation; the conversation had not switched modes or received an active assignment.
+
+**How to apply:** Inspect execution destination, active assignment, and the current conversation mode separately. Do not ask the owner to select background execution to repair this handoff, and do not promise that switching mode alone guarantees activation.
