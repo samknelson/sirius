@@ -138,7 +138,8 @@ RUN NODE_OPTIONS=--max-old-space-size=4096 npx vite build \
 
 # Drop dev dependencies so only production node_modules carry over. The
 # already-compiled native modules (bcrypt) are retained.
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev \
+    && node scripts/dev/verify-letter-svg-runtime.mjs
 
 
 # ----------------------------------------------------------------------------
@@ -240,11 +241,16 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/scripts/dev/verify-letter-svg-runtime.mjs ./scripts/verify-letter-svg-runtime.mjs
 
 # Run as the unprivileged user that ships with the node image.
 USER node
 
 EXPOSE 5000
+
+# Prove WASM and worker loading after pruning, under the actual web-image user.
+# No SVG-specific native library, writable font cache, or shell command needed.
+RUN node scripts/verify-letter-svg-runtime.mjs
 
 # Container-native health check hitting the always-on /health endpoint.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

@@ -103,3 +103,117 @@ top ≥73.89 pt; bottom ≤717.29 pt). This was not mailed or submitted to Lob.
   its default mode references a missing historical migration; comparison to
   `origin/main` reports pre-existing version-counter collisions. This task
   changes no schemas or migrations.
+
+## External SVG logos: local proof and Stage rollout
+
+### Evidence boundary
+
+The supplied public Benefits 11 logo was fetched read-only and stored unchanged
+as `tests/comm/fixtures/benefits11-logo.svg`: HTTP 200, `image/svg+xml`, 13,340
+bytes, intrinsic dimensions 240 × 56.75. The inspected pre-change downloader
+accepted only PNG/JPEG. This establishes an incompatibility in that source,
+**not the cause of the deployed Stage failure**.
+
+The reported facts are that text-only Stage previews work and the image renders
+on Dev. The reported Dev surface has not been confirmed as HTML or PDF, and
+the authenticated requests and deployed revisions for Dev/Stage have not been
+provided. In the checked-out Studio, postal preview requests
+`POST /api/comm/postal/preview` and displays an `application/pdf` response;
+email preview uses HTML and can display SVG directly without this converter.
+There is no Replit-published deployment recorded for this workspace. No Stage
+deployment, branch push, infrastructure change, or postal send was performed.
+
+### Conversion contract
+
+Only the **external HTTPS image** branch additionally accepts
+`image/svg+xml`. The downloader still validates HTTPS/443, refuses credentials,
+checks all DNS answers, pins public IPv4 sockets, revalidates every redirect,
+and enforces its overall 15-second and 1-MB download bounds. Input format is
+selected by the validated response MIME type and verified content, not the
+filename. Remote letter documents remain `application/pdf`-only. Managed
+image ownership, filesystem access, retention, and PNG/JPEG upload policy are
+unchanged.
+
+The static SVG subset supports path-based shapes, groups, transforms,
+local gradients, clips/masks, and allowlisted inline presentation styles.
+Scripts, handlers, animations, `foreignObject`, images, `use` expansion,
+text/fonts, CSS sheets/imports, DTD/entities, processing instructions,
+unknown markup/attributes, and external references are refused. Missing,
+circular, deeply nested or excessive fragment references are refused.
+Assets requiring unsupported features must be exported as PNG/JPEG or have
+their text converted to paths; this is not a general-purpose browser SVG engine.
+
+Source is bounded to 1 MB, 2,000 elements, 32 nesting levels, 60,000 geometry
+numbers and bounded attribute lengths/coordinate magnitudes. Conversion uses
+the production `@resvg/resvg-wasm` package in a dedicated worker with no
+SVG-selected filesystem, network, or font resource loader. The only host file
+read is the fixed package WASM binary. The five-second deadline terminates the
+worker and awaits its exit on every result; worker CLI flags are not inherited.
+Conversion is sequential within each existing renderer lane, so at most one
+converter per preview/delivery lane can run.
+
+At 300/96 raster scale, the output must fit 8,192 pixels per edge, 16 megapixels
+and 1 MB of PNG. Both source and converted bytes count toward the combined
+5-MB image budget. The renderer keeps SVG intrinsic CSS size/aspect ratio so
+the higher-resolution PNG does not enlarge an unsized logo. Only verified
+raster data URLs reach Chromium, which still has JavaScript and networking
+disabled. Preview guides are added after the shared delivery render.
+
+Controlled refusals return HTTP 422 with the original image number and a
+fixed reason; maintenance remains HTTP 503, and unexpected preview failures
+remain generic HTTP 500. The existing preview component displays that message.
+The shared renderer persists sanitized stage/category/image number, lane and
+allowlisted transport status/code via the administrator-visible storage logger.
+It never logs raw exceptions, HTML, image bytes, URLs, credentials or query
+strings. Queue failures are recorded separately at stage `queue`.
+
+### Local verification
+
+- Live public-address-pinned HTTPS fetch and conversion succeeded: 13,340-byte
+  SVG → 16,301-byte transparent PNG, 750 × 177 pixels.
+- Actual Chromium PDF tests compare identical image/alpha streams between
+  guided preview and delivery, inspect embedded resolution near 300 DPI,
+  assert US Letter geometry, measure text placement and rasterize the PDF to
+  prove visible colored logo pixels in the expected body region. No mail API
+  is used.
+- Deterministic tests cover the stored logo, local fragment references,
+  unsafe resource/active/XML attacks, geometry/source/nesting/element limits,
+  source-plus-output budgeting, PNG/JPEG transport, managed-image ownership,
+  original image numbering, safe route responses, redacted admin diagnostics,
+  and timeout cleanup including termination of genuinely busy synchronous
+  execution.
+- The compiled converter and worker passed with an isolated directory
+  containing **only** its production dependencies, under UID 1000.
+  Docker now runs `scripts/dev/verify-letter-svg-runtime.mjs` after dependency
+  pruning and again as its non-root web-image user. This does not require
+  native SVG libraries or fonts. **The actual Docker image build/run is not
+  executed in this Replit environment**; the authorized production builder
+  must pass those checks before rollout.
+- Architecture lint passed all 16 rules; typechecks passed. The application
+  restarted and its sign-in page was visually checked. Authenticated Studio
+  UI was not exercised through the screenshot browser; route tests and real
+  Chromium rendering provide local proof instead.
+
+### Required authorized Stage checks (still pending)
+
+1. Before deploying, identify whether the reported Dev success is email HTML
+   or postal PDF. For postal, confirm the request is
+   `POST /api/comm/postal/preview`, that it returns `application/pdf`, and that
+   the logo is visible in that PDF. Capture revision/build identities on both
+   environments using deployment records; do not equate a local branch name
+   or a generic load-balancer health response with the running revision.
+2. Compare the exact resolved image source and sanitized template body on both
+   environments in an authorized browser. Keep private body text and signed
+   URLs out of logs/reports. Record response status, controlled category,
+   image number, and whether an admin `letter-renderer` entry exists.
+3. After an operator deploys this revision and the Docker smoke checks pass,
+   preview the same text-only letter, the supplied public SVG logo URL, a
+   known PNG and JPEG, and a live managed template upload. Confirm visible
+   logo proportions/colors, transparent background, correct letter margins,
+   continuation-page layout, and preview-only address guides.
+4. Use a deliberately unsupported/invalid test image to confirm the preview
+   identifies its number and reason. Check the admin log viewer for fixed
+   diagnostic context with no private markup, bytes, URL or signed query.
+5. Record observed revision, timestamp, statuses and visual outcome. Do not
+   send a real postal communication, alter managed-image retention, or claim
+   Stage is fixed until those deployed observations exist.

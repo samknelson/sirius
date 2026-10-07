@@ -6,6 +6,8 @@ import {
 import { checkFlood, recordFloodEvent } from "../flood/service";
 import { logger } from "../logger";
 import { getEffectiveUser } from "./masquerade";
+import { LetterImageError } from "../services/comm/letter-image-error";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 type Middleware = (
   req: Request,
@@ -111,14 +113,15 @@ export function registerCommPostalPreviewRoutes(
         });
         return res.send(pdf);
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         // Do not log the renderer error object: validation failures can carry
         // details derived from private letter content.
         logger.error("Failed to render postal PDF preview", {
           service: "comm-postal-preview",
           errorType: error instanceof Error ? error.name : typeof error,
         });
-        return res.status(500).json({
-          message: "Unable to generate the PDF preview",
+        return res.status(error instanceof LetterImageError ? 422 : 500).json({
+          message: error instanceof LetterImageError ? error.message : "Unable to generate the PDF preview",
         });
       }
     },

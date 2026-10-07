@@ -5,6 +5,13 @@ import { join } from "node:path";
 import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("../../server/logger", () => ({ storageLogger: { error: vi.fn() } }));
+// Shared-host cold-start allowance for actual Chromium tests only.
+vi.mock("puppeteer-core", async (original) => {
+  const module = await original<typeof import("puppeteer-core")>();
+  return { ...module, default: { ...module.default, launch: (options: import("puppeteer-core").LaunchOptions) =>
+    module.default.launch({ ...options, timeout: 60_000 }) } };
+});
 vi.mock("../../server/services/comm/letter-images", () => ({
   prepareLetterImages: vi.fn(async (sources: string[]) => sources.map(() =>
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=")),
@@ -61,7 +68,7 @@ describe("actual Chromium letter PDF", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 180_000);
 
   it("fails explicitly if an image is unavailable rather than printing a broken image", async () => {
     vi.mocked(prepareLetterImages).mockRejectedValueOnce(new Error("Image unavailable"));
@@ -108,5 +115,5 @@ describe("actual Chromium letter PDF", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 180_000);
 });

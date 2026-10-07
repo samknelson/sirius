@@ -151,3 +151,4 @@
 - [Published template image retention](published-template-image-retention.md) — sent emails and copied HTML outlive templates; cancellation/removal cannot authorize deleting an uploaded asset.
 - [Flex toolbar width measurement](flex-toolbar-width-measurement.md) — computed auto margins consume the remaining width; exclude them when budgeting optional controls.
 - [Editor menus inside dialogs](editor-menus-inside-dialogs.md) — Escape can close the outer Radix dialog even when React handles it in an inner menu; prevent dialog dismissal while that menu is open.
+- [Isolated renderer cancellation](isolated-renderer-cancellation.md) — timeout must stop CPU work and await exit; native conversion and inherited worker CLI flags can defeat isolation assumptions.

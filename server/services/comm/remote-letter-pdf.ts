@@ -18,10 +18,25 @@ interface DownloadState {
   response?: IncomingMessage;
   contentTypes: readonly string[];
   maxBytes: number;
+  onContentType?: (contentType: string) => void;
 }
 
-function fail(message: string): Error {
-  return new Error(`Remote letter PDF refused: ${message}`);
+export class RemoteResourceError extends Error {
+  constructor(message: string, readonly status?: number, readonly code?: string) {
+    super(`Remote letter PDF refused: ${message}`);
+    this.name = "RemoteResourceError";
+  }
+}
+
+function fail(message: string, status?: number, code?: string): Error {
+  return new RemoteResourceError(message, status, code);
+}
+
+function safeTransportCode(error: unknown): string | undefined {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code && ["ENOTFOUND", "EAI_AGAIN", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT",
+    "EHOSTUNREACH", "ENETUNREACH", "CERT_HAS_EXPIRED", "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    "ERR_TLS_CERT_ALTNAME_INVALID", "DEPTH_ZERO_SELF_SIGNED_CERT"].includes(code) ? code : undefined;
 }
 
 function parseUrl(rawUrl: string): URL {
@@ -89,8 +104,8 @@ async function resolvePublicAddress(url: URL, state: DownloadState): Promise<str
   } else {
     try {
       addresses = await resolve4(hostname);
-    } catch {
-      throw fail("the hostname does not resolve to an IPv4 address.");
+    } catch (error) {
+      throw fail("the hostname does not resolve to an IPv4 address.", undefined, safeTransportCode(error));
     }
   }
   if (state.expired) throw fail("the download timed out.");
@@ -161,15 +176,16 @@ function requestHop(url: URL, redirects: number, state: DownloadState): Promise<
         }
         if (status < 200 || status >= 300) {
           res.destroy();
-          return finish(fail(`the server returned HTTP ${status}.`));
+          return finish(fail(`the server returned HTTP ${status}.`, status));
         }
 
         const contentType = String(res.headers["content-type"] ?? "")
           .split(";", 1)[0].trim().toLowerCase();
         if (!state.contentTypes.includes(contentType)) {
           res.destroy();
-          return finish(fail(`the response is not ${state.contentTypes.join(" or ")}.`));
+          return finish(fail(`the response is not ${state.contentTypes.join(" or ")}.`, status));
         }
+        state.onContentType?.(contentType);
         const declaredLength = Number(res.headers["content-length"]);
         if (Number.isFinite(declaredLength) && declaredLength > state.maxBytes) {
           res.destroy();
@@ -189,11 +205,11 @@ function requestHop(url: URL, redirects: number, state: DownloadState): Promise<
           chunks.push(bytes);
         });
         res.once("end", () => finish(undefined, Buffer.concat(chunks, size)));
-        res.once("error", () => finish(fail("the response failed.")));
+        res.once("error", (error) => finish(fail("the response failed.", status, safeTransportCode(error))));
         res.once("aborted", () => finish(fail("the response ended before the PDF was complete.")));
       });
       state.request = req;
-      req.once("error", () => finish(fail("the request failed.")));
+      req.once("error", (error) => finish(fail("the request failed.", undefined, safeTransportCode(error))));
       req.end();
     });
   });
@@ -236,7 +252,7 @@ export async function downloadRemoteLetterPdf(url: string): Promise<Buffer> {
 /** Shared pinned, bounded transport. Never permits browser-controlled networking. */
 export function downloadPublicHttpsResource(
   url: string,
-  options: { contentTypes: readonly string[]; maxBytes: number },
+  options: { contentTypes: readonly string[]; maxBytes: number; onContentType?: (contentType: string) => void },
 ): Promise<Buffer> {
   const state: DownloadState = { expired: false, ...options };
   return new Promise<Buffer>((resolve, reject) => {

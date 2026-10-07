@@ -235,6 +235,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
           ? await (await import("../remote-letter-pdf")).downloadRemoteLetterPdf(file)
           : await (await import("../letter-pdf")).renderLetterPdf(file);
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unable to prepare the letter PDF",

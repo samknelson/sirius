@@ -9,6 +9,9 @@ import {
 } from "../../../shared/utils/html/letter-page";
 import { LetterRenderQueue } from "./letter-render-queue";
 import { prepareLetterImages } from "./letter-images";
+import { LetterImageError, letterFailureContext } from "./letter-image-error";
+import { storageLogger } from "../../logger";
+import { isMaintenanceModeError } from "../maintenance-flag";
 
 export const MAX_LETTER_BODY_BYTES = 200_000;
 const renderQueue = new LetterRenderQueue();
@@ -55,10 +58,14 @@ export async function renderLetterPdf(
   input: string,
   options: { previewGuides?: boolean } = {},
 ): Promise<Buffer> {
+  let entered = false;
   return renderQueue.run(Boolean(options.previewGuides), async () => {
+    entered = true;
     let browser: Browser | undefined;
+    let stage = "html";
     try {
       const html = await prepareLetterHtml(input);
+      stage = "browser";
       const { default: puppeteer } = await import("puppeteer-core");
       browser = await puppeteer.launch({
         executablePath: await chromiumPath(),
@@ -82,18 +89,37 @@ export async function renderLetterPdf(
       await page.setContent(html, { waitUntil: "load", timeout: 10_000 });
       const sources = await page.$$eval("img", (images) =>
         images.map((image) => image.getAttribute("src") ?? ""));
-      const imageData = await prepareLetterImages(sources);
-      await page.evaluate(async (data) => {
+      stage = "images";
+      const dimensions: Array<{ width: number; height: number } | undefined> = [];
+      const imageData = await prepareLetterImages(sources, (index, width, height) => {
+        dimensions[index] = { width, height };
+      });
+      const decodeFailure = await page.evaluate(async ({ data, dimensions }) => {
         const images = Array.from(document.querySelectorAll("img"));
-        await Promise.race([
+        return Promise.race([
           Promise.all(images.map(async (image, index) => {
             image.removeAttribute("srcset");
+            // A 300-DPI PNG must not enlarge an un-sized 96-DPI SVG logo.
+            if (dimensions[index] && !image.hasAttribute("width") && !image.style.width) {
+              if (!image.hasAttribute("height") && !image.style.height) {
+                image.style.width = `${dimensions[index]!.width}px`;
+              }
+            }
+            if (dimensions[index]) {
+              image.style.aspectRatio = `${dimensions[index]!.width} / ${dimensions[index]!.height}`;
+            }
             image.src = data[index];
-            await image.decode();
-          })),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Letter image decoding timed out.")), 10_000)),
+            try { await image.decode(); return 0; } catch { return index + 1; }
+          })).then((failures) => failures.find((index) => index > 0) ?? 0),
+          new Promise<number>((resolve) => setTimeout(() => resolve(-1), 10_000)),
         ]);
-      }, imageData);
+      }, { data: imageData, dimensions });
+      if (decodeFailure) throw new LetterImageError(
+        decodeFailure === -1 ? "timeout" : "invalid",
+        decodeFailure === -1 ? "Image decoding timed out." : "Image is not a valid decodable PNG or JPEG.",
+        decodeFailure === -1 ? 1 : decodeFailure,
+      );
+      stage = "pdf";
       const bytes = await page.pdf({
         preferCSSPageSize: true,
         printBackground: true,
@@ -134,8 +160,26 @@ export async function renderLetterPdf(
         }
       }
       return Buffer.from(await pdf.save());
+    } catch (error) {
+      // Fixed fields only; private HTML and raw browser errors never reach logs.
+      storageLogger.error("Letter PDF preparation failed", {
+        source: "letter-renderer", module: "comm", operation: "render_pdf",
+        lane: options.previewGuides ? "preview" : "delivery",
+        ...letterFailureContext(error, stage),
+        ...(isMaintenanceModeError(error) ? { category: "maintenance" } : {}),
+      });
+      throw error;
     } finally {
       await browser?.close();
     }
+  }).catch((error: unknown) => {
+    if (!entered) {
+      storageLogger.error("Letter PDF preparation failed", {
+        source: "letter-renderer", module: "comm", operation: "render_pdf",
+        lane: options.previewGuides ? "preview" : "delivery",
+        ...letterFailureContext(error, "queue"),
+      });
+    }
+    throw error;
   });
 }

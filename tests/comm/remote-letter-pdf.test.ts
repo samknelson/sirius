@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PDFDocument } from "pdf-lib";
 
@@ -263,9 +264,9 @@ describe("downloadRemoteLetterPdf", () => {
   });
 
   it("refuses unsupported images, excessive counts and oversized pixel buffers", async () => {
-    await expect(prepareLetterImages(Array(11).fill("https://images.example/a.png"))).rejects.toThrow("at most 10");
+    await expect(prepareLetterImages(Array(11).fill("https://images.example/a.png"))).rejects.toThrow("At most 10");
     network.replies.push({ headers: { "content-type": "image/svg+xml" }, body: Buffer.from("<svg/>") });
-    await expect(prepareLetterImages(["https://images.example/a.svg"])).rejects.toThrow("not image/png or image/jpeg");
+    await expect(prepareLetterImages(["https://images.example/a.svg"])).rejects.toThrow("unsupported or active element");
     expect(() => rasterImageType(Buffer.from("<svg/>"))).toThrow("only PNG and JPEG");
     const bomb = Buffer.alloc(24);
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(bomb);
@@ -278,5 +279,65 @@ describe("downloadRemoteLetterPdf", () => {
   it("rejects oversized raster responses before reading the body", async () => {
     network.replies.push({ headers: { "content-type": "image/png", "content-length": "1048577" } });
     await expect(prepareLetterImages(["https://images.example/a.png"])).rejects.toThrow("byte limit");
+  });
+
+  it("converts the logo by validated MIME/content, pins once, deduplicates and preserves its intrinsic size", async () => {
+    const svg = readFileSync(new URL("./fixtures/benefits11-logo.svg", import.meta.url));
+    network.replies.push({ headers: { "content-type": "image/svg+xml; charset=utf-8" }, body: svg });
+    const dimensions = vi.fn();
+    const source = "https://images.example/no-extension?private-canary=never-log";
+    const result = await prepareLetterImages([source, source], dimensions);
+    expect(result[0]).toMatch(/^data:image\/png;base64,/);
+    expect(result[1]).toBe(result[0]);
+    const png = Buffer.from(result[0].split(",")[1], "base64");
+    expect(rasterImageType(png)).toBe("image/png");
+    expect(png.readUInt32BE(16)).toBe(750);
+    expect(dimensions.mock.calls).toEqual([[0, 240, 56.75], [1, 240, 56.75]]);
+    expect(network.request).toHaveBeenCalledTimes(1);
+    expect(network.pinned).toEqual(["8.8.8.8/4"]);
+  });
+
+  it("still refuses SVG as a remote PDF or a managed upload", async () => {
+    network.replies.push({ headers: { "content-type": "image/svg+xml" } });
+    await expect(downloadRemoteLetterPdf("https://images.example/a.svg")).rejects.toThrow("not application/pdf");
+    const svg = readFileSync(new URL("./fixtures/benefits11-logo.svg", import.meta.url));
+    managedFiles.lookup.mockResolvedValue({ status: "live", entityType: "template-asset", size: svg.length });
+    managedFiles.download.mockResolvedValue(svg);
+    await expect(prepareLetterImages(["https://app.example/public-files/public/letter-template-assets/a.svg"]))
+      .rejects.toThrow("only PNG and JPEG");
+  });
+
+  it("reports the original image index and sanitized HTTP diagnostics", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
+    network.replies.push({ headers: { "content-type": "image/png" }, body: png }, { status: 403 });
+    const first = "https://images.example/one.png";
+    await expect(prepareLetterImages([first, first, "https://images.example/two?secret=canary"]))
+      .rejects.toMatchObject({ imageNumber: 3, transportStatus: 403, category: "transport",
+        message: "Could not load letter image 3: the server returned HTTP 403." });
+  });
+
+  it("accounts for retained SVG output as well as downloaded source bytes", async () => {
+    const svg = readFileSync(new URL("./fixtures/benefits11-logo.svg", import.meta.url));
+    const png = Buffer.alloc(1024 * 1024 - 2000);
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
+    png.write("IHDR", 12); png.writeUInt32BE(1, 16); png.writeUInt32BE(1, 20);
+    for (let index = 0; index < 5; index++) network.replies.push({ headers: { "content-type": "image/png" }, body: png });
+    network.replies.push({ headers: { "content-type": "image/svg+xml" }, body: svg });
+    await expect(prepareLetterImages([
+      ...Array.from({ length: 5 }, (_, index) => `https://images.example/${index}.png`),
+      "https://images.example/logo.svg",
+    ])).rejects.toMatchObject({ category: "size", imageNumber: 6 });
+  });
+
+  it("keeps JPEG downloads byte-for-byte and refuses a mislabeled response", async () => {
+    // A bounded SOF marker fixture is enough for this transport/header test;
+    // actual raster decoding is separately checked by Chromium.
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 8, 8, 0, 1, 0, 1, 1]);
+    network.replies.push({ headers: { "content-type": "image/jpeg" }, body: jpeg });
+    expect(await prepareLetterImages(["https://images.example/no-extension"]))
+      .toEqual([`data:image/jpeg;base64,${jpeg.toString("base64")}`]);
+    network.replies.push({ headers: { "content-type": "image/png" }, body: jpeg });
+    await expect(prepareLetterImages(["https://images.example/mislabeled"]))
+      .rejects.toThrow("do not match the response content type");
   });
 });
