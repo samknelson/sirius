@@ -1,11 +1,14 @@
 import { sessionHistory, type InsertSessionHistory } from "@shared/schema";
 import { and, asc, count, desc, eq, lt, sql } from "drizzle-orm";
-import { getClient } from "../transaction-context";
+import { getClient, runInTransaction } from "../transaction-context";
 import { createHash } from "node:crypto";
+import { normalizeSessionIp } from "../../auth/session-ip";
+import type { SignInIpDecision } from "../../services/event-bus";
 import { sessionHistoryPagingSchema, type UserSessionHistoryPage } from "@shared/session-history";
 
 export interface SessionHistoryStorage {
   create(entry: InsertSessionHistory): Promise<void>;
+  recordSignIn(entry: InsertSessionHistory & { id: string; userId: string; authenticationSessionReference?: string }): Promise<SignInIpDecision>;
   countBefore(cutoff: Date): Promise<number>;
   getExpiredIds(cutoff: Date, limit: number): Promise<string[]>;
   deleteExpired(id: string, cutoff: Date): Promise<boolean>;
@@ -17,9 +20,46 @@ export interface SessionHistoryStorage {
  * Deliberately no storage logging wrapper/configuration or entity metadata.
  */
 export function createSessionHistoryStorage(): SessionHistoryStorage {
+  // Serialize comparison + insertion per account across processes. Ordinary
+  // observations take the same lock so they cannot interleave the comparison.
+  async function lockUser(userId: string) {
+    await getClient().execute(sql`SET LOCAL lock_timeout = '2s'`);
+    await getClient().execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`session-history:${userId}`}, 0))`);
+  }
   return {
     async create(entry) {
-      await getClient().insert(sessionHistory).values(entry);
+      await runInTransaction(async () => {
+        if (entry.userId) await lockUser(entry.userId);
+        await getClient().insert(sessionHistory).values({ ...entry, ip: normalizeSessionIp(entry.ip) });
+      });
+    },
+    async recordSignIn(entry) {
+      return runInTransaction(async () => {
+        await lockUser(entry.userId);
+        const { authenticationSessionReference, ...rowEntry } = entry;
+        const reference = authenticationSessionReference && /^[a-f0-9]{64}$/.test(authenticationSessionReference)
+          ? authenticationSessionReference : undefined;
+        const ip = normalizeSessionIp(entry.ip);
+        // Clerk can establish several app sessions from ONE upstream sign-in.
+        // Correlate them in this existing history table using a non-bearer hash,
+        // so automatic restoration/renewal is not a fresh sign-in.
+        const restored = reference ? (await getClient().select({ id: sessionHistory.id })
+          .from(sessionHistory).where(and(
+            eq(sessionHistory.userId, entry.userId),
+            sql`${sessionHistory.data}->>'authenticationSessionReference' = ${reference}`,
+          )).limit(1)).length > 0 : false;
+        const previous = await getClient().selectDistinct({ ip: sessionHistory.ip })
+          .from(sessionHistory).where(eq(sessionHistory.userId, entry.userId));
+        const known = new Set(previous.map(row => normalizeSessionIp(row.ip)).filter((value): value is string => !!value));
+        const decision: SignInIpDecision = restored ? "restored-session" : !ip ? "missing-ip"
+          : known.size === 0 ? "baseline" : known.has(ip) ? "known-ip" : "new-ip";
+        // The event occurrence id is a non-bearer UUID, not the cookie SID.
+        await getClient().insert(sessionHistory).values({
+          ...rowEntry, ip,
+          data: reference ? { authenticationSessionReference: reference } : rowEntry.data,
+        });
+        return decision;
+      });
     },
     async countBefore(cutoff) {
       const [row] = await getClient()

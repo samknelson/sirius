@@ -15,6 +15,7 @@ import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
 import { getEnvironmentVariable } from "../config/env-registry";
+import { observeSuccessfulSignIns } from "./sign-in-events";
 
 const getStorage = () => require("../storage").storage;
 
@@ -94,6 +95,7 @@ export async function setupAuth(app: Express): Promise<void> {
   app.use(captureRequestIpContext);
   app.use(getSession());
   app.use(passport.initialize());
+  app.use(observeSuccessfulSignIns);
   app.use(passport.session());
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));

@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 import { getRequestContext } from "../../middleware/request-context";
 import { normalizeSessionIp } from "../../auth/session-ip";
+import { getSessionAuthenticationContext } from "../../auth/session-authentication-context";
 import { eventBus, EventType, type EventPayloadMap } from "../../services/event-bus";
 import { logger } from "../../logger";
 
@@ -173,6 +174,8 @@ export function createSessionStorage(): SessionStorage {
             announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
               sid, created: false, previousUserId: previous.old_user_id,
               userId: newUserId ?? null, previousIp, ip,
+              signInHistoryManaged: getSessionAuthenticationContext()?.historyManaged === true &&
+                getSessionAuthenticationContext()?.userId === newUserId,
               occurredAt: new Date().toISOString(),
             });
             return {
@@ -191,6 +194,8 @@ export function createSessionStorage(): SessionStorage {
             announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
               sid, created: true, previousUserId: null, userId: newUserId ?? null,
               previousIp: null, ip, occurredAt: new Date().toISOString(),
+              signInHistoryManaged: getSessionAuthenticationContext()?.historyManaged === true &&
+                getSessionAuthenticationContext()?.userId === newUserId,
             });
             return { created: true, newUserId };
           }

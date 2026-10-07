@@ -5,17 +5,19 @@ const fakes = vi.hoisted(() => ({
   outside: vi.fn((fn: () => unknown) => fn()),
   on: vi.fn(),
   error: vi.fn(),
+  recordSignIn: vi.fn(),
+  emit: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: fakes.enabled }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: fakes.outside }));
 vi.mock("../../server/logger", () => ({ logger: { error: fakes.error } }));
 vi.mock("../../server/services/event-bus", () => ({
-  EventType: { SESSION_SAVE_AFTER: "session.save.after", SESSION_TOUCH_AFTER: "session.touch.after" },
-  eventBus: { on: fakes.on },
+  EventType: { SESSION_SAVE_AFTER: "session.save.after", SESSION_TOUCH_AFTER: "session.touch.after", AUTH_SIGN_IN_AFTER: "auth.sign-in.after" },
+  eventBus: { on: fakes.on, emit: fakes.emit },
 }));
 
-import { createSessionHistoryHandler, initializeSessionHistoryListener } from "../../server/services/session-history";
+import { createSessionHistoryHandler, initializeSessionHistoryListener, recordSuccessfulSignIn } from "../../server/services/session-history";
 import { normalizeSessionIp } from "../../server/auth/session-ip";
 import { captureRequestIpContext, getRequestContext } from "../../server/middleware/request-context";
 
@@ -82,12 +84,51 @@ describe("session history capture", () => {
   });
 
   it("registers save and touch listeners only once, without deletion capture", () => {
-    const history = { create: vi.fn() };
+    const history = { create: vi.fn(), recordSignIn: fakes.recordSignIn };
     initializeSessionHistoryListener(history);
     initializeSessionHistoryListener(history);
     expect(fakes.on.mock.calls.map(([options]) => options.event)).toEqual([
       "session.save.after", "session.touch.after",
     ]);
+  });
+  it("does not race the login observer by recording its opening again", async () => {
+    const create = vi.fn();
+    await createSessionHistoryHandler({ create })({ ...transition, created: true, signInHistoryManaged: true });
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("emits only a safe immutable sign-in snapshot after capturing history", async () => {
+    fakes.recordSignIn.mockResolvedValue("new-ip");
+    await recordSuccessfulSignIn({
+      sid: "synthetic-cookie-canary", occurrenceId: "occurrence",
+      userId: "internal-user", ip: "192.0.2.1", occurredAt: transition.occurredAt,
+      authenticationSessionReference: "a".repeat(64),
+    });
+    expect(fakes.recordSignIn).toHaveBeenCalledOnce();
+    const [event, payload] = fakes.emit.mock.calls[0];
+    expect(event).toBe("auth.sign-in.after");
+    expect(payload.ipDecision).toBe("new-ip");
+    expect(Object.isFrozen(payload)).toBe(true);
+    expect(payload).not.toHaveProperty("sid");
+    expect(payload).not.toHaveProperty("authenticationSessionReference");
+    expect(JSON.stringify(payload)).not.toContain("synthetic-cookie-canary");
+  });
+  it("does not query history when disabled, and marks classification unavailable", async () => {
+    fakes.enabled.mockReturnValue(false);
+    await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: null, occurredAt: transition.occurredAt });
+    expect(fakes.recordSignIn).not.toHaveBeenCalled();
+    expect(fakes.emit.mock.calls[0][1].ipDecision).toBeNull();
+  });
+  it("preserves a restored session observation without emitting a new sign-in", async () => {
+    fakes.recordSignIn.mockResolvedValue("restored-session");
+    await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: "192.0.2.2", occurredAt: transition.occurredAt });
+    expect(fakes.recordSignIn).toHaveBeenCalledOnce();
+    expect(fakes.emit).not.toHaveBeenCalled();
+  });
+  it("does not invent novelty or relay query credentials when history fails", async () => {
+    fakes.recordSignIn.mockRejectedValue(new Error("synthetic-cookie-query-canary"));
+    await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: "192.0.2.2", occurredAt: transition.occurredAt });
+    expect(fakes.emit.mock.calls[0][1].ipDecision).toBeNull();
+    expect(JSON.stringify(fakes.error.mock.calls)).not.toContain("synthetic-cookie-query-canary");
   });
 });
 

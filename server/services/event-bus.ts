@@ -60,6 +60,7 @@ export class EventBusEmitDepthExceededError extends Error {
  */
 export enum EventType {
   SESSION_SAVE_AFTER = "session.save.after",
+  AUTH_SIGN_IN_AFTER = "auth.sign-in.after",
   SESSION_TOUCH_AFTER = "session.touch.after",
   SESSION_DELETE_AFTER = "session.delete.after",
   HOURS_SAVED = "hours.saved",
@@ -137,6 +138,20 @@ export interface SessionTransitionPayload {
 
 export interface SessionSaveAfterPayload extends SessionTransitionPayload {
   readonly created: boolean;
+  /** A successful Passport login records this observation atomically itself. */
+  readonly signInHistoryManaged?: boolean;
+}
+
+export type SignInIpDecision = "baseline" | "known-ip" | "new-ip" | "missing-ip" | "restored-session";
+
+/** No cookie identifiers, provider tokens, or raw user/session objects. */
+export interface SignInAfterPayload {
+  readonly occurrenceId: string;
+  readonly userId: string;
+  readonly ip: string | null;
+  readonly occurredAt: string;
+  /** Comparison against retained history immediately BEFORE this observation. */
+  readonly ipDecision: SignInIpDecision | null;
 }
 
 export interface SessionDeleteAfterPayload {
@@ -601,6 +616,7 @@ export interface LogPayload {
 }
 
 export interface EventPayloadMap {
+  [EventType.AUTH_SIGN_IN_AFTER]: SignInAfterPayload;
   [EventType.SESSION_SAVE_AFTER]: SessionSaveAfterPayload;
   [EventType.SESSION_TOUCH_AFTER]: SessionTransitionPayload;
   [EventType.SESSION_DELETE_AFTER]: SessionDeleteAfterPayload;

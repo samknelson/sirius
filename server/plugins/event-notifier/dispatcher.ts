@@ -510,6 +510,8 @@ async function dispatchForConfig(
 
   for (const recipient of recipients) {
     for (const medium of active) {
+      if (plugin.shouldSendToRecipient &&
+        !await plugin.shouldSendToRecipient(medium, recipient, ctx, configData)) continue;
       let content: NotifierMessageContent | null = null;
       if (plugin.tokenTemplates && seeds && templates && renderCache) {
         const { composeFromTemplates } = await import("./token-templates");
@@ -544,6 +546,8 @@ async function dispatchForConfig(
         content = await plugin.getMessage(medium, recipient, ctx, configData);
       }
       if (!content) continue;
+      const sendKey = plugin.getSendKey?.(ctx, recipient, medium);
+      if (sendKey) content = { ...content, sendKey };
       const { sent, comm } = await deliver(medium, recipient, content, pluginId, tagIds);
       // Flash a summary of what went out back to the user who triggered the
       // event. Only successful sends are tallied; self-notifications are already
