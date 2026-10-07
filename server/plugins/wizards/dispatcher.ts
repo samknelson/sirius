@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import type { Wizard } from "@shared/schema";
 import { randomUUID } from "node:crypto";
+import { startValidationRun } from "./validation-run";
 
 type AuthMiddleware = (
   req: Request,
@@ -301,6 +302,17 @@ export function registerWizardDispatcherRoutes(
         return res
           .status(400)
           .json({ message: `Step '${step.id}' does not support run` });
+      }
+      if (step.id === "validate" && step.component === "GbhetValidate") {
+        try {
+          const started = await startValidationRun(loaded.wizard, step, (wizard, runId) =>
+            buildStepContext(wizard, step.id, (req.body?.input ?? {}) as Record<string, unknown>, req, undefined, runId));
+          return started
+            ? res.status(202).json({ started: true, protocol: "validation-v2" })
+            : res.status(409).json({ message: "Validation is already running, or its previous heartbeat is still recent. Refresh its status before retrying." });
+        } catch {
+          return res.status(503).json({ message: "Validation could not be started or saved. Check the server's database connection and retry." });
+        }
       }
 
       const runId = randomUUID();

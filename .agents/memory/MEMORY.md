@@ -140,6 +140,7 @@
 - [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.
+- [Validation heartbeat vs ownership](validation-heartbeat-ownership.md) — missing persisted progress does not prove stopped work; fence execution separately and cancel blocked writes in PostgreSQL.
 - [Mockup artifact install timing](mockup-artifact-install-timing.md) — artifact workflow can start before scaffold dependencies are ready; wait for install before diagnosing missing Vite.
 - [Worker coverage month relationship](worker-coverage-month-relationship.md) — user prefers explicit work-month → coverage-month mapping and “Hours grant coverage in”; future thresholds remain separate from decisions.
 - [Monthly coverage history direction](monthly-coverage-history-direction.md) — user chose status-run accordions; sole recorded No Election is Unenrolled, never inferred from missing evidence.

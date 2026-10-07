@@ -11,6 +11,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import { gbhetLegalWorkersMonthly } from "../engine/types/gbhet_legal_workers_monthly";
 import { gbhetLegalWorkersCorrections } from "../engine/types/gbhet_legal_workers_corrections";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
+import { validationPersistenceProblem } from "../validation-run";
 import {
   buildUploadStep,
   buildMapStep,
@@ -123,18 +124,19 @@ export function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
       // At most ~50 writes even for a very large upload. Each write is
       // conditional on the active run and cannot replace terminal results.
       let lastPercent = -1;
-      await feed.validateFeedData(ctx.wizardId, 100, (p) => {
+      const validationResults = await feed.validateFeedData(ctx.wizardId, 100, (p) => {
         const pct =
           p.total > 0
             ? Math.min(99, Math.round((p.processed / p.total) * 100))
             : 0;
         if (pct >= lastPercent + 2) {
           lastPercent = pct;
-          void ctx.reportProgress(pct);
+          void ctx.reportProgress(pct).catch(() => {
+            // The dispatcher records persistence failures and keeps work running.
+          });
         }
       }, ctx.runId);
-      // validationResults (incl. unmappedStatuses / ssnWarnings) persisted by
-      // the base method; nothing to merge here.
+      return { data: { validationResults } };
     },
     getData: async (ctx: WizardStepContext) => {
       const data = (ctx.wizard.data as any) || {};
@@ -147,6 +149,7 @@ export function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
       return {
         validationResults: data.validationResults ?? null,
         existingMappings,
+        persistenceProblem: validationPersistenceProblem(ctx.wizardId, data.progress?.validate?.runId),
       };
     },
     submit: async (ctx: WizardStepContext) => {

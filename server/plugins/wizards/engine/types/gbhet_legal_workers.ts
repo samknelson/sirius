@@ -5,6 +5,7 @@ import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
 import { withChargeConfigCache } from '../../../../middleware/request-context.js';
 import { withChargeBatchCollector } from '../../../../plugins/ledger/charge/charge-batch.js';
+import { parseSSN, validateSSN } from '@shared/utils/ssn';
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -56,6 +57,7 @@ interface RunContext {
   // Per-run caches for option lists that were previously fetched per row.
   employmentStatusOptions?: Array<{ id: string; name: string; code: string; employed: boolean }>;
   workStatusOptions?: Array<{ id: string; name: string }>;
+  existingSsns?: Set<string>;
 }
 
 function freshRunContext(employerId: string): RunContext {
@@ -484,45 +486,56 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     const wizard = await storage.wizards.getById(wizardId);
     const ctx: RunContext = freshRunContext(wizard?.entityId || '');
 
-    return runContextStorage.run(ctx, async () => {
-      const results = await super.validateFeedData(wizardId, batchSize, onProgress, runId);
+    return runContextStorage.run(ctx, () => super.validateFeedData(wizardId, batchSize, onProgress, runId));
+  }
 
-      let needsResave = false;
+  protected finalizeValidationResults(results: ValidationResults): void {
+    const ctx = runContextStorage.getStore();
+    if (!ctx) return;
+    if (ctx.unmappedValues.size > 0) {
+      results.unmappedStatuses = Array.from(ctx.unmappedValues);
 
-      if (ctx.unmappedValues.size > 0) {
-        results.unmappedStatuses = Array.from(ctx.unmappedValues);
+      results.errors = results.errors.filter(
+        e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
+      );
 
-        results.errors = results.errors.filter(
-          e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
-        );
+      const reclassifiedCount = ctx.unmappedOnlyRows.size;
+      results.invalidRows -= reclassifiedCount;
+      results.validRows += reclassifiedCount;
 
-        const reclassifiedCount = ctx.unmappedOnlyRows.size;
-        results.invalidRows -= reclassifiedCount;
-        results.validRows += reclassifiedCount;
-
-        for (const key of Object.keys(results.errorSummary)) {
-          if (key.includes('unmapped_employment_status')) {
-            delete results.errorSummary[key];
-          }
+      for (const key of Object.keys(results.errorSummary)) {
+        if (key.includes('unmapped_employment_status')) {
+          delete results.errorSummary[key];
         }
-
-        needsResave = true;
       }
+    }
 
-      // Bad-format SSN errors were demoted to warnings in validateRow (removed
-      // from the row's blocking errors), so those rows already count as valid.
-      // Surface the collected warnings on the results for the UI.
-      if (ctx.ssnWarnings.length > 0) {
-        results.ssnWarnings = ctx.ssnWarnings;
-        needsResave = true;
-      }
+    // Bad-format SSN errors were demoted to warnings in validateRow (removed
+    // from the row's blocking errors), so those rows already count as valid.
+    // Surface the collected warnings on the results for the UI.
+    if (ctx.ssnWarnings.length > 0) results.ssnWarnings = ctx.ssnWarnings;
+  }
 
-      if (needsResave) {
-        await storage.wizards.mergeData(wizardId, { validationResults: results }, runId ? 'validate' : undefined, runId);
-      }
-
-      return results;
-    });
+  protected async prepareValidationRows(rows: Record<string, any>[], mode: 'create' | 'update'): Promise<void> {
+    const ctx = runContextStorage.getStore();
+    if (!ctx || mode !== 'update') return;
+    const ssns = new Set<string>();
+    for (const row of rows) {
+      const normalized = preprocessSSN(row.ssn);
+      if (!normalized) continue;
+      const parsed = parseSSN(normalized);
+      // Match the row validator: malformed/SSA-invalid SSNs are warnings and
+      // must not acquire a new "worker does not exist" error.
+      if (validateSSN(parsed).valid) ssns.add(parsed);
+    }
+    const normalizedSsns = Array.from(ssns);
+    ctx.existingSsns = new Set();
+    // One query at the requested 2,000-row scale; also preserve support for
+    // larger existing feeds without crossing PostgreSQL's parameter limit.
+    for (let offset = 0; offset < normalizedSsns.length; offset += 10_000) {
+      const workers = await storage.workers.getWorkersBySSNs(normalizedSsns.slice(offset, offset + 10_000));
+      for (const ssn of workers.keys()) ctx.existingSsns.add(ssn);
+    }
   }
 
   async processFeedData(
@@ -638,7 +651,10 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       // Only check if SSN is present and passed format validation. A bad-format
       // SSN was demoted to a warning above, so skip the existence check for it.
       if (ssn && !hasSsnWarning && !errors.some(e => e.field === 'ssn')) {
-        const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+        const existingSsns = runContextStorage.getStore()?.existingSsns;
+        const existingWorker = existingSsns
+          ? existingSsns.has(parseSSN(String(ssn)))
+          : await storage.workers.getWorkerBySSN(ssn);
         
         if (!existingWorker) {
           errors.push({

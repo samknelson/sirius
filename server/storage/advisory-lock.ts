@@ -61,6 +61,8 @@ export interface AdvisoryLockHandle {
   readonly waitedMs: number;
   /** True when the lock was NOT free on the first attempt. */
   readonly contended: boolean;
+  /** False if the dedicated connection has died and released its session lock. */
+  isHeld?(): boolean;
   /** Release the lock and return the connection to the pool. Idempotent. */
   release(): Promise<void>;
 }
@@ -111,7 +113,7 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-export function createAdvisoryLockStorage(): AdvisoryLockStorage {
+export function createAdvisoryLockStorage(lockPool: pg.Pool = pool): AdvisoryLockStorage {
   return {
     async tryAcquireSession(
       name: string,
@@ -124,15 +126,23 @@ export function createAdvisoryLockStorage(): AdvisoryLockStorage {
       // The checkout itself is bounded by the pool's connectionTimeoutMillis
       // (see server/storage/db.ts): an unreachable database fails here rather
       // than blocking forever.
-      const client: pg.PoolClient = await pool.connect();
+      const client: pg.PoolClient = await lockPool.connect();
       let released = false;
       let announcedWait = false;
+      let held = false;
+      const onConnectionError = (error: Error) => {
+        held = false;
+        releaseClient(error);
+      };
 
       const releaseClient = (err?: Error) => {
         if (released) return;
         released = true;
+        held = false;
+        client.removeListener("error", onConnectionError);
         client.release(err);
       };
+      client.on("error", onConnectionError);
 
       try {
         for (;;) {
@@ -141,11 +151,13 @@ export function createAdvisoryLockStorage(): AdvisoryLockStorage {
             [ADVISORY_LOCK_CLASS_ID, name],
           );
           if (result.rows[0]?.locked === true) {
+            held = true;
             const waitedMs = Date.now() - startedAt;
             return {
               name,
               waitedMs,
               contended: announcedWait,
+              isHeld: () => held,
               async release(): Promise<void> {
                 if (released) return;
                 try {

@@ -10,6 +10,7 @@ import {
 } from '../attachments.js';
 import { parseSSN, validateSSN } from '@shared/utils/ssn';
 import { logger } from '../../../logger.js';
+import { ValidationPhaseError } from '../validation-diagnostics';
 import {
   getEnvironmentVariable,
   registerEnvironmentVariable,
@@ -173,6 +174,7 @@ export interface ValidationResults {
   unmappedStatuses?: string[];
   ssnWarnings?: SsnWarning[];
   completedAt?: Date;
+  diagnostics?: { loadParseMapMs: number; lookupMs: number; rowValidationMs: number };
 }
 
 export interface ProcessError {
@@ -257,6 +259,11 @@ const ADDRESS_FIELD_IDS = new Set(['addressLine1', 'addressLine2', 'city', 'stat
 
 export abstract class FeedWizard extends BaseWizard {
   isFeed: boolean = true;
+
+  /** Run-local, read-only lookup preparation; subclasses must not mutate rows here. */
+  protected async prepareValidationRows(_rows: Record<string, any>[], _mode: 'create' | 'update'): Promise<void> {}
+
+  protected finalizeValidationResults(_results: ValidationResults): void {}
 
   /**
    * Get field definitions for this feed wizard (optional)
@@ -396,11 +403,20 @@ export abstract class FeedWizard extends BaseWizard {
     // Single shared download/parse/map path (cached by file id) — this used
     // to duplicate the parsing logic inline.
     const tValidate = Date.now();
-    const loaded = await this.loadMappedRows(wizardId);
+    const loaded = await this.loadMappedRows(wizardId).catch(error => {
+      throw new ValidationPhaseError('load-parse-map', error);
+    });
     const { mappedRows } = loaded;
+    const loadParseMapMs = Date.now() - tValidate;
     feedProfile('validateFeedData:load-parse-map', tValidate, { rows: mappedRows.length });
-    const tRows = Date.now();
     const mode = loaded.mode as 'create' | 'update';
+    const tLookups = Date.now();
+    await this.prepareValidationRows(mappedRows, mode).catch(error => {
+      throw new ValidationPhaseError('lookups', error);
+    });
+    const lookupMs = Date.now() - tLookups;
+    feedProfile('validateFeedData:lookups', tLookups, { rows: mappedRows.length, mode });
+    const tRows = Date.now();
 
     const totalRows = mappedRows.length;
     let validRows = 0;
@@ -416,7 +432,9 @@ export abstract class FeedWizard extends BaseWizard {
       for (let j = 0; j < batch.length; j++) {
         const rowIndex = i + j;
         const row = batch[j];
-        const rowErrors = await this.validateRow(row, rowIndex, mode);
+        const rowErrors = await this.validateRow(row, rowIndex, mode).catch(error => {
+          throw new ValidationPhaseError('rows', error);
+        });
 
         if (rowErrors.length === 0) {
           validRows++;
@@ -445,6 +463,9 @@ export abstract class FeedWizard extends BaseWizard {
           invalidRows
         });
       }
+      // Awaiting already-resolved row promises does not let timers or I/O run.
+      // Yield between bounded batches so polling and heartbeat timers can run.
+      await new Promise<void>(resolve => setImmediate(resolve));
     }
 
     // Build error summary
@@ -460,13 +481,19 @@ export abstract class FeedWizard extends BaseWizard {
       invalidRows,
       errors: allErrors,
       errorSummary,
-      completedAt: new Date()
+      completedAt: new Date(),
+      diagnostics: { loadParseMapMs, lookupMs, rowValidationMs: Date.now() - tRows },
     };
     feedProfile('validateFeedData:rows', tRows, { rows: totalRows });
+    this.finalizeValidationResults(results);
 
-    // Save validation results to wizard data
-    await storage.wizards.mergeData(wizardId, { validationResults: results }, runId ? 'validate' : undefined, runId);
-    feedProfile('validateFeedData:total-persisted', tValidate, { rows: totalRows });
+    // Dispatcher runs commit final results WITH their terminal status. Direct
+    // engine callers still save results, but only after subclass reconciliation.
+    if (!runId) {
+      const saved = await storage.wizards.mergeData(wizardId, { validationResults: results });
+      if (!saved) throw new Error('Validation results could not be saved');
+    }
+    feedProfile(runId ? 'validateFeedData:computed' : 'validateFeedData:total-persisted', tValidate, { rows: totalRows });
 
     return results;
   }

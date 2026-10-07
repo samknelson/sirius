@@ -53,6 +53,8 @@ class OptionalAddressHarness extends GbhetLegalWorkersMonthlyWizard {
 beforeEach(() => {
   // Update mode requires an existing worker; isolate that lookup from the DB.
   vi.spyOn(storage.workers, 'getWorkerBySSN').mockResolvedValue({ id: 'worker' } as any);
+  vi.spyOn(storage.workers, 'getWorkersBySSNs').mockImplementation(async ssns =>
+    new Map(ssns.map(ssn => [ssn.replace(/\D/g, ''), { id: 'worker' } as any])));
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -98,7 +100,7 @@ describe.each(modes)('upload address validation in %s mode', (mode) => {
     mappedRows.push(validRow());
     vi.spyOn(wizard, 'loadMappedRows').mockResolvedValue({ mappedRows, mode } as any);
     vi.spyOn(storage.wizards, 'getById').mockResolvedValue({ entityId: 'employer' } as any);
-    const persist = vi.spyOn(storage.wizards, 'mergeData').mockResolvedValue(undefined as any);
+    const persist = vi.spyOn(storage.wizards, 'mergeData').mockResolvedValue({ id: 'address-test' } as any);
     const results = await wizard.validateFeedData('address-test');
     expect(results).toMatchObject({ totalRows: 5, validRows: 1, invalidRows: 4 });
     expect(results.errors).toEqual(requiredAddresses.map(([field, name], rowIndex) => ({
@@ -107,7 +109,7 @@ describe.each(modes)('upload address validation in %s mode', (mode) => {
     expect(results.errorSummary).toEqual(Object.fromEntries(
       requiredAddresses.map(([field, name]) => [`${field}: ${name} is required`, 1]),
     ));
-    expect(persist).toHaveBeenCalledWith('address-test', { validationResults: results }, undefined, undefined);
+    expect(persist).toHaveBeenCalledWith('address-test', { validationResults: results });
     const step = buildGbhetValidateStep(wizard);
     expect(step.getState!({ currentStep: 'validate', data: { validationResults: results } } as any))
       .toBe('in_progress');

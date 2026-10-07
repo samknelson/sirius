@@ -388,12 +388,20 @@ export function createInfrastructurePool(options: { max: number }): pg.Pool {
     infrastructurePool = new NeonPool({
       connectionString: effectiveDatabaseUrl,
       max: options.max,
+      connectionTimeoutMillis,
     });
   } else {
+    const infrastructureIamAuth = isIamAuth();
     infrastructurePool = new pg.Pool({
-      connectionString: stripSslParams(databaseUrl),
-      ssl: sslConfigFromUrl(databaseUrl),
+      ...buildPgPoolConfig(
+        databaseUrl,
+        sslConfigFromUrl(databaseUrl),
+        infrastructureIamAuth,
+        infrastructureIamAuth ? iamPasswordProvider(databaseUrl) : (async () => ""),
+        stripSslParams,
+      ),
       max: options.max,
+      connectionTimeoutMillis,
     });
   }
   infrastructurePool.on("error", (err: Error) => {

@@ -65,6 +65,7 @@ interface EmploymentStatusOption {
 interface ValidateData {
   validationResults: ValidationResults | null;
   existingMappings: Array<{ sourceStatus: string; targetStatusId: string }>;
+  persistenceProblem?: string | null;
 }
 
 interface LiveWizard {
@@ -80,19 +81,24 @@ interface LiveWizard {
  * EventSource `/validate` and `/status-mappings` routes are gone).
  */
 export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
-  const { data: stepData, isLoading } = useQuery<ValidateData>({
+  const [isValidating, setIsValidating] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  const { data: stepData, isLoading, error: stepReadError } = useQuery<ValidateData>({
     queryKey: ["/api/wizards", wizardId, "dispatch", step.id, "data"],
+    refetchInterval: stalled ? 4000 : false,
   });
-  const { data: liveWizard } = useQuery<LiveWizard>({
+  const { data: liveWizard, error: pollingError, refetch: refreshStatus } = useQuery<LiveWizard>({
     queryKey: [`/api/wizards/${wizardId}`],
     refetchInterval: (query) =>
-      (query.state.data as LiveWizard | undefined)?.data?.progress?.[step.id]?.status === "in_progress"
+      isValidating || query.state.status === "error" || (query.state.data as LiveWizard | undefined)?.data?.progress?.[step.id]?.status === "in_progress"
         ? 4000 : false,
+    refetchIntervalInBackground: true,
+    retry: 1,
   });
 
-  const [isValidating, setIsValidating] = useState(false);
   const [results, setResults] = useState<ValidationResults | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [statusMappings, setStatusMappings] = useState<Record<string, string>>(
     {},
   );
@@ -107,7 +113,6 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
   }, [stepData, hydrated]);
 
   const progress = liveWizard?.data?.progress?.[step.id];
-  const [stalled, setStalled] = useState(false);
   useEffect(() => {
     if (progress?.status !== "in_progress") {
       setStalled(false);
@@ -128,6 +133,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
   useEffect(() => {
     if (progress?.status === "in_progress") {
       setIsValidating(true);
+      setStartError(null);
       setError(null);
       setResults(null);
     } else if (progress?.status === "completed" || progress?.status === "failed") {
@@ -136,7 +142,8 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
         setResults(null);
         setError(progress.error || "Validation failed. Please retry.");
       } else {
-        setError(null);
+        setError(liveWizard?.data?.validationResults ? null :
+          "The server reported completion without saved validation results. Refresh status; if this repeats, ask an administrator to check the server version and validation logs.");
         setResults(liveWizard?.data?.validationResults ?? null);
       }
     }
@@ -152,6 +159,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
   const startValidation = async () => {
     setIsValidating(true);
     setError(null);
+    setStartError(null);
     setResults(null);
     setStatusMappings({});
     setMappingSaveSuccess(false);
@@ -168,8 +176,11 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
       );
       await queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Validation failed");
-      setIsValidating(false);
+      setStartError(err instanceof Error ? err.message : "Could not confirm validation started");
+      // A lost HTTP response is NOT proof that the server did not start.
+      // Keep polling to discover the authoritative persisted run.
+      const refreshed = await refreshStatus();
+      setIsValidating(refreshed.data?.data?.progress?.[step.id]?.status === "in_progress");
     }
   };
 
@@ -231,6 +242,31 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
 
   return (
     <div className="space-y-6">
+      {(pollingError || stepReadError) && (
+        <Alert variant="destructive">
+          <AlertTitle>Cannot read validation status</AlertTitle>
+          <AlertDescription>
+            The browser could not reach the server or read this upload. Validation may still be running.
+            Check your connection and sign-in, then refresh status. This is not a validation failure.
+            <Button variant="outline" size="sm" className="ml-3" onClick={() => {
+              void refreshStatus();
+              void queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId, "dispatch", step.id, "data"] });
+            }}>Refresh status</Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {startError && (
+        <Alert variant="destructive">
+          <AlertTitle>Could not confirm validation started</AlertTitle>
+          <AlertDescription>{startError} Refresh status before retrying.</AlertDescription>
+        </Alert>
+      )}
+      {stepData?.persistenceProblem && (
+        <Alert variant="destructive">
+          <AlertTitle>Validation status could not be saved</AlertTitle>
+          <AlertDescription>{stepData.persistenceProblem}</AlertDescription>
+        </Alert>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Validate Data</CardTitle>
@@ -247,6 +283,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
                 Ready to validate your data. Click below to start.
               </p>
               <Button
+                disabled={!!pollingError || !!stepReadError || !liveWizard}
                 onClick={startValidation}
                 size="lg"
                 data-testid="button-start-validation"
@@ -263,12 +300,13 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
                 <Loader2 className="h-4 w-4 animate-spin" />
                  <span className="text-sm font-medium">Validating data... {progress?.percentComplete ?? 0}%</span>
               </div>
-              {stalled && (
+              {stalled && !pollingError && (
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Validation may have stopped</AlertTitle>
                   <AlertDescription>
-                    No server activity has been recorded for two minutes. You can retry validation safely.
+                    No server heartbeat has been saved for two minutes. Work may still be running, or its progress could not be saved.
+                    Refresh status first. Retry will be refused while the server still holds the active validation lease.
                     <Button className="ml-3" variant="outline" size="sm" onClick={startValidation}>
                       Retry validation
                     </Button>
@@ -291,6 +329,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Validation Results</h3>
                 <Button
+                  disabled={!!pollingError || !!stepReadError}
                   onClick={startValidation}
                   variant="outline"
                   size="sm"
