@@ -148,3 +148,4 @@
 - [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.
 - [Session-history boundaries](session-history-anonymous-scope.md) — anonymous capture, no storage audit/metadata, opt-in retention; the first observed IP silently establishes an alert baseline.
 - [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
+- [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
