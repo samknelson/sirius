@@ -25,6 +25,8 @@ const network = vi.hoisted(() => ({
 const managedFiles = vi.hoisted(() => ({
   lookup: vi.fn(),
   download: vi.fn(),
+  ownerExists: vi.fn(),
+  attachment: vi.fn(),
 }));
 
 vi.mock("node:dns/promises", () => ({ resolve4: network.resolve4 }));
@@ -32,7 +34,10 @@ vi.mock("node:https", () => ({
   request: network.request,
 }));
 vi.mock("../../server/storage", () => ({
-  storage: { files: { getByStoragePath: managedFiles.lookup } },
+  storage: {
+    files: { getByStoragePath: managedFiles.lookup },
+    entityFiles: { assetOwnerExists: managedFiles.ownerExists, getByFileId: managedFiles.attachment },
+  },
 }));
 vi.mock("../../server/services/files", () => ({
   fileSystemService: { download: managedFiles.download },
@@ -235,6 +240,26 @@ describe("downloadRemoteLetterPdf", () => {
     network.replies.push({ status: 302, headers: { location: "https://127.0.0.1/logo.png" } });
     await expect(prepareLetterImages(["https://images.example/logo.png"])).rejects.toThrow("private or reserved");
     expect(network.request).toHaveBeenCalledTimes(1);
+  });
+  it("resolves adopted and newly configured template asset paths with real ownership", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
+    managedFiles.lookup.mockResolvedValue({
+      id: "file", entityId: "owner", status: "live", entityType: "entity-files:template_asset", size: png.length,
+    });
+    managedFiles.ownerExists.mockResolvedValue(true);
+    managedFiles.attachment.mockResolvedValue({ fileId: "file" });
+    managedFiles.download.mockResolvedValue(png);
+    const sources = [
+      "https://app.example/public-files/assets/custom/logo.png",
+      "https://app.example/public-files/public/letter-template-assets/old.png",
+    ];
+    expect(await prepareLetterImages(sources)).toEqual(sources.map(() => `data:image/png;base64,${png.toString("base64")}`));
+    expect(network.request).not.toHaveBeenCalled();
+    managedFiles.ownerExists.mockResolvedValue(false);
+    await expect(prepareLetterImages([sources[0]])).rejects.toThrow("unavailable");
+    managedFiles.ownerExists.mockResolvedValue(true);
+    managedFiles.attachment.mockResolvedValue(undefined);
+    await expect(prepareLetterImages([sources[0]])).rejects.toThrow("unavailable");
   });
 
   it("refuses unsupported images, excessive counts and oversized pixel buffers", async () => {

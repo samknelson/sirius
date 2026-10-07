@@ -7,7 +7,6 @@ import {
   isFileSystemConfigured,
   getFileSystemConfig,
   getFileSystemProvider,
-  listFileSystemConfigs,
   FileSystemNotConfiguredError,
   FilePathTraversalError,
 } from "../services/files";
@@ -16,16 +15,11 @@ import multer from "multer";
 import { logger } from "../logger";
 import { buildContentDisposition } from "../utils/content-disposition";
 import { getEntityFileContext } from "../services/entity-files/registry";
-import {
-  getEnvironmentVariable,
-  PUBLIC_URL_LOCAL_FALLBACK,
-} from "../config/env-registry";
 import { randomUUID } from "node:crypto";
 import { getEffectiveUser } from "./masquerade";
-import {
-  MAX_LETTER_IMAGE_BYTES,
-  rasterImageType,
-} from "../services/comm/letter-images";
+import { MAX_LETTER_IMAGE_BYTES } from "../services/comm/letter-images";
+import { uploadEntityAttachment } from "../services/entity-files/upload";
+import { AttachmentError, TEMPLATE_ASSET_CONTEXT, isTemplateAsset } from "../services/entity-files/template-assets";
 
 /**
  * For files owned by the entity-files framework (entityType
@@ -104,72 +98,22 @@ export function registerFileRoutes(
         if (!dbUser?.id || !dbUser.isActive) {
           return res.status(401).json({ message: "An active database user is required to upload template images." });
         }
-        const contentType = req.file.mimetype.toLowerCase();
-        if (contentType !== "image/png" && contentType !== "image/jpeg") {
-          return res.status(415).json({ message: "Template images must be PNG or JPEG." });
+        const context = getEntityFileContext(TEMPLATE_ASSET_CONTEXT);
+        if (!context || !(await context.checkAccess("manage", "", req))) {
+          return res.status(403).json({ message: "Staff permission required." });
         }
-        const detectedType = rasterImageType(req.file.buffer);
-        if (detectedType !== contentType) {
-          return res.status(415).json({ message: "Image content does not match its PNG/JPEG MIME type." });
-        }
-        if (req.file.size > MAX_LETTER_IMAGE_BYTES) {
-          return res.status(413).json({ message: `Template images may not exceed ${MAX_LETTER_IMAGE_BYTES} bytes.` });
-        }
-
-        const origin = getEnvironmentVariable("PUBLIC_URL");
-        if (!isRecipientReachablePublicOrigin(origin)) {
-          return res.status(503).json({
-            message: "Template image upload requires PUBLIC_URL to be configured as a recipient-reachable HTTPS origin.",
-          });
-        }
-
-        const publicFilesystems = listFileSystemConfigs()
-          .filter((filesystem) => filesystem.access === "public")
-          .sort((a, b) => a.id.localeCompare(b.id));
-        const filesystem = publicFilesystems.find((candidate) => candidate.id === "public") ??
-          (publicFilesystems.length === 1 ? publicFilesystems[0] : undefined);
-        if (!filesystem) {
-          return res.status(503).json({
-            message: "Template image storage is unavailable. Configure exactly one public filesystem, preferably named 'public'.",
-          });
-        }
-
-        const extension = detectedType === "image/png" ? "png" : "jpg";
-        const storagePath = `letter-template-assets/${randomUUID()}.${extension}`;
-        const uploaded = await fileSystemService.upload({
-          fileSystemId: filesystem.id,
-          fileName: `${randomUUID()}.${extension}`,
-          fileContent: req.file.buffer,
-          mimeType: detectedType,
-          customPath: storagePath,
+        const record = await uploadEntityAttachment({
+          context, entityId: randomUUID(), file: req.file,
+          uploadedBy: dbUser.id, createAssetOwner: true,
         });
-        let file;
-        try {
-          file = await storage.files.create(insertFileSchema.parse({
-            fileName: req.file.originalname || `template-image.${extension}`,
-            storagePath: uploaded.storagePath,
-            mimeType: detectedType,
-            size: uploaded.size,
-            uploadedBy: dbUser.id,
-            entityType: "template-asset",
-            entityId: null,
-            fileSystemId: filesystem.id,
-            metadata: { purpose: "letter-template" },
-          }));
-        } catch (error) {
-          try { await fileSystemService.remove(filesystem.id, uploaded.storagePath); } catch { /* preserve original failure */ }
-          throw error;
-        }
-        if (file.status !== "live") {
-          return res.status(503).json({ message: "Template image could not be published." });
+        if (!("publicUrl" in record) || !record.publicUrl) {
+          throw new Error("Template attachment did not provide its published URL.");
         }
         return res.status(201).json({
-          url: `${origin}/public-files/${encodeURIComponent(filesystem.id)}/${storagePath
-            .split("/")
-            .map(encodeURIComponent)
-            .join("/")}`,
+          url: record.publicUrl,
         });
       } catch (error) {
+        if (error instanceof AttachmentError) return res.status(error.status).json({ message: error.message });
         if (error instanceof Error && error.name === "ZodError") {
           return res.status(400).json({ message: "Invalid template image data." });
         }
@@ -414,6 +358,7 @@ export function registerFileRoutes(
       if (!existing) {
         return res.status(404).json({ message: "File not found" });
       }
+      if (isTemplateAsset(existing)) return res.status(409).json({ message: "Published template images are retained and immutable." });
 
       // Only metadata is client-editable; fileSystemId/storagePath/status are
       // managed by the service layer and the consistency sweep.
@@ -450,6 +395,7 @@ export function registerFileRoutes(
       if (!existing) {
         return res.status(404).json({ message: "File not found" });
       }
+      if (isTemplateAsset(existing)) return res.status(409).json({ message: "Published template images are retained and immutable." });
 
       // Delete ordering: remove the row FIRST, then the object. A failed
       // object delete leaves an orphan object (sweepable), never a row
@@ -527,21 +473,4 @@ export function registerFileRoutes(
       return res.status(500).json({ message: "Failed to serve file" });
     }
   });
-}
-
-/** Do not publish absolute image URLs pointing at localhost or an HTTP origin. */
-function isRecipientReachablePublicOrigin(origin: string | undefined): origin is string {
-  if (!origin || origin === PUBLIC_URL_LOCAL_FALLBACK) return false;
-  try {
-    const parsed = new URL(origin);
-    const host = parsed.hostname.toLowerCase();
-    return parsed.protocol === "https:" &&
-      Boolean(host) &&
-      host !== "localhost" &&
-      !host.endsWith(".localhost") &&
-      host !== "127.0.0.1" &&
-      host !== "::1";
-  } catch {
-    return false;
-  }
 }

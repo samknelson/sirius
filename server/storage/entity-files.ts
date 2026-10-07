@@ -1,6 +1,7 @@
 import { getClient, onAfterCommit, runInTransaction } from "./transaction-context";
 import {
   entityFiles,
+  templateAssets,
   files,
   optionsFileType,
   type EntityFile,
@@ -12,6 +13,7 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import { fileSystemService } from "../services/files";
 import { logger } from "../logger";
 import { fileContextTables, isFileContextAvailable } from "./entity-files-context-tables";
+import { TEMPLATE_ASSET_CONTEXT, refuseTemplateAssetMutation } from "../services/entity-files/template-assets";
 
 export interface EntityFileWithFile extends EntityFile {
   file: File;
@@ -36,6 +38,7 @@ export interface EntityFileWithFile extends EntityFile {
  *   left for the consistency sweep.
  */
 export interface EntityFilesStorage {
+  assetOwnerExists(id: string): Promise<boolean>;
   list(contextId: string, entityId: string): Promise<EntityFileWithFile[]>;
   get(
     contextId: string,
@@ -53,6 +56,7 @@ export interface EntityFilesStorage {
     file: InsertFile,
     name: string,
     typeId?: string | null,
+    createAssetOwner?: boolean,
   ): Promise<EntityFileWithFile>;
   update(
     contextId: string,
@@ -118,6 +122,10 @@ function scope(contextId: string, entityId: string) {
 
 export function createEntityFilesStorage(): EntityFilesStorage {
   return {
+    async assetOwnerExists(id) {
+      const [row] = await getClient().select().from(templateAssets).where(eq(templateAssets.id, id));
+      return !!row;
+    },
     async list(contextId: string, entityId: string): Promise<EntityFileWithFile[]> {
       const client = getClient();
       const rows = await client
@@ -166,9 +174,19 @@ export function createEntityFilesStorage(): EntityFilesStorage {
       file: InsertFile,
       name: string,
       typeId?: string | null,
+      createAssetOwner = false,
     ): Promise<EntityFileWithFile> {
       return runInTransaction(async () => {
         const client = getClient();
+        if (contextId === TEMPLATE_ASSET_CONTEXT) {
+          if (createAssetOwner) await client.insert(templateAssets).values({ id: entityId });
+          const [owner] = await client.select().from(templateAssets).where(eq(templateAssets.id, entityId)).for("update");
+          if (!owner) throw new Error("Template asset owner does not exist.");
+          const [existing] = await client.select({ id: entityFiles.id }).from(entityFiles).where(scope(contextId, entityId)).limit(1);
+          if (existing) refuseTemplateAssetMutation();
+        } else if (createAssetOwner) {
+          throw new Error("Only Template Assets can create an asset owner.");
+        }
         const [fileRow] = await client.insert(files).values(file).returning();
         const [attachment] = await client
           .insert(entityFiles)
@@ -184,6 +202,7 @@ export function createEntityFilesStorage(): EntityFilesStorage {
       attachmentId: string,
       updates: { name?: string; data?: unknown; typeId?: string | null },
     ): Promise<EntityFileWithFile | undefined> {
+      if (contextId === TEMPLATE_ASSET_CONTEXT) refuseTemplateAssetMutation();
       const client = getClient();
       const set: Record<string, unknown> = {};
       if (updates.name !== undefined) set.name = updates.name;
@@ -238,6 +257,7 @@ export function createEntityFilesStorage(): EntityFilesStorage {
       entityId: string,
       attachmentId: string,
     ): Promise<{ attachment: EntityFile; file: File } | undefined> {
+      if (contextId === TEMPLATE_ASSET_CONTEXT) refuseTemplateAssetMutation();
       return runInTransaction(async () => {
         const client = getClient();
         const [attachment] = await client
@@ -277,6 +297,7 @@ export function createEntityFilesStorage(): EntityFilesStorage {
       });
     },
     async transferFileOwnership(contextId, entityId, fileId, owner) {
+      if (contextId === TEMPLATE_ASSET_CONTEXT) refuseTemplateAssetMutation();
       return runInTransaction(async () => {
         const client = getClient();
         const [attachment] = await client.delete(entityFiles)

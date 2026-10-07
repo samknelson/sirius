@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
-import { requireAccess, buildContext } from "../services/access-policy-evaluator";
+import { requireAccess } from "../services/access-policy-evaluator";
 import { isComponentEnabled } from "./components";
-import { fileSystemService, listFileSystemConfigs, FileSystemNotConfiguredError } from "../services/files";
+import { listFileSystemConfigs, FileSystemNotConfiguredError } from "../services/files";
 import {
   getEntityFileContext,
   type EntityFileContext,
@@ -14,15 +14,14 @@ import { ENTITY_FILE_AREAS_CATALOG } from "../services/entity-files/catalog";
 import {
   getEntityFilesContextConfig,
   resolveUsableContextConfig,
-  expandDirectoryTemplate,
-  isExtensionAllowed,
   ENTITY_FILES_DIRECTORY_TOKEN,
 } from "../services/entity-files/config";
 import { storage } from "../storage";
-import { insertFileSchema } from "@shared/schema";
 import { logger } from "../logger";
 import { z } from "zod";
-import { createWizardAttachmentRecord } from "../plugins/wizards/attachments";
+import { uploadEntityAttachment } from "../services/entity-files/upload";
+import { AttachmentError } from "../services/entity-files/template-assets";
+import { getEffectiveUser } from "./masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -144,6 +143,7 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
               // BAO fork extension: extra directory tokens this context expands
               // (may include the framework token when the context redefines it).
               tokens: context?.tokens ?? [],
+              publishedAsset: context?.publishedAsset ?? false,
               config: (await getEntityFilesContextConfig(entry.id)) ?? null,
             };
           }),
@@ -203,16 +203,6 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
         if (!req.file) {
           return res.status(400).json({ message: "No file provided" });
         }
-        const usable = await resolveUsableContextConfig(context.id);
-        if (!usable.config) {
-          return res.status(503).json({ message: usable.reason });
-        }
-        if (!isExtensionAllowed(req.file.originalname, usable.config.allowed)) {
-          return res.status(400).json({
-            message: `File type not allowed. Allowed extensions: ${usable.config.allowed!.join(", ")}`,
-          });
-        }
-
         // Multipart carries everything as a string; an empty field means
         // "no type". Checked BEFORE any bytes are uploaded.
         const rawTypeId = typeof req.body?.typeId === "string" ? req.body.typeId.trim() : "";
@@ -222,82 +212,19 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
           return res.status(typeError.status).json({ message: typeError.message });
         }
 
-        const accessContext = await buildContext(req);
-        const uploaderId = accessContext.user?.id;
-        if (!uploaderId) {
+        const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
+        const uploaderId = dbUser?.id;
+        if (!uploaderId || !dbUser.isActive) {
           return res.status(401).json({ message: "Could not determine the current user for this upload. Please sign in again." });
         }
-        // Wizard uploads must share the wizard deletion advisory lock and
-        // locked parent recheck used by every internal wizard producer.
-        if (context.id === "wizard") {
-          const displayName =
-            typeof req.body?.name === "string" && req.body.name.trim()
-              ? req.body.name.trim().slice(0, 255)
-              : req.file.originalname.slice(0, 255);
-          const record = await createWizardAttachmentRecord({
-            wizardId: req.params.entityId,
-            fileName: req.file.originalname,
-            bytes: req.file.buffer,
-            mimeType: req.file.mimetype,
-            uploadedBy: uploaderId,
-            displayName,
-          });
-          return res.status(201).json(record);
-        }
-
-        // Throws when the stored template names a token the framework does
-        // not supply — refuse the upload rather than write a path with a
-        // literal ":something" segment in it.
-        let directory: string;
-        try {
-          const extraTokens = context.resolveTokens
-            ? await context.resolveTokens(req.params.entityId)
-            : {};
-          directory = expandDirectoryTemplate(usable.config.directory, req.params.entityId, extraTokens);
-        } catch (error) {
-          return res.status(503).json({
-            message: `${error instanceof Error ? error.message : String(error)} An administrator must fix it under Config → Entity Files.`,
-          });
-        }
-        const safeName = req.file.originalname.split(/[/\\]/).pop() || "file";
-        const customPath = `${directory ? directory + "/" : ""}${Date.now()}-${safeName.replace(/[^\w.\-]+/g, "_").slice(0, 200)}`;
-
-        const uploadResult = await fileSystemService.upload({
-          fileSystemId: usable.config.file_system,
-          fileName: req.file.originalname,
-          fileContent: req.file.buffer,
-          mimeType: req.file.mimetype,
-          customPath,
+        const record = await uploadEntityAttachment({
+          context, entityId: req.params.entityId, file: req.file,
+          uploadedBy: uploaderId, typeId,
+          name: typeof req.body?.name === "string" ? req.body.name : undefined,
         });
-
-        const displayName =
-          typeof req.body?.name === "string" && req.body.name.trim()
-            ? req.body.name.trim().slice(0, 255)
-            : req.file.originalname.slice(0, 255);
-
-        const fileData = insertFileSchema.parse({
-          fileName: req.file.originalname,
-          storagePath: uploadResult.storagePath,
-          mimeType: req.file.mimetype,
-          size: uploadResult.size,
-          uploadedBy: uploaderId,
-          entityType: `entity-files:${context.id}`,
-          entityId: req.params.entityId,
-          fileSystemId: usable.config.file_system,
-          metadata: null,
-        });
-
-        const record = context.adapter
-          ? await context.adapter.attach(req.params.entityId, fileData, displayName)
-          : await storage.entityFiles.createWithFile(
-              context.id,
-              req.params.entityId,
-              fileData,
-              displayName,
-              typeId,
-            );
         res.status(201).json(record);
       } catch (error) {
+        if (error instanceof AttachmentError) return res.status(error.status).json({ message: error.message });
         logger.error("Entity file upload failed", {
           service: "entityFiles",
           context: req.params.context,
@@ -333,6 +260,7 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
       try {
         const context = await resolveContextAndAuthorize(req, res, "manage");
         if (!context) return;
+        if (context.publishedAsset) return res.status(409).json({ message: "Published template images are retained and immutable." });
         const parsed = updateSchema.safeParse(req.body);
         if (!parsed.success) {
           return res.status(400).json({ message: "Invalid update", errors: parsed.error.issues });
@@ -373,6 +301,7 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
       try {
         const context = await resolveContextAndAuthorize(req, res, "manage");
         if (!context) return;
+        if (context.publishedAsset) return res.status(409).json({ message: "Published template images are retained and immutable." });
         const removed = context.adapter
           ? await context.adapter.remove(req.params.entityId, req.params.attachmentId)
           : await storage.entityFiles.deleteWithFile(

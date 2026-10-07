@@ -5,6 +5,11 @@ reproduce the production launch path. The migration procedure itself lives in
 `scripts/s1-migration/RUNBOOK.md` — this document is only the AWS plumbing
 around it.
 
+For BAO-STG web-service Template Assets configuration and required external
+evidence, see [the Template Assets rollout checklist](../template-assets-bao-stg-rollout.md).
+That rollout remains awaiting authorized staging verification; migration-runner
+settings alone do not configure the running web service.
+
 All identifiers below are placeholders — fill them from your private values
 worksheet (see "Values to save" at the end). Never commit real endpoints,
 account IDs, or connection strings to this file.

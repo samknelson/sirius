@@ -1218,6 +1218,11 @@ export const files = pgTable("files", {
  * Every constraint and index is explicitly named because the startup drift
  * gate compares reflected definitions against these declarations.
  */
+export const templateAssets = pgTable("template_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+});
+export type TemplateAsset = typeof templateAssets.$inferSelect;
+
 export const entityFiles = pgTable("entity_files", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contextId: varchar("context_id").notNull(),

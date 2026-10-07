@@ -17,6 +17,7 @@ export function wireEntityFilesFileReadAccess(): void {
       if (context.component && !(await ctx.isComponentEnabled(context.component))) {
         return false;
       }
+      if (!(await context.entityExists(entityId))) return false;
       return await context.checkPolicyAccess("view", entityId, ctx);
     } catch (error) {
       logger.error("entity-files file.read resolver failed", {

@@ -25,6 +25,7 @@ interface ContextInfo {
   componentEnabled: boolean;
   /** Extra directory tokens this area expands beyond the framework token. */
   tokens: string[];
+  publishedAsset?: boolean;
   config: { file_system: string; directory: string; allowed?: string[] } | null;
 }
 
@@ -86,7 +87,7 @@ export default function EntityFilesConfigPage() {
         // A saved directory is kept verbatim; an area with no configuration
         // starts from the conventional proposal.
         directory: context.config?.directory ?? proposeDirectory(context.id, data.directoryToken),
-        allowed: context.config?.allowed?.join(", ") ?? "",
+        allowed: context.config?.allowed?.join(", ") ?? (context.publishedAsset ? "png, jpg, jpeg" : ""),
       };
     }
     setDrafts(next);
@@ -183,6 +184,13 @@ export default function EntityFilesConfigPage() {
                       ? `Component "${context.component}" is disabled — this area is currently hidden.`
                       : contextTokens(context, DIRECTORY_TOKEN)}
                   </CardDescription>
+                  {context.publishedAsset && (
+                    <CardDescription>
+                      Requires public storage and a recipient-reachable HTTPS PUBLIC_URL.
+                      PNG/JPEG only, up to 1 MB. Published images are retained and immutable,
+                      including uploads from cancelled edits.
+                    </CardDescription>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Label htmlFor={`enabled-${context.id}`} className="text-sm text-muted-foreground">
@@ -220,7 +228,7 @@ export default function EntityFilesConfigPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {data.fileSystems.map((fs) => (
-                          <SelectItem key={fs.id} value={fs.id}>
+                          <SelectItem key={fs.id} value={fs.id} disabled={context.publishedAsset && fs.access !== "public"}>
                             {fs.id} ({fs.access})
                           </SelectItem>
                         ))}
@@ -238,7 +246,7 @@ export default function EntityFilesConfigPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Allowed extensions (optional, comma-separated)</Label>
+                  <Label>Allowed extensions ({context.publishedAsset ? "required PNG/JPEG list" : "optional"}, comma-separated)</Label>
                   <Input
                     value={draft.allowed}
                     onChange={(e) => setDraft(context.id, { allowed: e.target.value })}

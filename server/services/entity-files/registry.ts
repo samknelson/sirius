@@ -109,6 +109,8 @@ export interface EntityFileContext {
   resolveTokens?(entityId: string): Promise<Record<string, string>>;
   /** FORK EXTENSION (BAO): see `EntityFilesAdapter`. Absent = shared table. */
   adapter?: EntityFilesAdapter;
+  /** Published reusable assets: public storage, raster-only uploads, no mutations. */
+  publishedAsset?: boolean;
 }
 
 const contexts = new Map<string, EntityFileContext>();

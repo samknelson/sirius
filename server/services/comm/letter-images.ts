@@ -76,12 +76,15 @@ export async function prepareLetterImages(sources: string[]): Promise<string[]> 
       if (managed) {
         const { fileSystemId, storagePath } = managed;
         if (!isFileSystemConfigured(fileSystemId) ||
-            getFileSystemConfig(fileSystemId).access !== "public" ||
-            !storagePath.startsWith("letter-template-assets/")) {
+            getFileSystemConfig(fileSystemId).access !== "public") {
           fail("managed image is unavailable.");
         }
         const file = await storage.files.getByStoragePath(storagePath, fileSystemId);
-        if (!file || file.status !== "live" || file.entityType !== "template-asset" ||
+        const legacy = file?.entityType === "template-asset" && storagePath.startsWith("letter-template-assets/");
+        const owned = file?.entityType === "entity-files:template_asset" && file.entityId &&
+          await storage.entityFiles.assetOwnerExists(file.entityId) &&
+          await storage.entityFiles.getByFileId("template_asset", file.entityId, file.id);
+        if (!file || file.status !== "live" || (!legacy && !owned) ||
             file.size > MAX_LETTER_IMAGE_BYTES) {
           fail("managed image is unavailable or exceeds the 1 MB limit.");
         }

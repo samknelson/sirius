@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { storage } from "../../storage";
-import { isFileSystemConfigured, listFileSystemConfigs } from "../files";
+import { isFileSystemConfigured, listFileSystemConfigs, getFileSystemConfig } from "../files";
 import { getEntityFileContext, listEntityFileContexts } from "./registry";
 
 /**
@@ -78,6 +78,14 @@ export const entityFilesConfigSchema = z
         });
       }
       const tokensInDirectory = config.directory.match(/:[a-z0-9-]+/gi) ?? [];
+      if (context.publishedAsset) {
+        if (isFileSystemConfigured(config.file_system) && getFileSystemConfig(config.file_system).access !== "public") {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contextId, "file_system"], message: "Template Assets requires a public filesystem." });
+        }
+        if (!config.allowed?.length || config.allowed.some((ext) => !["png", "jpg", "jpeg"].includes(ext))) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contextId, "allowed"], message: "Template Assets requires an explicit PNG/JPEG extension list." });
+        }
+      }
       for (const token of tokensInDirectory) {
         const allowed = [ENTITY_FILES_DIRECTORY_TOKEN, ...(context.tokens ?? [])];
         if (!allowed.includes(token)) {
@@ -121,6 +129,12 @@ export async function resolveUsableContextConfig(
     return {
       reason: `The configured filesystem "${config.file_system}" is not defined in the FILESYSTEMS environment configuration.`,
     };
+  }
+  if (getEntityFileContext(contextId)?.publishedAsset) {
+    if (getFileSystemConfig(config.file_system).access !== "public") return { reason: "Template Assets requires a public filesystem." };
+    if (!config.allowed?.length || config.allowed.some((ext) => !["png", "jpg", "jpeg"].includes(ext))) {
+      return { reason: "Template Assets requires an explicit PNG/JPEG extension list." };
+    }
   }
   return { config };
 }

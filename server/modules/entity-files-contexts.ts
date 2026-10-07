@@ -39,6 +39,14 @@ function staffOnly(): Pick<EntityFileContext, "checkAccess" | "checkPolicyAccess
 
 export function registerEntityFileContexts(): void {
   registerEntityFileContext({
+    id: "template_asset",
+    label: "Template Assets",
+    recordLabel: "Template Asset",
+    publishedAsset: true,
+    async entityExists(id) { return storage.entityFiles.assetOwnerExists(id); },
+    ...staffOnly(),
+  });
+  registerEntityFileContext({
     id: "wizard",
     label: "Wizards",
     recordLabel: "Wizard",

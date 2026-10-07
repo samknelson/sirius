@@ -15,6 +15,7 @@ import multer from "multer";
 import { logger } from "../logger";
 import { buildContentDisposition } from "../utils/content-disposition";
 import { getEffectiveUser } from "./masquerade";
+import { isTemplateAsset } from "../services/entity-files/template-assets";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -308,6 +309,10 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
       }
 
       if (isDirectory) {
+        const files = await storage.files.list({ fileSystemId });
+        if (files.some((file) => isTemplateAsset(file) && file.storagePath.startsWith(from + "/"))) {
+          return res.status(409).json({ message: "Folders containing published template images cannot be moved." });
+        }
         await fileSystemService.renameDirectory(fileSystemId, from, to);
         const updated = await storage.files.renameStoragePathPrefix(fileSystemId, from, to);
         return res.json({ message: "Folder moved", from, to, rowsUpdated: updated });
@@ -320,9 +325,9 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
         return res.status(409).json({ message: "A file record already exists at the destination path." });
       }
 
-      await fileSystemService.rename(fileSystemId, from, to);
-
       const row = await storage.files.getByStoragePath(from, fileSystemId);
+      if (row && isTemplateAsset(row)) return res.status(409).json({ message: "Published template images are retained and immutable." });
+      await fileSystemService.rename(fileSystemId, from, to);
       if (row) {
         const newName = to.split("/").pop() || row.fileName;
         const updated = await storage.files.update(row.id, {
@@ -388,17 +393,27 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
         // Optional explicit target path — used for "replace" and for
         // uploading into a folder/prefix. Normalized by the service layer;
         // the local provider additionally enforces its traversal jail.
-        const targetPath =
+        const rawTargetPath =
           typeof req.body.path === "string" && req.body.path.trim()
-            ? req.body.path.trim().replace(/^\/+/, "")
+            ? req.body.path.trim()
             : undefined;
+        const targetPath = rawTargetPath ? normalizeDirPath(rawTargetPath) : undefined;
+        if (rawTargetPath && !targetPath) {
+          return res.status(400).json({ message: "Invalid target path" });
+        }
+        if (targetPath) {
+          const existing = await storage.files.getByStoragePath(targetPath, fileSystemId);
+          if (existing && isTemplateAsset(existing)) {
+            return res.status(409).json({ message: "Published template images cannot be replaced." });
+          }
+        }
 
         const uploadResult = await fileSystemService.upload({
           fileSystemId,
           fileName: req.file.originalname,
           fileContent: req.file.buffer,
           mimeType: req.file.mimetype,
-          customPath: targetPath,
+          customPath: targetPath ?? undefined,
         });
 
         const existing = await storage.files.getByStoragePath(uploadResult.storagePath, fileSystemId);
@@ -486,10 +501,10 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
    */
   app.delete("/api/admin/filesystems/:id/object", ...adminOnly, async (req, res) => {
     const fileSystemId = req.params.id;
-    const storagePath = typeof req.query.path === "string" ? req.query.path : "";
+    const storagePath = normalizeDirPath(typeof req.query.path === "string" ? req.query.path : "");
     try {
       if (!storagePath) {
-        return res.status(400).json({ message: "path query parameter is required" });
+        return res.status(400).json({ message: "A valid path query parameter is required" });
       }
       if (!isFileSystemConfigured(fileSystemId)) {
         return res.status(503).json({
@@ -498,6 +513,7 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
       }
 
       const row = await storage.files.getByStoragePath(storagePath, fileSystemId);
+      if (row && isTemplateAsset(row)) return res.status(409).json({ message: "Published template images are retained and immutable." });
       if (row) {
         await storage.files.delete(row.id);
       }

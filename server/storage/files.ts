@@ -3,6 +3,7 @@ import { getClient } from './transaction-context';
 import { files, type File, type InsertFile } from "@shared/schema";
 import { eq, and, desc, asc, gt, lt, inArray, like, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
+import { isTemplateAsset, refuseTemplateAssetMutation } from "../services/entity-files/template-assets";
 
 /** Escape LIKE metacharacters so a path prefix matches literally. */
 function escapeLikePattern(value: string): string {
@@ -146,6 +147,9 @@ export function createFileStorage(): FileStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertFile, 'id' | 'uploadedAt'>>): Promise<File | undefined> {
+      const current = await this.getById(id);
+      // Consistency sweeps may change status, never ownership/location/content.
+      if (current && isTemplateAsset(current) && Object.keys(updates).some((key) => key !== "status")) refuseTemplateAssetMutation();
       validate.validateOrThrow(updates);
       const client = getClient();
       const [file] = await client
@@ -157,6 +161,8 @@ export function createFileStorage(): FileStorage {
     },
 
     async delete(id: string): Promise<boolean> {
+      const current = await this.getById(id);
+      if (current && isTemplateAsset(current)) refuseTemplateAssetMutation();
       const client = getClient();
       const result = await client.delete(files).where(eq(files.id, id)).returning();
       return result.length > 0;
@@ -194,6 +200,10 @@ export function createFileStorage(): FileStorage {
       const client = getClient();
       const from = fromPrefix.replace(/\/+$/, "") + "/";
       const to = toPrefix.replace(/\/+$/, "") + "/";
+      const affected = await client.select().from(files).where(and(
+        eq(files.fileSystemId, fileSystemId), like(files.storagePath, escapeLikePattern(from) + "%"),
+      ));
+      if (affected.some(isTemplateAsset)) refuseTemplateAssetMutation();
       const rows = await client
         .update(files)
         .set({

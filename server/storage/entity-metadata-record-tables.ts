@@ -76,6 +76,7 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   ledger_paymentmethods: context(coreSchema.ledgerPaymentMethods, "Ledger Payment Methods", null),
   ledger_payments: context(coreSchema.ledgerPayments, "Ledger Payments", "/ledger/payment/{id}"),
   letter_templates: context(coreSchema.letterTemplates, "Letter Templates", "/admin/letter-templates/{id}"),
+  template_assets: context(coreSchema.templateAssets, "Template Assets", null),
   plugin_configs: context(coreSchema.pluginConfigs, "Plugin Configurations", null),
   policies: context(coreSchema.policies, "Access Policies", "/policies/{id}"),
   role_permissions: context(coreSchema.rolePermissions, "Role Permissions", null),
