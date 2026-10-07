@@ -145,6 +145,11 @@ export interface SessionSaveAfterPayload extends SessionTransitionPayload {
 }
 
 export type SignInIpDecision = "baseline" | "known-ip" | "new-ip" | "missing-ip" | "restored-session";
+export type SignInDeviceDecision = "baseline" | "known-device" | "new-device" | "missing-device" | "restored-session";
+export interface SignInHistoryDecision {
+  readonly ipDecision: SignInIpDecision;
+  readonly deviceDecision: SignInDeviceDecision;
+}
 
 /** No cookie identifiers, provider tokens, or raw user/session objects. */
 export interface SignInAfterPayload {
@@ -154,6 +159,9 @@ export interface SignInAfterPayload {
   readonly occurredAt: string;
   /** Comparison against retained history immediately BEFORE this observation. */
   readonly ipDecision: SignInIpDecision | null;
+  readonly deviceDecision: SignInDeviceDecision | null;
+  /** Supplied descriptive text only, never the browser UUID or cookie. */
+  readonly userAgent: string | null;
 }
 
 export interface SessionDeleteAfterPayload {

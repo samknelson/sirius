@@ -4,38 +4,39 @@ import { templatesSchemaBlock } from "../template-schema";
 import type { EventNotifierEventContext, EventNotifierPlugin, NotifierChannelTemplates } from "../types";
 import { normalizeSessionIp } from "../../../auth/session-ip";
 import { isComponentEnabledSync } from "../../../services/component-cache";
+import { suppliedSessionUserAgent } from "@shared/session-device";
 
 const payloadOf = (ctx: EventNotifierEventContext) => ctx.payload as SignInAfterPayload;
-const TITLE = "Sign-in from a new IP address";
-const BODY = "Your account was signed in from IP address {{session.ip}}, which we haven't seen in your recent session history. If this was you, no action is needed. Otherwise, contact your site administrator immediately.";
+const TITLE = "[{{system.site_name}}] New login detected";
+const BODY = "We detected a login to your account from an IP address or browser we haven't seen in your recent session history. IP address: {{session.ip}}. Browser / User-Agent: {{session.user_agent}}. If this was you, no action is needed. Otherwise, contact your site administrator immediately.";
 
 export function newIpSignInDefaultTemplates(): NotifierChannelTemplates {
   return {
     email: { subject: TITLE, bodyHtml: `<p>${BODY}</p>` },
     inapp: { title: TITLE, body: BODY },
-    sms: { body: "New sign-in from IP {{session.ip}}. If this wasn't you, contact your administrator immediately." },
+    sms: { body: "{{system.site_name}}: New login detected from an unfamiliar IP or browser. IP: {{session.ip}}. User-Agent: {{session.user_agent}}. If this wasn't you, contact your administrator." },
   };
 }
 
 export const newIpSignInNotifier: EventNotifierPlugin = {
   id: "new-ip-sign-in",
-  name: "New IP Sign-in Notifier",
-  description: "Notifies the signing-in account when its IP is absent from its retained session history. The first observed IP is recorded silently.",
+  name: "New IP or Device Sign-in Notifier",
+  description: "Notifies the signing-in account when its IP or browser identifier is new relative to retained session history. The first observed value of each is recorded silently.",
   requiredComponent: "system.session_history",
   notifySelf: true,
   subscribedEvents: [EventType.AUTH_SIGN_IN_AFTER],
   supportedMedia: ["inapp", "email", "sms"],
   configSchema: {
     type: "object",
-    properties: { templates: templatesSchemaBlock({ exampleTokens: ["{{session.ip}}"] }) },
+    properties: { templates: templatesSchemaBlock({ exampleTokens: ["{{system.site_name}}", "{{session.ip}}", "{{session.user_agent}}"] }) },
   },
   tokenTemplates: {
     roots: [{
       name: "session", kind: "session", label: "Sign-in session",
-      description: "The IP captured when this account signed in",
+      description: "The IP and supplied User-Agent captured when this account signed in",
       async build(ctx) {
         const payload = payloadOf(ctx);
-        return { kind: "session", row: { ip: normalizeSessionIp(payload.ip) } };
+        return { kind: "session", row: { ip: normalizeSessionIp(payload.ip), userAgent: suppliedSessionUserAgent(payload.userAgent) } };
       },
     }],
     defaultTemplates: newIpSignInDefaultTemplates,
@@ -46,7 +47,9 @@ export const newIpSignInNotifier: EventNotifierPlugin = {
     // This decision comes from the history storage's atomic comparison +
     // insertion, before the current observation exists. All configs receive
     // the same immutable answer, not a later contaminated table re-read.
-    return payload.ipDecision === "new-ip" && !!normalizeSessionIp(payload.ip);
+    if (payload.ipDecision === "restored-session" || payload.deviceDecision === "restored-session") return false;
+    return (payload.ipDecision === "new-ip" && !!normalizeSessionIp(payload.ip)) ||
+      payload.deviceDecision === "new-device";
   },
   async getRecipients(ctx) {
     const { storage } = await import("../../../storage");

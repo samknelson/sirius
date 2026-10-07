@@ -67,19 +67,22 @@ export function initializeSessionHistoryListener(history: Pick<SessionHistorySto
 }
 
 export async function recordSuccessfulSignIn(
-  observation: Omit<SignInAfterPayload, "ipDecision"> & { sid: string; authenticationSessionReference?: string; userAgent?: string | null; deviceId?: string | null },
+  observation: Omit<SignInAfterPayload, "ipDecision" | "deviceDecision" | "userAgent"> & { sid: string; authenticationSessionReference?: string; userAgent?: string | null; deviceId?: string | null },
 ): Promise<void> {
   let ipDecision: SignInAfterPayload["ipDecision"] = null;
+  let deviceDecision: SignInAfterPayload["deviceDecision"] = null;
   try {
     if (isComponentEnabledSync("system.session_history")) {
       if (!signInHistory) throw new Error("Sign-in history capture is not initialized");
-      ipDecision = await runOutsideTransaction(() => signInHistory!.recordSignIn({
+      const decision = await runOutsideTransaction(() => signInHistory!.recordSignIn({
         id: observation.occurrenceId, sid: observation.sid,
         userId: observation.userId, ip: observation.ip,
         deviceId: observation.deviceId ?? null,
         timestamp: new Date(observation.occurredAt), data: withSessionUserAgent(null, observation.userAgent),
         authenticationSessionReference: observation.authenticationSessionReference,
       }));
+      ipDecision = decision.ipDecision;
+      deviceDecision = decision.deviceDecision;
     }
   } catch {
     // No driver messages: they can contain the cookie identifier.
@@ -88,7 +91,8 @@ export async function recordSuccessfulSignIn(
   if (ipDecision === "restored-session") return;
   const payload: SignInAfterPayload = Object.freeze({
     occurrenceId: observation.occurrenceId, userId: observation.userId,
-    ip: observation.ip, occurredAt: observation.occurredAt, ipDecision,
+    ip: observation.ip, occurredAt: observation.occurredAt, ipDecision, deviceDecision,
+    userAgent: suppliedSessionUserAgent(observation.userAgent),
   });
   // Sign-in succeeds regardless of vendor/delivery failure.
   void runOutsideTransaction(() => eventBus.emit(EventType.AUTH_SIGN_IN_AFTER, payload))

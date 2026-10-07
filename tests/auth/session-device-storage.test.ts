@@ -112,12 +112,51 @@ describe("history sign-in metadata", () => {
       authenticationSessionReference: reference,
       data: { device: { user_agent: "Browser/2", other: true }, extra: "kept" },
     });
-    expect(decision).toBe(restored ? "restored-session" : "known-ip");
+    expect(decision).toEqual({
+      ipDecision: restored ? "restored-session" : "known-ip",
+      deviceDecision: restored ? "restored-session" : "missing-device",
+    });
     const insert = queries.find(query => query.sql.startsWith("insert"))!;
     const json = insert.params.find(param => typeof param === "string" && param.startsWith("{")) as string;
     expect(JSON.parse(json)).toEqual({
       device: { user_agent: "Browser/2", other: true }, extra: "kept",
       authenticationSessionReference: reference,
     });
+  });
+
+  const firstDevice = "f865a51a-3656-4e89-bded-dd9e9da3b4c2";
+  const otherDevice = "38dbe270-9156-461d-b592-8df2a332606f";
+  it.each([
+    { prior: [], ip: "192.0.2.1", deviceId: firstDevice, ipDecision: "baseline", deviceDecision: "baseline" },
+    { prior: [["192.0.2.1", null]], ip: "192.0.2.1", deviceId: firstDevice, ipDecision: "known-ip", deviceDecision: "baseline" },
+    { prior: [["192.0.2.1", null]], ip: "192.0.2.2", deviceId: firstDevice, ipDecision: "new-ip", deviceDecision: "baseline" },
+    { prior: [["192.0.2.1", firstDevice]], ip: "192.0.2.1", deviceId: firstDevice, ipDecision: "known-ip", deviceDecision: "known-device" },
+    { prior: [["192.0.2.1", firstDevice]], ip: "192.0.2.2", deviceId: firstDevice, ipDecision: "new-ip", deviceDecision: "known-device" },
+    { prior: [["192.0.2.1", firstDevice]], ip: "192.0.2.1", deviceId: otherDevice, ipDecision: "known-ip", deviceDecision: "new-device" },
+    { prior: [["192.0.2.1", firstDevice]], ip: "192.0.2.2", deviceId: otherDevice, ipDecision: "new-ip", deviceDecision: "new-device" },
+    { prior: [[null, firstDevice]], ip: null, deviceId: otherDevice, ipDecision: "missing-ip", deviceDecision: "new-device" },
+    { prior: [[null, firstDevice]], ip: "192.0.2.1", deviceId: otherDevice, ipDecision: "baseline", deviceDecision: "new-device" },
+    { prior: [["192.0.2.1", firstDevice]], ip: "192.0.2.2", deviceId: null, ipDecision: "new-ip", deviceDecision: "missing-device" },
+    { prior: [], ip: null, deviceId: null, ipDecision: "missing-ip", deviceDecision: "missing-device" },
+    { prior: [["192.0.2.1", firstDevice], ["192.0.2.2", otherDevice]], ip: "192.0.2.1", deviceId: otherDevice, ipDecision: "known-ip", deviceDecision: "known-device" },
+  ])("compares independently before insertion: $ipDecision / $deviceDecision", async scenario => {
+    const queries: { sql: string; params: unknown[] }[] = [];
+    state.client = drizzle(async (sql, params) => {
+      queries.push({ sql, params });
+      return { rows: sql.startsWith("select distinct") ? scenario.prior : [] };
+    });
+    const result = await createSessionHistoryStorage().recordSignIn({
+      id: "occurrence", sid: "synthetic", userId: "actual-user",
+      ip: scenario.ip, deviceId: scenario.deviceId,
+    });
+    expect(result).toEqual({ ipDecision: scenario.ipDecision, deviceDecision: scenario.deviceDecision });
+    const comparison = queries.findIndex(query => query.sql.startsWith("select distinct"));
+    const insertion = queries.findIndex(query => query.sql.startsWith("insert"));
+    expect(comparison).toBeLessThan(insertion);
+    expect(queries[comparison].sql).toContain('where "session_history"."user_id" = $1');
+    expect(queries[comparison].params).toEqual(["actual-user"]);
+    expect(queries[insertion].params).toContain(scenario.deviceId);
+    expect(queries[0].sql).toContain("lock_timeout");
+    expect(queries[1].sql).toContain("pg_advisory_xact_lock");
   });
 });

@@ -34,6 +34,7 @@ const transition = {
 beforeEach(() => {
   vi.clearAllMocks();
   fakes.enabled.mockReturnValue(true);
+  fakes.recordSignIn.mockResolvedValue({ ipDecision: "known-ip", deviceDecision: "known-device" });
 });
 
 describe("session history capture", () => {
@@ -151,7 +152,7 @@ describe("session history capture", () => {
     expect(create).not.toHaveBeenCalled();
   });
   it("emits only a safe immutable sign-in snapshot after capturing history", async () => {
-    fakes.recordSignIn.mockResolvedValue("new-ip");
+    fakes.recordSignIn.mockResolvedValue({ ipDecision: "new-ip", deviceDecision: "known-device" });
     await recordSuccessfulSignIn({
       sid: "synthetic-cookie-canary", occurrenceId: "occurrence",
       userId: "internal-user", ip: "192.0.2.1", occurredAt: transition.occurredAt,
@@ -168,6 +169,8 @@ describe("session history capture", () => {
     const [event, payload] = fakes.emit.mock.calls[0];
     expect(event).toBe("auth.sign-in.after");
     expect(payload.ipDecision).toBe("new-ip");
+    expect(payload.deviceDecision).toBe("known-device");
+    expect(payload.userAgent).toBe("Browser/1 (supplied)");
     expect(Object.isFrozen(payload)).toBe(true);
     expect(payload).not.toHaveProperty("sid");
     expect(payload).not.toHaveProperty("authenticationSessionReference");
@@ -180,9 +183,10 @@ describe("session history capture", () => {
     await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: null, occurredAt: transition.occurredAt });
     expect(fakes.recordSignIn).not.toHaveBeenCalled();
     expect(fakes.emit.mock.calls[0][1].ipDecision).toBeNull();
+    expect(fakes.emit.mock.calls[0][1].deviceDecision).toBeNull();
   });
   it("preserves a restored session observation without emitting a new sign-in", async () => {
-    fakes.recordSignIn.mockResolvedValue("restored-session");
+    fakes.recordSignIn.mockResolvedValue({ ipDecision: "restored-session", deviceDecision: "restored-session" });
     await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: "192.0.2.2", occurredAt: transition.occurredAt });
     expect(fakes.recordSignIn).toHaveBeenCalledOnce();
     expect(fakes.emit).not.toHaveBeenCalled();
@@ -199,6 +203,7 @@ describe("session history capture", () => {
     fakes.recordSignIn.mockRejectedValue(new Error("synthetic-cookie-query-canary"));
     await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: "192.0.2.2", occurredAt: transition.occurredAt });
     expect(fakes.emit.mock.calls[0][1].ipDecision).toBeNull();
+    expect(fakes.emit.mock.calls[0][1].deviceDecision).toBeNull();
     expect(JSON.stringify(fakes.error.mock.calls)).not.toContain("synthetic-cookie-query-canary");
   });
 });

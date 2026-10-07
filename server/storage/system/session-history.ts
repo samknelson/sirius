@@ -3,13 +3,13 @@ import { and, asc, count, desc, eq, lt, sql } from "drizzle-orm";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createHash } from "node:crypto";
 import { normalizeSessionIp } from "../../auth/session-ip";
-import type { SignInIpDecision } from "../../services/event-bus";
+import type { SignInHistoryDecision } from "../../services/event-bus";
 import { sessionHistoryPagingSchema, type UserSessionHistoryPage } from "@shared/session-history";
 import { sessionHistoryDataObject } from "@shared/session-device";
 
 export interface SessionHistoryStorage {
   create(entry: InsertSessionHistory): Promise<void>;
-  recordSignIn(entry: InsertSessionHistory & { id: string; userId: string; authenticationSessionReference?: string }): Promise<SignInIpDecision>;
+  recordSignIn(entry: InsertSessionHistory & { id: string; userId: string; authenticationSessionReference?: string }): Promise<SignInHistoryDecision>;
   countBefore(cutoff: Date): Promise<number>;
   getExpiredIds(cutoff: Date, limit: number): Promise<string[]>;
   deleteExpired(id: string, cutoff: Date): Promise<boolean>;
@@ -41,6 +41,7 @@ export function createSessionHistoryStorage(): SessionHistoryStorage {
         const reference = authenticationSessionReference && /^[a-f0-9]{64}$/.test(authenticationSessionReference)
           ? authenticationSessionReference : undefined;
         const ip = normalizeSessionIp(entry.ip);
+        const deviceId = entry.deviceId?.toLowerCase() || null;
         // Clerk can establish several app sessions from ONE upstream sign-in.
         // Correlate them in this existing history table using a non-bearer hash,
         // so automatic restoration/renewal is not a fresh sign-in.
@@ -49,14 +50,19 @@ export function createSessionHistoryStorage(): SessionHistoryStorage {
             eq(sessionHistory.userId, entry.userId),
             sql`${sessionHistory.data}->>'authenticationSessionReference' = ${reference}`,
           )).limit(1)).length > 0 : false;
-        const previous = await getClient().selectDistinct({ ip: sessionHistory.ip })
+        const previous = await getClient().selectDistinct({ ip: sessionHistory.ip, deviceId: sessionHistory.deviceId })
           .from(sessionHistory).where(eq(sessionHistory.userId, entry.userId));
         const known = new Set(previous.map(row => normalizeSessionIp(row.ip)).filter((value): value is string => !!value));
-        const decision: SignInIpDecision = restored ? "restored-session" : !ip ? "missing-ip"
-          : known.size === 0 ? "baseline" : known.has(ip) ? "known-ip" : "new-ip";
+        const knownDevices = new Set(previous.map(row => row.deviceId).filter((value): value is string => !!value));
+        const decision: SignInHistoryDecision = {
+          ipDecision: restored ? "restored-session" : !ip ? "missing-ip"
+            : known.size === 0 ? "baseline" : known.has(ip) ? "known-ip" : "new-ip",
+          deviceDecision: restored ? "restored-session" : !deviceId ? "missing-device"
+            : knownDevices.size === 0 ? "baseline" : knownDevices.has(deviceId) ? "known-device" : "new-device",
+        };
         // The event occurrence id is a non-bearer UUID, not the cookie SID.
         await getClient().insert(sessionHistory).values({
-          ...rowEntry, ip,
+          ...rowEntry, ip, deviceId,
           data: reference ? {
             ...sessionHistoryDataObject(rowEntry.data),
             authenticationSessionReference: reference,
