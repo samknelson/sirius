@@ -39,6 +39,7 @@ describe("safe user session history pages", () => {
     expect(queries[1].sql).toContain("jsonb_typeof");
     expect(queries[1].sql).toContain("'{device,user_agent}'");
     expect(queries[1].sql).not.toContain("authenticationSessionReference");
+    expect(queries[1].sql).not.toContain("device_id");
     expect(queries[1].sql).not.toMatch(/,\s*"data"\s*(,|from)/);
   });
 

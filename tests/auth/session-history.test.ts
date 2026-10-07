@@ -19,7 +19,7 @@ vi.mock("../../server/services/event-bus", () => ({
 
 import { createSessionHistoryHandler, initializeSessionHistoryListener, recordSuccessfulSignIn } from "../../server/services/session-history";
 import { normalizeSessionIp } from "../../server/auth/session-ip";
-import { captureRequestIpContext, getRequestContext } from "../../server/middleware/request-context";
+import { captureRequestIpContext, getRequestContext, requestContext } from "../../server/middleware/request-context";
 
 const transition = {
   sid: "synthetic-session",
@@ -51,7 +51,7 @@ describe("session history capture", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith({
       sid: event.sid, userId: event.userId, ip: event.ip,
-      timestamp: new Date(event.occurredAt), data: null,
+      timestamp: new Date(event.occurredAt), data: null, deviceId: null,
     });
     expect(fakes.outside).toHaveBeenCalledTimes(1);
   });
@@ -61,6 +61,42 @@ describe("session history capture", () => {
     await createSessionHistoryHandler({ create })(transition);
     expect(create).not.toHaveBeenCalled();
     expect(fakes.enabled).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { created: true },
+    { userId: "internal-user" },
+    { ip: "192.0.2.2" },
+    { previousUserAgent: "Browser/1", userAgent: "Browser/2" },
+  ])("retains the verified request UUID on an existing observation: %o", async change => {
+    const deviceId = "f865a51a-3656-4e89-bded-dd9e9da3b4c2";
+    const create = vi.fn();
+    await requestContext.run({ deviceId }, () =>
+      createSessionHistoryHandler({ create })({ ...transition, ...change }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ deviceId }));
+  });
+
+  it("does not create an observation for the identifier alone", async () => {
+    const create = vi.fn();
+    await requestContext.run({ deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2" }, () =>
+      createSessionHistoryHandler({ create })(transition));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("snapshots the identifier before deferred writes and keeps requests separate", async () => {
+    const first = "f865a51a-3656-4e89-bded-dd9e9da3b4c2";
+    const second = "38dbe270-9156-461d-b592-8df2a332606f";
+    const create = vi.fn();
+    const deferred: Array<() => unknown> = [];
+    fakes.outside.mockImplementationOnce(fn => { deferred.push(fn); })
+      .mockImplementationOnce(fn => { deferred.push(fn); });
+    const handler = createSessionHistoryHandler({ create });
+    await requestContext.run({ deviceId: first }, () => handler({ ...transition, created: true }));
+    await requestContext.run({ deviceId: second }, () => handler({ ...transition, created: true }));
+    await requestContext.run({}, async () => {
+      for (const write of deferred) await write();
+    });
+    expect(create.mock.calls.map(([entry]) => entry.deviceId)).toEqual([first, second]);
   });
 
   it("records anonymous device-only changes and preserves supplied text", async () => {
@@ -121,11 +157,13 @@ describe("session history capture", () => {
       userId: "internal-user", ip: "192.0.2.1", occurredAt: transition.occurredAt,
       authenticationSessionReference: "a".repeat(64),
       userAgent: "Browser/1 (supplied)",
+      deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2",
     });
     expect(fakes.recordSignIn).toHaveBeenCalledOnce();
     expect(fakes.recordSignIn).toHaveBeenCalledWith(expect.objectContaining({
       data: { device: { user_agent: "Browser/1 (supplied)" } },
       authenticationSessionReference: "a".repeat(64),
+      deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2",
     }));
     const [event, payload] = fakes.emit.mock.calls[0];
     expect(event).toBe("auth.sign-in.after");
@@ -133,6 +171,8 @@ describe("session history capture", () => {
     expect(Object.isFrozen(payload)).toBe(true);
     expect(payload).not.toHaveProperty("sid");
     expect(payload).not.toHaveProperty("authenticationSessionReference");
+    expect(payload).not.toHaveProperty("deviceId");
+    expect(JSON.stringify(payload)).not.toContain("f865a51a-3656-4e89-bded-dd9e9da3b4c2");
     expect(JSON.stringify(payload)).not.toContain("synthetic-cookie-canary");
   });
   it("does not query history when disabled, and marks classification unavailable", async () => {
@@ -146,6 +186,14 @@ describe("session history capture", () => {
     await recordSuccessfulSignIn({ sid: "cookie", occurrenceId: "occurrence", userId: "internal-user", ip: "192.0.2.2", occurredAt: transition.occurredAt });
     expect(fakes.recordSignIn).toHaveBeenCalledOnce();
     expect(fakes.emit).not.toHaveBeenCalled();
+  });
+  it("stores null rather than borrowing a later request's device on sign-in", async () => {
+    await requestContext.run({ deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2" }, () =>
+      recordSuccessfulSignIn({
+        sid: "cookie", occurrenceId: "occurrence", userId: "internal-user",
+        ip: "192.0.2.2", occurredAt: transition.occurredAt,
+      }));
+    expect(fakes.recordSignIn).toHaveBeenCalledWith(expect.objectContaining({ deviceId: null }));
   });
   it("does not invent novelty or relay query credentials when history fails", async () => {
     fakes.recordSignIn.mockRejectedValue(new Error("synthetic-cookie-query-canary"));

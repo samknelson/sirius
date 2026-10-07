@@ -20,3 +20,9 @@ A main-chat-directed task may still be queued while the conversation remains in 
 **Why:** The owner selected "build here", but the resulting main-directed queued entry still offered only background execution or cancellation; the conversation had not switched modes or received an active assignment.
 
 **How to apply:** Inspect execution destination, active assignment, and the current conversation mode separately. Do not ask the owner to select background execution to repair this handoff, and do not promise that switching mode alone guarantees activation.
+
+In Build mode, `markTaskInProgress({taskRef})` can activate a main-directed queued task, not only resume an implemented one.
+
+**Why:** The skill describes only resuming implemented work, but a verified call on a main-directed queued task returned an active main assignment. Earlier conclusions that there was no available activation control were incorrect.
+
+**How to apply:** On explicit authorization to work here, try this supported callback before writing code. Confirm the returned assignment is active in the main project, then implement and call completion for that same task. If activation is rejected, explain the actual rejection rather than recommending duplicate background work or claiming no activation control exists.

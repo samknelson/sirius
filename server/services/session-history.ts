@@ -4,6 +4,7 @@ import { runOutsideTransaction } from "../storage/transaction-context";
 import type { SessionHistoryStorage } from "../storage/system/session-history";
 import { logger } from "../logger";
 import { suppliedSessionUserAgent, withSessionUserAgent } from "../../shared/session-device";
+import { getRequestContext } from "../middleware/request-context";
 
 export function createSessionHistoryHandler(
   history: Pick<SessionHistoryStorage, "create">,
@@ -24,10 +25,14 @@ export function createSessionHistoryHandler(
     try {
       // Runtime gate: disabled components may have no physical table.
       if (!isEnabled()) return;
+      // The after-commit listener retains its originating request's ALS scope.
+      // Snapshot the verified UUID before scheduling the independent write.
+      const deviceId = getRequestContext()?.deviceId ?? null;
       await runOutsideTransaction(() => history.create({
         sid: transition.sid,
         userId: transition.userId,
         ip: transition.ip,
+        deviceId,
         timestamp: new Date(transition.occurredAt),
         data: withSessionUserAgent(null, transition.userAgent),
       }));
@@ -62,7 +67,7 @@ export function initializeSessionHistoryListener(history: Pick<SessionHistorySto
 }
 
 export async function recordSuccessfulSignIn(
-  observation: Omit<SignInAfterPayload, "ipDecision"> & { sid: string; authenticationSessionReference?: string; userAgent?: string | null },
+  observation: Omit<SignInAfterPayload, "ipDecision"> & { sid: string; authenticationSessionReference?: string; userAgent?: string | null; deviceId?: string | null },
 ): Promise<void> {
   let ipDecision: SignInAfterPayload["ipDecision"] = null;
   try {
@@ -71,6 +76,7 @@ export async function recordSuccessfulSignIn(
       ipDecision = await runOutsideTransaction(() => signInHistory!.recordSignIn({
         id: observation.occurrenceId, sid: observation.sid,
         userId: observation.userId, ip: observation.ip,
+        deviceId: observation.deviceId ?? null,
         timestamp: new Date(observation.occurredAt), data: withSessionUserAgent(null, observation.userAgent),
         authenticationSessionReference: observation.authenticationSessionReference,
       }));

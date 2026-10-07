@@ -4,10 +4,11 @@ import type { Request, Response, NextFunction } from "express";
 const fakes = vi.hoisted(() => ({
   record: vi.fn().mockResolvedValue(undefined),
   error: vi.fn(),
+  context: { deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2" } as { deviceId?: string },
 }));
 vi.mock("../../server/services/session-history", () => ({ recordSuccessfulSignIn: fakes.record }));
 vi.mock("../../server/middleware/request-context", () => ({
-  getRequestContext: () => ({ ipAddress: "::ffff:192.0.2.10", userId: "not-the-session-owner", userAgent: "Browser/1 (supplied)" }),
+  getRequestContext: () => ({ ipAddress: "::ffff:192.0.2.10", userId: "not-the-session-owner", userAgent: "Browser/1 (supplied)", ...fakes.context }),
 }));
 vi.mock("../../server/logger", () => ({ logger: { error: fakes.error } }));
 
@@ -27,6 +28,7 @@ const user = { providerType: "local", dbUser: { id: "actual-session-owner" } };
 beforeEach(() => {
   vi.clearAllMocks();
   fakes.record.mockResolvedValue(undefined);
+  fakes.context.deviceId = "f865a51a-3656-4e89-bded-dd9e9da3b4c2";
 });
 
 describe("observation of the existing Passport login boundary", () => {
@@ -41,6 +43,7 @@ describe("observation of the existing Passport login boundary", () => {
       userId: "actual-session-owner", ip: "192.0.2.10",
       sid: "synthetic-cookie-only-for-storage",
       userAgent: "Browser/1 (supplied)",
+      deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2",
       occurrenceId: expect.stringMatching(/^[a-f0-9-]{36}$/),
     }));
   });
@@ -61,6 +64,23 @@ describe("observation of the existing Passport login boundary", () => {
     const result = await new Promise(resolve => req.login(user, resolve));
     expect(result).toBe(failure);
     expect(fakes.record).not.toHaveBeenCalled();
+  });
+  it("snapshots the device before session establishment and deferred history work", async () => {
+    const { req, original } = request();
+    original.mockImplementation((_user, _options, done) => {
+      fakes.context.deviceId = "38dbe270-9156-461d-b592-8df2a332606f";
+      done();
+    });
+    await new Promise<void>(resolve => req.login(user, () => resolve()));
+    expect(fakes.record).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2",
+    }));
+  });
+  it("leaves the device unavailable when there is no verified request identifier", async () => {
+    fakes.context.deviceId = undefined;
+    const { req } = request();
+    await new Promise<void>(resolve => req.login(user, () => resolve()));
+    expect(fakes.record).toHaveBeenCalledWith(expect.objectContaining({ deviceId: undefined }));
   });
   it("does not treat stateless authentication or explicit restoration as sign-in", async () => {
     const { req } = request();
