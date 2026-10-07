@@ -38,3 +38,9 @@ An application session opening is not necessarily a new upstream authentication.
 **Why:** Clerk authentication can survive replacement of the application's session; treating that replacement as a fresh sign-in produces security alerts for ordinary restoration.
 
 **How to apply:** Distinguish genuine new authentication from restoration of the same upstream authentication. Any retained correlation belongs to existing history, must not contain bearer credentials, and must not reach notification tokens or event payloads.
+
+Browser/device observations belong in the existing history data JSON under device.user_agent, not a new device column. They should still appear in the Session History UX.
+
+**Why:** The owner explicitly replaced the proposed column with nested JSON storage while retaining the display requirement.
+
+**How to apply:** Capture supplied User-Agent text without inferring device identity, preserve unrelated JSON keys, and expose only the descriptive value rather than the complete history JSON.
