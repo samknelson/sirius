@@ -146,7 +146,7 @@
 - [Node BlockList IPv4 mapping](node-blocklist-ipv4-mapping.md) — an IPv6 `::ffff:0:0/96` block also rejects ordinary IPv4 addresses in Node; don't combine it with a public-IPv4 allow check.
 - [Local WS test in split roles](local-ws-test-split-roles.md) — api-user must reach its own dispatcher for admin tests, but ordinary /api/ws traffic must remain api-ws-owned.
 - [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.
-- [Session-history boundaries](session-history-anonymous-scope.md) — anonymous capture, no storage audit/metadata, opt-in retention; the first observed IP silently establishes an alert baseline.
+- [Session-history boundaries](session-history-anonymous-scope.md) — user-associated capture only, no storage audit/metadata, opt-in retention; first observed values silently establish baselines.
 - [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
 - [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
 - [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.

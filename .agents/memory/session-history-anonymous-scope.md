@@ -1,13 +1,13 @@
 ---
-name: Anonymous session history
-description: Anonymous capture scope, no-logging/no-metadata storage, and explicit opt-in for destructive retention.
+name: Session history boundaries
+description: User-only history scope, no-logging/no-metadata storage, and explicit opt-in for destructive retention.
 ---
 
-Session history is intended to support anonymous sessions, not only successful user logins.
+Session history is intended only for observations associated with a user. Anonymous live sessions remain supported, but their history must not be retained.
 
-**Why:** The owner explicitly chose support for anonymous sessions when deciding the history record's user association.
+**Why:** On 2026-10-07 the owner reversed the earlier anonymous-history decision, requesting required user association, deletion of NULL-user history, and cessation of anonymous capture.
 
-**How to apply:** When designing capture, distinguish a session existing from a user signing in. Do not assume every historical event has an authenticated user or silently discard anonymous events.
+**How to apply:** Skip observations without a current user association; never substitute the previous user at logout or invent an association. Enforce required user association in history storage/schema, without imposing it on live sessions or their shared lifecycle events.
 
 All runtime history-table access must use its dedicated storage layer, with neither storage logging nor entity metadata.
 
