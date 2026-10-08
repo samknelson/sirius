@@ -26,17 +26,31 @@ export function buildComplianceMonths(
   });
 }
 
+async function loadMonthlyDeltas(
+  storage: IStorage, scope: ComplianceScope, employerIds: string[],
+  periods: Array<{ year: number; month: number }>,
+) {
+  const deltas = await storage.ledger.entries.getMonthlyDeltasByEntityAndAccount(
+    "employer", employerIds, scope.ledgerAccountIds,
+    periods.map((period) => `${period.year}-${String(period.month).padStart(2, "0")}`));
+  const deltaMap = new Map<string, Map<string, number>>();
+  for (const row of deltas) {
+    if (!deltaMap.has(row.entityId)) deltaMap.set(row.entityId, new Map());
+    deltaMap.get(row.entityId)!.set(row.ym, Number(row.total));
+  }
+  return deltaMap;
+}
+
 /** Dashboard and letter tokens deliberately share the same data and calculation. */
 export async function loadComplianceReport(
   storage: IStorage,
   scope: ComplianceScope,
-  options: { companyId?: string | null; employerId?: string } = {},
+  options: { companyId?: string | null } = {},
 ) {
   const monthPeriods = compliancePeriods(scope);
   const uploads = await storage.wizardEmployerMonthly.listAllEmployersWithUploadsForRange(
     scope.year, scope.month, scope.wizardType, scope.monthsBack);
-  const active = uploads.filter(({ employer }) => employer.isActive &&
-    (!options.employerId || employer.id === options.employerId));
+  const active = uploads.filter(({ employer }) => employer.isActive);
   const companyMap = await storage.employerCompanies.getByEmployerIdsWithCompanyName(active.map(({ employer }) => employer.id));
   const selected = active.filter(({ employer }) => {
     const company = companyMap.get(employer.id);
@@ -44,18 +58,11 @@ export async function loadComplianceReport(
   });
   const employerIds = selected.map(({ employer }) => employer.id);
   const balances = await storage.ledger.entries.getBalancesByEntityAndAccount("employer", employerIds, scope.ledgerAccountIds);
-  const deltas = await storage.ledger.entries.getMonthlyDeltasByEntityAndAccount(
-    "employer", employerIds, scope.ledgerAccountIds,
-    monthPeriods.map((period) => `${period.year}-${String(period.month).padStart(2, "0")}`));
+  const deltaMap = await loadMonthlyDeltas(storage, scope, employerIds, monthPeriods);
   const balanceMap = new Map<string, Map<string, string>>();
   for (const row of balances) {
     if (!balanceMap.has(row.entityId)) balanceMap.set(row.entityId, new Map());
     balanceMap.get(row.entityId)!.set(row.accountId, row.total);
-  }
-  const deltaMap = new Map<string, Map<string, number>>();
-  for (const row of deltas) {
-    if (!deltaMap.has(row.entityId)) deltaMap.set(row.entityId, new Map());
-    deltaMap.get(row.entityId)!.set(row.ym, Number(row.total));
   }
   return {
     monthPeriods,
@@ -91,16 +98,22 @@ export async function validateComplianceReferences(storage: IStorage, scope: Com
 
 export async function loadComplianceLetterValues(storage: IStorage, scope: ComplianceScope, employerId: string) {
   await validateComplianceReferences(storage, scope);
-  const report = await loadComplianceReport(storage, scope, { employerId });
-  const row = report.rows[0];
-  if (!row) throw new Error("The employer is unavailable or inactive");
-  const summary = summarizeCompliance(row.months);
+  const record = await storage.wizardEmployerMonthly.listEmployerWithUploadsForRange(
+    employerId, scope.year, scope.month, scope.wizardType, scope.monthsBack);
+  if (!record || record.employer.id !== employerId || !record.employer.isActive) {
+    throw new Error("The employer is unavailable or inactive");
+  }
+  const periods = compliancePeriods(scope);
+  const deltas = await loadMonthlyDeltas(storage, scope, [employerId], periods);
+  const summary = summarizeCompliance(buildComplianceMonths(
+    record.uploads, periods, deltas.get(employerId), scope.ledgerAccountIds.length > 0,
+  ));
   return {
-    employer_name: row.employerName,
+    employer_name: record.employer.name,
     missing_periods: summary.missing.map(compliancePeriodLabel).join(", ") || "No missing reporting periods.",
     delinquent_periods: summary.delinquent.map((period) =>
       `${compliancePeriodLabel(period)}: ${period.balanceDelta}`).join("; ") || "No delinquent statement periods.",
     delinquent_total: summary.delinquentTotal,
-    period_window: `${compliancePeriodLabel(report.monthPeriods[0])} – ${compliancePeriodLabel(report.monthPeriods.at(-1)!)}`,
+    period_window: `${compliancePeriodLabel(periods[0])} – ${compliancePeriodLabel(periods.at(-1)!)}`,
   };
 }

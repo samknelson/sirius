@@ -33,13 +33,16 @@ const upload = (month: number, status: string, date: string) => ({
 }) as EmployerWithUploads["uploads"][number];
 
 function fixture() {
+  const employerRows = [
+    { employer: { id: employerId, name: "First Employer", isActive: true, siriusId: "1" },
+      uploads: [upload(5, "completed", "2026-06-01"), upload(5, "draft", "2026-06-02"), upload(6, "cancelled", "2026-07-01"), upload(7, "completed", "2026-08-01")] },
+    { employer: { id: otherEmployerId, name: "Second Employer", isActive: true, siriusId: "2" }, uploads: [] },
+  ];
   const storage = {
     wizardEmployerMonthly: {
-      listAllEmployersWithUploadsForRange: vi.fn().mockResolvedValue([
-        { employer: { id: employerId, name: "First Employer", isActive: true, siriusId: "1" },
-          uploads: [upload(5, "completed", "2026-06-01"), upload(5, "draft", "2026-06-02"), upload(6, "cancelled", "2026-07-01"), upload(7, "completed", "2026-08-01")] },
-        { employer: { id: otherEmployerId, name: "Second Employer", isActive: true, siriusId: "2" }, uploads: [] },
-      ]),
+      listAllEmployersWithUploadsForRange: vi.fn().mockResolvedValue(employerRows),
+      listEmployerWithUploadsForRange: vi.fn(async (id: string) =>
+        employerRows.find(row => row.employer.id === id)),
     },
     employerCompanies: { getByEmployerIdsWithCompanyName: vi.fn().mockResolvedValue(new Map()) },
     ledger: {
@@ -169,7 +172,12 @@ describe("compliance tokens in the existing template evaluator", () => {
       "100.00",
       "First Employer: Monthly (May 2026 – Oct 2026), accounts: Trust. Missing reporting periods: May 2026, Aug 2026, Sep 2026, Oct 2026. Delinquent statement periods: May 2026: 45.00; Oct 2026: 55.00. Total delinquent balance: 100.00.",
     ]);
-    expect(raw.wizardEmployerMonthly.listAllEmployersWithUploadsForRange).toHaveBeenCalledTimes(1);
+    expect(raw.wizardEmployerMonthly.listAllEmployersWithUploadsForRange).not.toHaveBeenCalled();
+    expect(raw.wizardEmployerMonthly.listEmployerWithUploadsForRange).toHaveBeenCalledTimes(1);
+    expect(raw.wizardEmployerMonthly.listEmployerWithUploadsForRange).toHaveBeenCalledWith(employerId, 2026, 10, "monthly", 6);
+    expect(raw.ledger.entries.getBalancesByEntityAndAccount).not.toHaveBeenCalled();
+    expect(raw.employerCompanies.getByEmployerIdsWithCompanyName).not.toHaveBeenCalled();
+    expect(raw.ledger.entries.getMonthlyDeltasByEntityAndAccount).toHaveBeenCalledTimes(1);
     const other = await renderTokens(token("compliance_delinquent_total"), seeded(storage, otherEmployerId));
     expect(other.output).toBe("999.00");
   });
@@ -205,7 +213,7 @@ describe("compliance tokens in the existing template evaluator", () => {
         const ctx = seeded(storage);
         ctx.now = when;
         await renderTokens(token("compliance_missing_periods", `wizard="monthly", account="TRUST"${dateArg}`), ctx);
-        expect(raw.wizardEmployerMonthly.listAllEmployersWithUploadsForRange).toHaveBeenLastCalledWith(year, month, "monthly", 6);
+        expect(raw.wizardEmployerMonthly.listEmployerWithUploadsForRange).toHaveBeenLastCalledWith(employerId, year, month, "monthly", 6);
       }
     }
   });
@@ -229,8 +237,23 @@ describe("compliance tokens in the existing template evaluator", () => {
     gates.ledgerEnabled = false;
     expect((await renderTokens(token("compliance_delinquent_total"), seeded(storage))).output).toBe("");
     expect(raw.wizardEmployerMonthly.listAllEmployersWithUploadsForRange).not.toHaveBeenCalled();
+    expect(raw.wizardEmployerMonthly.listEmployerWithUploadsForRange).not.toHaveBeenCalled();
     gates.ledgerEnabled = true;
     raw.ledger.entries.getMonthlyDeltasByEntityAndAccount.mockRejectedValue(new Error("Ledger unavailable"));
     await expect(renderTokens(token("compliance_delinquent_total"), seeded(storage))).rejects.toThrow("Ledger unavailable");
+  });
+
+  it("refuses missing or inactive employers without falling back to a full report or reading balances", async () => {
+    const { raw, storage } = fixture();
+    for (const id of [accountId, ""]) {
+      await expect(loadComplianceLetterValues(storage, scope, id)).rejects.toThrow("unavailable");
+    }
+    raw.wizardEmployerMonthly.listEmployerWithUploadsForRange.mockResolvedValue({
+      employer: { id: employerId, name: "First Employer", isActive: false, siriusId: "1" }, uploads: [],
+    });
+    await expect(loadComplianceLetterValues(storage, scope, employerId)).rejects.toThrow("inactive");
+    expect(raw.wizardEmployerMonthly.listAllEmployersWithUploadsForRange).not.toHaveBeenCalled();
+    expect(raw.ledger.entries.getMonthlyDeltasByEntityAndAccount).not.toHaveBeenCalled();
+    expect(raw.ledger.entries.getBalancesByEntityAndAccount).not.toHaveBeenCalled();
   });
 });
