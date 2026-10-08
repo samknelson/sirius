@@ -1,4 +1,5 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -15,14 +16,39 @@ import type { WizardStepComponentProps } from "./types";
  * poll route. Any wizard with a `run` step can reuse this by re-exporting
  * it under `plugins/wizards/<type>/<Name>.tsx`.
  */
-export function RunProgressView({ wizardId, step }: WizardStepComponentProps) {
+export function RunProgressView({ wizardId, wizardType, step, data }: WizardStepComponentProps) {
   const { toast } = useToast();
-  const status = step.progress?.status;
-  const pct = step.progress?.percentComplete ?? 0;
-  const error = step.progress?.error;
+  const bao = wizardType === "bao_monthly_hours" && step.id === "process";
+  const tracked = useQuery<any>({
+    queryKey: [`/api/wizards/${wizardId}`],
+    enabled: bao,
+    refetchInterval: query => !query.state.data || query.state.data?.data?.progress?.process?.status === "in_progress" ? 2000 : false,
+    refetchIntervalInBackground: true,
+    retry: false,
+  });
+  const progress = bao ? tracked.data?.data?.progress?.process ?? step.progress : step.progress;
+  const status = progress?.status;
+  const pct = progress?.percentComplete ?? 0;
+  const error = progress?.error;
   const running = status === "in_progress";
-  const completed = step.state === "completed";
-  const failed = step.state === "failed";
+  const completed = bao ? status === "completed" : step.state === "completed";
+  const failed = bao ? status === "failed" : step.state === "failed";
+  const diagnostics = useQuery<{ persistenceProblem?: string | null }>({
+    queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`],
+    enabled: bao,
+    refetchInterval: query => running || !query.state.data ? 2000 : false,
+    retry: false,
+  });
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!bao || !running) return;
+    const timer = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, [bao, running]);
+  const heartbeat = Date.parse(progress?.heartbeatAt ?? "");
+  const stale = running && (!Number.isFinite(heartbeat) || now - heartbeat > 120_000);
+  const persistenceProblem = diagnostics.data?.persistenceProblem;
+  const attempted = bao && (!!status || !!(data as any)?.processResults);
 
   const runMutation = useMutation({
     mutationFn: async () =>
@@ -33,7 +59,7 @@ export function RunProgressView({ wizardId, step }: WizardStepComponentProps) {
     onError: (err: Error) => {
       toast({
         title: "Error",
-        description: err.message || "Failed to start run",
+        description: bao ? "Process admission is not confirmed. Refresh status before taking any action; do not automatically resubmit." : err.message || "Failed to start run",
         variant: "destructive",
       });
     },
@@ -56,6 +82,18 @@ export function RunProgressView({ wizardId, step }: WizardStepComponentProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {bao && (tracked.isError || diagnostics.isError) && (
+          <Alert variant="destructive"><AlertDescription>
+            Cannot read Process status. This is a browser polling problem, not proof that processing failed. Polling will continue; do not resubmit.
+          </AlertDescription></Alert>
+        )}
+        {bao && progress?.runId && <p className="text-xs text-muted-foreground">
+          Run {progress.runId} · {progress.protocol ?? "legacy process"}
+        </p>}
+        {persistenceProblem && <Alert variant="destructive"><AlertDescription>{persistenceProblem}</AlertDescription></Alert>}
+        {bao && stale && !persistenceProblem && <Alert><AlertDescription>
+          {Number.isFinite(heartbeat) ? "Process heartbeat is stale." : "Process heartbeat is missing."} Work may still be running or may have been interrupted. Refresh preserves tracking. Do not resubmit; ask an administrator to investigate possible partial posting.
+        </AlertDescription></Alert>}
         {step.description && (
           <p className="text-sm text-muted-foreground">{step.description}</p>
         )}
@@ -65,10 +103,15 @@ export function RunProgressView({ wizardId, step }: WizardStepComponentProps) {
             <Progress value={pct} />
             <p className="text-sm text-muted-foreground">
               Running… {pct}%
+              {bao && progress?.phase && ` · ${progress.phase}`}
+              {bao && progress?.total > 0 && ` · ${progress.processed ?? 0}/${progress.total} rows`}
             </p>
           </div>
         )}
 
+        {bao && completed && progress?.partialPostingRisk && <Alert variant="destructive"><AlertDescription>
+          Process finished with {progress.rowIssues ?? "some"} row issues. Review the saved results; some rows may not be fully posted. Do not resubmit without reconciliation.
+        </AlertDescription></Alert>}
         {completed && (
           <Alert>
             <CheckCircle2 className="h-4 w-4" />
@@ -82,14 +125,14 @@ export function RunProgressView({ wizardId, step }: WizardStepComponentProps) {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              {error || "The run failed. Please try again."}
+              {error || (bao ? "Process failed. Some records may already be posted. Do not resubmit; ask an administrator to reconcile this run." : "The run failed. Please try again.")}
             </AlertDescription>
           </Alert>
         )}
 
         <Button
           onClick={() => runMutation.mutate()}
-          disabled={running || runMutation.isPending}
+          disabled={running || runMutation.isPending || (bao && (attempted || !tracked.data || tracked.isError))}
           data-testid="button-run-wizard"
         >
           {running ? (

@@ -172,7 +172,7 @@ export class ChargeTransactionCollector {
    * them in a single statement with `ON CONFLICT (chargePlugin, chargePluginKey)
    * DO UPDATE`. Soft-fails on error.
    */
-  async flush(): Promise<void> {
+  async flush(strict = false): Promise<void> {
     if (this._byKey.size === 0) return;
     const transactions = Array.from(this._byKey.values()).map(r => r.transaction);
     this._byKey.clear();
@@ -234,6 +234,11 @@ export class ChargeTransactionCollector {
         count: entries.length,
       });
     } catch (error) {
+      if (strict) {
+        // Managed BAO runs report only their safe run/phase diagnostics.
+        // Never relay a database error that could embed a ledger row.
+        throw new Error("Required charge finalization failed");
+      }
       // Soft-fail: matches the existing per-row createLedgerEntries behavior.
       logger.error('ChargeTransactionCollector: failed to flush ledger entries', {
         service: 'charge-batch-collector',
@@ -255,7 +260,10 @@ export class ChargeTransactionCollector {
  *   the same async scope as the run, so `ledgerEaCache` is still live), in a
  *   `finally` block so accumulated transactions are written even if `fn` throws.
  */
-export async function withChargeBatchCollector<T>(fn: () => Promise<T>): Promise<T> {
+export async function withChargeBatchCollector<T>(
+  fn: (collector: ChargeTransactionCollector) => Promise<T>,
+  options?: { strict: boolean; assertOwned: () => void },
+): Promise<T> {
   const collector = new ChargeTransactionCollector();
   const current = requestContext.getStore();
   const sink: RequestContext['chargeTransactionSink'] = {
@@ -273,8 +281,16 @@ export async function withChargeBatchCollector<T>(fn: () => Promise<T>): Promise
   // Run fn AND flush inside the same requestContext.run scope so the EA cache
   // is live during flush (it is discarded once the run() callback returns).
   return requestContext.run(next, async () => {
+    if (options?.strict) {
+      // No finalization after a lost lease or interrupted managed run.
+      // The caller flushes BEFORE it generates authoritative results.
+      const result = await fn(collector);
+      options.assertOwned();
+      await collector.flush(true);
+      return result;
+    }
     try {
-      return await fn();
+      return await fn(collector);
     } finally {
       await collector.flush();
     }

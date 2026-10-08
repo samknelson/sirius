@@ -6,6 +6,7 @@ import { createUnifiedOptionsStorage } from '../../../../storage/unified-options
 import { withChargeConfigCache } from '../../../../middleware/request-context.js';
 import { withChargeBatchCollector } from '../../../../plugins/ledger/charge/charge-batch.js';
 import { parseSSN, validateSSN } from '@shared/utils/ssn';
+import type { ManagedProcessRun } from '../../process-run';
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -551,7 +552,8 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       currentRow?: { index: number; status: 'success' | 'error'; error?: string };
       phase?: string;
       phaseMessage?: string;
-    }) => void
+    }) => void,
+    processRun?: ManagedProcessRun,
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
     const ctx: RunContext = freshRunContext(wizard?.entityId || '');
@@ -561,7 +563,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // INSERT after the loop, replacing N per-row writes.
     return runContextStorage.run(ctx, () =>
       withChargeConfigCache(() =>
-        withChargeBatchCollector(() => super.processFeedData(wizardId, batchSize, onProgress))
+        processRun
+          ? super.processFeedData(wizardId, batchSize, onProgress, processRun)
+          : withChargeBatchCollector(() => super.processFeedData(wizardId, batchSize, onProgress))
       )
     );
   }

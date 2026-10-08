@@ -17,6 +17,7 @@ import type {
 import type { Wizard } from "@shared/schema";
 import { randomUUID } from "node:crypto";
 import { startValidationRun } from "./validation-run";
+import { startProcessRun, PROCESS_PROTOCOL } from "./process-run";
 
 type AuthMiddleware = (
   req: Request,
@@ -79,6 +80,11 @@ async function loadRegisteredWizard(
       res.status(entityGate.status).json({ message: entityGate.message });
       return null;
     }
+  }
+  if (req.method === "POST" && !req.path.endsWith("/navigate") &&
+      wizard.type === "bao_monthly_hours" && (wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL) {
+    res.status(409).json({ message: "This upload has already entered Process. Its inputs and runs are locked. Do not resubmit; ask an administrator to reconcile any partial posting." });
+    return null;
   }
   return { wizard, plugin };
 }
@@ -315,6 +321,17 @@ export function registerWizardDispatcherRoutes(
         }
       }
 
+      if (loaded.plugin.id === "bao_monthly_hours" && step.id === "process") {
+        try {
+          const started = await startProcessRun(loaded.wizard, step, (wizard, runId) =>
+            buildStepContext(wizard, step.id, (req.body?.input ?? {}) as Record<string, unknown>, req, undefined, runId));
+          return started
+            ? res.status(202).json({ started: true, protocol: PROCESS_PROTOCOL })
+            : res.status(409).json({ message: "Process is running or has already been attempted. A stale heartbeat does not authorize retry. Do not resubmit; ask an administrator to reconcile this run." });
+        } catch {
+          return res.status(503).json({ message: "Process admission could not be confirmed. Refresh status before taking any action; do not automatically resubmit." });
+        }
+      }
       const runId = randomUUID();
       const started = await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
         status: "in_progress",
@@ -546,7 +563,7 @@ export function registerWizardDispatcherRoutes(
           }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: next.id,
-            data,
+            ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL ? {} : { data }),
           });
           return res.json(updated);
         }
@@ -569,7 +586,7 @@ export function registerWizardDispatcherRoutes(
           }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: prev.id,
-            data,
+            ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL ? {} : { data }),
           });
           return res.json(updated);
         }

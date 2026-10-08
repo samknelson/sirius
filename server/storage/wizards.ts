@@ -25,6 +25,15 @@ async function wizardRegistry() {
   return wizardPluginRegistry;
 }
 
+/** Evaluated by the mutating statement, including after a concurrent admission
+ * commits while deletion was waiting on the row. Never trust a pre-delete read. */
+function processDeletionAllowed() {
+  return sql`NOT (${wizards.type} = 'bao_monthly_hours' AND (
+    coalesce(${wizards.data} #>> '{progress,process,status}', '') <> ''
+    OR coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1'
+    OR coalesce(${wizards.data}, '{}'::jsonb) ? 'processResults'))`;
+}
+
 export interface MonthlyWizardCreateParams {
   wizard: InsertWizard;
   employerId: string;
@@ -52,7 +61,7 @@ export interface WizardStorage {
   /** Merge top-level wizard data keys without replacing concurrent progress writes. */
   mergeData(id: string, patch: Record<string, unknown>, activeStep?: string, runId?: string): Promise<Wizard | undefined>;
   /** Atomic, run-scoped progress write; late writes cannot revive a terminal run. */
-  writeStepProgress(id: string, step: string, runId: string, patch: Record<string, unknown>, start?: boolean, dataPatch?: Record<string, unknown>, wizardStatus?: string): Promise<Wizard | undefined>;
+  writeStepProgress(id: string, step: string, runId: string, patch: Record<string, unknown>, start?: boolean, dataPatch?: Record<string, unknown>, wizardStatus?: string, leasePid?: number): Promise<Wizard | undefined>;
   delete(id: string): Promise<boolean>;
   saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData>;
   getReportData(wizardId: string): Promise<WizardReportData[]>;
@@ -179,11 +188,21 @@ export function createWizardStorage(): WizardStorage {
       const [wizard] = await client
         .update(wizards)
         .set(updates)
-        .where(
+        .where(and(
+          // A type-only PATCH must not turn admitted BAO evidence into an
+          // unprotected wizard. This is checked against the stored row.
+          updates.type !== undefined
+            ? or(eq(wizards.type, updates.type), processDeletionAllowed())
+            : undefined,
           updates.status === "deleting"
-            ? eq(wizards.id, id)
-            : and(eq(wizards.id, id), ne(wizards.status, "deleting")),
-        )
+            ? and(eq(wizards.id, id), processDeletionAllowed())
+            : and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+                // A stale whole-data snapshot must never erase a managed run,
+                // even after its terminal write. Navigation/status-only edits
+                // remain available; BAO inputs are immutable after admission.
+                updates.data !== undefined ? sql`NOT (${wizards.type} = 'bao_monthly_hours'
+                  AND coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1')` : undefined),
+        ))
         .returning();
       return wizard || undefined;
     },
@@ -192,6 +211,8 @@ export function createWizardStorage(): WizardStorage {
       const [wizard] = await getClient().update(wizards)
         .set({ data: sql`coalesce(${wizards.data}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb` })
         .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+          sql`NOT (${wizards.type} = 'bao_monthly_hours'
+            AND coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1')`,
           activeStep && runId
             ? sql`${wizards.data} #>> ARRAY['progress', ${activeStep}::text, 'runId']::text[] = ${runId}
                 AND ${wizards.data} #>> ARRAY['progress', ${activeStep}::text, 'status']::text[] = 'in_progress'`
@@ -200,7 +221,7 @@ export function createWizardStorage(): WizardStorage {
       return wizard;
     },
 
-    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus) {
+    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid) {
       const current = sql`coalesce(${wizards.data}, '{}'::jsonb)`;
       const entry = sql`coalesce(${current} #> ARRAY['progress', ${step}::text]::text[], '{}'::jsonb)`;
       const next = sql`jsonb_set(${current} || ${JSON.stringify(dataPatch)}::jsonb,
@@ -212,8 +233,17 @@ export function createWizardStorage(): WizardStorage {
         ...(wizardStatus ? { status: wizardStatus } : {}),
       })
         .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+          leasePid !== undefined ? sql`exists (select 1 from pg_locks where locktype = 'advisory'
+            and pid = ${leasePid} and granted and classid = 1350
+            and objid = hashtext(${'wizard-validation:' + id})::oid and objsubid = 2)` : undefined,
+          step !== "process" ? sql`NOT (${wizards.type} = 'bao_monthly_hours'
+            AND coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1')` : undefined,
           start
-            ? sql`(coalesce(${entry}->>'status', '') <> 'in_progress'
+            ? patch.protocol === "bao-process-v1"
+              ? sql`coalesce(${entry}->>'status', '') = ''
+                  AND ${wizards.type} = 'bao_monthly_hours'
+                  AND NOT (coalesce(${wizards.data}, '{}'::jsonb) ? 'processResults')`
+              : sql`(coalesce(${entry}->>'status', '') <> 'in_progress'
                 OR coalesce((${entry}->>'heartbeatAt')::timestamptz < now() - interval '2 minutes', true))`
             : sql`${entry}->>'runId' = ${runId} AND ${entry}->>'status' = 'in_progress'`
         )).returning();
@@ -222,7 +252,7 @@ export function createWizardStorage(): WizardStorage {
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
-      const result = await client.delete(wizards).where(eq(wizards.id, id)).returning();
+      const result = await client.delete(wizards).where(and(eq(wizards.id, id), processDeletionAllowed())).returning();
       return result.length > 0;
     },
 

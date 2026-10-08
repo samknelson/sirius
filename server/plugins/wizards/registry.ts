@@ -152,6 +152,14 @@ export class WizardPluginRegistry extends PluginRegistry<
               status: progress.status,
               percentComplete: progress.percentComplete,
               error: progress.error,
+              heartbeatAt: progress.heartbeatAt,
+              runId: progress.runId,
+              protocol: progress.protocol,
+              phase: progress.phase,
+              processed: progress.processed,
+              rowIssues: progress.rowIssues,
+              partialPostingRisk: progress.partialPostingRisk,
+              total: progress.total,
             }
           : undefined,
       };

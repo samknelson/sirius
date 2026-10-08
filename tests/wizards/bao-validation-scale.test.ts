@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -18,12 +18,23 @@ vi.mock("../../server/plugins/wizards/entity-access", () => ({
   enforceWizardRecordAccess: async () => ({ ok: true }),
 }));
 import { storage } from "../../server/storage";
+import { db, databaseSourceInfo } from "../../server/storage/db";
+import { optionsEmploymentStatus } from "../../shared/schema";
 import { baoMonthlyHours } from "../../server/plugins/wizards/engine/types/bao_monthly_hours";
 import "../../server/plugins/wizards/plugins/bao-monthly-hours";
 import { registerWizardDispatcherRoutes } from "../../server/plugins/wizards/dispatcher";
 import { registerWizardRoutes } from "../../server/modules/wizards";
 
 afterEach(() => vi.restoreAllMocks());
+beforeAll(async () => {
+  // Real application DBs already have options. The disposable test DB does not.
+  if ((databaseSourceInfo as any).source === "isolated-test") {
+    await db.insert(optionsEmploymentStatus).values([
+      { name: "Active", code: "active", employed: true },
+      { name: "FMLA", code: "fmla", employed: true },
+    ]);
+  }
+});
 
 describe.sequential("BAO real Validate dispatcher, parser and database", () => {
   for (const count of [500, 2000]) for (const format of ["csv", "xlsx"]) for (const mode of ["create", "update"] as const) {

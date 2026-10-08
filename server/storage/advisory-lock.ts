@@ -55,6 +55,8 @@ const DEFAULT_POLL_INTERVAL_MS = 500;
 const TRANSACTION_LOCK_TIMEOUT_MS = 30_000;
 
 export interface AdvisoryLockHandle {
+  /** Backend owning this session lease; used to fence separately pooled writes. */
+  readonly backendPid?: number;
   /** The lock name, as passed to the acquire call. */
   readonly name: string;
   /** Milliseconds spent waiting before the lock was granted. */
@@ -146,8 +148,8 @@ export function createAdvisoryLockStorage(lockPool: pg.Pool = pool): AdvisoryLoc
 
       try {
         for (;;) {
-          const result = await client.query<{ locked: boolean }>(
-            "SELECT pg_try_advisory_lock($1::int4, hashtext($2)::int4) AS locked",
+          const result = await client.query<{ locked: boolean; backend_pid: number }>(
+            "SELECT pg_try_advisory_lock($1::int4, hashtext($2)::int4) AS locked, pg_backend_pid() AS backend_pid",
             [ADVISORY_LOCK_CLASS_ID, name],
           );
           if (result.rows[0]?.locked === true) {
@@ -155,6 +157,7 @@ export function createAdvisoryLockStorage(lockPool: pg.Pool = pool): AdvisoryLoc
             const waitedMs = Date.now() - startedAt;
             return {
               name,
+              backendPid: result.rows[0].backend_pid,
               waitedMs,
               contended: announcedWait,
               isHeld: () => held,

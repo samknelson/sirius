@@ -1,5 +1,6 @@
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { BAO_PROCESS_DELETE_REFUSAL, isBaoProcessAdmitted } from "@shared/wizard-process-lifecycle";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,8 +31,7 @@ export default function WizardView() {
     refetchInterval: (query) => {
       const m = (query.state.data as any)?.manifest as WizardManifest | undefined;
       if (!m) return false;
-      const current = m.steps.find((s) => s.id === m.currentStep);
-      return current?.progress?.status === "in_progress" ? 1000 : false;
+      return m.steps.some(s => s.progress?.status === "in_progress") ? 1000 : false;
     },
   });
 
@@ -88,7 +88,7 @@ export default function WizardView() {
 
   const wizardData = wizard?.data as WizardData | undefined;
 
-  if (wizardError) {
+  if (wizardError && !wizard) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
@@ -96,9 +96,9 @@ export default function WizardView() {
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
               <Wand2 className="text-muted-foreground" size={32} />
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">Wizard Not Found</h3>
+            <h3 className="text-lg font-medium text-foreground mb-2">Cannot read wizard status</h3>
             <p className="text-muted-foreground text-center">
-              The wizard you're looking for doesn't exist or has been removed.
+              Status could not be loaded. This does not prove processing stopped. Refresh to check again; do not resubmit Process.
             </p>
             <Link href="/employers">
               <Button className="mt-4" data-testid="button-return-to-employers">
@@ -128,6 +128,7 @@ export default function WizardView() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
+      {wizardError && <p role="alert" className="mb-4 text-destructive">Cannot refresh wizard status. Showing the last saved status; polling will continue. Do not resubmit Process.</p>}
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -222,6 +223,9 @@ export default function WizardView() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {isBaoProcessAdmitted(wizard) && <p className="text-sm font-medium" data-testid="wizard-delete-refused">
+                {BAO_PROCESS_DELETE_REFUSAL}
+              </p>}
               <div className="p-4 border border-destructive/20 bg-destructive/5 rounded-lg">
                 <h3 className="font-medium mb-2">This action cannot be undone</h3>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -240,7 +244,7 @@ export default function WizardView() {
                   <AlertDialogTrigger asChild>
                     <Button 
                       variant="destructive" 
-                      disabled={deleteWizardMutation.isPending}
+                      disabled={deleteWizardMutation.isPending || isBaoProcessAdmitted(wizard)}
                       data-testid="button-delete-wizard"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -260,6 +264,7 @@ export default function WizardView() {
                       <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => deleteWizardMutation.mutate()}
+                        disabled={deleteWizardMutation.isPending || isBaoProcessAdmitted(wizard)}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         data-testid="button-confirm-delete"
                       >

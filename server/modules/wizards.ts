@@ -455,7 +455,7 @@ export function registerWizardRoutes(
       
       const wizard = await storage.wizards.update(id, validatedData);
       if (!wizard) {
-        return res.status(409).json({ message: "Wizard is being deleted and cannot be updated" });
+        return res.status(409).json({ message: "Wizard is being deleted or its admitted Process identity/data is protected and cannot be changed" });
       }
       res.json(wizard);
     } catch (error) {
@@ -481,6 +481,9 @@ export function registerWizardRoutes(
       }
 
       const deletion = await deleteWizardWithAttachments(id);
+      if (!deletion.deleted && deletion.blockedReason) {
+        return res.status(409).json({ message: deletion.blockedReason });
+      }
       if (!deletion.deleted && deletion.failedFileIds.length > 0) {
         return res.status(500).json({
           message: "Wizard deletion is pending file cleanup; retry deletion.",

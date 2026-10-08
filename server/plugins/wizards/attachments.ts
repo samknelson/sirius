@@ -2,6 +2,7 @@ import { insertFileSchema, type File } from "@shared/schema";
 import { storage } from "../../storage";
 import { fileSystemService } from "../../services/files";
 import { logger } from "../../logger";
+import { BAO_PROCESS_DELETE_REFUSAL, isBaoProcessAdmitted } from "@shared/wizard-process-lifecycle";
 import {
   expandDirectoryTemplate,
   isExtensionAllowed,
@@ -143,7 +144,7 @@ export async function cleanupWizardAttachments(
 
 export type DeleteWizardWithAttachmentsResult =
   | { deleted: true; failedFileIds: [] }
-  | { deleted: false; failedFileIds: string[] };
+  | { deleted: false; failedFileIds: string[]; blockedReason?: string };
 
 /**
  * Delete a wizard through the attachment lifecycle's shared lock.
@@ -155,15 +156,21 @@ export type DeleteWizardWithAttachmentsResult =
 export async function deleteWizardWithAttachments(
   wizardId: string,
 ): Promise<DeleteWizardWithAttachmentsResult> {
-  await storage.advisoryLock.withTransactionLock(
+  const blockedReason = await storage.advisoryLock.withTransactionLock(
     `wizard-attachments:${wizardId}`,
     async () => {
       const current = await storage.wizards.getById(wizardId);
+      if (current && isBaoProcessAdmitted(current)) return BAO_PROCESS_DELETE_REFUSAL;
       if (current && current.status !== "deleting") {
-        await storage.wizards.update(wizardId, { status: "deleting" });
+        // The atomic UPDATE refuses Process admitted after the read above.
+        if (!await storage.wizards.update(wizardId, { status: "deleting" }) && current.type === "bao_monthly_hours") {
+          return BAO_PROCESS_DELETE_REFUSAL;
+        }
       }
+      return null;
     },
   );
+  if (blockedReason) return { deleted: false, failedFileIds: [], blockedReason };
 
   const cleanup = await cleanupWizardAttachments(wizardId);
   if (!cleanup.complete) {

@@ -19,14 +19,20 @@ export function validationPersistenceProblem(wizardId: string, runId?: string): 
 
 /** One write in flight and one coalesced pending value, shared by row progress
  * and heartbeat. Failed progress writes do not abort otherwise healthy work. */
-export function validationProgressWriter(write: (patch: Record<string, unknown>) => Promise<unknown>, onError: () => void) {
+export function validationProgressWriter(write: (patch: Record<string, unknown>) => Promise<unknown>, onError: () => void, intervalMs = 0) {
   let pending: Record<string, unknown> | undefined;
   let writing = false;
   let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const pump = async () => {
     writing = true;
     try {
       while (pending && !stopped) {
+        if (intervalMs) await new Promise<void>(resolve => {
+          timer = setTimeout(resolve, intervalMs);
+          timer.unref?.();
+        });
+        if (stopped) break;
         const patch = pending;
         pending = undefined;
         try { await write({ ...patch, heartbeatAt: new Date().toISOString() }); }

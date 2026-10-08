@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import type { FeedWizard, FeedField } from "../engine/feed";
 import { getEffectiveUser } from "../../../modules/masquerade";
 import { createWizardAttachment } from "../attachments";
+import { processPersistenceProblem } from "../process-run";
 import type {
   WizardStepHandler,
   WizardStepContext,
@@ -348,13 +349,14 @@ export function buildProcessStep(
     component,
     getState: runStepState("process"),
     run: async (ctx: WizardStepContext) => {
-      await feed.processFeedData(ctx.wizardId, 100, (p) => {
+      const results = await feed.processFeedData(ctx.wizardId, 100, (p) => {
         const pct =
           p.total > 0
             ? Math.min(99, Math.round((p.processed / p.total) * 100))
             : 0;
         void ctx.reportProgress(pct);
-      });
+      }, ctx.processRun);
+      if (ctx.processRun) return { data: { processResults: results } };
       // processResults + wizard status persisted by the base method.
     },
     getData: (ctx: WizardStepContext) => {
@@ -362,6 +364,7 @@ export function buildProcessStep(
       return {
         processResults: data.processResults ?? null,
         validationResults: data.validationResults ?? null,
+        persistenceProblem: processPersistenceProblem(ctx.wizardId, data.progress?.process?.runId),
       };
     },
   };

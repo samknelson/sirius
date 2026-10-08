@@ -20,6 +20,14 @@ export interface WizardStepManifest {
     status?: string;
     percentComplete?: number;
     error?: string;
+    heartbeatAt?: string;
+    runId?: string;
+    protocol?: string;
+    phase?: string;
+    processed?: number;
+    total?: number;
+    rowIssues?: number;
+    partialPostingRisk?: boolean;
   };
 }
 

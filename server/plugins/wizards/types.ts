@@ -52,6 +52,8 @@ export interface WizardStepContext {
   wizard: Wizard;
   /** Ownership token for an asynchronously running step. */
   runId?: string;
+  /** BAO managed processing: execution fence, safe diagnostics, runner-owned save. */
+  processRun?: import("./process-run").ManagedProcessRun;
   /** Parsed + schema-validated input for submit handlers. */
   input: Record<string, unknown>;
   /** Uploaded file for `upload` steps. */
@@ -266,6 +268,14 @@ export interface WizardStepManifestEntry {
     status?: string;
     percentComplete?: number;
     error?: string;
+    heartbeatAt?: string;
+    runId?: string;
+    protocol?: string;
+    phase?: string;
+    processed?: number;
+    total?: number;
+    rowIssues?: number;
+    partialPostingRisk?: boolean;
   };
 }
 

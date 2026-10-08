@@ -11,6 +11,7 @@ import {
 import { parseSSN, validateSSN } from '@shared/utils/ssn';
 import { logger } from '../../../logger.js';
 import { ValidationPhaseError } from '../validation-diagnostics';
+import type { ManagedProcessRun } from '../process-run';
 import {
   getEnvironmentVariable,
   registerEnvironmentVariable,
@@ -184,6 +185,7 @@ export interface ProcessError {
 }
 
 export interface RowResult {
+  hasIssues?: boolean;
   rowIndex: number;
   status: 'success' | 'error';
   message: string;
@@ -713,8 +715,11 @@ export abstract class FeedWizard extends BaseWizard {
       successCount: number; 
       failureCount: number;
       currentRow?: { index: number; status: 'success' | 'error'; error?: string };
-    }) => void
+    }) => void,
+    processRun?: ManagedProcessRun,
   ): Promise<ProcessResults> {
+    processRun?.assertOwned();
+    processRun?.phase("load");
     const { wizard, wizardData, file, rawRows, hasHeaders, mode, mappedRows } =
       await this.loadMappedRows(wizardId);
 
@@ -736,6 +741,7 @@ export abstract class FeedWizard extends BaseWizard {
       if (raw) allSsns.push(raw);
     }
     const workersBySsn = await storage.workers.getWorkersBySSNs(allSsns);
+    processRun?.phase("rows");
     feedProfile('processFeedData:ssn-prefetch', tProcess, { ssns: allSsns.length, matched: workersBySsn.size });
     const lookupWorker = (normalizedSsn: string) => workersBySsn.get(normalizedSsn.replace(/[^0-9]/g, ''));
 
@@ -755,6 +761,9 @@ export abstract class FeedWizard extends BaseWizard {
       
       // Process each row in the batch
       for (let j = 0; j < batch.length; j++) {
+        // Outside the row-error catch: lease loss stops the loop, it is not
+        // a row validation failure. An already in-flight mutation is not undone.
+        processRun?.assertOwned();
         const rowIndex = i + j;
         const row = batch[j];
         
@@ -875,6 +884,7 @@ export abstract class FeedWizard extends BaseWizard {
             rowResults.push({
               rowIndex,
               status: 'success',
+              ...(processRun ? { hasIssues: processingIssues.length > 0 } : {}),
               message: processingIssues.length === 0 ? 'Worker updated' : `Worker updated (issues: ${processingIssues.join('; ')})`
             });
             
@@ -1023,6 +1033,7 @@ export abstract class FeedWizard extends BaseWizard {
             rowResults.push({
               rowIndex,
               status: 'success',
+              ...(processRun ? { hasIssues: processingIssues.length > 0 } : {}),
               message: processingIssues.length === 0 ? `Worker ${workerAction}` : `Worker ${workerAction} (issues: ${processingIssues.join('; ')})`
             });
 
@@ -1071,16 +1082,24 @@ export abstract class FeedWizard extends BaseWizard {
             });
           }
         }
+        processRun?.counts(rowIndex + 1, totalRows);
       }
+      if (processRun) await new Promise<void>(resolve => setImmediate(resolve));
     }
 
     feedProfile('processFeedData:rows', tProcess, { rows: totalRows });
+    if (processRun) {
+      processRun.phase("charges");
+      await processRun.finalizeCharges?.();
+      processRun.phase("results");
+    }
 
     // Generate results CSV file
     let resultsFileId: string | undefined;
     try {
       resultsFileId = await this.generateResultsCsv(wizardId, file, rawRows, hasHeaders, rowResults);
     } catch (csvError) {
+      if (processRun) throw new Error("Process result file generation failed");
       console.error('Failed to generate results CSV:', csvError);
       // Continue without results file - don't fail the whole process
     }
@@ -1122,6 +1141,7 @@ export abstract class FeedWizard extends BaseWizard {
           totalAmount: totalAmount.toFixed(2)
         };
       } catch (err) {
+        if (processRun) throw new Error("Process charge summary failed");
         console.error('Failed to query ledger entries for charges summary:', err);
         // Set zero charges on error so UI doesn't break
         chargesSummary = { count: 0, totalAmount: '0.00' };
@@ -1143,7 +1163,7 @@ export abstract class FeedWizard extends BaseWizard {
     };
 
     // Save processing results to wizard data
-    await storage.wizards.update(wizardId, {
+    if (!processRun) await storage.wizards.update(wizardId, {
       data: {
         ...wizardData,
         processResults: results

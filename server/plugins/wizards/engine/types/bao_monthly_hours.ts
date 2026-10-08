@@ -9,6 +9,7 @@ import { resolveBaoThreshold, lastDayOfMonthYmd } from '../../../trust/eligibili
 import { isStatusBilled } from '../../../ledger/charge/plugins/sitespecific-bao-hourly.js';
 import { withChargeConfigCache } from '../../../../middleware/request-context.js';
 import { withChargeBatchCollector } from '../../../ledger/charge/charge-batch.js';
+import type { ManagedProcessRun } from '../../process-run';
 import { getDcRetiredDisabilityRowMode } from '../../../../services/sitespecific/bao/dc-settings.js';
 import { isDcFundEmployer } from '../../../../services/sitespecific/bao/dc-grant.js';
 import {
@@ -851,7 +852,9 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       phase?: string;
       phaseMessage?: string;
     }) => void,
+    processRun?: ManagedProcessRun,
   ): Promise<import('../feed.js').ProcessResults> {
+    processRun?.assertOwned();
     // Pull enough wizard state to pre-fetch.
     const wizard = await storage.wizards.getById(wizardId);
     const employerId = wizard?.entityId;
@@ -889,7 +892,12 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       // also install it here so the BAO-only path (when called directly) is
       // equally optimized.
       return await withChargeConfigCache(() =>
-        withChargeBatchCollector(() => super.processFeedData(wizardId, batchSize, onProgress)),
+        processRun
+          ? withChargeBatchCollector(collector => super.processFeedData(wizardId, batchSize, onProgress, {
+              ...processRun,
+              finalizeCharges: async () => { processRun.assertOwned(); await collector.flush(true); processRun.assertOwned(); },
+            }), { strict: true, assertOwned: processRun.assertOwned })
+          : withChargeBatchCollector(() => super.processFeedData(wizardId, batchSize, onProgress)),
       );
     } finally {
       this._monthHoursRunCache.delete(wizardId);
