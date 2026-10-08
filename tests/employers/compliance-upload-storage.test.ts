@@ -45,6 +45,7 @@ describe("employer-scoped compliance upload queries", () => {
     expect(employerQuery.params).toEqual([employerId]);
     expect(uploadsQuery.sql).toContain('"wizard_employer_monthly"."employer_id" =');
     expect(uploadsQuery.sql).toContain('"wizards"."type" =');
+    expect(uploadsQuery.sql).toContain('"wizards"."date"');
     expect(uploadsQuery.params).toEqual([2025, 12, 2026, 1, 2026, 2, "monthly", employerId]);
 
     const fullQueries = queryCapture([[{ id: employerId }, { id: otherId }], []]);
@@ -52,6 +53,7 @@ describe("employer-scoped compliance upload queries", () => {
     expect(fullQueries[0].toSQL().sql).not.toContain("where");
     expect(fullQueries[1].toSQL().params).toEqual(uploadsQuery.params.slice(0, -1));
     expect(fullQueries[1].toSQL().sql).not.toContain('"wizard_employer_monthly"."employer_id" =');
+    expect(fullQueries[1].toSQL().sql.split(" from ")[0]).toBe(uploadsQuery.sql.split(" from ")[0]);
   });
 
   it("keeps an employer with no uploads, but does not query uploads for an unavailable employer", async () => {

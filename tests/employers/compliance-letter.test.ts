@@ -91,6 +91,8 @@ describe("report-backed compliance letters", () => {
   it("letters and the report agree, with only positive monthly nets in the total (not all-time balance)", async () => {
     const { storage, raw } = fixture();
     const report = await loadComplianceReport(storage, scope);
+    expect(raw.wizardEmployerMonthly.listAllEmployersWithUploadsForRange).toHaveBeenCalledWith(2026, 10, "monthly", 6);
+    expect(raw.wizardEmployerMonthly.listEmployerWithUploadsForRange).not.toHaveBeenCalled();
     const summary = summarizeCompliance(report.rows[0].months);
     const values = await loadComplianceLetterValues(storage, scope, employerId);
     expect(summary.delinquentTotal).toBe("100.00");
@@ -178,6 +180,10 @@ describe("compliance tokens in the existing template evaluator", () => {
     expect(raw.ledger.entries.getBalancesByEntityAndAccount).not.toHaveBeenCalled();
     expect(raw.employerCompanies.getByEmployerIdsWithCompanyName).not.toHaveBeenCalled();
     expect(raw.ledger.entries.getMonthlyDeltasByEntityAndAccount).toHaveBeenCalledTimes(1);
+    expect(raw.ledger.entries.getMonthlyDeltasByEntityAndAccount).toHaveBeenCalledWith(
+      "employer", [employerId], [accountId],
+      ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"],
+    );
     const other = await renderTokens(token("compliance_delinquent_total"), seeded(storage, otherEmployerId));
     expect(other.output).toBe("999.00");
   });
