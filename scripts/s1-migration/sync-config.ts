@@ -74,35 +74,216 @@ export interface FleetStep {
  * ledger references to their monthly hours rows.
  */
 export const FLEET: FleetStep[] = [
-  { id: "seed-trust-config", script: "seed-trust-config.ts", loader: "seed-trust-config", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false },
-  { id: "seed-policy-benefits", script: "seed-policy-benefits.ts", loader: "seed-policy-benefits", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false },
-  { id: "options", script: "load-options.ts", loader: "t4-options", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: false },
-  { id: "contacts-workers", script: "load-contacts-workers.ts", loader: "t3t1-contacts-workers", logicVersion: 3, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "users", script: "load-users.ts", loader: "t27-users", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: true },
-  { id: "log-notes", script: "load-log-notes.ts", loader: "s1-log-notes", logicVersion: 3, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
-  { id: "beneficiaries", script: "load-beneficiaries.ts", loader: "t-bao-beneficiaries", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "member-statuses", script: "load-member-statuses.ts", loader: "t6-member-statuses", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "employers", script: "load-employers.ts", loader: "t7t24-employers", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "policies", script: "load-policies.ts", loader: "t-policies", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "employer-policies", script: "load-employer-policies.ts", loader: "t-employer-policies", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "employer-rates", script: "load-employer-rates.ts", loader: "t-employer-rates", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "relationships", script: "load-relationships.ts", loader: "t15-relationships", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "employee-ids", script: "load-employee-ids.ts", loader: "n4-employee-ids", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "elections", script: "load-elections.ts", loader: "t16-elections", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "benefit-history", script: "load-benefit-history.ts", loader: "t17-benefit-history", logicVersion: 3, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "payments", script: "load-payments.ts", loader: "t19-payments", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
-  { id: "hours", script: "load-hours.ts", loader: "t20-hours", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false, extraArgs: ["--migration-mode"] },
-  { id: "ledger", script: "load-ledger.ts", loader: "t18-ledger", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
-  { id: "cardchecks", script: "load-cardchecks.ts", loader: "cardchecks", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
-  { id: "enrollment-packet-tags", script: "load-enrollment-packet-tags.ts", loader: "t29-enrollment-packet-tags", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
+  {
+    id: "seed-trust-config",
+    script: "seed-trust-config.ts",
+    loader: "seed-trust-config",
+    logicVersion: 1,
+    supportsForceReconcile: false,
+    supportsAllowFindings: false,
+    supportsAllowRejects: false,
+  },
+  {
+    id: "seed-policy-benefits",
+    script: "seed-policy-benefits.ts",
+    loader: "seed-policy-benefits",
+    logicVersion: 1,
+    supportsForceReconcile: false,
+    supportsAllowFindings: false,
+    supportsAllowRejects: false,
+  },
+  {
+    id: "options",
+    script: "load-options.ts",
+    loader: "t4-options",
+    logicVersion: 2,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: false,
+  },
+  {
+    id: "contacts-workers",
+    script: "load-contacts-workers.ts",
+    loader: "t3t1-contacts-workers",
+    logicVersion: 3,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "users",
+    script: "load-users.ts",
+    loader: "t27-users",
+    logicVersion: 2,
+    supportsForceReconcile: false,
+    supportsAllowFindings: false,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "log-notes",
+    script: "load-log-notes.ts",
+    loader: "s1-log-notes",
+    logicVersion: 3,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+    extraArgs: ["--migration-mode"],
+  },
+  {
+    id: "beneficiaries",
+    script: "load-beneficiaries.ts",
+    loader: "t-bao-beneficiaries",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "member-statuses",
+    script: "load-member-statuses.ts",
+    loader: "t6-member-statuses",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "employers",
+    script: "load-employers.ts",
+    loader: "t7t24-employers",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "policies",
+    script: "load-policies.ts",
+    loader: "t-policies",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "employer-policies",
+    script: "load-employer-policies.ts",
+    loader: "t-employer-policies",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "employer-rates",
+    script: "load-employer-rates.ts",
+    loader: "t-employer-rates",
+    logicVersion: 2,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "relationships",
+    script: "load-relationships.ts",
+    loader: "t15-relationships",
+    logicVersion: 2,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "employee-ids",
+    script: "load-employee-ids.ts",
+    loader: "n4-employee-ids",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "elections",
+    script: "load-elections.ts",
+    loader: "t16-elections",
+    logicVersion: 2,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "benefit-history",
+    script: "load-benefit-history.ts",
+    loader: "t17-benefit-history",
+    logicVersion: 3,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "payments",
+    script: "load-payments.ts",
+    loader: "t19-payments",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: false,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "hours",
+    script: "load-hours.ts",
+    loader: "t20-hours",
+    logicVersion: 2,
+    supportsForceReconcile: false,
+    supportsAllowFindings: false,
+    supportsAllowRejects: false,
+    extraArgs: ["--migration-mode"],
+  },
+  {
+    id: "ledger",
+    script: "load-ledger.ts",
+    loader: "t18-ledger",
+    logicVersion: 2,
+    supportsForceReconcile: true,
+    supportsAllowFindings: false,
+    supportsAllowRejects: true,
+  },
+  {
+    id: "cardchecks",
+    script: "load-cardchecks.ts",
+    loader: "cardchecks",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+    extraArgs: ["--migration-mode"],
+  },
+  {
+    id: "enrollment-packet-tags",
+    script: "load-enrollment-packet-tags.ts",
+    loader: "t29-enrollment-packet-tags",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+    extraArgs: ["--migration-mode"],
+  },
 ];
 
 /** Configuration-mutating setup steps operators may explicitly omit on daily runs. */
-export const SEEDER_STEP_IDS = new Set(["seed-trust-config", "seed-policy-benefits"]);
+export const SEEDER_STEP_IDS = new Set([
+  "seed-trust-config",
+  "seed-policy-benefits",
+]);
 
-export function shouldSkipSeeder(mode: SyncMode, skipSeeders: boolean, stepId: string): boolean {
+export function shouldSkipSeeder(
+  mode: SyncMode,
+  skipSeeders: boolean,
+  stepId: string,
+): boolean {
   if (skipSeeders && mode !== "daily") {
-    throw new Error("--skip-seeders is daily-only; final-freeze must run the trust configuration seeders");
+    throw new Error(
+      "--skip-seeders is daily-only; final-freeze must run the trust configuration seeders",
+    );
   }
   return skipSeeders && SEEDER_STEP_IDS.has(stepId);
 }
@@ -116,11 +297,15 @@ export function fleetGateStatus(
   abortedAt?: string,
 ): "pass" | "fail" {
   if (abortedAt || records.length !== FLEET.length) return "fail";
-  return records.every((record, index) =>
-    record.id === FLEET[index].id &&
-    (record.status === "pass" ||
-      (record.status === "skipped" && shouldSkipSeeder(mode, skipSeeders, record.id)))
-  ) ? "pass" : "fail";
+  return records.every(
+    (record, index) =>
+      record.id === FLEET[index].id &&
+      (record.status === "pass" ||
+        (record.status === "skipped" &&
+          shouldSkipSeeder(mode, skipSeeders, record.id))),
+  )
+    ? "pass"
+    : "fail";
 }
 
 export interface StepPolicy {
@@ -190,8 +375,14 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
     historicalWmbEvents: true,
     stageArgs: [],
     postStageSeeds: [
-      { script: "dev/seed-beneficiary-fakes.ts", afterStep: "contacts-workers" },
-      { script: "dev/seed-log-note-fixtures.ts", afterStep: "contacts-workers" },
+      {
+        script: "dev/seed-beneficiary-fakes.ts",
+        afterStep: "contacts-workers",
+      },
+      {
+        script: "dev/seed-log-note-fixtures.ts",
+        afterStep: "contacts-workers",
+      },
       { script: "dev/seed-cardcheck-fakes.ts", afterStep: "contacts-workers" },
     ],
     openEndThrough: "2026-12", // dev synthetic convention (§4 row 9)
@@ -204,7 +395,11 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       months: { freeze: "2026-08", midHistory: "2025-06" },
       extraAllowUnresolved: [],
     },
-    dailyAllowedFindings: ["deleted_in_s1", "source_worker_missing", "pending_retention"],
+    dailyAllowedFindings: [
+      "deleted_in_s1",
+      "source_worker_missing",
+      "pending_retention",
+    ],
     steps: {
       "seed-trust-config": {},
       "seed-policy-benefits": {},
@@ -212,7 +407,9 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       // §5: RULED annotation family (non-fatal by ruling; the row still
       // loads) — the standard reject gate requires the explicit allowance.
       // 2 each in synthetic data.
-      "contacts-workers": { allowRejects: ["ssn_collision_q36", "worker_contact_unresolved"] },
+      "contacts-workers": {
+        allowRejects: ["ssn_collision_q36", "worker_contact_unresolved"],
+      },
       beneficiaries: {
         // §4 row 2b: seeded traps, one each.
         allowRejects: [
@@ -251,13 +448,22 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       cardchecks: {
         // §4 row 13b seeded traps. disclaimer_missing only re-fires when its
         // definition reprocesses (composite fingerprints) — harmless to keep allowed.
-        allowRejects: ["disclaimer_missing", "handler_dangling", "bad_json", "handler_unresolved"],
+        allowRejects: [
+          "disclaimer_missing",
+          "handler_dangling",
+          "bad_json",
+          "handler_unresolved",
+        ],
       },
       // Synthetic staging has no keep-tag terms, so the retention sweep
       // cannot run — a permanent dev-structural finding (RULED here), NOT a
       // deletion finding pending fund ruling. Production does not allow it.
-      "enrollment-packet-tags": { allowFindings: ["sweep_skipped_no_keep_tag_terms"] },
-      users: { allowRejects: ["missing_mail", "invalid_mail", "duplicate_user_email"] }, // synthetic traps
+      "enrollment-packet-tags": {
+        allowFindings: ["sweep_skipped_no_keep_tag_terms"],
+      },
+      users: {
+        allowRejects: ["missing_mail", "invalid_mail", "duplicate_user_email"],
+      }, // synthetic traps
     },
   },
 
@@ -265,7 +471,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
    * ruling; a class not listed fails the run (fail closed) and needs triage
    * + a ruling before being added here in a reviewed commit. */
   production: {
-    historicalWmbEvents: false,
+    historicalWmbEvents: true,
     stageArgs: [],
     postStageSeeds: [],
     // Daily dual-run policy (§4 row 9, amended 2026-08-09): omit the flag —
@@ -285,7 +491,11 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       months: { freeze: "2026-08", midHistory: "2025-06" },
       extraAllowUnresolved: [],
     },
-    dailyAllowedFindings: ["deleted_in_s1", "source_worker_missing", "pending_retention"],
+    dailyAllowedFindings: [
+      "deleted_in_s1",
+      "source_worker_missing",
+      "pending_retention",
+    ],
     steps: {
       "seed-trust-config": {},
       "seed-policy-benefits": {},
@@ -371,59 +581,99 @@ const YM_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export function validateSyncConfig(): void {
   const ids = new Set<string>();
   for (const s of FLEET) {
-    if (ids.has(s.id)) throw new Error(`sync-config: duplicate fleet step id "${s.id}"`);
+    if (ids.has(s.id))
+      throw new Error(`sync-config: duplicate fleet step id "${s.id}"`);
     ids.add(s.id);
   }
   const pay = FLEET.findIndex((s) => s.id === "payments");
   const hrs = FLEET.findIndex((s) => s.id === "hours");
   const led = FLEET.findIndex((s) => s.id === "ledger");
-  if (pay < 0 || led < 0 || pay > led) throw new Error("sync-config: payments must run before ledger (§10)");
-  if (hrs < 0 || hrs > led) throw new Error("sync-config: hours must run before ledger (payperiod crosswalk, Task 414)");
-  if (pay > hrs) throw new Error("sync-config: payments must run before hours (money order payments → hours → ledger)");
+  if (pay < 0 || led < 0 || pay > led)
+    throw new Error("sync-config: payments must run before ledger (§10)");
+  if (hrs < 0 || hrs > led)
+    throw new Error(
+      "sync-config: hours must run before ledger (payperiod crosswalk, Task 414)",
+    );
+  if (pay > hrs)
+    throw new Error(
+      "sync-config: payments must run before hours (money order payments → hours → ledger)",
+    );
   const trust = FLEET.findIndex((s) => s.id === "seed-trust-config");
-  const policyBenefits = FLEET.findIndex((s) => s.id === "seed-policy-benefits");
+  const policyBenefits = FLEET.findIndex(
+    (s) => s.id === "seed-policy-benefits",
+  );
   const elections = FLEET.findIndex((s) => s.id === "elections");
   if (trust < 0 || policyBenefits !== trust + 1 || policyBenefits > elections) {
-    throw new Error("sync-config: policy-benefit seed must run immediately after trust catalog and before elections");
+    throw new Error(
+      "sync-config: policy-benefit seed must run immediately after trust catalog and before elections",
+    );
   }
   const known = new Set<string>(KNOWN_FINDING_KINDS);
   for (const [name, p] of Object.entries(PROFILES)) {
     for (const kind of p.dailyAllowedFindings) {
-      if (!known.has(kind)) throw new Error(`sync-config[${name}]: unknown finding kind "${kind}" — fail closed`);
+      if (!known.has(kind))
+        throw new Error(
+          `sync-config[${name}]: unknown finding kind "${kind}" — fail closed`,
+        );
     }
     for (const key of Object.keys(p.steps)) {
-      if (!ids.has(key)) throw new Error(`sync-config[${name}]: step policy for unknown fleet id "${key}"`);
+      if (!ids.has(key))
+        throw new Error(
+          `sync-config[${name}]: step policy for unknown fleet id "${key}"`,
+        );
     }
     for (const seed of p.postStageSeeds) {
       if (!ids.has(seed.afterStep)) {
-        throw new Error(`sync-config[${name}]: seed "${seed.script}" afterStep "${seed.afterStep}" is not a fleet step id`);
+        throw new Error(
+          `sync-config[${name}]: seed "${seed.script}" afterStep "${seed.afterStep}" is not a fleet step id`,
+        );
       }
     }
     for (const [sid, pol] of Object.entries(p.steps)) {
       for (const k of pol.allowFindings ?? []) {
-        if (!known.has(k)) throw new Error(`sync-config[${name}]: "${sid}" allowFindings has unknown kind "${k}" — fail closed`);
+        if (!known.has(k))
+          throw new Error(
+            `sync-config[${name}]: "${sid}" allowFindings has unknown kind "${k}" — fail closed`,
+          );
       }
     }
     for (const s of FLEET) {
       const pol = p.steps[s.id];
-      if (!pol) throw new Error(`sync-config[${name}]: missing step policy for "${s.id}" (add {} explicitly)`);
+      if (!pol)
+        throw new Error(
+          `sync-config[${name}]: missing step policy for "${s.id}" (add {} explicitly)`,
+        );
       if (pol.allowRejects?.length && !s.supportsAllowRejects) {
-        throw new Error(`sync-config[${name}]: "${s.id}" has allowRejects but the loader has no reject gate`);
+        throw new Error(
+          `sync-config[${name}]: "${s.id}" has allowRejects but the loader has no reject gate`,
+        );
       }
       if (pol.allowRejects?.some((r) => !/^[a-z0-9_]+$/.test(r))) {
-        throw new Error(`sync-config[${name}]: "${s.id}" allowRejects contains a malformed class name`);
+        throw new Error(
+          `sync-config[${name}]: "${s.id}" allowRejects contains a malformed class name`,
+        );
       }
     }
-    if (p.openEndThrough !== "current-la-month" && !YM_RE.test(p.openEndThrough)) {
-      throw new Error(`sync-config[${name}]: openEndThrough must be "current-la-month" or YYYY-MM`);
+    if (
+      p.openEndThrough !== "current-la-month" &&
+      !YM_RE.test(p.openEndThrough)
+    ) {
+      throw new Error(
+        `sync-config[${name}]: openEndThrough must be "current-la-month" or YYYY-MM`,
+      );
     }
     for (const m of [p.parity.months.freeze, p.parity.months.midHistory]) {
-      if (!YM_RE.test(m)) throw new Error(`sync-config[${name}]: parity month "${m}" is not YYYY-MM`);
+      if (!YM_RE.test(m))
+        throw new Error(
+          `sync-config[${name}]: parity month "${m}" is not YYYY-MM`,
+        );
     }
     if (p.parity.toleranceCents !== 0) {
       // Not forbidden forever, but a non-zero tolerance is a fund decision —
       // force the diff to show a config change plus this comment.
-      throw new Error(`sync-config[${name}]: toleranceCents must stay 0 (0¢ drift rule) unless the fund re-rules`);
+      throw new Error(
+        `sync-config[${name}]: toleranceCents must stay 0 (0¢ drift rule) unless the fund re-rules`,
+      );
     }
   }
 }
@@ -431,7 +681,11 @@ export function validateSyncConfig(): void {
 /** Current month in America/Los_Angeles as YYYY-MM (the fund's clock — same
  * convention as the t17 loader default and getTodayYmd()). */
 export function currentLaMonth(now = new Date()): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: MIGRATION_SYSTEM_TIME_ZONE, year: "numeric", month: "2-digit" });
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: MIGRATION_SYSTEM_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+  });
   const parts = fmt.formatToParts(now);
   const y = parts.find((p) => p.type === "year")?.value;
   const m = parts.find((p) => p.type === "month")?.value;
@@ -439,13 +693,22 @@ export function currentLaMonth(now = new Date()): string {
 }
 
 /** Resolve the t17/month-parity horizon for a profile. */
-export function resolveOpenEndThrough(profile: SyncProfile, now = new Date()): string {
-  return profile.openEndThrough === "current-la-month" ? currentLaMonth(now) : profile.openEndThrough;
+export function resolveOpenEndThrough(
+  profile: SyncProfile,
+  now = new Date(),
+): string {
+  return profile.openEndThrough === "current-la-month"
+    ? currentLaMonth(now)
+    : profile.openEndThrough;
 }
 
 /** The rolling parity month set: freeze, mid-history, current open-span
  * month (deduped, chronological). The open-span month advances per sync. */
 export function parityMonths(profile: SyncProfile, now = new Date()): string[] {
-  const set = new Set([profile.parity.months.freeze, profile.parity.months.midHistory, currentLaMonth(now)]);
+  const set = new Set([
+    profile.parity.months.freeze,
+    profile.parity.months.midHistory,
+    currentLaMonth(now),
+  ]);
   return [...set].sort();
 }
