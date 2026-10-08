@@ -12,14 +12,16 @@
  * row involved: the `wizard` plugin kind has no adapter and no UI, so an
  * id from that table is one no author could obtain.
  *
- * Creates its own throwaway ledger account and deletes it again — it
- * never renders against, or mutates, real compliance data.
+ * Creates its own throwaway ledger account and deletes it again.
+ * Reads real employer uploads but never mutates compliance data.
  *
  * Run: npx tsx scripts/oneoffs/verify-compliance-message-token.ts
  */
 import { employers } from "../../shared/schema";
 import { initializeTokenPluginSystem } from "../../server/plugins/tokens";
-import { currentYearMonth } from "../../server/plugins/tokens/plugins/compliance";
+import { currentYearMonth, composeComplianceMessage } from "../../server/plugins/tokens/plugins/compliance";
+import { loadComplianceLetterValues } from "../../server/services/employer-compliance";
+import { complianceScopeSchema } from "../../shared/employer-compliance";
 import { storage } from "../../server/storage/database";
 import { loadComponentCache } from "../../server/services/component-cache";
 
@@ -55,13 +57,12 @@ async function main() {
   console.log(`Using wizard type "${WIZARD_ID}" (${WIZARD_NAME})`);
 
   const employer = (await storage.employers.getAllEmployers()).find(
-    (e) => typeof e.name === "string" && e.name.trim(),
+    (e) => e.isActive && typeof e.name === "string" && e.name.trim(),
   );
   if (!employer) {
     check("an employer with a name exists to render against", false);
     process.exit(1);
   }
-  const employerName = employer.name.trim();
 
   const created: Array<() => Promise<unknown>> = [];
   try {
@@ -87,10 +88,14 @@ async function main() {
     const render = async (expr: string) =>
       (await renderTokens(`{{${expr}}}`, seedCtx())).output;
 
-    const sentence = (wizardName: string, date: string, accountName: string) =>
-      `I am the example compliance message for ${employerName} for uploads ` +
-      `of type ${wizardName} (${date}). I am operating against account ` +
-      `${accountName}. Hear me roar.`;
+    const sentence = async (wizardName: string, date: string, accountName: string) => {
+      const scope = complianceScopeSchema.parse({
+        wizardType: WIZARD_ID, year: Number(date.slice(0, 4)), month: Number(date.slice(5)),
+        ledgerAccountIds: [account.id],
+      });
+      const values = await loadComplianceLetterValues(storage, scope, employer.id);
+      return composeComplianceMessage(values.employer_name, wizardName, date, accountName, values);
+    };
 
     console.log("\n--- validation ---");
     for (const [expr, shouldPass] of [
@@ -139,7 +144,7 @@ async function main() {
     console.log(`  "${happy}"`);
     check(
       "renders the full sentence with the supplied date",
-      happy === sentence(WIZARD_NAME, SAMPLE_DATE, ACCOUNT_NAME),
+      happy === await sentence(WIZARD_NAME, SAMPLE_DATE, ACCOUNT_NAME),
     );
 
     console.log("\n--- date defaults to the current year-month ---");
@@ -149,7 +154,7 @@ async function main() {
     console.log(`  "${defaulted}"`);
     check(
       "omitted date renders the current year-month",
-      defaulted === sentence(WIZARD_NAME, currentYearMonth(), ACCOUNT_NAME),
+      defaulted === await sentence(WIZARD_NAME, currentYearMonth(), ACCOUNT_NAME),
       currentYearMonth(),
     );
     check(
@@ -181,7 +186,7 @@ async function main() {
     );
     check(
       "blank date falls back to the current year-month too",
-      blankDate === sentence(WIZARD_NAME, currentYearMonth(), ACCOUNT_NAME),
+      blankDate === await sentence(WIZARD_NAME, currentYearMonth(), ACCOUNT_NAME),
       `"${blankDate}"`,
     );
 
@@ -215,13 +220,13 @@ async function main() {
       console.log(`  ${persona}: "${out}"`);
       check(
         `${persona} persona previews a coherent sentence`,
-        out.startsWith("I am the example compliance message for") &&
-          out.endsWith("Hear me roar.") &&
+        out.includes("Missing reporting periods:") &&
+          out.endsWith("Total delinquent balance: 125.00.") &&
           // Each persona supplies its own sentence rather than falling
           // back to the metadata example.
           !out.includes("Monthly Hours Upload") &&
           // The persona sentence carries a period of its own.
-          /\(\d{4}-\d{2}\)/.test(out),
+          /through \d{4}-\d{2}/.test(out),
       );
     }
   } finally {

@@ -1,11 +1,6 @@
 import { registerTokenPlugin } from "../registry";
 import { memo, tokenEntityOf, type TokenEvalContext } from "../types";
-import { registerTokenContext } from "../contexts";
-import { registerTokenContextRoot } from "../context-roots";
-import {
-  COMPLIANCE_ROOT, EMPLOYER_COMPLIANCE_LETTER_CONTEXT,
-  complianceScopeSchema, parseComplianceRecordId,
-} from "@shared/employer-compliance";
+import { complianceScopeSchema } from "@shared/employer-compliance";
 import { loadComplianceLetterValues } from "../../../services/employer-compliance";
 
 export function currentYearMonth(now: Date = new Date()): string {
@@ -21,11 +16,12 @@ export function composeComplianceMessage(
 ): string {
   if (!values) {
     // Fictional sample values, never used by the real resolver.
-    return `${employerName}: ${wizardName}, through ${date}, ${accountName}. Missing reporting periods: Jun 2049. Delinquent statement periods: Jun 2049: 125.00. Total delinquent balance: 125.00.`;
+    return `${employerName}: ${wizardName}, through ${date}, ${accountName}. Missing reporting periods: ${date}. Delinquent statement periods: ${date}: 125.00. Total delinquent balance: 125.00.`;
   }
+  const sentence = (value: string) => value.endsWith(".") ? value : `${value}.`;
   return `${employerName}: ${wizardName} (${values.period_window}), accounts: ${accountName}. ` +
-    `Missing reporting periods: ${values.missing_periods} ` +
-    `Delinquent statement periods: ${values.delinquent_periods} ` +
+    `Missing reporting periods: ${sentence(values.missing_periods)} ` +
+    `Delinquent statement periods: ${sentence(values.delinquent_periods)} ` +
     `Total delinquent balance: ${values.delinquent_total}.`;
 }
 
@@ -45,8 +41,9 @@ const args = {
 async function resolveCompliance(entity: unknown, arguments_: Record<string, string>, ctx: TokenEvalContext) {
   const employer = tokenEntityOf(entity, "employer");
   if (typeof employer?.row.id !== "string") return null;
+  if (!arguments_.account?.trim()) return null;
   const employerId = employer.row.id;
-  const date = arguments_.date?.trim() || currentYearMonth();
+  const date = arguments_.date?.trim() || currentYearMonth(ctx.now);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(date)) return null;
   const siriusIds = [...new Set([arguments_.account, ...(arguments_.accounts ?? "").split(",")]
     .map((id) => id?.trim()).filter((id): id is string => Boolean(id)))];
@@ -67,7 +64,6 @@ async function resolveCompliance(entity: unknown, arguments_: Record<string, str
     return { values, wizardName: wizard.name, accountName: accounts.map((account) => account!.name).join(", "), date };
   });
 }
-
 for (const leaf of [
   { segment: "compliance_message", name: "Compliance message", value: null },
   { segment: "compliance_missing_periods", name: "Missing reporting periods", value: "missing_periods" },
@@ -93,62 +89,3 @@ for (const leaf of [
     },
   });
 }
-
-const reportFields = ["employer_name", "missing_periods", "delinquent_periods", "delinquent_total", "period_window"];
-
-/**
- * This kind is a scoped report, not a worker's employer. Its compound address
- * carries transient settings; every real preview reloads the named employer
- * and computes the report behind the report's own staff + ledger gates.
- */
-registerTokenPlugin({
-  metadata: {
-    id: "token.employer_compliance.report", name: "Employer compliance report",
-    description: "The selected employer's compliance report for a specific upload type, account selection, and period window",
-    segmentName: "__employer_compliance_report", inputTypes: [],
-    outputType: COMPLIANCE_ROOT, hiddenFromPicker: true,
-    entityFields: reportFields, requiredComponent: "ledger",
-    previewEntity: {
-      gate: { scope: "route", policy: "staff" },
-      requiredComponent: "ledger",
-      async load(storage, id) {
-        const record = parseComplianceRecordId(id);
-        const values = await loadComplianceLetterValues(storage, record, record.employerId);
-        return { entity: { kind: COMPLIANCE_ROOT, row: { id, ...values } }, label: values.employer_name };
-      },
-    },
-    sampleSets: [{
-      id: "martian", label: "Fictional sample",
-      values: {
-        employer_name: "Olympus Mons Freight", missing_periods: "May 2049, Jun 2049",
-        delinquent_periods: "Jun 2049: 125.00; Jul 2049: 75.00",
-        delinquent_total: "200.00", period_window: "Feb 2049 – Jul 2049",
-      },
-    }],
-  },
-  async resolve() { return null; },
-});
-
-registerTokenContextRoot({
-  name: COMPLIANCE_ROOT, kind: COMPLIANCE_ROOT, label: "Employer compliance report",
-  fields: reportFields, requiredComponent: "ledger",
-});
-registerTokenContext({
-  id: EMPLOYER_COMPLIANCE_LETTER_CONTEXT, name: "Employer compliance letter",
-  description: "A letter about the employer and settings selected in the compliance report",
-  rootNames: [COMPLIANCE_ROOT], media: ["postal"], access: "staff", component: "ledger",
-});
-
-export const COMPLIANCE_LETTER_STARTER = {
-  name: "Employer compliance letter", medium: "postal",
-  contextIds: [EMPLOYER_COMPLIANCE_LETTER_CONTEXT],
-  content: {
-    description: '{{employer_compliance.field(name="employer_name")}} — compliance review',
-    body: '<p>To {{employer_compliance.field(name="employer_name")}},</p>' +
-      '<p>Our compliance review covers {{employer_compliance.field(name="period_window")}}.</p>' +
-      '<h2>Missing reporting periods</h2><p>{{employer_compliance.field(name="missing_periods")}}</p>' +
-      '<h2>Outstanding statement balances</h2><p>{{employer_compliance.field(name="delinquent_periods")}}</p>' +
-      '<p>Total delinquent balance: {{employer_compliance.field(name="delinquent_total")}}</p>' +
-      '<p>Please review these reporting periods and balances and contact us to resolve any discrepancies.</p>',
-  },
-};

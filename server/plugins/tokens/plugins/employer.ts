@@ -16,6 +16,9 @@ const EMPLOYER_SAMPLE_SETS = [
     values: {
       name: "Olympus Mons Freight",
       sirius_id: "SAMPLE-E01",
+      compliance_missing_periods: "Jul 2049",
+      compliance_delinquent_periods: "Jul 2049: 125.00",
+      compliance_delinquent_total: "125.00",
       compliance_message: complianceSample(
         "Olympus Mons Freight",
         "Regolith Haulage Hours",
@@ -30,6 +33,9 @@ const EMPLOYER_SAMPLE_SETS = [
     values: {
       name: "Difference Engine Works",
       sirius_id: "SAMPLE-E02",
+      compliance_missing_periods: "Dec 1843",
+      compliance_delinquent_periods: "Dec 1843: 125.00",
+      compliance_delinquent_total: "125.00",
       compliance_message: complianceSample(
         "Difference Engine Works",
         "Analytical Shift Returns",
@@ -44,6 +50,9 @@ const EMPLOYER_SAMPLE_SETS = [
     values: {
       name: "Ithaka Shipping Company",
       sirius_id: "SAMPLE-E03",
+      compliance_missing_periods: "Apr 1184",
+      compliance_delinquent_periods: "Apr 1184: 125.00",
+      compliance_delinquent_total: "125.00",
       compliance_message: complianceSample(
         "Ithaka Shipping Company",
         "Voyage Manifest Upload",

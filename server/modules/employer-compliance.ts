@@ -4,14 +4,8 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { createBulkParticipantStorage } from "../storage/bulk/participants";
 import { insertBulkMessageSchema } from "@shared/schema/bulk/schema";
-import {
-  complianceScopeSchema, complianceRecordSchema, complianceRecordId,
-  EMPLOYER_COMPLIANCE_LETTER_CONTEXT, COMPLIANCE_ROOT,
-} from "@shared/employer-compliance";
-import { loadComplianceReport, validateComplianceReferences } from "../services/employer-compliance";
-import { buildPreviewSeeds } from "../plugins/tokens/preview-seeds";
-import { tokenContextRootNames } from "../plugins/tokens/contexts";
-import { COMPLIANCE_LETTER_STARTER } from "../plugins/tokens/plugins/compliance";
+import { complianceScopeSchema } from "@shared/employer-compliance";
+import { loadComplianceReport } from "../services/employer-compliance";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -79,38 +73,6 @@ export function registerEmployerComplianceRoutes(
       }
     },
   );
-
-  app.get("/api/employer-compliance/letter-starter", requireAuth,
-    requireComponent("ledger"), requireAccess("staff"), (_req, res) => {
-      res.json(COMPLIANCE_LETTER_STARTER);
-    });
-
-  app.get("/api/employer-compliance/letter-seeds", requireAuth,
-    requireComponent("ledger"), requireAccess("staff"), async (req, res) => {
-      const parsed = complianceRecordSchema.safeParse({
-        ...req.query,
-        ledgerAccountIds: typeof req.query.ledgerAccountIds === "string"
-          ? req.query.ledgerAccountIds.split(",").filter(Boolean) : [],
-      });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid compliance letter settings" });
-      try {
-        await validateComplianceReferences(storage, parsed.data);
-        const report = await loadComplianceReport(storage, parsed.data, { employerId: parsed.data.employerId });
-        if (!report.rows.length) return res.status(404).json({ message: "Employer unavailable or inactive" });
-        res.json(await buildPreviewSeeds({ storage, req }, {
-          rootNames: tokenContextRootNames(EMPLOYER_COMPLIANCE_LETTER_CONTEXT),
-          recordsByRoot: {
-            [COMPLIANCE_ROOT]: [{
-              id: complianceRecordId(parsed.data),
-              label: report.rows[0].employerName,
-              hint: `${parsed.data.monthsBack} months ending ${parsed.data.year}-${String(parsed.data.month).padStart(2, "0")}`,
-            }],
-          },
-        }));
-      } catch (error) {
-        res.status(400).json({ message: error instanceof Error ? error.message : "Compliance report unavailable" });
-      }
-    });
 
   app.post(
     "/api/employer-compliance/resolve-contacts",
