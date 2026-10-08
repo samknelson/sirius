@@ -14,3 +14,15 @@ asked whether letters should mirror the report or change compliance rules first.
 ledger accounts for letter values. If financial or reporting definitions need
 to change later, treat that as a separate product decision rather than quietly
 changing the meaning only in the letter.
+
+The compliance-letter request is **token-plugin-only**, using the existing
+letter-template system. Do not add a separate template tool, report-page letter
+dialog, starter-template workflow, or new editing/preview surface.
+
+**Why:** the owner corrected an expanded implementation: “We have letter
+templates and everything, I JUST want a token plugin to use with the current
+letter template system.”
+
+**How to apply:** implement and register report-backed token values in the
+existing system. Sharing report calculations is appropriate; adding authoring
+or sending features requires a separate explicit request.

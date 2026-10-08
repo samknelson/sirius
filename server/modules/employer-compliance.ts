@@ -4,29 +4,16 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { createBulkParticipantStorage } from "../storage/bulk/participants";
 import { insertBulkMessageSchema } from "@shared/schema/bulk/schema";
+import {
+  complianceScopeSchema, complianceRecordSchema, complianceRecordId,
+  EMPLOYER_COMPLIANCE_LETTER_CONTEXT, COMPLIANCE_ROOT,
+} from "@shared/employer-compliance";
+import { loadComplianceReport, validateComplianceReferences } from "../services/employer-compliance";
+import { buildPreviewSeeds } from "../plugins/tokens/preview-seeds";
+import { tokenContextRootNames } from "../plugins/tokens/contexts";
+import { COMPLIANCE_LETTER_STARTER } from "../plugins/tokens/plugins/compliance";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
-
-interface MonthCell {
-  year: number;
-  month: number;
-  wizardId: string | null;
-  status: string | null;
-  currentStep: string | null;
-  balanceDelta: string | null;
-}
-
-interface ComplianceRow {
-  employerId: string;
-  employerName: string;
-  siriusId: string | null;
-  isActive: boolean;
-  companyId: string | null;
-  companyName: string | null;
-  months: MonthCell[];
-  balances: Record<string, string | null>;
-  totalBalance: string;
-}
 
 export function registerEmployerComplianceRoutes(
   app: Express,
@@ -61,7 +48,9 @@ export function registerEmployerComplianceRoutes(
             .json({ message: "wizardType, year, month are required and must be valid" });
         }
 
-        const span = Math.max(1, Math.min(24, monthsBackNum));
+        if (!Number.isInteger(monthsBackNum)) {
+          return res.status(400).json({ message: "monthsBack must be an integer" });
+        }
 
         let ledgerAccountIds: string[] = [];
         if (Array.isArray(ledgerAccountIdsParam)) {
@@ -75,122 +64,14 @@ export function registerEmployerComplianceRoutes(
             .filter((s) => s.length > 0);
         }
 
-        const employersWithUploads =
-          await storage.wizardEmployerMonthly.listAllEmployersWithUploadsForRange(
-            yearNum,
-            monthNum,
-            wizardType,
-            span,
-          );
-
-        const monthPeriods: Array<{ year: number; month: number }> = [];
-        for (let i = span - 1; i >= 0; i--) {
-          const d = new Date(yearNum, monthNum - 1 - i, 1);
-          monthPeriods.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
-        }
-
-        const allActiveEmployers = employersWithUploads.filter((e) => e.employer.isActive);
-        const initialEmployerIds = allActiveEmployers.map((e) => e.employer.id);
-
-        const companyByEmployer =
-          await storage.employerCompanies.getByEmployerIdsWithCompanyName(initialEmployerIds);
-        const companyMap = new Map<string, { id: string; name: string }>();
-        companyByEmployer.forEach((c, employerId) => {
-          companyMap.set(employerId, { id: c.companyId, name: c.companyName });
+        const parsedScope = complianceScopeSchema.safeParse({
+          wizardType, year: yearNum, month: monthNum,
+          monthsBack: Math.max(1, Math.min(24, monthsBackNum)), ledgerAccountIds,
         });
-
-        const companyFilter = typeof companyId === "string" ? companyId : null;
-        const activeEmployers = companyFilter
-          ? allActiveEmployers.filter((e) => {
-              const m = companyMap.get(e.employer.id);
-              if (companyFilter === "__none__") return !m;
-              return m?.id === companyFilter;
-            })
-          : allActiveEmployers;
-        const employerIds = activeEmployers.map((e) => e.employer.id);
-
-        const balanceMap = new Map<string, Map<string, string>>();
-        const balanceRows = await storage.ledger.entries.getBalancesByEntityAndAccount(
-          "employer",
-          employerIds,
-          ledgerAccountIds,
-        );
-        for (const r of balanceRows) {
-          if (!balanceMap.has(r.entityId)) {
-            balanceMap.set(r.entityId, new Map());
-          }
-          balanceMap.get(r.entityId)!.set(r.accountId, r.total);
-        }
-
-        const monthlyDeltaMap = new Map<string, Map<string, number>>();
-        const monthKeys = monthPeriods.map(
-          (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
-        );
-        const monthlyRows = await storage.ledger.entries.getMonthlyDeltasByEntityAndAccount(
-          "employer",
-          employerIds,
-          ledgerAccountIds,
-          monthKeys,
-        );
-        for (const r of monthlyRows) {
-          if (!monthlyDeltaMap.has(r.entityId)) {
-            monthlyDeltaMap.set(r.entityId, new Map());
-          }
-          monthlyDeltaMap.get(r.entityId)!.set(r.ym, Number(r.total));
-        }
-
-        const rows: ComplianceRow[] = activeEmployers.map(({ employer, uploads }) => {
-          const sortedUploads = [...uploads].sort((a, b) => {
-            const ad = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const bd = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return bd - ad;
-          });
-          const employerMonthlyDeltas = monthlyDeltaMap.get(employer.id);
-          const months: MonthCell[] = monthPeriods.map((p) => {
-            const u = sortedUploads.find((up) => up.year === p.year && up.month === p.month);
-            const ymKey = `${p.year}-${String(p.month).padStart(2, "0")}`;
-            const delta = employerMonthlyDeltas?.get(ymKey);
-            return {
-              year: p.year,
-              month: p.month,
-              wizardId: u ? u.id : null,
-              status: u ? u.status : null,
-              currentStep: u ? u.currentStep : null,
-              balanceDelta:
-                ledgerAccountIds.length > 0 && delta !== undefined
-                  ? delta.toFixed(2)
-                  : null,
-            };
-          });
-
-          const accountBalances: Record<string, string | null> = {};
-          let total = 0;
-          const employerBalances = balanceMap.get(employer.id);
-          for (const accountId of ledgerAccountIds) {
-            const v = employerBalances?.get(accountId) ?? null;
-            accountBalances[accountId] = v;
-            if (v !== null) total += Number(v);
-          }
-
-          const company = companyMap.get(employer.id);
-
-          return {
-            employerId: employer.id,
-            employerName: employer.name,
-            siriusId: employer.siriusId,
-            isActive: employer.isActive,
-            companyId: company?.id ?? null,
-            companyName: company?.name ?? null,
-            months,
-            balances: accountBalances,
-            totalBalance: total.toFixed(2),
-          };
-        });
-
-        res.json({
-          monthPeriods,
-          rows,
-        });
+        if (!parsedScope.success) return res.status(400).json({ message: "Invalid compliance report settings" });
+        res.json(await loadComplianceReport(storage, parsedScope.data, {
+          companyId: typeof companyId === "string" ? companyId : null,
+        }));
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to load compliance dashboard";
@@ -198,6 +79,38 @@ export function registerEmployerComplianceRoutes(
       }
     },
   );
+
+  app.get("/api/employer-compliance/letter-starter", requireAuth,
+    requireComponent("ledger"), requireAccess("staff"), (_req, res) => {
+      res.json(COMPLIANCE_LETTER_STARTER);
+    });
+
+  app.get("/api/employer-compliance/letter-seeds", requireAuth,
+    requireComponent("ledger"), requireAccess("staff"), async (req, res) => {
+      const parsed = complianceRecordSchema.safeParse({
+        ...req.query,
+        ledgerAccountIds: typeof req.query.ledgerAccountIds === "string"
+          ? req.query.ledgerAccountIds.split(",").filter(Boolean) : [],
+      });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid compliance letter settings" });
+      try {
+        await validateComplianceReferences(storage, parsed.data);
+        const report = await loadComplianceReport(storage, parsed.data, { employerId: parsed.data.employerId });
+        if (!report.rows.length) return res.status(404).json({ message: "Employer unavailable or inactive" });
+        res.json(await buildPreviewSeeds({ storage, req }, {
+          rootNames: tokenContextRootNames(EMPLOYER_COMPLIANCE_LETTER_CONTEXT),
+          recordsByRoot: {
+            [COMPLIANCE_ROOT]: [{
+              id: complianceRecordId(parsed.data),
+              label: report.rows[0].employerName,
+              hint: `${parsed.data.monthsBack} months ending ${parsed.data.year}-${String(parsed.data.month).padStart(2, "0")}`,
+            }],
+          },
+        }));
+      } catch (error) {
+        res.status(400).json({ message: error instanceof Error ? error.message : "Compliance report unavailable" });
+      }
+    });
 
   app.post(
     "/api/employer-compliance/resolve-contacts",

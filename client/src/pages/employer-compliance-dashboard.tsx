@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { format } from "@/lib/date-format";
-import { Building2, Loader2, Send, AlertCircle, Download } from "lucide-react";
+import { Building2, Loader2, Send, AlertCircle, Download, FileText } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { WizardType } from "@/lib/wizard-types";
 import type { LedgerAccount } from "@/lib/ledger-types";
+import { ComplianceLetterDialog } from "@/components/employer-compliance/ComplianceLetterDialog";
 
 type StatusFilter =
   | "all"
@@ -171,6 +172,10 @@ export default function EmployerComplianceDashboard() {
     const v = readQueryParam("month");
     return v ? Number(v) : defaultMonth;
   });
+  const [monthsBack, setMonthsBack] = useState<number>(() => {
+    const value = Number(readQueryParam("monthsBack"));
+    return Number.isInteger(value) && value >= 1 && value <= 24 ? value : 6;
+  });
   const [wizardType, setWizardType] = useState<string>(
     () => readQueryParam("wizardType") ?? "",
   );
@@ -202,6 +207,7 @@ export default function EmployerComplianceDashboard() {
   const [bulkMedia, setBulkMedia] = useState<Array<"sms" | "email" | "inapp" | "postal">>(["email"]);
 
   const [isExporting, setIsExporting] = useState(false);
+  const [letterEmployer, setLetterEmployer] = useState<ComplianceRow | null>(null);
 
   const { data: wizardTypes = [] } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
@@ -239,7 +245,7 @@ export default function EmployerComplianceDashboard() {
         year,
         month,
         wizardType,
-        monthsBack: 6,
+        monthsBack,
         ledgerAccountIds: selectedAccountIds.join(","),
         companyId: companyFilter !== "all" ? companyFilter : "",
       },
@@ -251,6 +257,7 @@ export default function EmployerComplianceDashboard() {
     const params = new URLSearchParams();
     params.set("year", String(year));
     params.set("month", String(month));
+    params.set("monthsBack", String(monthsBack));
     if (wizardType) params.set("wizardType", wizardType);
     if (selectedAccountIds.length > 0) params.set("accounts", selectedAccountIds.join(","));
     if (companyFilter !== "all") params.set("company", companyFilter);
@@ -268,6 +275,7 @@ export default function EmployerComplianceDashboard() {
   }, [
     year,
     month,
+    monthsBack,
     wizardType,
     selectedAccountIds,
     companyFilter,
@@ -552,6 +560,10 @@ export default function EmployerComplianceDashboard() {
 
   const accountById = new Map(ledgerAccounts.map((a) => [a.id, a] as const));
   const selectedAccountCount = selectedAccountIds.length;
+  const validSelectedAccounts =
+    ledgerEnabled &&
+    selectedAccountIds.length > 0 &&
+    selectedAccountIds.every((id) => ledgerAccounts.some((account) => account.id === id));
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -560,7 +572,7 @@ export default function EmployerComplianceDashboard() {
           Employer Compliance
         </h1>
         <p className="text-muted-foreground">
-          Six-month upload status and current balances for every active employer.
+          {monthsBack}-month upload status and current balances for every active employer.
         </p>
       </div>
 
@@ -570,7 +582,7 @@ export default function EmployerComplianceDashboard() {
           <CardDescription>Choose period, upload type, and balance accounts.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <Label className="mb-1 block">Year</Label>
               <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
@@ -610,6 +622,21 @@ export default function EmployerComplianceDashboard() {
                 <SelectContent>
                   {monthlyWizardTypes.map((wt) => (
                     <SelectItem key={wt.name} value={wt.name}>{wt.displayName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block">Reporting window</Label>
+              <Select value={String(monthsBack)} onValueChange={(value) => setMonthsBack(Number(value))}>
+                <SelectTrigger data-testid="select-months-back">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, index) => index + 1).map((count) => (
+                    <SelectItem key={count} value={String(count)}>
+                      {count} month{count === 1 ? "" : "s"}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -746,6 +773,11 @@ export default function EmployerComplianceDashboard() {
               no upload
             </span>
           </div>
+          {!validSelectedAccounts && (
+            <p className="text-xs text-amber-700 dark:text-amber-400" role="status">
+              Select at least one valid ledger account to calculate balances and open a report-backed letter preview.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -851,6 +883,7 @@ export default function EmployerComplianceDashboard() {
                     {selectedAccountIds.length > 1 && (
                       <TableHead className="text-right font-semibold">Total</TableHead>
                     )}
+                    <TableHead className="w-[100px] text-right">Letter</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -939,6 +972,24 @@ export default function EmployerComplianceDashboard() {
                           {Number(row.totalBalance).toFixed(2)}
                         </TableCell>
                       )}
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setLetterEmployer(row)}
+                          disabled={!validSelectedAccounts || !wizardType}
+                          title={
+                            validSelectedAccounts
+                              ? "Preview this employer's report-backed letter"
+                              : "Select valid ledger accounts to calculate report scope"
+                          }
+                          data-testid={`button-letter-${row.employerId}`}
+                        >
+                          <FileText className="mr-1.5 h-3.5 w-3.5" />
+                          Letter
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1030,6 +1081,21 @@ export default function EmployerComplianceDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {letterEmployer && (
+        <ComplianceLetterDialog
+          open={Boolean(letterEmployer)}
+          onOpenChange={(open) => {
+            if (!open) setLetterEmployer(null);
+          }}
+          employerId={letterEmployer.employerId}
+          employerName={letterEmployer.employerName}
+          wizardType={wizardType}
+          year={year}
+          month={month}
+          monthsBack={monthsBack}
+          selectedAccountIds={selectedAccountIds}
+        />
+      )}
     </div>
   );
 }
