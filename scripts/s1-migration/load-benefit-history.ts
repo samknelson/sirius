@@ -1355,6 +1355,8 @@ async function main() {
   report.verifyFailures = verifyFailures;
   report.historicalEventEvidence = {
     inclusiveCutoff: ymKey(OPEN_END_THROUGH),
+    // Source-history completeness stays stronger than accepted-import readiness.
+    // Reviewed rejects remain incomplete even when stored-coverage events run.
     complete: !DRY_RUN && (report.staged as number) > 0 &&
       progressDone === report.staged && rejectedNids.length === 0 &&
       Object.values(rejects.counts).every(count => count === 0) && verifyFailures === 0,

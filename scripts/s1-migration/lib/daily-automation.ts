@@ -1,4 +1,4 @@
-import type { WmbEventPhase } from "./wmb-event-phase";
+import { validatedCoverageCutoff, type WmbEventPhase } from "./wmb-event-phase";
 
 export const DAILY_SYNC_COMMAND = [
   "npx",
@@ -75,6 +75,7 @@ export function sanitizedWmbEvents(value: unknown): WmbEventPhase {
   const statuses = ["pass", "fail", "disabled", "skipped"];
   const reasons = ["awaiting-tested-image-activation", "coverage-not-completed",
     "dry-run-no-verified-stored-history-cutoff", "unsafe-or-missing-complete-history-evidence",
+    "unsafe-or-missing-stored-coverage-evidence",
     "missing-completed-stage-evidence",
     "invalid-traversal-bound", "malformed-page-result", "malformed-event-totals",
     "inconsistent-event-totals", "worker-reconciliation-failed", "unfinished-traversal",
@@ -86,6 +87,10 @@ export function sanitizedWmbEvents(value: unknown): WmbEventPhase {
       return typeof count === "number" && Number.isSafeInteger(count) && count >= 0;
     });
   if (!statuses.includes(phase.status) || phase.basis !== "stored-coverage" ||
+      phase.policy !== "accepted-import-stored-coverage" ||
+      (phase.sourceHistory !== null && (!phase.cutoff ||
+        !validatedCoverageCutoff({ openEndThrough: phase.cutoff,
+          historicalEventEvidence: phase.sourceHistory }, phase.cutoff))) ||
       !["live", "preview"].includes(phase.mode) ||
       (phase.cutoff !== null && (typeof phase.cutoff !== "string" ||
         !/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(phase.cutoff))) ||
@@ -97,7 +102,8 @@ export function sanitizedWmbEvents(value: unknown): WmbEventPhase {
       !validCounters(phase.totals, [...counterKeys, "failed"]) ||
       !phase.byType || !["start", "restart", "terminate"].every(type =>
         validCounters(phase.byType[type as keyof typeof phase.byType], counterKeys)) ||
-      (phase.status === "pass" && (!phase.complete || !phase.cutoff || phase.totals.failed !== 0 || phase.reason !== null)) ||
+      (phase.status === "pass" && (!phase.complete || !phase.cutoff || !phase.sourceHistory ||
+        phase.totals.failed !== 0 || phase.reason !== null)) ||
       (phase.status !== "pass" && (phase.complete || phase.reason === null))) {
     throw new Error("malformed WMB event phase");
   }
@@ -105,6 +111,12 @@ export function sanitizedWmbEvents(value: unknown): WmbEventPhase {
     Object.fromEntries(counterKeys.map(key => [key, data[key]])) as Omit<WmbEventPhase["totals"], "failed">;
   return {
     status: phase.status, reason: phase.reason, mode: phase.mode, basis: "stored-coverage",
+    policy: "accepted-import-stored-coverage",
+    sourceHistory: phase.sourceHistory === null ? null : {
+      inclusiveCutoff: phase.sourceHistory.inclusiveCutoff, complete: phase.sourceHistory.complete,
+      stagedSpans: phase.sourceHistory.stagedSpans, processedSpans: phase.sourceHistory.processedSpans,
+      rejectedSpans: phase.sourceHistory.rejectedSpans, verifyFailures: phase.sourceHistory.verifyFailures,
+    },
     cutoff: phase.cutoff, durationSec: phase.durationSec, pages: phase.pages,
     workers: phase.workers, complete: phase.complete,
     totals: { ...counts(phase.totals), failed: phase.totals.failed },

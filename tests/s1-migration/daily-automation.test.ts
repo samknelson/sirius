@@ -8,7 +8,8 @@ import {
   sanitizeDailySummary,
   summaryMessage,
 } from "../../scripts/s1-migration/lib/daily-automation";
-import { emptyWmbPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
+import { emptyWmbPhase, runWmbEventPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
+import { reviewedCoverageDetail } from "./wmb-coverage-fixture";
 
 const disabledWmb = { ...emptyWmbPhase(false), status: "disabled" as const,
   reason: "awaiting-tested-image-activation" };
@@ -112,5 +113,30 @@ describe("scheduled S1 daily automation", () => {
     expect(() => sanitizeDailySummary({ ...passing, wmbEvents: {
       ...disabledWmb, status: "fail", reason: "page-execution-failed",
     }, gates: { ...passing.gates, wmbEvents: "fail" } })).toThrow("PASS requires WMB");
+  });
+
+  it("reports accepted rejects and completed candidate traversal without source-completeness claims", async () => {
+    const wmbEvents = await runWmbEventPhase({ enabled: true, dryRun: false,
+      importSucceeded: true, stagingComplete: true, detail: reviewedCoverageDetail, horizon: "2026-10" },
+    async () => ({ mode: "live", basis: "stored-coverage", cutoff: "2026-10", workers: 0,
+      afterWorker: "", lastWorker: null, nextAfterWorker: null, incomplete: false,
+      totals: { created: 0, unchanged: 0, removed: 0, skipped: 0, failed: 0 }, byTypeBenefitMonth: [] }));
+    const report = { ...passing, wmbEvents: { ...wmbEvents,
+      sourceHistory: { ...wmbEvents.sourceHistory, sourceRows: ["must-not-leak"], credentials: "must-not-leak" } },
+      gates: { ...passing.gates, wmbEvents: "pass" }, fleetTotals: { rejected: 82854 } };
+    const summary = sanitizeDailySummary(report);
+    expect(summary).toMatchObject({ result: "PASS", gates: { wmbEvents: "pass" },
+      wmbEvents: { complete: true, cutoff: "2026-10", policy: "accepted-import-stored-coverage",
+        sourceHistory: { complete: false, rejectedSpans: 82854, stagedSpans: 646623, processedSpans: 646623 } } });
+    expect(summaryMessage(summary)).not.toContain("must-not-leak");
+    for (const patch of [{ complete: true }, { rejectedSpans: -1 }, { processedSpans: 1 },
+      { inclusiveCutoff: "2026-09" }, { verifyFailures: 1 }]) {
+      expect(() => sanitizeDailySummary({ ...report, wmbEvents: { ...wmbEvents,
+        sourceHistory: { ...wmbEvents.sourceHistory, ...patch } } })).toThrow("malformed WMB");
+    }
+    expect(() => sanitizeDailySummary({ ...report, wmbEvents: { ...wmbEvents, sourceHistory: null } }))
+      .toThrow("malformed WMB");
+    expect(() => sanitizeDailySummary({ ...report, wmbEvents: { ...wmbEvents, policy: "complete-source-history" } }))
+      .toThrow("malformed WMB");
   });
 });

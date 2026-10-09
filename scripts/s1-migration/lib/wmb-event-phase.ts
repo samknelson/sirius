@@ -11,16 +11,19 @@ export interface WmbEventPhase {
   reason: string | null;
   mode: "live" | "preview";
   basis: "stored-coverage";
+  policy: "accepted-import-stored-coverage";
+  sourceHistory: CoverageEvidence | null;
   cutoff: string | null;
   durationSec: number;
   pages: number;
   workers: number;
   totals: EventTotals;
   byType: Record<(typeof TYPES)[number], Omit<EventTotals, "failed">>;
+  /** Successful traversal of stored-coverage candidates, not source completeness. */
   complete: boolean;
 }
 
-type CoverageEvidence = {
+export type CoverageEvidence = {
   inclusiveCutoff: string;
   complete: boolean;
   stagedSpans: number;
@@ -29,15 +32,18 @@ type CoverageEvidence = {
   verifyFailures: number;
 };
 
-/** Zero rejected spans is deliberate: an allowed reject does not prove that
- * a missing month is an ending, especially when old scratch was retained. */
+/** The caller must first pass the importer, staging and parity gates.
+ * Reviewed rejects do not certify source completeness; events describe S2. */
 export function validatedCoverageCutoff(detail: Record<string, unknown> | null, horizon: string): string | null {
   const evidence = detail?.historicalEventEvidence as CoverageEvidence | undefined;
   if (!YM.test(horizon) || !evidence || evidence.inclusiveCutoff !== horizon ||
-      detail?.openEndThrough !== horizon || evidence.complete !== true ||
+      detail?.openEndThrough !== horizon || typeof evidence.complete !== "boolean" ||
       !Number.isSafeInteger(evidence.stagedSpans) || evidence.stagedSpans < 1 ||
       evidence.processedSpans !== evidence.stagedSpans ||
-      evidence.rejectedSpans !== 0 || evidence.verifyFailures !== 0) return null;
+      !Number.isSafeInteger(evidence.rejectedSpans) || evidence.rejectedSpans < 0 ||
+      evidence.rejectedSpans > evidence.processedSpans ||
+      (evidence.rejectedSpans > 0 && evidence.complete) ||
+      evidence.verifyFailures !== 0) return null;
   return horizon;
 }
 
@@ -48,6 +54,7 @@ export function emptyWmbPhase(dryRun: boolean): WmbEventPhase {
   return {
     status: "skipped", reason: "coverage-not-completed",
     mode: dryRun ? "preview" : "live", basis: "stored-coverage",
+    policy: "accepted-import-stored-coverage", sourceHistory: null,
     cutoff: null, durationSec: 0, pages: 0, workers: 0, totals: emptyTotals(),
     byType: { start: { created: 0, unchanged: 0, removed: 0, skipped: 0 },
       restart: { created: 0, unchanged: 0, removed: 0, skipped: 0 },
@@ -69,8 +76,15 @@ export async function runWmbEventPhase(input: {
   if (input.dryRun) return { ...result, reason: "dry-run-no-verified-stored-history-cutoff" };
   if (!input.stagingComplete) return { ...result, status: "fail", reason: "missing-completed-stage-evidence" };
   const cutoff = validatedCoverageCutoff(input.detail, input.horizon);
-  if (!cutoff) return { ...result, status: "fail", reason: "unsafe-or-missing-complete-history-evidence" };
+  if (!cutoff) return { ...result, status: "fail", reason: "unsafe-or-missing-stored-coverage-evidence" };
   result.cutoff = cutoff;
+  // Explicit fields only: never relay loader samples or other source detail.
+  const evidence = input.detail!.historicalEventEvidence as CoverageEvidence;
+  result.sourceHistory = {
+    inclusiveCutoff: cutoff, complete: evidence.complete,
+    stagedSpans: evidence.stagedSpans, processedSpans: evidence.processedSpans,
+    rejectedSpans: evidence.rejectedSpans, verifyFailures: evidence.verifyFailures,
+  };
   const started = Date.now();
   let after = "";
   try {

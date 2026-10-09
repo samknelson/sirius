@@ -1238,21 +1238,34 @@ findings. Reports stay aggregates-only (no names/PII), and say when
 The common sync includes a separately timed event-only phase after successful
 fleet/parity processing and before aggregate recording and lock/fence cleanup.
 It reuses the historical one-off reconciler, processes every worker page, and
-reports separate `wmbEvents` counts/status/completeness in console output,
+reports separate `wmbEvents` counts/status/candidate-traversal completeness in console output,
 aggregate run history and scheduled completion/failure alerts.
 
-Production activation is **disabled** in `sync-config.ts` pending remote test
-proof and deployment of the tested pinned image/task revision. Never enable
-application crons, replay scans, or change the production schedule to run this
+The existing production switch is **enabled** in `sync-config.ts`; this policy
+change does not alter it or prove which revision runs remotely. Never enable
+application crons, replay scans, or change the schedule timing to run this
 phase. See [the proof and recovery procedure](../../docs/wmb-historical-event-backfill.md).
 
 The loader's actual pinned inclusive horizon, fresh completed staging evidence,
-complete span traversal, zero rejected spans (even allowed rejects), and zero
+complete span traversal, importer-accepted rejection policy, and zero
 verification failures are required for a live event phase. Missing/unsafe proof
 fails an enabled phase and the overall sync. `--skip-stage` cannot supply fresh
 stage proof. Dry runs skip events explicitly, since hypothetical loader writes
-are not stored history. The synthetic fleet smoke now asserts cutoff refusal
-for its deliberate rejects/skip-stage runs; it is not activation evidence.
+are not stored history. Reviewed allowed rejects no longer refuse the phase:
+`policy: accepted-import-stored-coverage` describes coverage actually stored in
+S2, not complete import of S1 histories. The loader's source completeness remains
+false for rejected spans; the sanitized `wmbEvents.sourceHistory` keeps that
+flag and aggregate staged/processed/rejected counts. `wmbEvents.complete` only
+certifies successful candidate traversal. Disallowed rejects remain blocked by
+the unchanged importer allowlist. The dev smoke accepts deliberate reviewed
+rejects, but still refuses missing stage evidence.
+
+Deploy this change by rebuilding the migration image, pinning its digest in a
+new task-definition revision, testing that exact candidate with accepted rejects
+and rerun/correction checks, then updating the existing Scheduler target to that
+tested revision. Verify its task-definition ARN and image digest after the update.
+Do not alter schedule timing, wrapper flags or global cron suppression. Local
+fixtures are not remote import/deployment evidence; no remote success is claimed.
 
     npx tsx scripts/s1-migration/sync.ts --mode daily [--profile production] \
         [--dry-run] [--force-reconcile] [--skip-stage] [--skip-seeders] [--keep-going]

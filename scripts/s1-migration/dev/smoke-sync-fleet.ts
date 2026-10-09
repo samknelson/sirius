@@ -9,8 +9,8 @@
  *                 to run concurrently (fast exit 1, nothing written).
  *   3. initial  — `sync --mode daily --profile dev` (full: stage from the dev
  *                 synthetic MariaDB → seeds → fleet → parity). Loader gates
- *                 pass, but WMB inference refuses the deliberately rejected
- *                 history; expect FAIL and one persisted aggregate runs row.
+ *                 pass with reviewed rejects; WMB traverses stored coverage
+ *                 without claiming source completeness. Expect PASS and one runs row.
  *   4. dryrun   — `sync --mode daily --dry-run --force-reconcile --skip-stage`:
  *                 flags must be forwarded + echoed (contract-checked), parity
  *                 skipped, NO runs row recorded.
@@ -192,13 +192,14 @@ async function phaseInitial() {
   console.log("\n═══ PHASE initial (full sync: stage → fleet → parity) ═══");
   const rf = path.join(RESULT_DIR, "initial.json");
   const r = run(SYNC, ["--mode", "daily", "--profile", "dev"], { resultFile: rf });
-  expect(r.exit !== 0, "initial daily sync refuses incomplete synthetic coverage history");
-  expect(r.report?.result === "FAIL", "initial report result=FAIL (historical cutoff refusal)");
-  expect(r.report?.wmbEvents?.status === "fail" &&
-    r.report?.wmbEvents?.reason === "unsafe-or-missing-complete-history-evidence" &&
-    r.report?.wmbEvents?.workers === 0,
-    "allowed T17 rejects do not authorize historical event inference");
-  expect(r.report?.failures?.length === 1, "only the deliberate WMB history refusal fails the initial run");
+  expect(r.exit === 0, "initial daily sync accepts reviewed synthetic coverage rejects");
+  expect(r.report?.result === "PASS", "initial report result=PASS");
+  expect(r.report?.wmbEvents?.status === "pass" &&
+    r.report?.wmbEvents?.complete === true &&
+    r.report?.wmbEvents?.sourceHistory?.complete === false &&
+    r.report?.wmbEvents?.sourceHistory?.rejectedSpans > 0,
+    "stored-coverage traversal passes without claiming complete source history");
+  expect(r.report?.failures?.length === 0, "initial run has no gate failures");
   expect(r.report?.gates?.stage === "pass", "stage gate pass (count-verified)");
   expect(r.report?.gates?.fleet === "pass", "fleet gate pass (all loaders: envelope+rejects+verify)");
   expect(r.report?.gates?.parity === "pass", "parity gate pass (balance 0¢ + ruled months)");

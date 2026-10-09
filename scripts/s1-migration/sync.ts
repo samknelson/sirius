@@ -619,7 +619,7 @@ async function main() {
     }
     // Separate post-import phase, outside all record loops and before aggregate
     // persistence. The existing advisory lock and write fence are still held.
-    console.log("[sync] historical WMB event phase: evaluating complete stored-history evidence");
+    console.log("[sync] historical WMB event phase: evaluating accepted-import stored-coverage evidence (not source-history completeness)");
     const wmbEvents = await runWmbEventPhase({
       enabled: profile.historicalWmbEvents,
       dryRun: DRY_RUN,

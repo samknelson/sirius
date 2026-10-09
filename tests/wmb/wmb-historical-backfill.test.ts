@@ -7,6 +7,8 @@ import { runHistoricalBackfill } from "../../scripts/oneoffs/backfill-wmb-events
 import { isInferredTermination } from "../../server/storage/trust/wmb-events";
 import { inferHistoricalEvents, monthKey } from "../../server/services/wmb-historical-inference";
 import { runWmbEventPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
+import { reviewedCoverageDetail } from "../s1-migration/wmb-coverage-fixture";
+import { sanitizeDailySummary } from "../../scripts/s1-migration/lib/daily-automation";
 
 const label = `historical-wmb-${Date.now()}`;
 let workerId = "", benefitId = "", employerA = "", employerB = "";
@@ -178,26 +180,30 @@ describe("historical WMB event-only backfill", () => {
       .map(row => ({ id: row.id, enabled: row.enabled })).sort((a, b) => a.id.localeCompare(b.id));
     try {
       await getClient().insert(trustWmb).values([
-        { workerId: second.id, employerId: employerA, benefitId, year: 2034, month: 1 },
-        { workerId: second.id, employerId: employerA, benefitId, year: 2034, month: 3 },
+        { workerId: second.id, employerId: employerA, benefitId, year: 2026, month: 8 },
+        { workerId: second.id, employerId: employerA, benefitId, year: 2026, month: 10 },
       ]);
       const storedCoverage = await getClient().select().from(trustWmb).where(eq(trustWmb.workerId, second.id));
       const cronsBefore = await crons();
       const queueBefore = await queue();
-      const args = { enabled: true, dryRun: false, importSucceeded: true, stagingComplete: true, horizon: "2034-03",
-        detail: { openEndThrough: "2034-03",
-          historicalEventEvidence: { inclusiveCutoff: "2034-03", complete: true,
-            stagedSpans: 2, processedSpans: 2, rejectedSpans: 0, verifyFailures: 0 } } };
+      const args = { enabled: true, dryRun: false, importSucceeded: true, stagingComplete: true, horizon: "2026-10",
+        detail: reviewedCoverageDetail };
       // Real storage paging/reconciliation, bounded to fixture benefit. This
       // is local DB proof, NOT remote S1 fleet or tested ECS image proof.
       const page = (argv: string[]) => runHistoricalBackfill([...argv, `--benefit=${benefitId}`]);
       const first = await runWmbEventPhase(args, page, 1);
-      expect(first).toMatchObject({ status: "pass", complete: true, cutoff: "2034-03" });
+      expect(first).toMatchObject({ status: "pass", complete: true, cutoff: "2026-10" });
+      const daily = sanitizeDailySummary({ command: "sync", mode: "daily", profile: "production",
+        result: "PASS", forceReconcile: false, skipStage: false, skipSeeders: true, keepGoing: false,
+        gates: { stage: "pass", fleet: "pass", parity: "pass", wmbEvents: first.status }, wmbEvents: first });
+      expect(daily.wmbEvents.sourceHistory).toEqual(args.detail.historicalEventEvidence);
+      expect(daily.wmbEvents.complete).toBe(true);
+      expect(daily.wmbEvents.sourceHistory?.complete).toBe(false);
       expect(first.pages).toBeGreaterThanOrEqual(2);
       expect(first.workers).toBeGreaterThanOrEqual(2);
       const ended = await storage.trustWmbEvents.listByWorkerAndType(second.id, "terminate");
       expect(ended.map(row => [row.year, row.month, row.data])).toEqual([
-        [2034, 2, { provenance: "coverage_inferred", failedPlugins: [] }],
+        [2026, 9, { provenance: "coverage_inferred", failedPlugins: [] }],
       ]);
       const repeat = await runWmbEventPhase(args, page, 1);
       expect(repeat).toMatchObject({ status: "pass", totals: { created: 0, removed: 0, failed: 0 } });
@@ -207,7 +213,7 @@ describe("historical WMB event-only backfill", () => {
       expect(preview.status).toBe("skipped");
       expect(await storage.trustWmbEvents.listByWorkerAndType(second.id, "terminate")).toEqual(ended);
       await getClient().insert(trustWmb).values({
-        workerId: second.id, employerId: employerA, benefitId, year: 2034, month: 2,
+        workerId: second.id, employerId: employerA, benefitId, year: 2026, month: 9,
       });
       const corrected = await runWmbEventPhase(args, page, 1);
       expect(corrected.totals.removed).toBeGreaterThanOrEqual(2); // restart + inferred ending
