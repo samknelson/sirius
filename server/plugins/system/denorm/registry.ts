@@ -1,6 +1,6 @@
 import { logger } from "../../../logger";
 import { isCacheInitialized } from "../../../services/component-cache";
-import { eventBus } from "../../../services/event-bus";
+import { eventBus, EventType } from "../../../services/event-bus";
 import { storage } from "../../../storage";
 import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import { applyComputed } from "./apply";
@@ -35,6 +35,19 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
         uiSchema: p.uiSchema,
       }),
       allowOverwrite: true,
+    });
+    eventBus.on({
+      name: "denorm-source-config-invalidation",
+      description: "Invalidates source-owned derivations after their configuration changes.",
+      event: EventType.PLUGIN_CONFIG_SAVED,
+      handler: async ({ kind, id, operation }) => {
+        if (kind !== "denorm" || operation !== "update" || !isCacheInitialized()) return;
+        const config = await storage.pluginConfigs.get(id);
+        const plugin = config && this.get(config.pluginId);
+        if (plugin?.replaceOnCompute && isPluginComponentEnabledSync(plugin.metadata)) {
+          await storage.denorm.clearForConfig(id);
+        }
+      },
     });
   }
 
@@ -89,18 +102,28 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               "denorm",
               plugin.metadata.id,
             );
-            const config = configs[0];
-            if (!config) {
+            if (!configs.length) {
               logger.error(
                 `No denorm config found for plugin ${plugin.metadata.id}; skipping update`,
                 { service: "denorm-registry", pluginId: plugin.metadata.id },
               );
               return;
             }
-            const data = eventHandler.getPayload
-              ? eventHandler.getPayload(payload)
-              : await plugin.compute(entityId);
-            await applyComputed(plugin, config.id, entityId, data);
+            for (const config of configs) {
+              if (config.enabled === false) continue;
+              try {
+                const data = eventHandler.getPayload
+                  ? eventHandler.getPayload(payload, config)
+                  : await plugin.compute(entityId, config);
+                await applyComputed(plugin, config.id, entityId, data);
+              } catch (error) {
+                logger.error("Denorm event failed for configuration", {
+                  service: "denorm-registry", pluginId: plugin.metadata.id,
+                  configId: config.id, entityId,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+            }
           } catch (error) {
             logger.error(
               `Denorm plugin ${plugin.metadata.id} failed to update from event ${eventHandler.event}`,
@@ -155,11 +178,14 @@ export async function recomputeDenormEntity(
 ): Promise<void> {
   const plugin = denormPluginRegistry.get(pluginId);
   if (!plugin) throw new Error(`Unknown denorm plugin: ${pluginId}`);
+  if (!isPluginComponentEnabledSync(plugin.metadata)) return;
   const configs = await storage.pluginConfigs.getByKindAndPlugin(
     "denorm",
     pluginId,
   );
-  const config = configs[0];
-  if (!config) throw new Error(`No denorm config found for plugin ${pluginId}`);
-  await applyComputed(plugin, config.id, entityId, await plugin.compute(entityId));
+  if (!configs.length) throw new Error(`No denorm config found for plugin ${pluginId}`);
+  for (const config of configs) {
+    if (config.enabled === false) continue;
+    await applyComputed(plugin, config.id, entityId, await plugin.compute(entityId, config));
+  }
 }

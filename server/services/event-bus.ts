@@ -59,6 +59,8 @@ export class EventBusEmitDepthExceededError extends Error {
  * third spelling: new events use the convention above.
  */
 export enum EventType {
+  ENTITY_NOTE_SAVE_AFTER = "entity.note.save.after",
+  ENTITY_NOTE_DELETE_AFTER = "entity.note.delete.after",
   SESSION_SAVE_AFTER = "session.save.after",
   AUTH_SIGN_IN_AFTER = "auth.sign-in.after",
   SESSION_TOUCH_AFTER = "session.touch.after",
@@ -124,6 +126,11 @@ export interface HoursSavedPayload {
   hours: number;
   employmentStatusId: string;
   home: boolean;
+}
+
+/** Identifiers only: never copy staff note text into event logs. */
+export interface EntityNoteChangedPayload {
+  noteId: string;
 }
 
 /** Minimal immutable snapshot of the row version actually mutated. No session JSON. */
@@ -626,6 +633,8 @@ export interface LogPayload {
 }
 
 export interface EventPayloadMap {
+  [EventType.ENTITY_NOTE_SAVE_AFTER]: EntityNoteChangedPayload;
+  [EventType.ENTITY_NOTE_DELETE_AFTER]: EntityNoteChangedPayload;
   [EventType.AUTH_SIGN_IN_AFTER]: SignInAfterPayload;
   [EventType.SESSION_SAVE_AFTER]: SessionSaveAfterPayload;
   [EventType.SESSION_TOUCH_AFTER]: SessionTransitionPayload;

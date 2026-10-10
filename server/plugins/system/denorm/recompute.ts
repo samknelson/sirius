@@ -85,67 +85,66 @@ export async function recomputeStaleDenorm(
     // sweep — the remaining plugins still get their chance this run.
     try {
       const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", pluginId);
-      const config = configs[0];
-      if (!config) {
+      if (!configs.length) {
         perPlugin.push({ pluginId, recomputed: 0, errored: 0, skipped: "no-config" });
         continue;
       }
-      if (config.enabled === false) {
+      const enabledConfigs = configs.filter(config => config.enabled !== false);
+      if (!enabledConfigs.length) {
         perPlugin.push({ pluginId, recomputed: 0, errored: 0, skipped: "config-disabled" });
         continue;
       }
-
-      const staleRows = await storage.denorm.getStaleBatchForConfig(config.id, limit);
-
-      if (mode === "test") {
-        totalRecomputed += staleRows.length;
-        perPlugin.push({ pluginId, recomputed: staleRows.length, errored: 0 });
-        continue;
-      }
-
       let recomputed = 0;
       let errored = 0;
-      for (const row of staleRows) {
+      const configErrors: string[] = [];
+      for (const config of enabledConfigs) {
+        if (recomputed + errored >= limit) break;
+        let staleRows;
         try {
-          const payload = await plugin.compute(row.entityId);
-          await applyComputed(plugin, config.id, row.entityId, payload);
-          recomputed++;
+          staleRows = await storage.denorm.getStaleBatchForConfig(config.id, limit - recomputed - errored);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          errored++;
-          logger.error(`Denorm recompute failed for plugin ${pluginId} entity ${row.entityId}`, {
-            service: "denorm-recompute",
-            pluginId,
-            entityId: row.entityId,
-            error: message,
+          configErrors.push(`${config.id}: ${message}`);
+          logger.error("Denorm recompute failed for configuration", {
+            service: "denorm-recompute", pluginId, configId: config.id, error: message,
           });
-          // Mark the row `error` (failed apply rolled back, so it's still
-          // `stale`) so the failure is visible and it isn't re-drained as stale.
+          continue;
+        }
+        if (mode === "test") {
+          recomputed += staleRows.length;
+          continue;
+        }
+        for (const row of staleRows) {
           try {
-            await storage.denorm.upsertStatus({
-              entityId: row.entityId,
-              entityType: plugin.entityType,
-              configId: config.id,
-              status: "error",
-              message,
+            const payload = await plugin.compute(row.entityId, config);
+            await applyComputed(plugin, config.id, row.entityId, payload);
+            recomputed++;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            errored++;
+            logger.error(`Denorm recompute failed for plugin ${pluginId} entity ${row.entityId}`, {
+              service: "denorm-recompute", pluginId, entityId: row.entityId, error: message,
             });
-          } catch (markError) {
-            logger.error(
-              `Failed to mark denorm row error for plugin ${pluginId} entity ${row.entityId}`,
-              {
-                service: "denorm-recompute",
-                pluginId,
-                entityId: row.entityId,
+            // Failed apply rolled back, so the queue row is still stale.
+            try {
+              await storage.denorm.upsertStatus({
+                entityId: row.entityId, entityType: plugin.entityType,
+                configId: config.id, status: "error", message,
+              });
+            } catch (markError) {
+              logger.error("Failed to mark denorm row error", {
+                service: "denorm-recompute", pluginId, entityId: row.entityId,
                 error: markError instanceof Error ? markError.message : String(markError),
-              },
-            );
+              });
+            }
           }
         }
       }
-
       totalRecomputed += recomputed;
       totalErrored += errored;
-      perPlugin.push({ pluginId, recomputed, errored });
+      perPlugin.push({ pluginId, recomputed, errored,
+        ...(configErrors.length ? { skipped: "error" as const, error: configErrors.join("; ") } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Denorm recompute failed for plugin ${pluginId}`, {

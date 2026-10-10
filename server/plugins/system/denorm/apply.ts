@@ -22,6 +22,10 @@ export async function applyComputed<TPayload>(
   payload: TPayload,
 ): Promise<void> {
   await runInTransaction(async () => {
+    if (plugin.replaceOnCompute) {
+      await storage.denorm.deleteByEntityIdsForConfig(configId, [entityId]);
+      if (payload === null) return;
+    }
     const row = await storage.denorm.upsertStatus({
       entityId,
       entityType: plugin.entityType,
