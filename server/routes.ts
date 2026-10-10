@@ -114,6 +114,7 @@ import { registerEntityNotesRoutes } from "./modules/entity-notes";
 import { assertNoteContextTablesComplete } from "./storage/entity-notes-context-tables";
 import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
+import { registerWorkerBadgesRoutes } from "./modules/workers/badges";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
@@ -1650,6 +1651,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
+  registerWorkerBadgesRoutes(app, requireAuth);
 
   // Register worker relations routes (handles all access control internally)
   registerWorkerRelationsRoutes(app, requireAuth, requireAccess);

@@ -13,8 +13,20 @@ export interface NoteBadgeGrant {
   grantedTimestamp: Date;
 }
 
+export interface WorkerBadgeOriginRow {
+  id: string;
+  name: string;
+  icon: string | null;
+  description: string | null;
+  active: boolean | null;
+  grantedTimestamp: Date | null;
+  revokedTimestamp: Date | null;
+  origin: { entityType: string; entityId: string } | null;
+}
+
 /** Payload writes are exclusively owned by denorm plugins, never routes. */
 export interface WorkerBadgesDenormStorage {
+  getByWorker(workerId: string): Promise<WorkerBadgeOriginRow[]>;
   validateNoteRule(rule: NoteBadgeRule): Promise<string[]>;
   getQualifyingNote(noteId: string, rule: NoteBadgeRule): Promise<EntityNote | undefined>;
   findNoteCandidates(rule: NoteBadgeRule, limit: number): Promise<string[]>;
@@ -37,6 +49,21 @@ function qualifies(rule: NoteBadgeRule) {
 
 export function createWorkerBadgesDenormStorage(): WorkerBadgesDenormStorage {
   return {
+    async getByWorker(workerId) {
+      // ALL persisted awards, including inactive/error/stale ones. No data JSON.
+      return getClient().select({
+        id: workerBadgesDenorm.id, name: optionsWorkerBadgeTypes.name,
+        icon: optionsWorkerBadgeTypes.icon, description: optionsWorkerBadgeTypes.description,
+        active: workerBadgesDenorm.active,
+        grantedTimestamp: workerBadgesDenorm.grantedTimestamp,
+        revokedTimestamp: workerBadgesDenorm.revokedTimestamp,
+        origin: { entityType: denorm.entityType, entityId: denorm.entityId },
+      }).from(workerBadgesDenorm)
+        .innerJoin(optionsWorkerBadgeTypes, eq(optionsWorkerBadgeTypes.id, workerBadgesDenorm.badgeTypeId))
+        .leftJoin(denorm, eq(denorm.id, workerBadgesDenorm.denormId))
+        .where(eq(workerBadgesDenorm.workerId, workerId))
+        .orderBy(sql`${workerBadgesDenorm.grantedTimestamp} asc nulls last`, asc(workerBadgesDenorm.id));
+    },
     async validateNoteRule(rule) {
       const client = getClient();
       const [noteType] = await client.select().from(optionsNoteType)

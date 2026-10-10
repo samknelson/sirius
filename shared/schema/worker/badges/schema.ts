@@ -3,6 +3,7 @@ import { pgTable, varchar, text, jsonb, boolean, timestamp, unique, foreignKey }
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { workers, denorm } from "../../../schema";
+import type { RecordGoPresentation } from "../../../utils/record-go";
 
 export const optionsWorkerBadgeTypes = pgTable("options_worker_badge_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -55,3 +56,15 @@ export const workerBadgesDenorm = pgTable("worker_badges_denorm", {
 export const insertWorkerBadgeDenormSchema = createInsertSchema(workerBadgesDenorm).omit({ id: true });
 export type WorkerBadgeDenorm = typeof workerBadgesDenorm.$inferSelect;
 export type InsertWorkerBadgeDenorm = z.infer<typeof insertWorkerBadgeDenormSchema>;
+
+/** Read-only wire view; no application-managed JSON or unauthorized source ids. */
+export interface WorkerBadgeListItem {
+  id: string;
+  name: string;
+  icon: string | null;
+  description: string | null;
+  active: boolean | null;
+  grantedTimestamp: string | null;
+  revokedTimestamp: string | null;
+  source: RecordGoPresentation | null;
+}
