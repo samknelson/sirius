@@ -22,3 +22,19 @@ revoked; this is not an active-only limit.
 
 **How to apply:** Preserve that limit when designing future awarding and
 reactivation rules rather than inserting additional copies for the same worker.
+
+Note-derived badges use note-scoped ownership: a qualifying note grants the
+badge if absent, its denorm status owns the awarded row, and deleting or
+invalidating that status cascades to delete the badge. Another qualifying note
+may re-grant through ordinary backfill; temporary absence until that happens is
+acceptable. Do not retain revoked rows, aggregate notes, or build immediate
+ownership handoffs for this rule.
+
+**Why:** The owner explicitly corrected an overcomplicated lifecycle proposal:
+the plugin should simply map note type X to badge type Y, with edits, deletion,
+cleanup, and re-grant handled by the shared denorm framework.
+
+**How to apply:** Keep the note plugin thin; wire missing shared framework
+integration rather than adding custom per-plugin lifecycle management. Ensure
+backfill can reconsider an already-processed qualifying note when the badge
+owned by a different note disappears.
