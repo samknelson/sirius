@@ -44,6 +44,7 @@
 - [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists); COBRA = employer siriusId "COBRA".
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
+- [Worker badge ownership](worker-badge-ownership.md) — awards derive from system activity; only denorm plugins maintain awarded rows, never manual UX assignment.
 - [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
 - [Inbound maintenance refusal ordering](inbound-maintenance-gate.md) — an always-on refusal goes at the FRONT of middleware assembly (body parsers 400/413 first, auth writes a last-used stamp); router registration must assert it.
 - [Maintenance-mode write lock + vendor refusal](maintenance-mode-write-lock.md) — read-only per pool checkout AND one guard refusing every outbound vendor call off the same import-free flag; allowInMaintenanceMode unlocks the DB only.
