@@ -25,6 +25,15 @@ and does not want a big new framework.
 **How to apply:** Keep badge displays as consumers of shared Go resolution;
 scope any needed source-navigation support as a small extension of that system.
 
+For note and skill sources with no standalone page, Go should open the parent
+record's Notes or Skills tab and focus the matching source item.
+
+**Why:** The owner explicitly selected this approach rather than leaving those
+sources unlinked; it avoids creating standalone pages or parallel navigation.
+
+**How to apply:** Extend existing Go resolution and the destination tab's
+deep-link handling together, preserving the destination's access checks.
+
 Each worker can have only one copy of a given badge, including when inactive or
 revoked; this is not an active-only limit.
 
