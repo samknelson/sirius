@@ -14,3 +14,11 @@ assigned directly.
 options, but do not confuse defining a badge type with assigning a badge to a
 worker. Future award rules and any badge-display UX must preserve plugin-only
 ownership of the derived rows.
+
+Each worker can have only one copy of a given badge, including when inactive or
+revoked; this is not an active-only limit.
+
+**Why:** The owner explicitly requires one copy per worker and badge type.
+
+**How to apply:** Preserve that limit when designing future awarding and
+reactivation rules rather than inserting additional copies for the same worker.
