@@ -15,6 +15,16 @@ options, but do not confuse defining a badge type with assigning a badge to a
 worker. Future award rules and any badge-display UX must preserve plugin-only
 ownership of the derived rows.
 
+Badge-source labels and navigation must reuse the existing quicksearch/Go
+system, not a separate badge-specific record-linking framework.
+
+**Why:** The owner explicitly asked to lean on the existing quicksearch/Go
+framework when showing which note, skill, or other record generated a badge,
+and does not want a big new framework.
+
+**How to apply:** Keep badge displays as consumers of shared Go resolution;
+scope any needed source-navigation support as a small extension of that system.
+
 Each worker can have only one copy of a given badge, including when inactive or
 revoked; this is not an active-only limit.
 
