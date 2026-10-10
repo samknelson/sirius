@@ -9,6 +9,8 @@ const state = vi.hoisted(() => ({
   awards: new Map<string, any>(),
   handlers: new Map<string, ((payload: any) => Promise<void>)[]>(),
   nextId: 0,
+  afterCommit: undefined as (() => void)[] | undefined,
+  flash: vi.fn(),
   storage: {
     pluginConfigs: { get: vi.fn(), getByKindAndPlugin: vi.fn() },
     denorm: {
@@ -17,6 +19,7 @@ const state = vi.hoisted(() => ({
     },
     workerBadgesDenorm: {
       getQualifyingNote: vi.fn(), validateNoteRule: vi.fn(), insertGrant: vi.fn(),
+      getGrantState: vi.fn(),
       findNoteCandidates: vi.fn(), findNoteWidows: vi.fn(),
     },
   },
@@ -30,8 +33,33 @@ vi.mock("../server/services/component-cache", () => ({
   isCacheInitialized: () => state.initialized,
 }));
 vi.mock("../server/storage/transaction-context", () => ({
-  runInTransaction: async (fn: () => Promise<unknown>) => fn(),
+  runInTransaction: async (fn: () => Promise<unknown>) => {
+    if (state.afterCommit) return fn();
+    const statuses = new Map(state.statuses);
+    const awards = new Map(state.awards);
+    const callbacks: (() => void)[] = [];
+    state.afterCommit = callbacks;
+    let result;
+    try {
+      result = await fn();
+    } catch (error) {
+      state.statuses = statuses;
+      state.awards = awards;
+      throw error;
+    } finally {
+      state.afterCommit = undefined;
+    }
+    for (const callback of callbacks) {
+      try { callback(); } catch { /* best-effort, like the real commit flush */ }
+    }
+    return result;
+  },
+  onAfterCommit: (callback: () => void) => {
+    if (state.afterCommit) state.afterCommit.push(callback);
+    else callback();
+  },
 }));
+vi.mock("../server/services/websocket", () => ({ broadcastBadgeGrant: state.flash }));
 vi.mock("../server/plugins/_core/gating", () => ({
   isPluginComponentEnabledSync: (meta: any) => !meta.requiredComponent || state.enabled,
 }));
@@ -56,6 +84,8 @@ import { applyComputed } from "../server/plugins/system/denorm/apply";
 import { backfillAllDenorm } from "../server/plugins/system/denorm/backfill";
 import { recomputeStaleDenorm } from "../server/plugins/system/denorm/recompute";
 import { EventType } from "../server/services/event-bus";
+import { requestContext } from "../server/middleware/request-context";
+import { runInTransaction } from "../server/storage/transaction-context";
 
 const plugin = getDenormPlugin("workerBadgeFromNote")!;
 const config = (id: string, noteTypeId = "note-type", badgeTypeId = "badge") =>
@@ -84,6 +114,8 @@ const qualifies = (note: any, rule: any) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  state.flash.mockReset();
+  state.afterCommit = undefined;
   state.enabled = state.initialized = true;
   state.configs = [config("rule")];
   state.notes.clear(); state.statuses.clear(); state.awards.clear(); state.nextId = 0;
@@ -110,8 +142,14 @@ beforeEach(() => {
     qualifies(state.notes.get(id), rule) ? state.notes.get(id) : undefined);
   state.storage.workerBadgesDenorm.insertGrant.mockImplementation(async (denormId, grant) => {
     const key = `${grant.workerId}:${grant.badgeTypeId}`;
-    if (!state.awards.has(key)) state.awards.set(key, { denormId, ...grant });
+    if (state.awards.has(key)) return false;
+    state.awards.set(key, { denormId, ...grant });
+    return true;
   });
+  state.storage.workerBadgesDenorm.getGrantState.mockImplementation(async grant => ({
+    existed: state.awards.has(`${grant.workerId}:${grant.badgeTypeId}`),
+    badgeName: grant.badgeTypeId === "badge" ? "Helpful Worker" : "Another Badge",
+  }));
   state.storage.workerBadgesDenorm.findNoteCandidates.mockImplementation(async (rule, limit) =>
     [...state.notes.values()].filter(n => qualifies(n, rule) &&
       !state.awards.has(`${n.entityId}:${rule.badgeTypeId}`)).map(n => n.id).slice(0, limit));
@@ -227,7 +265,7 @@ describe("note-owned badge rule and shared denorm lifecycle", () => {
     expect(state.storage.workerBadgesDenorm.getQualifyingNote).not.toHaveBeenCalled();
   });
   it("preserves existing plugins' in-place semantics, including null payloads", async () => {
-    const legacy = { ...plugin, replaceOnCompute: undefined, write: vi.fn() };
+    const legacy = { ...plugin, beforeApply: undefined, replaceOnCompute: undefined, write: vi.fn() };
     await applyComputed(legacy, "legacy-rule", "entity", null);
     expect(state.storage.denorm.deleteByEntityIdsForConfig).not.toHaveBeenCalled();
     expect(legacy.write).toHaveBeenCalledWith("entity", null, expect.any(String));
@@ -240,5 +278,81 @@ describe("note-owned badge rule and shared denorm lifecycle", () => {
     expect(result.totalEnqueued).toBe(1);
     expect(result.perPlugin).toHaveLength(1);
     expect(state.statuses.size).toBe(0);
+  });
+});
+
+describe("commit-only badge grant flashes", () => {
+  const asActor = (fn: () => Promise<void>) =>
+    requestContext.run({ userId: "effective-user", originalUserId: "real-user" }, fn);
+  const save = () => emit(EventType.ENTITY_NOTE_SAVE_AFTER, { noteId: "note", authorUserId: "note-author" });
+
+  it("captures the effective actor and flashes only after the outermost commit", async () => {
+    state.notes.set("note", source("note"));
+    await runInTransaction(async () => {
+      await asActor(save);
+      expect(state.awards.size).toBe(1);
+      expect(state.flash).not.toHaveBeenCalled();
+    });
+    expect(state.flash).toHaveBeenCalledExactlyOnceWith("effective-user", "Helpful Worker");
+  });
+
+  it("does not flash unchanged replacements, date edits, removals, or losing claims", async () => {
+    state.notes.set("note", source("note"));
+    await asActor(save);
+    state.flash.mockClear();
+    await asActor(save);
+    state.notes.get("note").timestamp = new Date("2026-10-02T12:00:00Z");
+    await asActor(save);
+    state.notes.set("loser", source("loser"));
+    await asActor(() => emit(EventType.ENTITY_NOTE_SAVE_AFTER, { noteId: "loser" }));
+    state.notes.delete("note");
+    await asActor(save);
+    expect(state.flash).not.toHaveBeenCalled();
+  });
+
+  it("uses actual insertion outcome when an absent pair loses a uniqueness claim", async () => {
+    state.notes.set("note", source("note"));
+    state.storage.workerBadgesDenorm.insertGrant.mockResolvedValueOnce(false);
+    await asActor(save);
+    expect(state.storage.workerBadgesDenorm.getGrantState).toHaveReturned();
+    expect(state.flash).not.toHaveBeenCalled();
+  });
+
+  it("flashes a different newly awarded badge", async () => {
+    state.notes.set("note", source("note"));
+    await asActor(save);
+    state.configs[0].data.badgeTypeId = "another-badge";
+    await asActor(save);
+    expect(state.flash.mock.calls).toEqual([
+      ["effective-user", "Helpful Worker"], ["effective-user", "Another Badge"],
+    ]);
+  });
+
+  it("keeps background grants silent without an actor", async () => {
+    state.notes.set("note", source("note"));
+    await save();
+    expect(state.awards.size).toBe(1);
+    expect(state.flash).not.toHaveBeenCalled();
+  });
+
+  it("discards feedback and awards when the surrounding transaction rolls back", async () => {
+    state.notes.set("note", source("note"));
+    await expect(runInTransaction(async () => {
+      await asActor(save);
+      throw new Error("rollback");
+    })).rejects.toThrow("rollback");
+    expect(state.awards.size).toBe(0);
+    expect(state.flash).not.toHaveBeenCalled();
+  });
+
+  it("keeps a committed award successful when feedback fails or no browser is connected", async () => {
+    state.notes.set("note", source("note"));
+    state.flash.mockImplementationOnce(() => { throw new Error("socket failure"); });
+    await asActor(save);
+    expect(state.awards.size).toBe(1);
+    expect(state.statuses.get("rule:note").status).toBe("ok");
+    state.notes.set("other", source("other", "note-type", "worker", "other-worker"));
+    await asActor(() => emit(EventType.ENTITY_NOTE_SAVE_AFTER, { noteId: "other" }));
+    expect(state.awards.size).toBe(2);
   });
 });

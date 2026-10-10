@@ -44,6 +44,7 @@ import { createUnifiedOptionsStorage, optionsMetadata } from "../server/storage/
 import { getOptionsType } from "../server/modules/options-registry";
 import { buildOptionCreateData, buildOptionUpdateData, optionDbErrorMessage } from "../server/modules/options-write-rules";
 import { registerConsolidatedOptionsRoutes } from "../server/modules/options-routes";
+import { createWorkerBadgesDenormStorage } from "../server/storage/system/worker-badges-denorm";
 
 let server: Server;
 let origin: string;
@@ -69,6 +70,30 @@ beforeEach(() => {
   });
 });
 const config = () => getOptionsType("worker-badge-type")!;
+
+describe("badge grant change detection storage", () => {
+  const grant = { workerId: "worker", badgeTypeId: "badge", grantedTimestamp: new Date() };
+  it.each([null, "existing-award"])("reads the pair and readable label before cascading (award %s)", async awardId => {
+    state.client = drizzle(async (query, params) => {
+      state.queries.push({ query, params });
+      return { rows: [["Helpful Worker", awardId]] };
+    });
+    expect(await createWorkerBadgesDenormStorage().getGrantState(grant)).toEqual({
+      badgeName: "Helpful Worker", existed: awardId !== null,
+    });
+    expect(state.queries[0].query).toContain('left join "worker_badges_denorm"');
+    expect(state.queries[0].params).toEqual(["worker", "badge"]);
+    expect(state.queries[0].query).not.toContain('"active"');
+  });
+  it.each([{ rows: [] }, { rows: [["inserted-award"]] }])("reports only the actual insertion outcome ($rows)", async ({ rows }) => {
+    state.client = drizzle(async (query, params) => {
+      state.queries.push({ query, params });
+      return { rows };
+    });
+    expect(await createWorkerBadgesDenormStorage().insertGrant("owner", grant)).toBe(rows.length > 0);
+    expect(state.queries[0].query).toContain('on conflict do nothing returning "id"');
+  });
+});
 
 describe("worker badge schema and options declaration", () => {
   it("owns its tables in dependency order and starts disabled", () => {

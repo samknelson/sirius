@@ -4,14 +4,17 @@ import { EventType, type EntityNoteChangedPayload } from "../../../../services/e
 import { isPluginComponentEnabledSync } from "../../../_core/gating";
 import { registerDenormPlugin } from "../registry";
 import type { DenormPlugin } from "../types";
-import type { NoteBadgeGrant } from "../../../../storage/system/worker-badges-denorm";
+import type { BadgeGrantState, NoteBadgeGrant } from "../../../../storage/system/worker-badges-denorm";
+import { getRequestContext } from "../../../../middleware/request-context";
+import { onAfterCommit } from "../../../../storage/transaction-context";
+import { broadcastBadgeGrant } from "../../../../services/websocket";
 
 const ruleSchema = z.object({
   noteTypeId: z.string().min(1),
   badgeTypeId: z.string().min(1),
 }).strict();
 
-const plugin: DenormPlugin<NoteBadgeGrant | null> = {
+const plugin: DenormPlugin<NoteBadgeGrant | null, BadgeGrantState | undefined> = {
   metadata: {
     id: "workerBadgeFromNote",
     name: "Worker Badge From Note",
@@ -61,8 +64,23 @@ const plugin: DenormPlugin<NoteBadgeGrant | null> = {
       grantedTimestamp: note.timestamp,
     } : null;
   },
-  async write(_noteId, grant, denormId) {
-    if (grant) await storage.workerBadgesDenorm.insertGrant(denormId, grant);
+  async beforeApply(_noteId, grant) {
+    return grant ? storage.workerBadgesDenorm.getGrantState(grant) : undefined;
+  },
+  async write(_noteId, grant, denormId, before) {
+    if (!grant) return;
+    const inserted = await storage.workerBadgesDenorm.insertGrant(denormId, grant);
+    const userId = getRequestContext()?.userId;
+    if (inserted && before && !before.existed && userId) {
+      const badgeName = before.badgeName;
+      onAfterCommit(() => {
+        try {
+          broadcastBadgeGrant(userId, badgeName);
+        } catch {
+          // Ephemeral feedback must never fail badge processing. No replay.
+        }
+      });
+    }
   },
   async backfill(_configId, limit, config) {
     return storage.workerBadgesDenorm.findNoteCandidates(ruleSchema.parse(config?.data), limit);

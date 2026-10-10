@@ -57,3 +57,12 @@ cleanup, and re-grant handled by the shared denorm framework.
 integration rather than adding custom per-plugin lifecycle management. Ensure
 backfill can reconsider an already-processed qualifying note when the badge
 owned by a different note disappears.
+
+Badge grant feedback is an ephemeral flash for the initiating effective user,
+not a notification to the worker or note author. Offline feedback may be lost.
+
+**Why:** The owner explicitly scoped this feedback as best-effort UI confirmation,
+without persistent messages, acknowledgements, replay queues, or removal toasts.
+
+**How to apply:** Keep it separate from notification delivery tallies and unread
+counts; only committed, genuinely new grants should flash.

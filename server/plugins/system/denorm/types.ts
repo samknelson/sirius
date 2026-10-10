@@ -75,7 +75,7 @@ export interface DenormEventHandler<TPayload = unknown> {
  * conventions). A denorm plugin is typically a singleton: exactly one config
  * row exists for it, seeded at boot from the kind adapter's `seedDefault`.
  */
-export interface DenormPlugin<TPayload = unknown> {
+export interface DenormPlugin<TPayload = unknown, TBeforeApply = unknown> {
   /** Base metadata. `id` is the stable identifier keying the config row. */
   metadata: BasePluginMetadata;
   /** The single entity type this plugin denormalizes (e.g. "worker"). */
@@ -111,6 +111,12 @@ export interface DenormPlugin<TPayload = unknown> {
    * in-place payload semantics unless they explicitly opt in.
    */
   replaceOnCompute?: boolean;
+  /**
+   * Optional read-only snapshot inside the apply transaction, BEFORE replacement
+   * cascades. Passed to write so a plugin can distinguish a real change from
+   * rebuilding its existing payload. Domain-specific comparisons belong there.
+   */
+  beforeApply?(entityId: string, payload: TPayload, configId: string): Promise<TBeforeApply>;
   /** Optional domain validation after the shared JSON Schema validation. */
   validateConfig?(data: unknown): Promise<{ valid: true } | { valid: false; errors?: string[] }>;
   /**
@@ -119,7 +125,7 @@ export interface DenormPlugin<TPayload = unknown> {
    * rows can reference it via FK. The plugin writes ONLY payload rows here; the
    * wrapper owns the `denorm` status row.
    */
-  write(entityId: string, payload: TPayload, denormRowId: string): Promise<void>;
+  write(entityId: string, payload: TPayload, denormRowId: string, before?: TBeforeApply): Promise<void>;
   /**
    * Optional backfill source. Enumerate up to `limit` entity ids that SHOULD
    * have a denorm row for this plugin's config (`configId`) but currently have

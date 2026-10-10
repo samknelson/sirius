@@ -19,10 +19,14 @@ interface NotificationSummaryPayload {
   counts: Partial<Record<NotificationMedium, number>>;
 }
 
+interface BadgeGrantPayload {
+  badgeName: string;
+}
+
 interface WebSocketMessage {
-  type: "connected" | "ping" | "alert_update" | "notification_summary";
+  type: "connected" | "ping" | "alert_update" | "notification_summary" | "badge_granted";
   id?: string;
-  payload?: AlertUpdatePayload | NotificationSummaryPayload;
+  payload?: AlertUpdatePayload | NotificationSummaryPayload | BadgeGrantPayload;
 }
 
 const MEDIUM_LABELS: Record<NotificationMedium, string> = {
@@ -150,6 +154,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 setAlertCount(newCount);
               }
               break;
+            case "badge_granted": {
+              const badgeName = (message.payload as BadgeGrantPayload | undefined)?.badgeName;
+              if (typeof badgeName === "string" && badgeName.trim()) {
+                toast({ title: "Badge granted", description: badgeName });
+              }
+              break;
+            }
             case "notification_summary":
               if (message.payload) {
                 const id = message.id;

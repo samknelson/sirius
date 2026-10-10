@@ -13,6 +13,11 @@ export interface NoteBadgeGrant {
   grantedTimestamp: Date;
 }
 
+export interface BadgeGrantState {
+  existed: boolean;
+  badgeName: string;
+}
+
 export interface WorkerBadgeOriginRow {
   id: string;
   name: string;
@@ -31,7 +36,8 @@ export interface WorkerBadgesDenormStorage {
   getQualifyingNote(noteId: string, rule: NoteBadgeRule): Promise<EntityNote | undefined>;
   findNoteCandidates(rule: NoteBadgeRule, limit: number): Promise<string[]>;
   findNoteWidows(configId: string, rule: NoteBadgeRule, limit: number): Promise<string[]>;
-  insertGrant(denormId: string, grant: NoteBadgeGrant): Promise<void>;
+  getGrantState(grant: NoteBadgeGrant): Promise<BadgeGrantState | undefined>;
+  insertGrant(denormId: string, grant: NoteBadgeGrant): Promise<boolean>;
 }
 
 function qualifies(rule: NoteBadgeRule) {
@@ -112,12 +118,25 @@ export function createWorkerBadgesDenormStorage(): WorkerBadgesDenormStorage {
         .orderBy(asc(denorm.entityId)).limit(limit);
       return rows.map(row => row.id);
     },
+    async getGrantState(grant) {
+      const [row] = await getClient().select({
+        badgeName: optionsWorkerBadgeTypes.name,
+        awardId: workerBadgesDenorm.id,
+      }).from(optionsWorkerBadgeTypes)
+        .leftJoin(workerBadgesDenorm, and(
+          eq(workerBadgesDenorm.badgeTypeId, optionsWorkerBadgeTypes.id),
+          eq(workerBadgesDenorm.workerId, grant.workerId),
+        ))
+        .where(eq(optionsWorkerBadgeTypes.id, grant.badgeTypeId));
+      return row ? { badgeName: row.badgeName, existed: row.awardId !== null } : undefined;
+    },
     async insertGrant(denormId, grant) {
       // Never overwrite an existing award's ownership. The unique pair is the
       // claim, and DO NOTHING is safe even inside the framework transaction.
-      await getClient().insert(workerBadgesDenorm).values({
+      const rows = await getClient().insert(workerBadgesDenorm).values({
         ...grant, denormId, active: true, revokedTimestamp: null,
-      }).onConflictDoNothing();
+      }).onConflictDoNothing().returning({ id: workerBadgesDenorm.id });
+      return rows.length > 0;
     },
   };
 }
