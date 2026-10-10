@@ -27,6 +27,10 @@ function BadgesContent() {
     // Source enrichment varies with the effective viewer, including masquerades.
     queryKey: [url, user?.id],
     queryFn: () => apiRequest("GET", url),
+    // Awards can change while this tab is unmounted, including during backfill.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
   return (
     <Card>
@@ -35,7 +39,7 @@ function BadgesContent() {
         <CardDescription>Badges awarded through system activity, oldest grant first.</CardDescription>
       </CardHeader>
       <CardContent>
-        {query.isLoading ? (
+        {query.isLoading || query.isFetching ? (
           <div className="space-y-2" data-testid="loading-badges"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
         ) : query.isError ? (
           <div role="alert" className="space-y-3">

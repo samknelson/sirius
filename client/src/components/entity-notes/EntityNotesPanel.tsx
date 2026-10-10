@@ -125,6 +125,12 @@ export default function EntityNotesPanel({ contextId, entityId }: NotesPanelProp
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: notesQueryKey });
+    if (contextId === "worker") {
+      // Prefix invalidation covers every viewer's separate source-enriched cache.
+      queryClient.invalidateQueries({
+        queryKey: [`/api/workers/${encodeURIComponent(entityId)}/badges`],
+      });
+    }
   };
 
   const createMutation = useMutation({
