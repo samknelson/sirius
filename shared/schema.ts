@@ -1488,6 +1488,17 @@ export {
 } from "./schema/worker/skills/schema";
 
 export {
+  optionsWorkerBadgeTypes,
+  insertOptionsWorkerBadgeTypeSchema,
+  workerBadgesDenorm,
+  insertWorkerBadgeDenormSchema,
+  type WorkerBadgeType,
+  type InsertWorkerBadgeType,
+  type WorkerBadgeDenorm,
+  type InsertWorkerBadgeDenorm,
+} from "./schema/worker/badges/schema";
+
+export {
   optionsCertifications,
   insertOptionsCertificationsSchema,
   type OptionsCertification,

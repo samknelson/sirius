@@ -187,6 +187,7 @@ import "./components/edls/007_index_assignments_by_worker_date";
 import "./components/edls/008_retain_assignments_on_crew_delete";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/worker.aat/001_create_worker_aat";
+import "./components/worker.badges/001_create_worker_badges";
 import "./components/bulk/001_drop_email_body_text";
 import "./components/system.session_history/001_create_session_history";
 import "./components/system.session_history/002_add_device_id";

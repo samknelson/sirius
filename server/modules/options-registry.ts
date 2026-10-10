@@ -4,6 +4,7 @@ import {
   type OptionsTypeName,
   optionsMetadata,
   resolveFieldChoices,
+  type OptionsWriteSchema,
 } from "../storage/unified-options";
 
 export interface OptionsTypeConfig {
@@ -17,6 +18,7 @@ export interface OptionsTypeConfig {
   requiredFields: readonly string[];
   optionalFields: readonly string[];
   requiredComponent?: string;
+  writeSchema?: OptionsWriteSchema;
   /**
    * Allowed values for single-value `enum` fields, keyed by field name.
    * Used by the write routes to reject values outside the fixed set
@@ -66,6 +68,7 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
     requiredFields: metadata.requiredFields,
     optionalFields: metadata.optionalFields,
     requiredComponent: metadata.requiredComponent,
+    writeSchema: metadata.writeSchema,
     enumConstraints,
   };
 }
