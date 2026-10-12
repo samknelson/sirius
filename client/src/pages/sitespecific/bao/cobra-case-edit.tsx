@@ -19,12 +19,11 @@ function CaseEditForm() {
   const updateMutation = useMutation({
     mutationFn: async (values: CobraCaseFormValues) => {
       const { coveredPersonWorkerId, subscriberWorkerId, ...rest } = values;
-      const response = await apiRequest(
+      return apiRequest(
         "PATCH",
         `/api/sitespecific/bao/cobra/cases/${c.id}`,
         rest,
       );
-      return response.json();
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({

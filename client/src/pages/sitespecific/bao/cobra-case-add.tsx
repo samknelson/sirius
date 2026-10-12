@@ -16,8 +16,7 @@ export default function BaoCobraCaseAdd() {
 
   const createMutation = useMutation({
     mutationFn: async (values: CobraCaseFormValues) => {
-      const response = await apiRequest("POST", "/api/sitespecific/bao/cobra/cases", values);
-      return response.json();
+      return apiRequest("POST", "/api/sitespecific/bao/cobra/cases", values);
     },
     onSuccess: async (created: { id: string }) => {
       await queryClient.invalidateQueries({
