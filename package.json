@@ -18,6 +18,7 @@
     "db:push:component": "tsx scripts/db-push-component.ts",
     "demo:snapshot": "tsx scripts/demo-snapshot.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
+    "seed:bao-cobra-grant-checks": "tsx scripts/oneoffs/seed-bao-cobra-grant-checks.ts --dev-seed",
     "seed:bao-dc-reconciliation": "ALLOW_BAO_DC_RECONCILIATION_SEED=1 tsx scripts/oneoffs/seed-bao-dc-reconciliation.ts"
   },
   "dependencies": {
