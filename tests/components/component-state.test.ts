@@ -4,6 +4,7 @@ import type { ComponentDefinition } from "../../shared/components";
 const mocks = vi.hoisted(() => ({ read: vi.fn(), outside: vi.fn((fn: () => unknown) => fn()) }));
 vi.mock("../../server/storage", () => ({ storage: { variables: { getJsonState: mocks.read } } }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: mocks.outside }));
+vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: mocks.outside }));
 vi.mock("../../server/services/component-cache", () => ({
   loadComponentCache: () => { throw new Error("Broken runtime cache"); },
   isComponentEnabledSync: () => { throw new Error("Uninitialized runtime cache"); },

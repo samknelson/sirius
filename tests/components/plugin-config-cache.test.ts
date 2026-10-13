@@ -1,6 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 const search = vi.hoisted(() => vi.fn());
+vi.mock("../../server/storage/configuration-revisions", () => ({
+  readConfigurationSnapshot: (fn: () => unknown) => fn(),
+}));
 vi.mock("../../server/storage", () => ({ storage: { pluginConfigs: { search } } }));
 vi.mock("../../server/logger", () => ({ logger: { info: vi.fn() } }));
 vi.mock("../../server/services/event-bus", () => ({ eventBus: {}, EventType: {} }));

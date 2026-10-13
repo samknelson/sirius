@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../server/storage", () => ({ storage: { variables: { getJsonState: mocks.read } } }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: (fn: () => unknown) => fn() }));
+vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: (fn: () => unknown) => fn() }));
 vi.mock("../../server/services/component-cache", () => ({
   loadComponentCache: mocks.refresh, isComponentEnabledSync: mocks.enabled,
   getEnabledComponentIdsSync: vi.fn(), updateComponentCache: vi.fn(),

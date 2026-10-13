@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
   read: vi.fn(), write: vi.fn(), inTransaction: vi.fn(() => false),
   afterCommit: vi.fn(),
 }));
+vi.mock("../../server/storage/configuration-revisions", () => ({
+  readConfigurationSnapshot: (fn: () => unknown) => fn(),
+}));
 vi.mock("../../server/storage", () => ({
   storage: { variables: { getJsonState: mocks.read, upsertJsonBooleanKey: mocks.write } },
 }));

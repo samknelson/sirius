@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { runOutsideTransaction } from "../storage/transaction-context";
+import { readConfigurationSnapshot } from "../storage/configuration-revisions";
 import { getAllComponents, type ComponentConfig, type ComponentDefinition } from "../../shared/components";
 
 export type ComponentEnabledMap = Record<string, boolean>;
@@ -13,7 +13,7 @@ export async function readComponentStateFromStorage(): Promise<{
   state: ComponentEnabledMap;
   version: string | undefined;
 }> {
-  const read = runOutsideTransaction(() => storage.variables.getJsonState(COMPONENTS_VARIABLE_NAME));
+  const read = readConfigurationSnapshot(() => storage.variables.getJsonState(COMPONENTS_VARIABLE_NAME));
   let timer: ReturnType<typeof setTimeout> | undefined;
   const variable = await Promise.race([
     read,

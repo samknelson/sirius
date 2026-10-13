@@ -22,6 +22,10 @@ import {
   hasRestartBaseline,
   listPendingRestartVariables,
 } from "../../services/env-restart-pending";
+import { requestGlobalConfigurationInvalidation } from "../../storage/configuration-revisions";
+import { configurationCoherency } from "../../services/configuration-cache-registry";
+import { CONFIGURATION_POLL_INTERVAL_MS } from "../../services/configuration-coherency";
+import { runOutsideTransaction } from "../../storage/transaction-context";
 
 /**
  * Admin endpoints backing the Restart & Reload page (Task #1258).
@@ -124,10 +128,28 @@ export function registerRestartRoutes(app: Express, server?: Server) {
         { subsystems: ids ?? "all" },
       );
 
-      const results = await runReloads(ids);
+      // Selected reloads keep their local-only meanings. Reload-all advances a
+      // durable generation for the explicitly registered configuration caches.
+      // The only write escape here is this audited administrator operation.
+      let convergence;
+      let results;
+      if (ids) {
+        results = await runOutsideTransaction(() => runReloads(ids));
+      } else {
+        await allowInMaintenanceMode(requestGlobalConfigurationInvalidation);
+        const refreshed = await configurationCoherency.refreshCommitted();
+        results = refreshed;
+        convergence = {
+          localComplete: results.every(result => result.ok),
+          remote: "eventual",
+          pollIntervalMs: CONFIGURATION_POLL_INTERVAL_MS,
+          message: "Local results only. Other servers refresh on their next healthy five-second poll; no remote acknowledgments are collected.",
+        };
+      }
       res.setHeader("Cache-Control", "no-store");
       res.json({
         results,
+        convergence,
         // A reload can change the effective value of restart-only variables
         // (the override map is one of the reloadable subsystems), so the page
         // gets a fresh list rather than a stale one.

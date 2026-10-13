@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, bigserial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, bigserial, bigint, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { isValidYmd, type Ymd } from "./utils/date";
@@ -568,6 +568,12 @@ export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
   // table order, so any other declared order false-positives on db-push runs.
   uniqueWorkerYearMonth: unique("trust_wmb_scan_queue_worker_id_year_month_unique").on(table.workerId, table.month, table.year),
 }));
+
+/** Infrastructure state, not a user-maintained record or audit/provenance entity. */
+export const configurationRevisions = pgTable("configuration_revisions", {
+  scope: text("scope").primaryKey(),
+  revision: bigint("revision", { mode: "bigint" }).notNull().default(sql`0`),
+});
 
 export const variables = pgTable("variables", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -18,7 +18,7 @@ import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
-import { onComponentCacheChange, startComponentCacheRefresh } from "./services/component-cache";
+import { onComponentCacheChange } from "./services/component-cache";
 import { refreshComponentStateForApi } from "./middleware/component-state";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
@@ -359,7 +359,6 @@ export async function bootstrapApp(
     clearAccessCache();
     syncComponentPermissions();
   });
-  startComponentCacheRefresh();
   logger.info("Component permissions synced", { source: "startup" });
 
   // Initialize dispatch eligibility plugin system
@@ -611,6 +610,7 @@ export async function bootstrapApp(
 
   // User API owns browser socket sessions and application background work.
   // api-ws-only containers never initialize either singleton.
+  cronScheduler.setOwnership(roles.has("api-user"));
   if (roles.has("api-user")) {
     const { getSession } = await import("./auth");
     const sessionMiddleware = getSession();
@@ -622,6 +622,10 @@ export async function bootstrapApp(
       logger.info("Cron scheduler started", { source: "startup" });
     });
   }
+
+  // One infrastructure watcher in every backend role, independent of plugin cron.
+  const { initializeConfigurationCoherency } = await import("./services/configuration-cache-registry");
+  await initializeConfigurationCoherency(roles.has("api-user"));
 
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

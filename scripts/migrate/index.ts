@@ -199,6 +199,7 @@ import "./components/system.session_history/003_require_user_id";
 // reserved for baselining (>= 1000). They are idempotent on re-run. See
 // `replit.md` → "Baselining a deployment" for the full procedure.
 //
+import "./core/1121_configuration_revisions";
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
 import "./baseline/sirius-dev-20260704";

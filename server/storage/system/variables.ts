@@ -1,5 +1,6 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
+import { notifyLocalConfigurationCommit } from "../../services/configuration-cache-registry";
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
 import { eq, like, sql } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
@@ -16,6 +17,10 @@ export const validate = createNoopValidator();
  */
 function escapeLikePrefix(prefix: string): string {
   return prefix.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+function committed(): void {
+  onAfterCommit(notifyLocalConfigurationCommit);
 }
 
 export interface VariableStorage {
@@ -71,6 +76,7 @@ export function createVariableStorage(): VariableStorage {
         .insert(variables)
         .values(insertVariable)
         .returning();
+      committed();
       return variable;
     },
 
@@ -83,6 +89,7 @@ export function createVariableStorage(): VariableStorage {
         .where(eq(variables.id, id))
         .returning();
       
+      if (variable) committed();
       return variable || undefined;
     },
 
@@ -97,12 +104,14 @@ export function createVariableStorage(): VariableStorage {
           setWhere: sql`${variables.value} is null or jsonb_typeof(${variables.value}) = 'object'`,
         }).returning();
       if (!variable) throw new Error(`Variable "${name}" must contain a JSON object`);
+      committed();
       return variable;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(variables).where(eq(variables.id, id)).returning();
+      if (result.length) committed();
       return result.length > 0;
     },
 
@@ -112,6 +121,7 @@ export function createVariableStorage(): VariableStorage {
         .delete(variables)
         .where(like(variables.name, `${escapeLikePrefix(prefix)}%`))
         .returning();
+      if (result.length) committed();
       return result.length;
     }
   };

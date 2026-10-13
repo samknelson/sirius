@@ -151,6 +151,13 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
   if (driftReports.length > 0) {
     throw new ComponentSchemaDriftError(driftReports);
   }
+  // New optional subsidiaries need the same mutation coverage as core tables.
+  // During early bootstrap the function might not have been installed yet.
+  await storage.rawSql.execute(`DO $$ BEGIN
+    IF to_regprocedure('install_configuration_revision_triggers()') IS NOT NULL THEN
+      PERFORM install_configuration_revision_triggers();
+    END IF;
+  END $$`);
 }
 
 async function loadSchemaModule(schemaPath: string): Promise<Record<string, unknown>> {

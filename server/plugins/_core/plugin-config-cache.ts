@@ -1,6 +1,7 @@
 import { eventBus, EventType, type PluginConfigSavedPayload } from "../../services/event-bus";
 import { logger } from "../../logger";
 import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
+import { readConfigurationSnapshot } from "../../storage/configuration-revisions";
 
 const SERVICE = "plugin-config-cache";
 
@@ -24,7 +25,7 @@ async function build(kind: string): Promise<PluginConfigWithSubsidiary[]> {
   const { storage } = await import("../../storage");
   // Filter `enabled: true` in the DB so a growing pile of disabled configs
   // costs nothing here.
-  const envelopes = await storage.pluginConfigs.search(kind, { enabled: true });
+  const envelopes = await readConfigurationSnapshot(() => storage.pluginConfigs.search(kind, { enabled: true }));
   logger.info("Plugin-config cache rebuilt", {
     service: SERVICE,
     kind,

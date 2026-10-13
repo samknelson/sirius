@@ -4,7 +4,7 @@ export type SystemMode = "dev" | "test" | "live" | "maintenance";
 
 const VALID_MODES: readonly SystemMode[] = ["dev", "test", "live", "maintenance"];
 
-export async function getSystemMode(): Promise<SystemMode> {
+export async function getSystemMode(strict = false): Promise<SystemMode> {
   try {
     const modeVar = await storage.variables.getByName("system_mode");
     if (modeVar && typeof modeVar.value === "string") {
@@ -13,8 +13,10 @@ export async function getSystemMode(): Promise<SystemMode> {
         return mode as SystemMode;
       }
     }
+    if (strict && modeVar) throw new Error("Stored system_mode is not a valid mode");
     return "dev";
   } catch (error) {
+    if (strict) throw error;
     console.error("Failed to get system mode, defaulting to 'dev':", error);
     return "dev";
   }

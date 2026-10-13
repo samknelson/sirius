@@ -72,7 +72,8 @@ const reloadable: ReloadableSubsystem[] = [
     async reload() {
       const { initFileSystems, listFileSystemConfigs } = await import("./files");
       const { storage } = await import("../storage");
-      const referencedIds = await storage.files.listDistinctFileSystemIds();
+      const { readConfigurationSnapshot } = await import("../storage/configuration-revisions");
+      const referencedIds = await readConfigurationSnapshot(() => storage.files.listDistinctFileSystemIds());
       initFileSystems(referencedIds);
       const count = listFileSystemConfigs().length;
       return `${count} filesystem${count === 1 ? "" : "s"} configured.`;
@@ -87,9 +88,9 @@ const reloadable: ReloadableSubsystem[] = [
     makesLive: [],
     async reload() {
       const { cronScheduler } = await import("../cron/scheduler");
+      if (!cronScheduler.isStarted()) return "Cron is not active in this process (non-owning role or deferred startup); no jobs started.";
       await cronScheduler.reload();
-      const count = cronScheduler.getScheduledJobCount();
-      return `${count} job${count === 1 ? "" : "s"} scheduled.`;
+      return cronScheduler.getScheduleSummary();
     },
   },
 ];
@@ -173,11 +174,7 @@ export interface ReloadResult {
  * per-entry result and can see exactly which re-read worked.
  */
 export async function runReloads(ids?: string[]): Promise<ReloadResult[]> {
-  const selected = ids
-    ? ids
-        .map((id) => getReloadableSubsystem(id))
-        .filter((entry): entry is ReloadableSubsystem => entry !== undefined)
-    : reloadable;
+  const selected = ids ? reloadable.filter(entry => ids.includes(entry.id)) : reloadable;
 
   const results: ReloadResult[] = [];
   for (const entry of selected) {

@@ -20,6 +20,7 @@ import { eq, and, type SQL } from "drizzle-orm";
 import { isSingletonPluginType } from "../../plugins/_core/kinds";
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
+import { notifyLocalConfigurationCommit } from "../../services/configuration-cache-registry";
 import {
   createChargeSubsidiaryStorage,
   createBenefitEligibilitySubsidiaryStorage,
@@ -80,6 +81,7 @@ function emitConfigSaved(
   operation: "create" | "update" | "delete",
 ): void {
   onAfterCommit(() => {
+    notifyLocalConfigurationCommit();
     eventBus
       .emit(EventType.PLUGIN_CONFIG_SAVED, { kind, id, operation })
       .catch((err) => {

@@ -405,6 +405,10 @@ export async function runSchemaBringUp(): Promise<void> {
       },
     );
 
+    // Empty-database bootstrap stamps past migrations; functions/triggers aren't
+    // represented by Drizzle. Install for fresh and upgraded DBs under this lock.
+    const { installConfigurationRevisionInfrastructure } = await import("../storage/configuration-revisions");
+    await installConfigurationRevisionInfrastructure();
     await step("drift-gate", "the schema drift gate", () => enforceStartupSchemaDrift());
 
     // The waiter that found nothing left to do is a DIFFERENT outcome from
