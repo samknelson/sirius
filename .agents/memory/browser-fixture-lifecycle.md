@@ -38,6 +38,12 @@ Standalone Vite browser fixtures rooted at the workspace may exhaust Linux file 
 
 **How to apply:** Scope or ignore hidden local dependency stores in new Vite fixture servers; when a cold compile is slow, wait for DOM readiness and the target element rather than requiring network-idle.
 
+Cold navigation to a full production page in an isolated Vite fixture can exceed the browser's default 30-second navigation timeout even while individual module requests answer.
+
+**Why:** A full Summary/layout fixture repeatedly timed out before HTML delivery but completed all interaction and layout checks with a bounded 120-second navigation budget; the app itself was healthy.
+
+**How to apply:** Allow a bounded cold-navigation budget, then wait for the specific UI. Keep assertions at normal short timeouts and fail explicitly on unexpected API calls rather than weakening the checks.
+
 For CSS `auto-fit` grids, computed `gridTemplateColumns` can include collapsed zero-width tracks.
 
 **Why:** A four-tile grid reported five computed tracks even though only four tracks had width and all tiles were contained.

@@ -29,6 +29,7 @@ function row(year: number, number: number, status: MonthlyCoverageRow["status"],
     employerHours: [{ employerId: "a", employerName: "Employer A", reported: 88.25 }],
     hours: { reported: 88.25, required: 100 },
     status, reasons, medical: [], dental: [], other: [], charge: null,
+    dependentCoverage: { state: "available", dependents: [] },
   };
 }
 
@@ -191,5 +192,50 @@ describe("worker monthly coverage status runs", () => {
     query.useInfiniteQuery.mockReturnValue({ isPending: false, isError: true });
     await render();
     expect(container.textContent).toContain("Monthly coverage history is unavailable");
+  });
+
+  it("shows dependent-only coverage separately in an Unenrolled span, updates ranges on pagination, and retains selected detail", async () => {
+    const may = row(2025, 5, "inactive", ["No Election"]);
+    may.dependentCoverage = { state: "available", dependents: [{
+      personId: "child", name: "Child A", relationship: "Child",
+      benefits: [{ id: "m", name: "Medical for child", icon: null, color: null }],
+    }] };
+    const april = { ...may, coverageMonth: month(2025, 4) };
+    response([page([may, april], 4)], true);
+    await render();
+    await click(runButton(0));
+    const summary = () => container.querySelector('[aria-label="Covered dependents in loaded span"]')!;
+    expect(summary().textContent).toContain("April 2025 – May 2025");
+    expect(summary().textContent).toContain("Older months have not loaded");
+    const card = container.querySelector('[data-testid="monthly-coverage-card"]')!;
+    expect(card.querySelector('[aria-label="Covered dependents for May 2025"]')?.textContent).toContain("Medical for child");
+    expect(card.querySelector('[aria-label="Benefits for May 2025"]')?.textContent).not.toContain("Child A");
+    expect(card.textContent).toContain("Unenrolled");
+    const march = { ...may, coverageMonth: month(2025, 3) };
+    response([page([may, april], 4), page([march, row(2025, 2, "inactive", ["No Election"])], 4)]);
+    await render();
+    expect(summary().textContent).toContain("March 2025 – May 2025");
+    expect(summary().textContent).not.toContain("Older months have not loaded");
+    expect(container.querySelectorAll("h3 > button")).toHaveLength(1);
+    expect(container.querySelector('[data-testid="monthly-coverage-card"]')?.getAttribute("aria-label")).toBe("Coverage for May 2025");
+    const february = Array.from(container.querySelectorAll('[role="group"] button')).find((button) => button.firstElementChild?.textContent === "February 2025");
+    await click(february ?? null);
+    expect(container.querySelector('[aria-label="Covered dependents for February 2025"]')?.textContent).toContain("No recorded dependent coverage for this month.");
+  });
+
+  it("never calls unavailable dependent evidence an empty list, including older-page failures", async () => {
+    const may = row(2025, 5, "unknown");
+    may.dependentCoverage = { state: "unavailable", dependents: null };
+    response([page([may, row(2025, 4, "unknown")], 2, { partial: true, dependentHistoryAvailable: false })]);
+    await render();
+    await click(runButton(0));
+    expect(container.textContent).toContain("earliest dependent coverage evidence is unavailable");
+    expect(container.querySelector('[aria-label="Covered dependents for May 2025"]')?.textContent).toContain("evidence is unavailable for this month");
+    const span = container.querySelector('[aria-label="Covered dependents in loaded span"]')!;
+    expect(span.textContent).toContain("unavailable for 1 month");
+    expect(span.textContent).not.toContain("No recorded dependent coverage");
+    response([page([row(2025, 5, "unknown")], 2), page([may], 2, { partial: true })]);
+    await render();
+    expect(container.textContent).toContain("Some coverage details are unavailable");
   });
 });

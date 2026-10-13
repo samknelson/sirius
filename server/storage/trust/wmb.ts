@@ -5,6 +5,9 @@ import {
   employers,
   optionsTrustBenefitType,
   workerRelations,
+  workers,
+  contacts,
+  optionsWorkerRelationType,
   type TrustWmb,
 } from "@shared/schema";
 import { sql, eq, and, desc, inArray, or, isNull, asc, getTableColumns } from "drizzle-orm";
@@ -46,6 +49,18 @@ export interface WorkerBenefitPresenceRow {
 
 export interface WorkerBenefitPresenceForMonthRow extends WorkerBenefitPresenceRow {
   workerId: string;
+}
+
+export interface SubscriberDependentHistoryRow {
+  personId: string;
+  year: number;
+  month: number;
+  name: string | null;
+  relationship: string | null;
+  benefitId: string;
+  benefitName: string | null;
+  benefitIcon: string | null;
+  benefitColor: string | null;
 }
 
 /** One (benefit, year, month) → distinct-worker coverage count. */
@@ -94,6 +109,8 @@ export interface WmbEeContributionCoverage {
 }
 
 export interface TrustWmbStorage {
+  getSubscriberDependentHistoryStart(subscriberWorkerId: string, through: { year: number; month: number }): Promise<{ available: boolean; earliest: { year: number; month: number } | null }>;
+  getSubscriberDependentHistory(subscriberWorkerId: string, months: Array<{ year: number; month: number }>): Promise<{ available: boolean; rows: SubscriberDependentHistoryRow[] }>;
   getSubscriberDependentCoverage(subscriberWorkerId: string, month: number, year: number): Promise<Array<TrustWmb & { relationType: string }>>;
   getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]>;
   /**
@@ -183,6 +200,69 @@ export function createTrustWmbStorage(): TrustWmbStorage {
   }
 
   return {
+    async getSubscriberDependentHistoryStart(subscriberWorkerId, through) {
+      if (!(await tableExistsUtil("worker_relations"))) return { available: false, earliest: null };
+      const [row] = await getClient()
+        .select({ period: sql<number | null>`min(${trustWmb.year} * 12 + ${trustWmb.month})` })
+        .from(trustWmb)
+        .innerJoin(workerRelations, eq(workerRelations.id, trustWmb.sourceRelationId))
+        .where(and(eq(workerRelations.worker1, subscriberWorkerId),
+          sql`${trustWmb.year} * 12 + ${trustWmb.month} <= ${through.year * 12 + through.month}`));
+      if (row?.period == null) return { available: true, earliest: null };
+      const period = Number(row.period);
+      const year = Math.floor((period - 1) / 12);
+      return { available: true, earliest: { year, month: period - year * 12 } };
+    },
+
+    async getSubscriberDependentHistory(subscriberWorkerId, months) {
+      if (!(await tableExistsUtil("worker_relations"))) return { available: false, rows: [] };
+      if (!months.length) return { available: true, rows: [] };
+      const hasRelationTypes = await tableExistsUtil("options_worker_relation_type");
+      const hasBenefits = await tableExistsUtil("trust_benefits");
+      const hasBenefitTypes = hasBenefits && await tableExistsUtil("options_trust_benefit_type");
+      // LEFT joins preserve coverage even when its display metadata is missing.
+      // Never filter relation dates: the WMB's source link is the ownership proof.
+      let query = getClient().selectDistinct({
+        personId: trustWmb.workerId,
+        year: trustWmb.year,
+        month: trustWmb.month,
+        name: contacts.displayName,
+        relationship: hasRelationTypes ? optionsWorkerRelationType.name : sql<string | null>`null`,
+        benefitId: trustWmb.benefitId,
+        benefitName: hasBenefits ? trustBenefits.name : sql<string | null>`null`,
+        benefitData: hasBenefitTypes ? optionsTrustBenefitType.data : sql<unknown>`null`,
+      }).from(trustWmb)
+        .innerJoin(workerRelations, eq(workerRelations.id, trustWmb.sourceRelationId))
+        .leftJoin(workers, eq(workers.id, trustWmb.workerId))
+        .leftJoin(contacts, eq(contacts.id, workers.contactId))
+        .$dynamic();
+      if (hasRelationTypes) query = query.leftJoin(optionsWorkerRelationType, eq(optionsWorkerRelationType.id, workerRelations.relationType));
+      if (hasBenefits) query = query.leftJoin(trustBenefits, eq(trustBenefits.id, trustWmb.benefitId));
+      if (hasBenefitTypes) query = query.leftJoin(optionsTrustBenefitType, eq(optionsTrustBenefitType.id, trustBenefits.benefitType));
+      const rows = await query.where(and(
+        eq(workerRelations.worker1, subscriberWorkerId),
+        or(...months.map(({ year, month }) => and(eq(trustWmb.year, year), eq(trustWmb.month, month)))),
+      ));
+      // Multiple employers or source relations can grant the same benefit.
+      const distinct = new Map<string, SubscriberDependentHistoryRow>();
+      for (const row of rows) {
+        const key = JSON.stringify([row.personId, row.year, row.month, row.benefitId]);
+        const data = row.benefitData as { icon?: string; color?: string } | null;
+        const existing = distinct.get(key);
+        if (existing) {
+          if (existing.relationship !== row.relationship) existing.relationship = null;
+        } else {
+          distinct.set(key, {
+            personId: row.personId, year: row.year, month: row.month,
+            name: row.name, relationship: row.relationship,
+            benefitId: row.benefitId, benefitName: row.benefitName,
+            benefitIcon: data?.icon ?? null, benefitColor: data?.color ?? null,
+          });
+        }
+      }
+      return { available: true, rows: [...distinct.values()] };
+    },
+
     async getSubscriberDependentCoverage(subscriberWorkerId, month, year) {
       if (!(await tableExistsUtil("worker_relations"))) return [];
       const { previous } = wmbScanWindow(month, year);

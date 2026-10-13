@@ -8,3 +8,9 @@ For historical BAO coverage reads, never use today's home employer or today's EE
 **Why:** Both the worker's home employer and a charge configuration's account can change while historic work and posted charges remain on the original employer/account. Present-day lookup would rewrite the meaning of old months or erase posted charges.
 
 **How to apply:** In read models covering past periods, identify the historical employer from that period's election or work records and discover EE accounts from posted plugin entries in addition to current configuration. Keep months with insufficient evidence explicitly unknown rather than interpreting missing rows as negative decisions.
+
+Covered dependents in monthly Summary history are reverse, subscriber-provided coverage, not benefits the subscriber received. Preserve status-only spans, including when the subscriber has no own benefit. Do not reconstruct missing historical subscriber links from current elections or invent historical identity snapshots.
+
+**Why:** Staff need the actual recipients and granted benefits for each period; the user explicitly excluded changes to status grouping and reconstruction of lost historical links. Retained display metadata does not prove what a person's name or relationship label was at the time.
+
+**How to apply:** Keep monthly detail authoritative, qualify retained identity labels, and treat immutable historical identity/source retention as separately approved future work rather than silently adding it to a read-only history feature.

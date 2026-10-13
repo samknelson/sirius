@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import "@/plugins/dashboard/bao-worker-coverage/bao-worker-coverage.css";
 import { coverageRunLabel, groupCoverageRuns, type CoverageRunStatus } from "./monthly-coverage-runs";
+import type { DependentCoverageEvidence } from "@shared/covered-dependent-history";
+import { CoveredDependentsMonth, CoveredDependentsSpan } from "./covered-dependents";
 
 interface Month {
   year: number;
@@ -35,6 +37,7 @@ export interface MonthlyCoverageRow {
   dentalBenefitIcons?: BenefitIcon[];
   otherBenefitIcons?: BenefitIcon[];
   charge: string | null;
+  dependentCoverage?: DependentCoverageEvidence;
 }
 
 export interface MonthlyCoveragePage {
@@ -42,6 +45,7 @@ export interface MonthlyCoveragePage {
   total: number;
   showCharges: boolean;
   partial: boolean;
+  dependentHistoryAvailable?: boolean;
 }
 
 const PAGE_SIZE = 12;
@@ -143,8 +147,9 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
               <Button variant="outline" size="sm" className="ml-3" onClick={() => query.refetch()}>Retry</Button>
             </div>
           )}
-          {first?.partial && <p role="status" className="rounded-lg border p-3 text-sm">Some coverage details are unavailable. Months without a confirmed decision are shown as unknown.</p>}
-          {first && first.total === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No monthly coverage, hours, scan, or charge history has been recorded for this worker.</p>}
+          {pages?.some((page) => page.partial) && <p role="status" className="rounded-lg border p-3 text-sm">Some coverage details are unavailable. Months without a confirmed decision are shown as unknown. The history may be incomplete.</p>}
+          {pages?.some((page) => page.dependentHistoryAvailable === false) && <p role="status" className="text-sm">The earliest dependent coverage evidence is unavailable; older dependent-only months may be missing.</p>}
+          {first && first.total === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{first.partial ? "No monthly history could be confirmed from the available evidence." : "No monthly coverage, dependent coverage, hours, scan, or charge history has been recorded for this worker."}</p>}
           {runs.map((run, index) => {
             const latest = run.rows[0].coverageMonth;
             const id = `coverage-run-${latest.year}-${latest.month}`;
@@ -199,6 +204,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                         ? "Select a coverage month to see its benefits and work-month evidence. The status is the same across this period; benefits may vary by month."
                         : "Monthly decision and recorded evidence."}
                     </p>
+                    {run.rows.length > 1 && <CoveredDependentsSpan rows={run.rows} olderUnloaded={index === runs.length - 1 && Boolean(query.hasNextPage)} />}
                     {run.rows.length > 1 && (
                       <div role="group" aria-label={`Coverage months for ${coverageRunLabel(run.status)} ${range}`} className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                         {run.rows.map((monthRow) => (
@@ -320,6 +326,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                   </div>
                 </section>
               </div>
+              <CoveredDependentsMonth evidence={row.dependentCoverage} month={row.coverageMonth.label} />
               {row.status === "unknown" && <p className="mt-3 rounded-md bg-muted/40 p-3 text-muted-foreground">A reliable coverage decision is not available for this month.</p>}
               {first?.showCharges && (
                 <p className="mt-3 border-t pt-3">

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getWorkerBenefitPresence: vi.fn(),
+  getSubscriberDependentHistoryStart: vi.fn(),
+  getSubscriberDependentHistory: vi.fn(),
   getWorkerCoverageHistoryScans: vi.fn(),
   getWorkerHoursMonthly: vi.fn(),
   getWorkerHoursCurrent: vi.fn(),
@@ -18,7 +20,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../server/storage/database", () => ({
   storage: {
-    trust: { wmb: { getWorkerBenefitPresence: mocks.getWorkerBenefitPresence } },
+    trust: { wmb: {
+      getWorkerBenefitPresence: mocks.getWorkerBenefitPresence,
+      getSubscriberDependentHistoryStart: mocks.getSubscriberDependentHistoryStart,
+      getSubscriberDependentHistory: mocks.getSubscriberDependentHistory,
+    } },
     wmbScanQueue: { getWorkerCoverageHistoryScans: mocks.getWorkerCoverageHistoryScans },
     workerHours: {
       getWorkerHoursMonthly: mocks.getWorkerHoursMonthly,
@@ -43,6 +49,7 @@ import {
   buildWorkerMonthlyCoverageHistory,
   classifyBenefitPresence,
   deriveChargeHistory,
+  groupDependentCoverage,
   scanDecisionForMonth,
 } from "../../server/services/sitespecific/bao/worker-monthly-coverage-history";
 
@@ -50,6 +57,8 @@ describe("worker monthly coverage history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getWorkerBenefitPresence.mockResolvedValue([]);
+    mocks.getSubscriberDependentHistoryStart.mockResolvedValue({ available: true, earliest: null });
+    mocks.getSubscriberDependentHistory.mockResolvedValue({ available: true, rows: [] });
     mocks.getWorkerCoverageHistoryScans.mockResolvedValue([]);
     mocks.getWorkerHoursMonthly.mockResolvedValue([]);
     mocks.getWorkerHoursCurrent.mockResolvedValue([]);
@@ -135,7 +144,7 @@ describe("worker monthly coverage history", () => {
       12,
       new Date("2024-04-15T12:00:00Z"),
     );
-    expect(history).toEqual({ months: [], total: 0, showCharges: false, partial: false });
+    expect(history).toEqual({ months: [], total: 0, showCharges: false, partial: false, dependentHistoryAvailable: true });
   });
 
   it("uses only medical and dental types and preserves other plan names", () => {
@@ -345,5 +354,69 @@ describe("worker monthly coverage history", () => {
         "No Election",
       ],
     });
+  });
+
+  it("reaches dependent-only history and reads just the requested page without changing subscriber status", async () => {
+    mocks.getSubscriberDependentHistoryStart.mockResolvedValue({ available: true, earliest: { year: 2023, month: 12 } });
+    mocks.getSubscriberDependentHistory.mockResolvedValue({ available: true, rows: [
+      { personId: "child", name: "Child A", relationship: "Child", year: 2023, month: 12,
+        benefitId: "medical", benefitName: "Medical", benefitIcon: null, benefitColor: null },
+    ] });
+    const history = await buildWorkerMonthlyCoverageHistory("subscriber", 1, 1, new Date("2024-01-15T12:00:00Z"));
+    expect(history.total).toBe(2);
+    expect(mocks.getSubscriberDependentHistory).toHaveBeenCalledExactlyOnceWith("subscriber", [{ year: 2023, month: 12 }]);
+    expect(history.months[0]).toMatchObject({
+      coverageMonth: { year: 2023, month: 12 }, status: "unknown", medical: [],
+      dependentCoverage: { state: "available", dependents: [{ name: "Child A", benefits: [{ id: "medical" }] }] },
+    });
+    // A completed negative decision remains negative even with dependent coverage.
+    mocks.getWorkerCoverageHistoryScans.mockResolvedValue([{
+      id: "scan", year: 2023, month: 12, status: "success", completedAt: new Date(),
+      resultSummary: { actions: [{ action: "none", eligible: false, pluginResults: [{ pluginKey: "election", eligible: false }] }] },
+    }]);
+    expect((await buildWorkerMonthlyCoverageHistory("subscriber", 1, 1, new Date("2024-01-15T12:00:00Z"))).months[0])
+      .toMatchObject({ status: "inactive", reasons: ["No Election"] });
+  });
+
+  it("deduplicates person benefits, preserves distinct people, and retains unresolved metadata", () => {
+    const benefit = { personId: "child", name: null, relationship: null, year: 2024, month: 1,
+      benefitId: "m", benefitName: null, benefitIcon: null, benefitColor: null };
+    expect(groupDependentCoverage([benefit, benefit, { ...benefit, benefitId: "d", benefitName: "Dental" },
+      { ...benefit, personId: "spouse", name: "Person B", relationship: "Spouse" }])).toEqual([
+      { personId: "spouse", name: "Person B", relationship: "Spouse",
+        benefits: [{ id: "m", name: "Unknown benefit (m)", icon: null, color: null }] },
+      { personId: "child", name: "Unknown covered person (child)", relationship: null,
+        benefits: [{ id: "d", name: "Dental", icon: null, color: null }, { id: "m", name: "Unknown benefit (m)", icon: null, color: null }] },
+    ]);
+  });
+
+  it("does not substitute an empty list for absent optional evidence or read failures", async () => {
+    mocks.getWorkerBenefitPresence.mockResolvedValue([{ year: 2024, month: 1, benefitName: "Medical" }]);
+    for (const unavailable of ["absent", "failed"]) {
+      if (unavailable === "absent") {
+        mocks.getSubscriberDependentHistory.mockResolvedValue({ available: false, rows: [] });
+        mocks.getSubscriberDependentHistoryStart.mockResolvedValue({ available: false, earliest: null });
+      } else {
+        mocks.getSubscriberDependentHistory.mockRejectedValue(new Error("Read failed"));
+        mocks.getSubscriberDependentHistoryStart.mockRejectedValue(new Error("Read failed"));
+      }
+      const history = await buildWorkerMonthlyCoverageHistory("worker", 0, 12, new Date("2024-01-15T12:00:00Z"));
+      expect(history.partial).toBe(true);
+      expect(history.dependentHistoryAvailable).toBe(false);
+      expect(history.months[0]).toMatchObject({ status: "active", dependentCoverage: { state: "unavailable", dependents: null } });
+    }
+  });
+
+  it("keeps successful no-dependent evidence distinct and strictly separates months", async () => {
+    mocks.getWorkerBenefitPresence.mockResolvedValue([{ year: 2024, month: 1, benefitName: "Medical" }]);
+    const ownOnly = await buildWorkerMonthlyCoverageHistory("worker", 0, 12, new Date("2024-02-15T12:00:00Z"));
+    expect(ownOnly.months.every((row) => row.dependentCoverage.state === "available" && row.dependentCoverage.dependents.length === 0)).toBe(true);
+    mocks.getSubscriberDependentHistory.mockResolvedValue({ available: true, rows: [{
+      personId: "child", name: "Child A", relationship: "Child", year: 2024, month: 1,
+      benefitId: "m", benefitName: "Medical", benefitIcon: null, benefitColor: null,
+    }] });
+    const history = await buildWorkerMonthlyCoverageHistory("worker", 0, 12, new Date("2024-02-15T12:00:00Z"));
+    expect(history.months[0].dependentCoverage).toEqual({ state: "available", dependents: [] });
+    expect(history.months[1].dependentCoverage).toMatchObject({ state: "available", dependents: [{ personId: "child" }] });
   });
 });

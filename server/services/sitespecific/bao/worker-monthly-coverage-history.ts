@@ -1,4 +1,6 @@
 import type { TrustWmbScanQueue } from "@shared/schema";
+import type { CoveredDependent, DependentCoverageEvidence } from "@shared/covered-dependent-history";
+import type { SubscriberDependentHistoryRow } from "../../../storage/trust/wmb";
 import { storage } from "../../../storage/database";
 import {
   createPolicyResolutionCache,
@@ -35,6 +37,7 @@ export interface WorkerMonthlyCoverageHistoryMonth {
   dentalBenefitIcons: BenefitIcon[];
   otherBenefitIcons: Array<{ name: string; icon: string | null; color: string | null }>;
   charge: string | null;
+  dependentCoverage: DependentCoverageEvidence;
 }
 
 type BenefitIcon = { name: string; icon: string | null; color: string | null };
@@ -44,6 +47,7 @@ export interface WorkerMonthlyCoverageHistory {
   total: number;
   showCharges: boolean;
   partial: boolean;
+  dependentHistoryAvailable: boolean;
 }
 
 type BenefitPresence = Awaited<ReturnType<typeof storage.trust.wmb.getWorkerBenefitPresence>>[number];
@@ -67,6 +71,35 @@ type MonthlyHoursEvidence = {
 
 export function coverageMonthLabel(year: number, month: number) {
   return `${MONTHS[month - 1]} ${year}`;
+}
+
+export function groupDependentCoverage(rows: SubscriberDependentHistoryRow[]): CoveredDependent[] {
+  const people = new Map<string, CoveredDependent>();
+  for (const row of rows) {
+    let person = people.get(row.personId);
+    if (!person) {
+      person = {
+        personId: row.personId,
+        name: row.name?.trim() || `Unknown covered person (${row.personId})`,
+        relationship: row.relationship?.trim() || null,
+        benefits: [],
+      };
+      people.set(row.personId, person);
+    } else if (person.relationship !== (row.relationship?.trim() || null)) {
+      person.relationship = null;
+    }
+    if (!person.benefits.some((benefit) => benefit.id === row.benefitId)) {
+      person.benefits.push({
+        id: row.benefitId,
+        name: row.benefitName?.trim() || `Unknown benefit (${row.benefitId})`,
+        icon: row.benefitIcon,
+        color: row.benefitColor,
+      });
+    }
+  }
+  return [...people.values()].map((person) => ({
+    ...person, benefits: person.benefits.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+  })).sort((a, b) => a.name.localeCompare(b.name) || a.personId.localeCompare(b.personId));
 }
 
 function parseMoneyCents(value: string): bigint {
@@ -335,14 +368,17 @@ export async function buildWorkerMonthlyCoverageHistory(
 
   const { year: currentYear, month: currentMonth } = getZonedDateParts(now, getSystemTimeZone());
   const currentOrdinal = toOrdinal(currentYear, currentMonth);
-    const [benefitsRead, scansRead, hoursRead, chargeConfigsRead, historicalEeAccountsRead] = await Promise.allSettled([
+    const [benefitsRead, scansRead, hoursRead, chargeConfigsRead, historicalEeAccountsRead, dependentStartRead] = await Promise.allSettled([
     storage.trust.wmb.getWorkerBenefitPresence(workerId),
     storage.wmbScanQueue.getWorkerCoverageHistoryScans(workerId),
     storage.workerHours.getWorkerHoursMonthly(workerId),
     storage.pluginConfigs.search("charge", { pluginId: "sitespecific-bao-ee-contribution" }),
       storage.ledger.entries.getBaoEeAccountIdsByWorker(workerId),
+    storage.trust.wmb.getSubscriberDependentHistoryStart(workerId, { year: currentYear, month: currentMonth }),
   ]);
   let partial = [benefitsRead, scansRead, hoursRead, chargeConfigsRead, historicalEeAccountsRead].some((result) => result.status === "rejected");
+  const dependentHistoryAvailable = dependentStartRead.status === "fulfilled" && dependentStartRead.value.available;
+  if (!dependentHistoryAvailable) partial = true;
   const benefitRows = benefitsRead.status === "fulfilled" ? benefitsRead.value : [];
   const scanRows = scansRead.status === "fulfilled" ? scansRead.value : [];
   const monthlyHours = hoursRead.status === "fulfilled" ? hoursRead.value : [];
@@ -387,6 +423,8 @@ export async function buildWorkerMonthlyCoverageHistory(
   );
 
   const earliestOrdinals = [
+    ...(dependentStartRead.status === "fulfilled" && dependentStartRead.value.earliest
+      ? [toOrdinal(dependentStartRead.value.earliest.year, dependentStartRead.value.earliest.month)] : []),
     ...benefitRows.map((row) => toOrdinal(row.year, row.month)),
     ...scanRows.map((row) => toOrdinal(row.year, row.month)),
     ...Array.from(hoursByOrdinal.keys(), (workOrdinal) => workOrdinal + 3),
@@ -397,6 +435,25 @@ export async function buildWorkerMonthlyCoverageHistory(
     : Math.max(0, currentOrdinal - Math.min(...earliestOrdinals) + 1);
   const allOrdinals = Array.from({ length: total }, (_, index) => currentOrdinal - index);
   const pageOrdinals = allOrdinals.slice(offset, offset + limit);
+  let dependentRows: SubscriberDependentHistoryRow[] = [];
+  let dependentCoverageAvailable = false;
+  if (pageOrdinals.length) {
+    try {
+      const evidence = await storage.trust.wmb.getSubscriberDependentHistory(workerId, pageOrdinals.map(fromOrdinal));
+      dependentCoverageAvailable = evidence.available;
+      dependentRows = evidence.rows;
+    } catch {
+      // A failed dependent read never turns into an empty successful answer.
+    }
+    if (!dependentCoverageAvailable) partial = true;
+  }
+  const dependentsByMonth = new Map<number, SubscriberDependentHistoryRow[]>();
+  for (const row of dependentRows) {
+    const ordinal = toOrdinal(row.year, row.month);
+    const rows = dependentsByMonth.get(ordinal) ?? [];
+    rows.push(row);
+    dependentsByMonth.set(ordinal, rows);
+  }
 
   let thresholds = new Map<number, { employerId: string | null; policyId: string | null }>();
   let policyResolutionAvailable = true;
@@ -504,7 +561,10 @@ export async function buildWorkerMonthlyCoverageHistory(
       dentalBenefitIcons: benefits.dentalBenefitIcons,
       otherBenefitIcons: benefits.otherBenefitIcons,
       charge: chargeHistory.showCharges ? chargeHistory.charges.get(ym) ?? "0.00" : null,
+      dependentCoverage: dependentCoverageAvailable
+        ? { state: "available", dependents: groupDependentCoverage(dependentsByMonth.get(ordinal) ?? []) }
+        : { state: "unavailable", dependents: null },
     });
   }
-  return { months, total, showCharges: chargeHistory.showCharges, partial };
+  return { months, total, showCharges: chargeHistory.showCharges, partial, dependentHistoryAvailable };
 }
