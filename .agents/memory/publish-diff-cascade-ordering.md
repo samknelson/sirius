@@ -3,6 +3,31 @@ name: Publish-diff CASCADE ordering bug & two-step publish workaround
 description: Why a publish can fail with "constraint ... does not exist" on its own generated SQL, and how to unblock it without touching prod.
 ---
 
+## Keep compatibility releases consistent with startup
+
+Temporary retained tables and columns must be represented in the schema source
+of truth, not just added to development. Pending historical migrations must not
+delete them during the compatibility release.
+
+**Why:** a development-only shim can unblock the generated diff but fail the
+startup drift gate. An old migration can also undo a retained structure before
+the application is ready.
+
+**How to apply:** verify both the new Publish diff and a complete development
+restart. Retire compatibility structures only after the first Publish succeeds
+and the production backfill has been verified with read-only queries.
+
+For required replacement columns on populated tables, preserve the original
+values until they are copied. Column existence alone is not proof of a completed
+backfill: Publish may have already added the replacement with a default.
+
+**Why:** the generated schema diff can otherwise truncate rows or remove the
+only remaining copy of a dashboard's access restrictions.
+
+**How to apply:** use a staged, data-preserving schema; keep input validation
+explicit when a temporary database default is used. Do not introduce a new
+production schema writer or deploy-time DDL to perform the transition.
+
 # Publish-time schema diff can generate a self-breaking script
 
 The Publish flow diffs the dev DB against prod and applies the SQL in one

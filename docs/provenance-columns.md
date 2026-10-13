@@ -25,6 +25,16 @@ This document is the inventory those tasks work from, the rule they follow for
 the reads that depend on a retiring column, and the rationale behind the
 allowlist in `scripts/dev/check-provenance-columns.ts`.
 
+### Temporary Publish compatibility exception
+
+`ws_bundles.created_at` and `ws_bundles.updated_at` are temporarily retained
+with the retired, unused parent table during a two-stage Publish. They are
+not a new provenance mechanism and have no application readers or writers.
+The first release removes the incoming client foreign key without dropping
+its parent first; the cleanup release removes the whole parent table, its
+enum, and both temporary provenance-check allowlist entries. Do not turn
+this compatibility exception into a permanent KEEP entry.
+
 ## The three shared pieces
 
 1. **The seeding routine** — `storage.entityMetadataSeed.seedFromColumns()`

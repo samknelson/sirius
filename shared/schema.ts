@@ -138,6 +138,8 @@ export {
 } from "./schema/dispatch/eligibility-config";
 
 export {
+  wsBundlesCompatibility,
+  wsBundleStatusCompatibilityEnum,
   wsClients,
   wsClientStatusEnum,
   insertWsClientSchema,
@@ -1054,7 +1056,9 @@ export const files = pgTable("files", {
   entityId: varchar("entity_id"),
   // Which environment-defined filesystem (FILESYSTEMS env var) holds the
   // bytes. Pre-existing rows were backfilled to "legacy" by migration 1055.
-  fileSystemId: varchar("file_system_id").notNull(),
+  // Temporary Publish backfill default, not an application filesystem fallback.
+  // Remove after the compatibility release; uploads still require an explicit id.
+  fileSystemId: varchar("file_system_id").notNull().default("legacy"),
   // live | missing | pending_delete — maintained by the consistency sweep.
   status: varchar("status").notNull().default('live'),
   metadata: jsonb("metadata"),
@@ -2063,7 +2067,11 @@ export type WizardStepProgress = z.infer<typeof wizardStepProgressSchema>;
 export type WizardStepStatus = z.infer<typeof wizardStepStatusSchema>;
 export type WizardData = z.infer<typeof wizardDataSchema>;
 
-export const insertFileSchema = createInsertSchema(files).omit({
+export const insertFileSchema = createInsertSchema(files, {
+  // The compatibility database default must not make application uploads
+  // silently select a filesystem.
+  fileSystemId: z.string().min(1),
+}).omit({
   id: true,
   uploadedAt: true,
 });
@@ -2401,10 +2409,15 @@ export {
 // config's roles array still references.
 export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
-  roles: varchar("roles").array().notNull(),
+  // Retain the old values until migration 1051 has copied them. Nullable lets
+  // newly created configs omit this retired field during the staged release.
+  legacyRole: varchar("role").references(() => roles.id, { onDelete: 'restrict' }),
+  roles: varchar("roles").array().notNull().default(sql`'{}'::varchar[]`),
 });
 
-export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
+export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard, {
+  roles: z.array(z.string()),
+}).omit({ legacyRole: true });
 export type InsertPluginConfigDashboard = z.infer<typeof insertPluginConfigDashboardSchema>;
 export type PluginConfigDashboard = typeof pluginConfigsDashboard.$inferSelect;
 

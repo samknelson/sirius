@@ -11,6 +11,26 @@ export const wsClientStatusEnum = pgEnum("ws_client_status", [
   "revoked",
 ]);
 
+// Publish compatibility only: retain the retired parent for the first release
+// so Publish can drop its incoming FK before a later release drops the table.
+// No application code uses bundles, and clients no longer reference this table.
+export const wsBundleStatusCompatibilityEnum = pgEnum("ws_bundle_status", [
+  "active",
+  "inactive",
+  "deprecated",
+]);
+
+export const wsBundlesCompatibility = pgTable("ws_bundles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 50 }).notNull().unique("ws_bundles_code_unique"),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  version: varchar("version", { length: 20 }).default("1.0.0").notNull(),
+  status: wsBundleStatusCompatibilityEnum("status").default("active").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+});
+
 export const wsClients = pgTable("ws_clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 100 }).notNull(),

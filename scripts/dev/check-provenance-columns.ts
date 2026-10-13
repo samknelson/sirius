@@ -159,6 +159,10 @@ const ALLOWLIST: Record<string, string> = {
     "KEEP — gateway customer mapping creation time retained on excluded ledger state",
 
   // ── RETIRE: not moved yet, one task per area ─────────────────────────────
+  // Temporary parent retained for a two-stage Publish, not active provenance.
+  // Remove these exceptions when the cleanup Publish retires the parent.
+  "ws_bundles.created_at": "RETIRE — temporary Publish compatibility parent",
+  "ws_bundles.updated_at": "RETIRE — temporary Publish compatibility parent",
   "wizard_report_data.created_at":
     "KEEP — bulk report output: the retention purge reads a row's age to decide " +
     "whether the run's output has expired, and it is the order the rows are read back in",

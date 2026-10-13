@@ -23,15 +23,6 @@ async function columnExists(table: string, column: string): Promise<boolean> {
   return result.rows?.[0]?.exists === true || result.rows?.[0]?.exists === "t";
 }
 
-async function typeExists(name: string): Promise<boolean> {
-  const result = await db.execute(sql`
-    SELECT EXISTS (
-      SELECT 1 FROM pg_type WHERE typname = ${name}
-    ) AS exists
-  `);
-  return result.rows?.[0]?.exists === true || result.rows?.[0]?.exists === "t";
-}
-
 /**
  * Replace the web service "bundle" concept with per-configuration grants.
  *
@@ -43,7 +34,8 @@ async function typeExists(name: string): Promise<boolean> {
  *
  * - Drops `ws_clients.bundle_id` (and its index) — clients no longer belong to
  *   a bundle.
- * - Drops `ws_bundles` and the `ws_bundle_status` enum it owned.
+ * - Retains the empty legacy table/enum during the compatibility release.
+ *   A subsequent Publish removes them after the incoming FK is gone.
  * - Creates `ws_client_grants`, the client -> configuration join. Both foreign
  *   keys cascade, so deleting a client or retiring a configuration can never
  *   leave a dangling authorization behind. The pair is unique via a NAMED
@@ -61,22 +53,6 @@ async function up(): Promise<void> {
     logger.info("Dropped ws_clients.bundle_id", { service: "migration-1060" });
   } else {
     logger.info("ws_clients.bundle_id already gone, skipping", {
-      service: "migration-1060",
-    });
-  }
-
-  if (await tableExists("ws_bundles")) {
-    await db.execute(sql`DROP TABLE ws_bundles`);
-    logger.info("Dropped ws_bundles", { service: "migration-1060" });
-  } else {
-    logger.info("ws_bundles already gone, skipping", { service: "migration-1060" });
-  }
-
-  if (await typeExists("ws_bundle_status")) {
-    await db.execute(sql`DROP TYPE ws_bundle_status`);
-    logger.info("Dropped ws_bundle_status enum", { service: "migration-1060" });
-  } else {
-    logger.info("ws_bundle_status enum already gone, skipping", {
       service: "migration-1060",
     });
   }
@@ -109,7 +85,7 @@ const migration: Migration = {
   version: 1060,
   name: "ws_bundles_to_grants",
   description:
-    "Replace web service bundles with per-configuration grants: drop ws_clients.bundle_id, drop ws_bundles and its ws_bundle_status enum, create ws_client_grants (client -> plugin_configs, both cascading, named unique constraint on the pair). Idempotent.",
+    "Replace web service bundles with per-configuration grants; retain the retired parent table/enum for the first compatibility Publish and remove them through the subsequent cleanup Publish.",
   up,
 };
 
