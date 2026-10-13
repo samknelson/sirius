@@ -114,9 +114,7 @@ export async function checkSchemaDependencies(
   const deps = component.schemaManifest?.dependsOnComponents ?? component.dependsOnComponents ?? [];
   if (deps.length === 0) return [];
 
-  if (!isCacheInitialized()) {
-    await loadComponentCache();
-  }
+  await loadComponentCache();
 
   const missing: MissingDependency[] = [];
   for (const depId of deps) {

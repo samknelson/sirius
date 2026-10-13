@@ -26,9 +26,7 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
  * Get the configuration state for all components
  */
 async function getComponentConfigs(): Promise<ComponentConfig[]> {
-  if (!isCacheInitialized()) {
-    await loadComponentCache();
-  }
+  await loadComponentCache();
   
   const allComponents = getAllComponents();
   const configs: ComponentConfig[] = [];
@@ -38,7 +36,8 @@ async function getComponentConfigs(): Promise<ComponentConfig[]> {
     
     configs.push({
       componentId: component.id,
-      enabled
+      enabled,
+      definition: component,
     });
   }
 
@@ -50,9 +49,7 @@ async function getComponentConfigs(): Promise<ComponentConfig[]> {
  * Uses in-memory cache for performance
  */
 export async function getEnabledComponentIds(): Promise<string[]> {
-  if (!isCacheInitialized()) {
-    await loadComponentCache();
-  }
+  await loadComponentCache();
   return getEnabledComponentIdsSync();
 }
 
@@ -61,9 +58,7 @@ export async function getEnabledComponentIds(): Promise<string[]> {
  * Uses in-memory cache for performance
  */
 export async function isComponentEnabled(componentId: string): Promise<boolean> {
-  if (!isCacheInitialized()) {
-    await loadComponentCache();
-  }
+  await loadComponentCache();
   return isComponentEnabledSync(componentId);
 }
 
@@ -107,6 +102,7 @@ export function registerComponentRoutes(
   // GET /api/components/config - Get component configuration states (read-only for all authenticated users)
   app.get("/api/components/config", requireAuth, async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "private, no-store");
       const configs = await getComponentConfigs();
       res.json(configs);
     } catch (error) {
@@ -223,7 +219,9 @@ export function registerComponentRoutes(
         componentId,
         enabled: effectiveEnabled,
         managesSchema: component.managesSchema || false,
-        message: `Component ${enabled ? 'enabled' : 'disabled'} successfully`
+        message: effectiveEnabled === enabled
+          ? `Component ${effectiveEnabled ? 'enabled' : 'disabled'} successfully`
+          : "Component state changed during the update; the current state is shown",
       });
     } catch (error) {
       console.error("Failed to update component configuration:", error);
@@ -274,7 +272,9 @@ export function registerComponentRoutes(
         enabled: effectiveEnabled,
         managesSchema: true,
         repairedTables: lifecycleResult.repairedTables ?? [],
-        message: lifecycleResult.repairedTables?.length
+        message: !effectiveEnabled
+          ? "Schema repaired, but the component is currently disabled"
+          : lifecycleResult.repairedTables?.length
           ? `Repaired ${lifecycleResult.repairedTables.length} table(s) and enabled the component`
           : "Component enabled successfully (no repair was needed)",
       });
@@ -324,6 +324,7 @@ export function registerComponentRoutes(
   // GET /api/components/:componentId/enabled - Check if a specific component is enabled
   app.get("/api/components/:componentId/enabled", requireAuth, async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "private, no-store");
       const { componentId } = req.params;
       const enabled = await isComponentEnabled(componentId);
       res.json({ componentId, enabled });

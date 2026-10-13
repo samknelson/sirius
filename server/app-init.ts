@@ -4,7 +4,7 @@ import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
-import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
+import { initAccessControl, registerEntityLoader, clearAccessCache } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { initializeSessionHistoryListener } from "./services/session-history";
@@ -18,6 +18,7 @@ import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
+import { loadComponentCache, onComponentCacheChange, startComponentCacheRefresh } from "./services/component-cache";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
@@ -353,6 +354,11 @@ export async function bootstrapApp(
 
   // Register permissions from enabled components
   syncComponentPermissions();
+  onComponentCacheChange(() => {
+    clearAccessCache();
+    syncComponentPermissions();
+  });
+  startComponentCacheRefresh();
   logger.info("Component permissions synced", { source: "startup" });
 
   // Initialize dispatch eligibility plugin system
@@ -449,10 +455,11 @@ export async function bootstrapApp(
   // config writes matter. The cache is generic (per-kind) and lazy; this only
   // registers its single PLUGIN_CONFIG_SAVED listener.
   {
-    const { initializePluginConfigCache } = await import(
+    const { initializePluginConfigCache, invalidateAllPluginConfigCaches } = await import(
       "./plugins/_core/plugin-config-cache"
     );
     initializePluginConfigCache();
+    onComponentCacheChange(invalidateAllPluginConfigCaches);
   }
   logger.info("Plugin-config cache initialized", { source: "startup" });
 
@@ -565,6 +572,17 @@ export async function bootstrapApp(
       }
     });
   }
+
+  // Refresh before auth/authorization and sync-only plugin gates on either API role.
+  // A stale process must not accept/refuse traffic using an old component selection.
+  app.use("/api", async (_req, res, next) => {
+    try {
+      await loadComponentCache();
+      next();
+    } catch {
+      res.status(503).json({ message: "Current component settings are unavailable. Please retry." });
+    }
+  });
 
   // Browser sessions and the application API belong to api-user. Web-service
   // credentials use their own authentication middleware and do not need this.

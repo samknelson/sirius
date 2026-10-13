@@ -78,6 +78,8 @@ export interface ComponentDefinition {
 export interface ComponentConfig {
   componentId: string;
   enabled: boolean;
+  /** Server-registered metadata; old consumers may ignore it. */
+  definition?: ComponentDefinition;
 }
 
 export interface ComponentSchemaManifest {

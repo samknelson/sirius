@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { getAllComponents, getComponentById } from "../../shared/components";
 import { logger } from "../logger";
+import { isInTransaction, onAfterCommit, runOutsideTransaction } from "../storage/transaction-context";
 
 export type ComponentEnabledMap = Record<string, boolean>;
 
@@ -9,6 +10,29 @@ const COMPONENTS_VARIABLE_NAME = "components";
 let cachedComponentState: ComponentEnabledMap | null = null;
 let cacheInitialized = false;
 let cacheRevision = 0;
+let readSequence = 0;
+let publishedSequence = 0;
+let persistedVersion: string | undefined;
+const changeListeners = new Set<() => void>();
+let watcher: ReturnType<typeof setInterval> | undefined;
+
+export function onComponentCacheChange(listener: () => void): void {
+  changeListeners.add(listener);
+}
+
+/** Infrastructure cache refresh, not a plugin cron: also runs in api-ws processes. */
+export function startComponentCacheRefresh(): void {
+  if (watcher) return;
+  let refreshing = false;
+  watcher = setInterval(() => {
+    if (refreshing) return;
+    refreshing = true;
+    void loadComponentCache().catch(error => {
+      logger.warn("Component state refresh failed", { service: "component-cache", error: String(error) });
+    }).finally(() => { refreshing = false; });
+  }, 5_000);
+  watcher.unref();
+}
 
 /**
  * Bumped whenever the cached component state changes. Anything that
@@ -22,22 +46,54 @@ export function getComponentCacheRevision(): number {
 }
 
 export async function loadComponentCache(): Promise<ComponentEnabledMap> {
-  const variable = await storage.variables.getByName(COMPONENTS_VARIABLE_NAME);
-  
-  if (variable && typeof variable.value === "object" && variable.value !== null) {
-    cachedComponentState = variable.value as ComponentEnabledMap;
-  } else {
-    cachedComponentState = {};
+  const sequence = ++readSequence;
+  // Global caches must never publish the caller's uncommitted transaction.
+  const read = runOutsideTransaction(() => storage.variables.getJsonState(COMPONENTS_VARIABLE_NAME));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let variable: Awaited<ReturnType<typeof storage.variables.getJsonState>>;
+  let state: ComponentEnabledMap;
+  try {
+    variable = await Promise.race([
+      read,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("Component state read timed out after 5 seconds")), 5_000);
+      }),
+    ]).finally(() => { if (timer) clearTimeout(timer); });
+    const value = variable?.value ?? {};
+    if (typeof value !== "object" || Array.isArray(value) ||
+        Object.values(value).some(flag => typeof flag !== "boolean")) {
+      throw new Error("The components variable must be an object of boolean flags");
+    }
+    state = Object.freeze({ ...value }) as ComponentEnabledMap;
+  } catch (error) {
+    // A failed refresh means "unknown", not "disabled" or "use defaults".
+    // Invalidate sync gates too; an earlier failure cannot undo a newer good read.
+    if (sequence >= publishedSequence) {
+      publishedSequence = sequence;
+      if (cacheInitialized) cacheRevision++;
+      cacheInitialized = false;
+      cachedComponentState = null;
+    }
+    throw error;
   }
-  
-  cacheInitialized = true;
-  cacheRevision++;
-  logger.debug("Component cache loaded", { 
-    service: "component-cache",
-    componentCount: Object.keys(cachedComponentState).length 
-  });
-  
-  return cachedComponentState;
+  // A slow earlier read cannot undo a later confirmed read.
+  if (sequence >= publishedSequence) {
+    publishedSequence = sequence;
+    const changed = !cacheInitialized || cachedComponentState === null || persistedVersion !== variable?.version ||
+      Object.keys(state).length !== Object.keys(cachedComponentState).length ||
+      Object.entries(state).some(([id, flag]) => cachedComponentState![id] !== flag);
+    cachedComponentState = state;
+    persistedVersion = variable?.version;
+    cacheInitialized = true;
+    if (changed) {
+      cacheRevision++;
+      for (const listener of changeListeners) listener();
+      logger.debug("Component cache refreshed", {
+        service: "component-cache", componentCount: Object.keys(state).length,
+      });
+    }
+  }
+  return getComponentCache();
 }
 
 export function getComponentCache(): ComponentEnabledMap {
@@ -52,6 +108,7 @@ export function isCacheInitialized(): boolean {
 }
 
 export function invalidateComponentCache(): void {
+  publishedSequence = ++readSequence;
   cachedComponentState = null;
   cacheInitialized = false;
   cacheRevision++;
@@ -59,28 +116,19 @@ export function invalidateComponentCache(): void {
 }
 
 export async function updateComponentCache(componentId: string, enabled: boolean): Promise<void> {
-  if (!cacheInitialized) {
-    await loadComponentCache();
-  }
-  
-  cachedComponentState = cachedComponentState || {};
-  cachedComponentState[componentId] = enabled;
-  cacheRevision++;
-  
-  const existingVariable = await storage.variables.getByName(COMPONENTS_VARIABLE_NAME);
-  
-  if (existingVariable) {
-    await storage.variables.update(existingVariable.id, {
-      name: COMPONENTS_VARIABLE_NAME,
-      value: cachedComponentState
+  await storage.variables.upsertJsonBooleanKey(COMPONENTS_VARIABLE_NAME, componentId, enabled);
+  if (isInTransaction()) {
+    onAfterCommit(() => {
+      void loadComponentCache().catch(error => {
+        logger.warn("Committed component state could not be refreshed", {
+          service: "component-cache", componentId, error: String(error),
+        });
+      });
     });
   } else {
-    await storage.variables.create({
-      name: COMPONENTS_VARIABLE_NAME,
-      value: cachedComponentState
-    });
+    await loadComponentCache();
   }
-  
+
   logger.debug("Component cache updated", { 
     service: "component-cache",
     componentId,

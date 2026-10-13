@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
-import { eq, like } from "drizzle-orm";
+import { eq, like, sql } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
@@ -22,9 +22,11 @@ export interface VariableStorage {
   getAll(): Promise<Variable[]>;
   get(id: string): Promise<Variable | undefined>;
   getByName(name: string): Promise<Variable | undefined>;
+  getJsonState(name: string): Promise<{ value: unknown; version: string } | undefined>;
   getByNamePrefix(prefix: string): Promise<Variable[]>;
   create(variable: InsertVariable): Promise<Variable>;
   update(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined>;
+  upsertJsonBooleanKey(name: string, key: string, value: boolean): Promise<Variable>;
   delete(id: string): Promise<boolean>;
   deleteByNamePrefix(prefix: string): Promise<number>;
 }
@@ -53,6 +55,14 @@ export function createVariableStorage(): VariableStorage {
       const client = getClient();
       return client.select().from(variables).where(like(variables.name, `${escapeLikePrefix(prefix)}%`));
     },
+    async getJsonState(name) {
+      const [state] = await getClient().select({
+        value: variables.value,
+        // Compare for equality only: detects same-value lifecycle/config repairs too.
+        version: sql<string>`${variables}.xmin::text`,
+      }).from(variables).where(eq(variables.name, name));
+      return state;
+    },
 
     async create(insertVariable: InsertVariable): Promise<Variable> {
       validate.validateOrThrow(insertVariable);
@@ -74,6 +84,20 @@ export function createVariableStorage(): VariableStorage {
         .returning();
       
       return variable || undefined;
+    },
+
+    async upsertJsonBooleanKey(name, key, value) {
+      const patch = JSON.stringify({ [key]: value });
+      const [variable] = await getClient().insert(variables)
+        .values({ name, value: { [key]: value } })
+        .onConflictDoUpdate({
+          target: variables.name,
+          set: { value: sql`coalesce(${variables.value}, '{}'::jsonb) || ${patch}::jsonb` },
+          // Refuse malformed legacy data rather than erasing it or making an array.
+          setWhere: sql`${variables.value} is null or jsonb_typeof(${variables.value}) = 'object'`,
+        }).returning();
+      if (!variable) throw new Error(`Variable "${name}" must contain a JSON object`);
+      return variable;
     },
 
     async delete(id: string): Promise<boolean> {
@@ -99,6 +123,10 @@ export const variableLoggingConfig = defineLoggingConfig<VariableStorage>({
   methods: {
     create: { getEntityId: (args) => args[0]?.name },
     update: {},
+    upsertJsonBooleanKey: {
+      getEntityId: (_args, result) => result?.id,
+      getDescription: (args) => `Updated ${args[0]} flag ${args[1]} to ${args[2]}`,
+    },
     delete: {},
   },
 });

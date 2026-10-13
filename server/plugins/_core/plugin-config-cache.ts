@@ -54,11 +54,12 @@ export async function getEnabledConfigsForKind(
     .then((built) => {
       // Only stamp the cache if no invalidation happened while building.
       if ((generation.get(kind) ?? 0) === gen) cache.set(kind, built);
-      loading.delete(kind);
+      if (loading.get(kind) === promise) loading.delete(kind);
+      if ((generation.get(kind) ?? 0) !== gen) return getEnabledConfigsForKind(kind);
       return built;
     })
     .catch((error) => {
-      loading.delete(kind);
+      if (loading.get(kind) === promise) loading.delete(kind);
       throw error;
     });
   loading.set(kind, promise);
@@ -72,7 +73,15 @@ export async function getEnabledConfigsForKind(
  */
 export function invalidatePluginConfigCache(kind: string): void {
   cache.delete(kind);
+  loading.delete(kind);
   generation.set(kind, (generation.get(kind) ?? 0) + 1);
+}
+
+/** Component-owned config writes in another process invalidate all lazy slices. */
+export function invalidateAllPluginConfigCaches(): void {
+  for (const kind of new Set([...cache.keys(), ...loading.keys(), ...generation.keys()])) {
+    invalidatePluginConfigCache(kind);
+  }
 }
 
 let initialized = false;
