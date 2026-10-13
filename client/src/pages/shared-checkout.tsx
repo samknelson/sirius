@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ export default function SharedCheckoutPage() {
   const { eaId } = useParams<{ eaId: string }>();
   const [, navigate] = useLocation();
   const { hasPermission } = useAuth();
+  const queryClient = useQueryClient();
   const isAdmin = hasPermission("admin");
   const [choice, setChoice] = useState<"full" | "statements">("full");
   const [statementIds, setStatementIds] = useState<string[]>([]);
@@ -141,7 +142,17 @@ export default function SharedCheckoutPage() {
       if (current !== generation.current || !["created", "requires_action"].includes(created.status)) navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
       else if (created.clientSecret && Pay) { setLockedQuote(breakdown); setSession(created); }
        else { setLockedQuote(breakdown); setSession(created); setError("Secure payment entry is unavailable. Check the payment status below; if it is still awaiting confirmation, contact support with the confirmation number. Do not start another payment until its status is known."); }
-    } catch (cause) { if (current === generation.current) setError(getApiErrorMessage(cause, "Could not start payment. Please try again.")); }
+    } catch (cause) {
+      if (current === generation.current) {
+        setError(getApiErrorMessage(cause, "Could not start payment. Check your unfinished payment status before trying again."));
+        setReview(false);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["checkout"] }),
+          queryClient.invalidateQueries({ queryKey: ["employer-checkout-entry"] }),
+          queryClient.invalidateQueries({ queryKey: ["worker-online-pay-accounts"] }),
+        ]);
+      }
+    }
     finally { submitting.current = false; setBusy(false); }
   };
   if (ea.isLoading || checkout.isLoading) return <main className="mx-auto w-full max-w-xl p-4" role="status">Loading checkout…</main>;
@@ -174,7 +185,7 @@ export default function SharedCheckoutPage() {
          {canManageMethods && <Link href={managementUrl} className="inline-block text-sm underline">Manage saved payment methods</Link>}
          {!method && <p className="text-sm text-muted-foreground">A new method here is used for this payment only. To add or remove a reusable method, use payment method management.</p>}
          {!method && selectedNewType && <p className="text-sm text-muted-foreground">After you review and start this payment, securely {selectedNewType === "card" ? "enter your card details" : "link or enter your US bank account with the payment provider"} and confirm there. Your payment is not complete yet.</p>}
-        {!data.paymentTypes.length && <Alert variant="destructive"><AlertDescription>No payment types are available for this account.</AlertDescription></Alert>}
+         {!data.paymentTypes.length && <Alert variant="destructive"><AlertDescription>No payment types are available for this account. Ask an administrator to enable a compatible card or bank account type under Gateway Payment Types and ledger online payment settings.</AlertDescription></Alert>}
         {!method && !Pay && <Alert variant="destructive"><AlertDescription>Secure payment entry is unavailable for this account. Contact support before starting a new payment.</AlertDescription></Alert>}
       </CardContent></Card>
       <Card><CardContent className="space-y-4 pt-6">

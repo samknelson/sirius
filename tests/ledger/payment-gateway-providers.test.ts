@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import type { PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
+import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
 import { dummyPaymentGatewayPlugin } from "../../server/plugins/ledger/payment-gateway/plugins/dummy";
 import {
   normalizeStripePaymentIntent,
@@ -22,6 +22,18 @@ const context = {
 } as PaymentGatewayContext;
 
 describe("payment gateway provider contract", () => {
+  it.each([stripePaymentGatewayPlugin, dummyPaymentGatewayPlugin])("distinguishes absent from explicitly empty methods for $150 at $id", async plugin => {
+    const ctx = { apiKey: "sk_test_fixture", config: { id: "fixture", data: { publishableKey: "pk_test_fixture" } } } as PaymentGatewayContext;
+    expect(plugin.getCheckoutPaymentTypes!(ctx)).toContain("card");
+    ctx.config.data = { publishableKey: "pk_test_fixture", paymentTypes: [] };
+    expect(plugin.getCheckoutPaymentTypes!(ctx)).toEqual([]);
+    const input = { sessionId: "rejected", amountMinor: 15000, currency: "USD", saveMethod: false,
+      paymentTypes: ["card"], description: "Ledger payment", metadata: {} };
+    expect(() => plugin.validatePaymentSession!(ctx, input)).toThrow(PaymentInitiationRejected);
+    stripeCreate.mockClear();
+    await expect(plugin.createPaymentSession!(ctx, input)).rejects.toMatchObject({ code: "method_disabled" });
+    expect(stripeCreate).not.toHaveBeenCalled();
+  });
   it("makes dummy sessions deterministic and recoverable without process state", async () => {
     const args = {
       sessionId: "checkout-123",

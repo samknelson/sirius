@@ -29,7 +29,7 @@ const server = await createServer({
     name: "checkout-browser-entry",
     configureServer(viteServer) {
       viteServer.middlewares.use((request, _response, next) => {
-        if (request.url?.startsWith("/pay/")) request.url = "/tests/ledger/checkout-browser.html";
+        if (request.url?.startsWith("/pay/") || request.url?.startsWith("/ea/")) request.url = "/tests/ledger/checkout-browser.html";
         next();
       });
     },
@@ -79,6 +79,9 @@ try {
     },
     selectionInput, quote,
   };
+  let activeCheckout = checkout;
+  let rejectInitiation = false;
+  let submittedPayments = 0;
   const origin = `http://127.0.0.1:${server.config.server.port}`;
   const failures = [];
   browser = await puppeteer.launch({
@@ -102,14 +105,22 @@ try {
         permissions: ["worker"], components: ["ledger"],
         timezone: { systemTimeZone: "UTC", userTimeZone: null, allowUserTimezones: false },
       },
-      "/api/ledger/ea/fixture-ea": { entityType: "worker", entityId: "fixture-worker" },
-      "/api/ledger/checkout/worker/fixture-worker/fixture-ea": checkout,
-      "/api/ledger/payment-methods/worker/fixture-worker": [
+      "/api/ledger/ea/fixture-ea": { entityType: activeCheckout.entityType, entityId: activeCheckout.entityId },
+      [`/api/ledger/checkout/${activeCheckout.entityType}/${activeCheckout.entityId}/fixture-ea`]: activeCheckout,
+      [`/api/ledger/payment-methods/${activeCheckout.entityType}/${activeCheckout.entityId}`]: [
         { id: "fixture-card", gatewayConfigId: "fixture-gateway", isActive: true,
           providerDetails: { card: { brand: "Visa", last4: "4242" } } },
       ],
+      "/api/ledger/checkout/sessions/fixture-pending": {
+        id: "fixture-pending", entityType: activeCheckout.entityType, entityId: activeCheckout.entityId,
+        eaId: "fixture-ea", status: "processing", amount: "150.00", currency: "USD",
+        canCancel: false, ledgerPaymentId: "fixture-ledger", paymentStatus: "pending",
+      },
     };
     if (request.method() === "POST" && url.pathname.endsWith("/sessions")) {
+      submittedPayments++;
+      if (rejectInitiation) return request.respond({ status: 409, contentType: "application/json",
+        body: JSON.stringify({ message: "Ask an administrator to enable card payments. No payment was initiated." }) });
       const body = JSON.parse(request.postData());
       if (!["card", "us_bank_account"].includes(body.paymentMethodType) || body.paymentMethodId) {
         failures.push(`Wrong provider selection: ${JSON.stringify(body)}`);
@@ -231,6 +242,65 @@ try {
    assert.ok((await page.$eval('[data-testid="fixture-provider"]', node => node.textContent)).includes("Secure card entry"));
    assert.ok(!page.url().includes("/receipt"), "created card session stays at secure entry");
    await assertNoOverflow("secure card entry");
+
+  // Reported failure reproduction in a rendered browser, for BOTH shared
+  // payer scopes. These are fixture answers, not real provider/DB evidence.
+  const fullBalance = (entityType, balance, reserved = "0.00") => {
+    const input = { balance, reserved, reservations: [], invoices: [], allowPartial: true, minAmount: 1 };
+    return { ...checkout, entityType, entityId: `fixture-${entityType}`,
+      account: { ...checkout.account, name: `${entityType} checkout` }, balance,
+      available: (Number(balance) - Number(reserved)).toFixed(2),
+      invoices: [], selectionInput: input,
+      quote: calculateCheckoutSelection(input, { mode: "full", invoiceNumbers: [] }) };
+  };
+  for (const entityType of ["worker", "employer"]) {
+    activeCheckout = fullBalance(entityType, "150.00");
+    rejectInitiation = true;
+    await page.goto(`${origin}/pay/fixture-ea`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('main[aria-label="Checkout"]');
+    await page.waitForFunction(() => document.body.textContent.includes("Available to pay: $150.00"));
+    await clickLabel("I authorize this payment.");
+    await clickButton("Review payment");
+    const count = submittedPayments;
+    await clickButton("Continue to secure confirmation");
+    await page.waitForFunction(() => document.body.textContent.includes("Ask an administrator to enable card payments"));
+    assert.equal(submittedPayments, count + 1, `${entityType}: rejection does not automatically resubmit`);
+    const afterRejection = await page.$eval("main", node => node.textContent);
+    assert.ok(afterRejection.includes("Posted balance: $150.00") &&
+      afterRejection.includes("Pending payments: $0.00") &&
+      afterRejection.includes("Available to pay: $150.00"));
+    await assertNoOverflow(`${entityType} rejected initiation`);
+    activeCheckout = fullBalance(entityType, "387.00");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.body.textContent.includes("Available to pay: $387.00"));
+    assert.ok((await page.$eval("main", node => node.textContent)).includes("Pending payments: $0.00"));
+    if (entityType === "employer") {
+      await page.goto(`${origin}/ea/fixture-ea`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => document.body.textContent.includes("Pay online"));
+      await page.click('a[href="/pay/fixture-ea"]');
+      await page.waitForSelector('main[aria-label="Checkout"]');
+    }
+    rejectInitiation = false;
+    await clickLabel("I authorize this payment.");
+    await clickButton("Review payment");
+    await clickButton("Continue to secure confirmation");
+    await page.waitForSelector('[data-testid="fixture-provider"]');
+    activeCheckout = { ...fullBalance(entityType, "387.00"), paymentTypes: [] };
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.body.textContent.includes("Gateway Payment Types"));
+    assert.equal(await reviewDisabled(), true, `${entityType}: explicitly disabled methods cannot be submitted`);
+    assert.ok(!(await page.$eval("main", node => node.textContent)).includes("New credit/debit card"));
+  }
+  activeCheckout = { ...fullBalance("employer", "150.00", "150.00"),
+    pendingCheckouts: [{ id: "fixture-pending", amount: "150.00", currency: "USD", status: "processing" }] };
+  await page.goto(`${origin}/ea/fixture-ea`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.body.textContent.includes("Check payment status"));
+  assert.ok(!(await page.$eval("main", node => node.textContent)).includes("Pay online"));
+  await page.click('a[href="/pay/fixture-ea"]');
+  await page.waitForFunction(() => document.body.textContent.includes("Your unfinished payments"));
+  await page.click('a[href="/pay/receipt/fixture-pending"]');
+  await page.waitForFunction(() => document.body.textContent.includes("Payment pending"));
+  assert.ok(!(await page.$eval("main", node => node.textContent)).includes("Abandon this payment"));
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
   console.log(`Checkout browser fixture passed; screenshot: ${screenshotPath}`);
 } finally {

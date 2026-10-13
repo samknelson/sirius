@@ -134,6 +134,7 @@
 - Worker exports — [sensitive filters](worker-list-sensitive-filters.md) stay body-only with opaque caches; [keyset traversal](worker-export-traversal-consistency.md) may move rows if sort keys change mid-download.
 - [Online payment rollout](online-payment-foundation-boundary.md) — reuse existing attempts and pending ACH recovery; historical payer/consent stay unknown; foundation does not authorize live charging.
 - [Checkout abandonment boundary](checkout-abandonment-boundary.md) — only provider-created, unconfirmed checkout is abandonable; serialize explicit cancellation with webhook settlement.
+- [Checkout rejection proof](checkout-initiation-proof.md) — current config rejection on replay cannot disprove earlier creation; provider-entry evidence must survive crashes and lost commits.
 - [Test-mode provider entry order](test-mode-provider-entry-order.md) — reject live credentials before customer creation, not only before SetupIntent; redact client secrets in response previews.
 - [Whole-statement checkout](whole-statement-checkout.md) — net credits apply oldest-first; unknown pending allocations block checkout rather than guessing; method management differs from method use.
 - [Payment direction historical correction](payment-direction-historical-correction.md) — changing a type's charge/credit meaning after clearing needs a reviewed snapshot and payment-plugin reconciliation, never a blind sign flip.

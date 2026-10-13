@@ -45,6 +45,7 @@ export default function SharedPaymentReceipt() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["worker-online-pay-accounts"] }),
         queryClient.invalidateQueries({ queryKey: ["checkout"] }),
+        queryClient.invalidateQueries({ queryKey: ["employer-checkout-entry"] }),
       ]);
     } catch (cause) {
       setCancelError(getApiErrorMessage(cause, "Could not confirm cancellation. Your balance remains reserved; check status or contact support."));

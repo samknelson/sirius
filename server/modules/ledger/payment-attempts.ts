@@ -14,7 +14,8 @@ import { z } from "zod";
 import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 import { enforceFloodLimit, FloodError } from "../../flood/service";
 import { CHECKOUT_FLOOD_EVENT } from "../../flood/events";
-import { PaymentCancellationError } from "../../plugins/ledger/payment-gateway/types";
+import { PaymentCancellationError, PaymentInitiationRejected } from "../../plugins/ledger/payment-gateway/types";
+import { checkoutPaymentTypes, initiatePayment } from "./payment-initiation";
 import { ensureCustomer } from "./payment-methods";
 import { processPaymentEvidence, evidenceFromPayment, settlementError, logSettlementFailure, SettlementRefusal } from "./payment-settlement";
 
@@ -463,12 +464,7 @@ export function registerLedgerPaymentAttemptRoutes(
       try { await assertOnlinePaymentAuthority(req, req.params.entityType as "worker" | "employer", req.params.entityId, "methods"); }
       catch (e) { if (e instanceof OnlinePaymentAuthorityError) methodPermission = false; else throw e; }
       const reusable = !!loaded.resolved.plugin.attachMethod;
-      const configuredTypes = Array.isArray((loaded.resolved.config.data as any)?.paymentTypes)
-        ? (loaded.resolved.config.data as any).paymentTypes.filter((x: unknown): x is string => typeof x === "string") : [];
-      const supportedTypes = (loaded.resolved.plugin.supportedPaymentTypes ?? []).map((x) => x.id);
-      const paymentTypes = (loaded.settings.paymentTypes ?? ["card", "us_bank_account"])
-        .filter((type) => configuredTypes.length === 0 || configuredTypes.includes(type))
-        .filter((type) => supportedTypes.length === 0 || supportedTypes.includes(type));
+      const paymentTypes = checkoutPaymentTypes(loaded.resolved, loaded.settings.paymentTypes ?? ["card", "us_bank_account"]);
       return res.json({
         entityType: req.params.entityType, entityId: req.params.entityId, eaId: loaded.ea.id,
         account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode, gatewayConfigId: loaded.account.gatewayConfigId },
@@ -546,7 +542,7 @@ export function registerLedgerPaymentAttemptRoutes(
               ? await ensureCustomer(existing.entityType, existing.entityId, loaded.resolved)
               : undefined;
           if (retryMethodRef && !retryCustomer) return error(res, 409, "Payment customer is not configured");
-          const retry = await loaded.resolved.plugin.createPaymentSession!(loaded.resolved.context, {
+          const retry = await initiatePayment(existing, loaded.resolved, {
             sessionId: existing.id, amountMinor: Math.round(Number(existing.amount) * 100),
             currency: existing.currency, customerRef: retryCustomer,
             savedMethodRef: retryMethodRef, saveMethod: existing.saveMethod,
@@ -573,13 +569,8 @@ export function registerLedgerPaymentAttemptRoutes(
             savedMethod.entityId !== req.params.entityId || savedMethod.gatewayConfigId !== loaded.account.gatewayConfigId ||
             !savedMethod.providerMethodRef) return error(res, 400, "Saved payment method is unavailable");
       }
-      const configuredTypes = Array.isArray((loaded.resolved.config.data as any)?.paymentTypes)
-        ? (loaded.resolved.config.data as any).paymentTypes.filter((x: unknown): x is string => typeof x === "string") : [];
-      const supportedTypes = (loaded.resolved.plugin.supportedPaymentTypes ?? []).map((x) => x.id);
-      const paymentTypes = (loaded.settings.paymentTypes ?? ["card", "us_bank_account"])
-        .filter((type) => configuredTypes.length === 0 || configuredTypes.includes(type))
-        .filter((type) => supportedTypes.length === 0 || supportedTypes.includes(type));
-      if (paymentTypes.length === 0) return error(res, 409, "No compatible payment types are configured");
+      const paymentTypes = checkoutPaymentTypes(loaded.resolved, loaded.settings.paymentTypes ?? ["card", "us_bank_account"]);
+      if (paymentTypes.length === 0) return error(res, 409, "No compatible payment types are configured. Ask an administrator to enable a card or bank account type under Gateway Payment Types and ledger online payment settings.");
       if (body.paymentMethodType && !paymentTypes.includes(body.paymentMethodType)) {
         return error(res, 400, "The selected payment type is not enabled for this account. Refresh checkout and choose an available method.");
       }
@@ -598,6 +589,12 @@ export function registerLedgerPaymentAttemptRoutes(
         ? await storage.ledger.gatewayCustomers.get(req.params.entityType, req.params.entityId, loaded.account.gatewayConfigId!)
         : undefined;
       if (savedMethod && !savedCustomer) return error(res, 409, "Payment customer is not configured");
+      const preflight = {
+        sessionId: "", amountMinor: cents, currency: loaded.account.currencyCode,
+        customerRef: savedCustomer?.customerRef, savedMethodRef: savedMethod?.providerMethodRef,
+        saveMethod: body.saveMethod, paymentTypes: sessionTypes, description: "Ledger payment", metadata: {},
+      };
+      loaded.resolved.plugin.validatePaymentSession?.(loaded.resolved.context, preflight);
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
         await storage.ledger.paymentAttempts.expireReservations(loaded.ea.id);
@@ -608,6 +605,14 @@ export function registerLedgerPaymentAttemptRoutes(
             current.account.currencyCode !== loaded.account.currencyCode) {
           throw new PaymentAttemptConflictError("Checkout configuration changed. Refresh and review before confirming.");
         }
+        const currentTypes = checkoutPaymentTypes(current.resolved, current.settings.paymentTypes ?? ["card", "us_bank_account"]);
+        if (sessionTypes.some(type => !currentTypes.includes(type))) {
+          throw new PaymentAttemptConflictError("The selected payment type is no longer enabled. Refresh checkout and ask an administrator to check Gateway Payment Types.");
+        }
+        current.resolved.plugin.validatePaymentSession?.(current.resolved.context, preflight);
+        // Use the configuration re-read at the authoritative boundary for
+        // creation too, not the earlier preview-time snapshot.
+        loaded.resolved = current.resolved;
         const quote = calculateCheckoutSelection(await selectionInput(current), body.selection);
         if (quote.issues.length) throw new PaymentAttemptConflictError(quote.issues.join(" "));
         if (quote.amountMinor !== cents || JSON.stringify(quote.statementSelection) !== JSON.stringify(body.statementSelection) ||
@@ -629,6 +634,7 @@ export function registerLedgerPaymentAttemptRoutes(
           consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text },
           statementSelection: quote.statementSelection, idempotencyKey: body.idempotencyKey,
           amount: quote.amount, currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null,
+          failureCode: "creation_not_started",
            metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes: sessionTypes,
             checkoutSelection: { mode: body.selection.mode, invoiceNumbers: [...body.selection.invoiceNumbers].sort() },
             checkoutQuote: quote, invoicePeriods: quote.invoicePeriods },
@@ -641,10 +647,10 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       const customerRef = savedCustomer?.customerRef ??
         (body.saveMethod ? await ensureCustomer(req.params.entityType, req.params.entityId, loaded.resolved) : undefined);
-       const session = await loaded.resolved.plugin.createPaymentSession!(loaded.resolved.context, { sessionId: attempt.id, amountMinor: cents, currency: loaded.account.currencyCode, customerRef, savedMethodRef: savedMethod?.providerMethodRef, saveMethod: body.saveMethod, paymentTypes: sessionTypes, description: "Ledger payment", metadata: { attemptId: attempt.id, entityType: req.params.entityType, entityId: req.params.entityId } });
+       const session = await initiatePayment(attempt, loaded.resolved, { sessionId: attempt.id, amountMinor: cents, currency: loaded.account.currencyCode, customerRef, savedMethodRef: savedMethod?.providerMethodRef, saveMethod: body.saveMethod, paymentTypes: sessionTypes, description: "Ledger payment", metadata: { attemptId: attempt.id, entityType: req.params.entityType, entityId: req.params.entityId } }, true);
       const updated = await storage.ledger.paymentAttempts.updateStatus(attempt.id, session.status, { providerIntentRef: session.providerRef });
       return res.status(201).json(safeAttempt(updated ?? attempt, { clientSecret: session.clientSecret, publicConfig: safePublicConfig(session.publicConfig), providerRef: session.providerRef }));
-    } catch (e) { return error(res, e instanceof z.ZodError ? 400 : e instanceof PaymentAttemptConflictError ? 409 : 500, e instanceof Error ? e.message : "Checkout session failed"); }
+    } catch (e) { return error(res, e instanceof z.ZodError ? 400 : e instanceof PaymentAttemptConflictError || e instanceof PaymentInitiationRejected ? 409 : 500, e instanceof Error ? e.message : "Checkout session failed"); }
   });
   const checkoutStatus = async (req: Request, res: Response, cancel: boolean) => {
     const attempt = await storage.ledger.paymentAttempts.get(req.params.attemptId);

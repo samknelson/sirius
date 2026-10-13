@@ -10,7 +10,12 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => ({
-    select: () => ({ from: () => ({ where: async (where: unknown) => { state.where = where; return state.rows; } }) }),
+    select: () => ({ from: () => ({ where: (where: unknown) => {
+      state.where = where;
+      return Object.assign(Promise.resolve(state.rows), {
+        orderBy: () => ({ limit: async () => state.rows }),
+      });
+    } }) }),
     insert: () => ({
       values: (values: unknown) => {
         state.values = values;
@@ -90,5 +95,20 @@ describe("online payment storage boundaries", () => {
     state.rows = [{ total: "267.35" }];
     expect(await storage.getReservedAmount("ea")).toBe(267.35);
     expect(new PgDialect().sqlToQuery(state.where)).toEqual(query);
+  });
+
+  it("persists a terminal rejection and excludes it from both reservations and recovery", async () => {
+    const storage = createPaymentAttemptStorage();
+    await storage.updateStatus("rejected", "failed", { failureCode: "method_disabled",
+      failureMessage: "Enable card payments", reservationExpiresAt: null });
+    expect(state.updates).toMatchObject({ status: "failed", failureCode: "method_disabled",
+      reservationExpiresAt: null, completedAt: expect.any(Date) });
+    await storage.getReservations("ea");
+    const reserved = new PgDialect().sqlToQuery(state.where).sql;
+    expect(reserved).not.toContain("'failed'");
+    await storage.listForRecovery(40, new Date());
+    const recovery = new PgDialect().sqlToQuery(state.where).sql;
+    expect(recovery).not.toContain("'failed'");
+    expect(recovery).toContain("'created','requires_action','processing'");
   });
 });

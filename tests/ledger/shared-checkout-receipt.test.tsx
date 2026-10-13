@@ -162,6 +162,51 @@ afterEach(async () => {
 });
 
 describe("shared checkout", () => {
+  it.each(["worker", "employer"])("refreshes a rejected 150-dollar checkout for %s and renders 387 dollars with no pending amount after a later charge", async entityType => {
+    const make = (balance: string) => ({ ...fixture({
+      balance, reserved: "0.00", reservations: [], invoices: [], allowPartial: true, minAmount: 1,
+    }), entityType, entityId: `${entityType}-1` });
+    const assign = (balance: string) => {
+      if (entityType === "employer") employerFixture = make(balance);
+      else workerFixture = make(balance);
+    };
+    assign("150.00");
+    let rejected = true;
+    apiRequest.mockImplementation((method, url, body) => {
+      if (method === "POST" && rejected) return Promise.reject(new Error("Ask an administrator to enable card payments"));
+      return Promise.resolve(response(method, url, body));
+    });
+    await render();
+    expect(text()).toContain("Posted balance: $150.00");
+    await clickCheckboxContaining("I authorize");
+    await submit();
+    expect(text()).toContain("Ask an administrator to enable card payments");
+    expect(text()).toContain("Pending payments: $0.00");
+    expect(text()).toContain("Available to pay: $150.00");
+    expect(apiRequest.mock.calls.filter(([method, url]) => method === "GET" && url.includes("/checkout/")).length).toBeGreaterThan(1);
+    assign("387.00");
+    await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout"] }); });
+    await settle();
+    expect(text()).toContain("Posted balance: $387.00");
+    expect(text()).toContain("Pending payments: $0.00");
+    expect(text()).toContain("Available to pay: $387.00");
+    rejected = false;
+    await submit();
+    expect(apiRequest.mock.calls.filter(([method]) => method === "POST").at(-1)![2].amount).toBe("387.00");
+    expect(text()).toContain("Secure payment confirmation");
+  });
+
+  it.each(["worker", "employer"])("does not offer disabled gateway methods to %s", async entityType => {
+    const disabled = { ...fixture({ balance: "150.00", reserved: "0.00", reservations: [], invoices: [], allowPartial: true, minAmount: 1 }),
+      entityType, entityId: `${entityType}-1`, paymentTypes: [] };
+    if (entityType === "employer") employerFixture = disabled;
+    else workerFixture = disabled;
+    await render();
+    expect(text()).toContain("Gateway Payment Types");
+    expect(text()).not.toContain("New credit/debit card");
+    expect(button("Review payment").disabled).toBe(true);
+    expect(text()).toContain("Pending payments: $0.00");
+  });
    it.each([
      ["created", "card"], ["created", "us_bank_account"],
      ["requires_action", "card"], ["requires_action", "us_bank_account"],
@@ -709,13 +754,13 @@ describe("shared payment receipt", () => {
   });
 
   it.each([
-    ["succeeded", "Payment posted"],
+    ["succeeded", "Payment cleared"],
     ["processing", "Payment processing"],
     ["failed", "Payment failed"],
     ["canceled", "Payment canceled"],
     ["expired", "Payment expired"],
   ])("renders %s status with safe retry/account links", async (status, heading) => {
-    apiRequest.mockImplementation(() => Promise.resolve(receipt(status, status === "succeeded" ? { ledgerPaymentId: "ledger-1" } : {})));
+    apiRequest.mockImplementation(() => Promise.resolve(receipt(status, status === "succeeded" ? { ledgerPaymentId: "ledger-1", paymentStatus: "cleared" } : {})));
     await render("receipt");
     expect(text()).toContain(heading);
     expect(text()).toContain("$12.50");
@@ -741,10 +786,10 @@ describe("shared payment receipt", () => {
 
   it("shows employer account and confirmation without a worker-account link", async () => {
     apiRequest.mockImplementation(() => Promise.resolve(receipt("succeeded", {
-      entityType: "employer", entityId: "employer-1", ledgerPaymentId: "ledger-employer",
+      entityType: "employer", entityId: "employer-1", ledgerPaymentId: "ledger-employer", paymentStatus: "cleared",
     })));
     await render("receipt");
-    expect(text()).toContain("Payment posted");
+    expect(text()).toContain("Payment cleared");
     expect(text()).toContain("Confirmation: session-1");
     expect(container?.querySelector('a[href="/ea/ea-1"]')).toBeTruthy();
     expect(container?.querySelector('a[href="/ledger/payment/ledger-employer"]')).toBeTruthy();
@@ -772,10 +817,10 @@ describe("shared payment receipt", () => {
       let current = receipt("succeeded");
       apiRequest.mockImplementation(() => Promise.resolve(current));
       await render("receipt");
-      current = receipt("succeeded", { ledgerPaymentId: "ledger-1" });
+      current = receipt("succeeded", { ledgerPaymentId: "ledger-1", paymentStatus: "cleared" });
       await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
       await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      expect(text()).toContain("Payment posted");
+      expect(text()).toContain("Payment cleared");
       const calls = apiRequest.mock.calls.length;
       await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
       expect(apiRequest).toHaveBeenCalledTimes(calls);
@@ -787,10 +832,10 @@ describe("shared payment receipt", () => {
     apiRequest.mockImplementation(() => Promise.resolve(current));
     await render("receipt");
     expect(text()).toContain("Payment processing");
-    current = receipt("succeeded", { ledgerPaymentId: "ledger-reloaded" });
+    current = receipt("succeeded", { ledgerPaymentId: "ledger-reloaded", paymentStatus: "cleared" });
     await act(async () => { button("Check status").click(); });
     await settle();
-    expect(text()).toContain("Payment posted");
+    expect(text()).toContain("Payment cleared");
     expect(container?.querySelector('a[href="/ledger/payment/ledger-reloaded"]')).toBeTruthy();
     expect(Array.from(container?.querySelectorAll("button") ?? []).some(node => node.textContent?.includes("Check status"))).toBe(false);
   });

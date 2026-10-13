@@ -2,6 +2,7 @@ import express from "express";
 import http from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateCheckoutSelection } from "../../shared/ledger/checkout-selection";
+import { PaymentInitiationRejected } from "../../server/plugins/ledger/payment-gateway/types";
 
 const mocks = vi.hoisted(() => ({
   authority: vi.fn(),
@@ -25,7 +26,7 @@ const mocks = vi.hoisted(() => ({
       paymentAttempts: {
         getByIdempotencyKey: vi.fn(), getReservedAmount: vi.fn(), getReservations: vi.fn(), create: vi.fn(),
         updateStatus: vi.fn(), lockEa: vi.fn(), lockAttempt: vi.fn(), expireReservations: vi.fn(),
-        get: vi.fn(), claimLedgerPosting: vi.fn(),
+        get: vi.fn(), claimLedgerPosting: vi.fn(), recordEvent: vi.fn(), markEventProcessed: vi.fn(),
       },
     },
   },
@@ -61,6 +62,7 @@ const { registerLedgerPaymentAttemptRoutes } = await import("../../server/module
 
 let server: http.Server;
 let base: string;
+const liveAttempts = new Map<string, any>();
 const ea = { id: "ea-1", accountId: "acct-1", entityType: "worker", entityId: "worker-1" };
 const gateway = {
   config: { id: "gw-1", data: { paymentTypes: ["card"], publishableKey: "pk_test" } },
@@ -88,6 +90,15 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
 beforeEach(() => {
   vi.clearAllMocks();
+  liveAttempts.clear();
+  mocks.storage.ledger.paymentAttempts.get.mockReset().mockImplementation(async (id: string) => {
+    if (liveAttempts.has(id)) return liveAttempts.get(id);
+    const created = await mocks.storage.ledger.paymentAttempts.create.mock.results.at(-1)?.value;
+    const existing = await mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mock.results.at(-1)?.value;
+    const row = created?.id === id ? created : existing?.id === id ? existing : undefined;
+    if (row) liveAttempts.set(id, { ...row });
+    return liveAttempts.get(id);
+  });
   mocks.processPaymentEvidence.mockReset();
   mocks.access.mockResolvedValue({ granted: false });
   mocks.authority.mockResolvedValue("user-1");
@@ -104,17 +115,22 @@ beforeEach(() => {
     id: "attempt-1", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
     amount: "12.34", currency: "USD", status: "requires_action", createdByUserId: "user-1",
   });
-  mocks.storage.ledger.paymentAttempts.updateStatus.mockImplementation(async (id: string, status: string, extra: object = {}) => ({
-    id, entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
-    amount: "12.34", currency: "USD", status, ...extra,
-  }));
+  mocks.storage.ledger.paymentAttempts.updateStatus.mockImplementation(async (id: string, status: string, extra: object = {}) => {
+    const row = liveAttempts.get(id) ?? {
+      id, entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1", gatewayConfigId: "gw-1",
+      amount: "12.34", currency: "USD",
+    };
+    Object.assign(row, { status }, extra);
+    liveAttempts.set(id, row);
+    return { ...row };
+  });
   mocks.storage.ledger.paymentAttempts.lockEa.mockResolvedValue(undefined);
   mocks.storage.ledger.paymentAttempts.lockAttempt.mockResolvedValue(undefined);
   mocks.storage.ledger.paymentAttempts.expireReservations.mockResolvedValue(undefined);
   mocks.storage.ledger.invoices.listForEa.mockResolvedValue([{ invoiceNumber: "INV-1", invoiceBalance: "12.34", year: 2026, month: 9 }]);
   mocks.storage.variables.getByName.mockResolvedValue({ value: { consumer: { version: "v1", text: "Pay now" }, business: { version: "v1", text: "Pay now" } } });
   mocks.resolve.mockResolvedValue(gateway);
-  gateway.plugin.createPaymentSession.mockResolvedValue({
+  gateway.plugin.createPaymentSession.mockReset().mockResolvedValue({
     status: "requires_action", providerRef: "pi-1", clientSecret: "cs-1",
     publicConfig: { publishableKey: "pk_test", paymentTypes: ["card"], secret: "never-expose" },
   });
@@ -189,6 +205,83 @@ describe("online checkout HTTP contract", () => {
     selection: { mode: "statements", invoiceNumbers: ["INV-1"] },
     consent: { version: "v1", text: "Pay now", accepted: true },
     statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }], saveMethod: false, ...overrides,
+  });
+
+  it.each(["worker", "employer"])("rejects disabled and incompatible gateway types for %s without reserving $150 or the later $387", async entityType => {
+    const entityId = `${entityType}-1`;
+    mocks.storage.ledger.ea.get.mockResolvedValue({ ...ea, entityType, entityId });
+    mocks.storage.ledger.accounts.get.mockResolvedValue({
+      id: "acct-1", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
+      data: { onlinePayments: { enabled: true, payerTypes: [entityType], paymentTypes: ["card"], minAmount: 1 } },
+    });
+    for (const configured of [[], ["us_bank_account"]]) {
+      mocks.resolve.mockResolvedValue({ ...gateway, config: { ...gateway.config, data: { paymentTypes: configured } } });
+      for (const balance of ["150.00", "387.00"]) {
+        mocks.storage.ledger.ea.getBalance.mockResolvedValue(balance);
+        mocks.storage.ledger.invoices.listForEa.mockResolvedValue([]);
+        const preview = await (await fetch(`${base}/api/ledger/checkout/${entityType}/${entityId}/ea-1`)).json();
+        expect(preview).toMatchObject({ paymentTypes: [], quote: { postedBalance: balance, pendingPayments: "0.00", available: balance } });
+        const response = await checkout(valid({ amount: balance, selection: { mode: "full", invoiceNumbers: [] }, statementSelection: [] }), `${entityType}/${entityId}/ea-1`);
+        expect(response.status).toBe(409);
+        expect((await response.json()).message).toContain("administrator");
+      }
+    }
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+    expect(mocks.createPaymentFromRequestBody).not.toHaveBeenCalled();
+  });
+
+  it.each(["worker", "employer"])("audits a definite post-save rejection for %s and permits only a deliberate new retry", async entityType => {
+    const entityId = `${entityType}-1`;
+    mocks.storage.ledger.ea.get.mockResolvedValue({ ...ea, entityType, entityId });
+    mocks.storage.ledger.accounts.get.mockResolvedValue({
+      id: "acct-1", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
+      data: { onlinePayments: { enabled: true, payerTypes: [entityType], paymentTypes: ["card"], minAmount: 1 } },
+    });
+    mocks.storage.ledger.paymentAttempts.create.mockImplementation(async input => {
+      const row = { ...input, id: input.idempotencyKey, __created: true };
+      liveAttempts.set(row.id, row);
+      return row;
+    });
+    mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockImplementation(async key => liveAttempts.get(key));
+    gateway.plugin.createPaymentSession.mockRejectedValueOnce(new PaymentInitiationRejected("method_disabled", "Ask an administrator to enable card payments"));
+    mocks.storage.ledger.ea.getBalance.mockResolvedValue("150.00");
+    mocks.storage.ledger.invoices.listForEa.mockResolvedValue([]);
+    mocks.storage.ledger.paymentAttempts.getReservations.mockImplementation(async () => [...liveAttempts.values()].filter(a => ["created", "requires_action", "processing"].includes(a.status)));
+    const body = valid({ amount: "150.00", selection: { mode: "full", invoiceNumbers: [] }, statementSelection: [] });
+    const scope = `${entityType}/${entityId}/ea-1`;
+    expect((await checkout(body, scope)).status).toBe(409);
+    expect(liveAttempts.get("idem-1")).toMatchObject({ status: "failed", failureCode: "method_disabled" });
+    expect(mocks.storage.ledger.paymentAttempts.recordEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: "payment.initiation_rejected", attemptId: "idem-1", payload: { failureCode: "method_disabled" },
+    }));
+    const preview = await (await fetch(`${base}/api/ledger/checkout/${scope}`)).json();
+    expect(preview.quote).toMatchObject({ postedBalance: "150.00", pendingPayments: "0.00", available: "150.00" });
+    expect((await checkout(body, scope)).status).toBe(409);
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledTimes(1);
+    mocks.storage.ledger.ea.getBalance.mockResolvedValue("387.00");
+    const after = await (await fetch(`${base}/api/ledger/checkout/${scope}`)).json();
+    expect(after.quote).toMatchObject({ postedBalance: "387.00", pendingPayments: "0.00", available: "387.00" });
+    expect((await checkout({ ...body, amount: "387.00", idempotencyKey: "deliberate-retry" }, scope)).status).toBe(201);
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledTimes(2);
+    expect(mocks.createPaymentFromRequestBody).not.toHaveBeenCalled();
+  });
+
+  it("rechecks configuration and creation prerequisites before the reserving insert", async () => {
+    const preflight = vi.fn(() => { throw new PaymentInitiationRejected("credentials_not_ready", "Configure matching test keys"); });
+    mocks.resolve.mockResolvedValue({ ...gateway, plugin: { ...gateway.plugin, validatePaymentSession: preflight } });
+    const response = await checkout(valid());
+    expect(response.status).toBe(409);
+    expect((await response.json()).message).toBe("Configure matching test keys");
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+
+    mocks.resolve.mockResolvedValueOnce(gateway).mockResolvedValue({ ...gateway,
+      config: { ...gateway.config, data: { paymentTypes: [] } } });
+    const changed = await checkout(valid());
+    expect(changed.status).toBe(409);
+    expect((await changed.json()).message).toContain("no longer enabled");
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
   });
 
   it("separates missing authorization, effective method denial and unsupported providers", async () => {
@@ -447,7 +540,7 @@ describe("online checkout HTTP contract", () => {
       gateway.plugin.createPaymentSession.mockRejectedValueOnce(new Error("Test gateway unavailable"));
       const response = await checkout(valid({ paymentMethodType: selected }));
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ message: "Test gateway unavailable" });
+      expect((await response.json()).message).toContain("Your balance remains reserved");
       expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalled();
       expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(
         expect.anything(), expect.objectContaining({ paymentTypes: [selected] }),
@@ -533,10 +626,6 @@ describe("online checkout HTTP contract", () => {
        metadata: { paymentMethodRef: null, paymentTypes: ["card"], checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
     });
     gateway.plugin.retrievePayment.mockResolvedValue({ clientSecret: "cs-existing" });
-    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({
-      id: "attempt-existing", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1",
-      amount: "12.34", currency: "USD", status: "succeeded", providerIntentRef: "pi-existing",
-    });
     let response = await checkout(valid());
     expect(response.status).toBe(200);
     expect(gateway.plugin.retrievePayment).toHaveBeenCalledWith(expect.anything(), "pi-existing");

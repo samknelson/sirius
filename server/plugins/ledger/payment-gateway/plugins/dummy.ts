@@ -21,7 +21,7 @@ import type {
   NormalizedPayment,
   NormalizedPaymentStatus,
 } from "../types";
-import { PaymentCancellationError } from "../types";
+import { PaymentCancellationError, PaymentInitiationRejected } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
 
 /**
@@ -112,7 +112,7 @@ function assertPaymentInput(
   paymentTypes: string[],
 ): void {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 100) {
-    throw new Error(
+    throw new PaymentInitiationRejected("invalid_amount",
       "Payment amount must be at least 100 minor units ($1.00 for USD)",
     );
   }
@@ -121,7 +121,7 @@ function assertPaymentInput(
     paymentTypes.length === 0 ||
     paymentTypes.some((type) => !["card", "us_bank_account"].includes(type) || !allowed.has(type))
   ) {
-    throw new Error("The requested payment type is not enabled for this gateway");
+    throw new PaymentInitiationRejected("method_disabled", "The requested payment type is not enabled for this gateway");
   }
 }
 
@@ -139,6 +139,17 @@ function normalizedDummyPayment(
     failureCode: payment.status === "failed" ? "dummy_declined" : undefined,
     failureMessage: payment.status === "failed" ? "Dummy payment was declined" : undefined,
   };
+}
+
+function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void {
+  assertPaymentInput(ctx, args.amountMinor, args.paymentTypes);
+  if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
+    throw new PaymentInitiationRejected("customer_required", "A customer is required to save or use a saved payment method");
+  }
+  if (args.savedMethodRef) {
+    try { decodeMethodRef(args.savedMethodRef); }
+    catch { throw new PaymentInitiationRejected("invalid_method", "The saved payment method is invalid"); }
+  }
 }
 
 function dummyOutcome(
@@ -263,6 +274,8 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
   payComponentId: "dummy:DummyPayComponent",
   // No real credentials needed — works even when DUMMY_GATEWAY is unset.
   requiresSecret: false,
+  getCheckoutPaymentTypes: configuredPaymentTypes,
+  validatePaymentSession,
 
   supportedPaymentTypes: [
     {
@@ -320,11 +333,7 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
     ctx,
     args: CreatePaymentSessionInput,
   ): Promise<GatewayPaymentSession> {
-    assertPaymentInput(ctx, args.amountMinor, args.paymentTypes);
-    if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
-      throw new Error("A customer is required to save or use a saved payment method");
-    }
-    if (args.savedMethodRef) decodeMethodRef(args.savedMethodRef);
+    validatePaymentSession(ctx, args);
     const status = dummyOutcome(args.metadata);
     const methodType = args.paymentTypes[0];
     const providerRef = encodePayment({

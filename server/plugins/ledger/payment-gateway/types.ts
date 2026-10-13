@@ -204,6 +204,19 @@ export interface GatewayPaymentSession {
   status: NormalizedPaymentStatus;
 }
 
+/**
+ * Proof that THIS invocation did not create a payment. Only provider-owned
+ * pre-call validation may throw this; transport/HTTP errors are uncertain.
+ * This does not prove an earlier invocation with the same identity failed.
+ */
+export class PaymentInitiationRejected extends Error {
+  readonly statusCode = 409;
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "PaymentInitiationRejected";
+  }
+}
+
 export type PaymentCancellationErrorCode =
   | "cancellation_not_supported"
   | "payment_not_cancelable";
@@ -287,6 +300,10 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
    * provider-agnostic (no hardcoded provider knowledge in the UI).
    */
   supportedPaymentTypes?: PaymentTypeOption[];
+  /** Provider defaults apply only when configuration is absent, never to []. */
+  getCheckoutPaymentTypes?(ctx: PaymentGatewayContext): string[];
+  /** Pure preflight: known creation prerequisites, without provider calls. */
+  validatePaymentSession?(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void;
 
   /**
    * Per-plugin configuration fields. Rendered by the generic admin config form

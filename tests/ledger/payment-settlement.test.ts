@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
-import type { PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
+import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
 
 let attempt: any;
 let ledgerPayment: any;
@@ -40,6 +40,7 @@ const events = {
   markEventError: vi.fn(),
   markEventIgnored: vi.fn(),
   touchRecovery: vi.fn(),
+  recordEvent: vi.fn(),
 };
 vi.mock("../../server/storage", () => ({
   storage: {
@@ -346,6 +347,37 @@ describe("online settlement", () => {
     }));
     expect(attempt.providerIntentRef).toBe("ref-1");
     expect(paymentCreate).toHaveBeenCalledOnce();
+  });
+
+  it("does not release a lost create response when current gateway configuration rejects recovery", async () => {
+    attempt.status = "requires_action";
+    attempt.providerIntentRef = null;
+    attempt.failureCode = "creation_uncertain";
+    attempt.metadata.paymentTypes = ["card"];
+    createSession.mockRejectedValueOnce(new PaymentInitiationRejected("method_disabled", "Card was disabled later"));
+    expect((await recoverOnlinePayments()).failures).toBe(1);
+    expect(attempt).toMatchObject({ status: "requires_action", providerIntentRef: null, failureCode: "creation_uncertain" });
+    expect(paymentCreate).not.toHaveBeenCalled();
+    createSession.mockResolvedValueOnce({ providerRef: "ref-1", status: "created", clientSecret: "secret", publicConfig: {} });
+    await recoverOnlinePayments();
+    expect(createSession.mock.calls.every(([, input]) => input.sessionId === "attempt-1")).toBe(true);
+    expect(attempt.status).toBe("succeeded");
+    expect(paymentCreate).toHaveBeenCalledOnce();
+  });
+
+  it("audits a first-call recovery refusal but does not recreate that rejected payment later", async () => {
+    attempt.status = "requires_action";
+    attempt.providerIntentRef = null;
+    attempt.failureCode = "creation_not_started";
+    attempt.metadata.paymentTypes = ["card"];
+    createSession.mockRejectedValueOnce(new PaymentInitiationRejected("method_disabled", "Card is disabled"));
+    await recoverOnlinePayments();
+    expect(attempt.status).toBe("failed");
+    expect(events.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "payment.initiation_rejected" }));
+    // Storage excludes this row in real scans; even a stale scan cannot create.
+    await recoverOnlinePayments();
+    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(paymentCreate).not.toHaveBeenCalled();
   });
 
   it.each([

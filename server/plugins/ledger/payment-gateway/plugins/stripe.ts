@@ -19,6 +19,7 @@ import type {
   NormalizedPaymentStatus,
 } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
+import { PaymentInitiationRejected } from "../types";
 
 /** Build a Stripe client from the per-config resolved secret. */
 function client(ctx: PaymentGatewayContext): Stripe {
@@ -48,7 +49,7 @@ function assertAllowedPaymentTypes(
     requested.length === 0 ||
     requested.some((type) => !allowed.has(type) || !supported.has(type))
   ) {
-    throw new GatewaySetupError(
+    throw new PaymentInitiationRejected("method_disabled",
       "The requested payment type is not enabled for this gateway.",
     );
   }
@@ -56,7 +57,7 @@ function assertAllowedPaymentTypes(
 
 function assertPaymentAmount(amountMinor: number): void {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 100) {
-    throw new GatewaySetupError(
+    throw new PaymentInitiationRejected("invalid_amount",
       "Payment amount must be at least 100 minor units ($1.00 for USD).",
     );
   }
@@ -68,10 +69,9 @@ function assertOnlinePaymentTestCredentials(ctx: PaymentGatewayContext): void {
       ? String(configData(ctx).publishableKey)
       : "";
   if (!ctx.apiKey.startsWith("sk_test_") || !publishableKey.startsWith("pk_test_")) {
-    const error = new Error(
+    const error = new PaymentInitiationRejected("credentials_not_ready",
       "Online Stripe payments require matching Stripe test-mode secret and publishable keys.",
     );
-    (error as Error & { statusCode?: number }).statusCode = 503;
     throw error;
   }
 }
@@ -80,6 +80,16 @@ function dashboardBaseUrl(ctx: PaymentGatewayContext): string {
   return ctx.apiKey.startsWith("sk_test_")
     ? "https://dashboard.stripe.com/test"
     : "https://dashboard.stripe.com";
+}
+
+function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void {
+  assertOnlinePaymentTestCredentials(ctx);
+  assertPaymentAmount(args.amountMinor);
+  assertAllowedPaymentTypes(ctx, args.paymentTypes);
+  if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
+    throw new PaymentInitiationRejected("customer_required",
+      "A provider customer is required to save or use a saved payment method.");
+  }
 }
 
 /**
@@ -191,6 +201,8 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   // Catalog of Stripe payment method types the editor offers (defined at module
   // scope so the setup flow can share the `setupEligible` markers).
   supportedPaymentTypes: STRIPE_PAYMENT_TYPES,
+  getCheckoutPaymentTypes: configuredPaymentTypes,
+  validatePaymentSession,
 
   async createPaymentIntent(ctx, args): Promise<GatewayPaymentIntent> {
     assertOnlinePaymentTestCredentials(ctx);
@@ -234,14 +246,7 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     ctx,
     args: CreatePaymentSessionInput,
   ): Promise<GatewayPaymentSession> {
-    assertOnlinePaymentTestCredentials(ctx);
-    assertPaymentAmount(args.amountMinor);
-    assertAllowedPaymentTypes(ctx, args.paymentTypes);
-    if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
-      throw new GatewaySetupError(
-        "A provider customer is required to save or use a saved payment method.",
-      );
-    }
+    validatePaymentSession(ctx, args);
 
     const data = configData(ctx);
     const publishableKey =
