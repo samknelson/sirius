@@ -9,6 +9,7 @@ import {
 } from "../../../shared/schema/bulk/schema";
 import { runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
+import { enqueueBulkRecipients } from "./enqueue-recipients";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
@@ -121,11 +122,16 @@ export function registerBulkMessageRoutes(
       if (!Array.isArray(contactIds) || contactIds.length === 0 || !contactIds.every(c => typeof c === 'string' && c.length > 0)) {
         return res.status(400).json({ message: "contactIds must be a non-empty array of strings" });
       }
+      const existingMessageId: unknown = body.bulkMessageId;
+      if (existingMessageId !== undefined &&
+          (typeof existingMessageId !== 'string' || !existingMessageId.trim())) {
+        return res.status(400).json({ message: "bulkMessageId must be a non-empty string" });
+      }
 
       const requestedMedium = Array.isArray(body.medium) && body.medium.length > 0 ? body.medium : ['email'];
       const allowedMedia = ['sms', 'email', 'inapp', 'postal'];
       const filteredMedium = Array.from(new Set((requestedMedium as unknown[]).filter(m => typeof m === 'string' && allowedMedia.includes(m)))) as string[];
-      if (filteredMedium.length === 0) {
+      if (existingMessageId === undefined && filteredMedium.length === 0) {
         return res.status(400).json({ message: "At least one valid medium is required" });
       }
 
@@ -145,6 +151,22 @@ export function registerBulkMessageRoutes(
           message: `${missingCount} of ${uniqueIds.length} supplied contactIds do not resolve to real contacts`,
           unresolvedContactIds: unresolvedIds.slice(0, 50),
           unresolvedCount: missingCount,
+        });
+      }
+
+      if (typeof existingMessageId === 'string') {
+        const result = await runInTransaction(async () => {
+          const bulkMessage = await storage.bulkMessages.getById(existingMessageId);
+          if (!bulkMessage) return undefined;
+          const counts = await enqueueBulkRecipients(rawParticipantStorage, bulkMessage, uniqueIds);
+          return { bulkMessage, ...counts };
+        });
+        if (!result) return res.status(404).json({ message: "Bulk message not found" });
+        return res.status(201).json({
+          ...result,
+          recipientsRequested: uniqueIds.length,
+          recipientsResolved: validContactIds.size,
+          recipientsMissing: missingCount,
         });
       }
 
@@ -183,7 +205,7 @@ export function registerBulkMessageRoutes(
         recipientsMissing: missingCount,
       });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to create bulk message from recipients";
+      const message = error instanceof Error ? error.message : "Failed to enqueue bulk message recipients";
       return res.status(500).json({ message });
     }
   });

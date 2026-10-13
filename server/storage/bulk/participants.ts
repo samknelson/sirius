@@ -38,6 +38,7 @@ export interface BulkParticipantStorage {
   listForMessageWithRelations(messageId: string): Promise<BulkParticipantWithRelations[]>;
   getDeliveryStats(messageId: string): Promise<BulkParticipantDeliveryStatRow[]>;
   create(data: InsertBulkParticipant): Promise<BulkParticipant>;
+  createIfMissing(data: InsertBulkParticipant): Promise<BulkParticipant | undefined>;
   update(id: string, data: Partial<InsertBulkParticipant>): Promise<BulkParticipant | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByMessageAndMedium(messageId: string, medium: string): Promise<number>;
@@ -47,6 +48,17 @@ export interface BulkParticipantStorage {
 
 export function createBulkParticipantStorage(): BulkParticipantStorage {
   const storage: BulkParticipantStorage = {
+    async createIfMissing(data: InsertBulkParticipant): Promise<BulkParticipant | undefined> {
+      const [row] = await getClient()
+        .insert(bulkParticipants)
+        .values(data)
+        .onConflictDoNothing({
+          target: [bulkParticipants.messageId, bulkParticipants.contactId, bulkParticipants.medium],
+        })
+        .returning();
+      return row;
+    },
+
     async getById(id: string): Promise<BulkParticipant | undefined> {
       const client = getClient();
       const [row] = await client
