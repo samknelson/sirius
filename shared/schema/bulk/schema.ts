@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { contacts, comm } from "../../schema";
 import { isSafeRelativePath } from "../../delivery-fields";
+import { complianceReportSnapshotSchema } from "../../employer-compliance";
 
 export const bulkMediumEnum = pgEnum("bulk_medium", ["sms", "email", "inapp", "postal"]);
 
@@ -21,6 +22,7 @@ export const bulkMessages = pgTable("bulk_messages", {
 export const bulkMessageDataSchema = z.object({
   tagIds: z.array(z.string()).optional(),
   offline: z.boolean().optional(),
+  complianceReport: complianceReportSnapshotSchema.optional(),
 }).passthrough();
 
 export type BulkMessageData = z.infer<typeof bulkMessageDataSchema>;

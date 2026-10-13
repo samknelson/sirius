@@ -139,7 +139,7 @@ export async function deliverToContact(
   const tagIds = await resolveTagIdsForMedium(storage, bulkMessage.data, medium);
   const bulkData = (bulkMessage.data ?? {}) as Record<string, unknown>;
   const offline = bulkData.offline === true;
-  const seeds = bulkSendSeeds({ id: participantId, contactId, medium });
+  const seeds = bulkSendSeeds({ id: participantId, messageId, contactId, medium });
 
   switch (medium) {
     case "email":

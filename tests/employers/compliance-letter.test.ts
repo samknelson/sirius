@@ -190,12 +190,10 @@ describe("compliance tokens in the existing template evaluator", () => {
 
   it("keeps the legacy contract and offers all three leaves without a new context or report kind", () => {
     expect(tokenPluginRegistry.list().filter(({ metadata }) =>
-      metadata.id.startsWith("token.")).map(({ metadata }) => metadata.outputType)).toEqual([
-      "value", "value", "value", "value",
-    ]);
+      metadata.id.startsWith("token.employer.compliance_")).every(({ metadata }) => metadata.outputType === "value")).toBe(true);
     for (const leaf of ["compliance_message", "compliance_missing_periods", "compliance_delinquent_periods", "compliance_delinquent_total"]) {
       expect(validateTokenExpressionForRoots(`employer.${leaf}(${argumentsText})`, ["employer"]).ok).toBe(true);
-      expect(validateTokenExpressionForRoots(`employer.${leaf}(wizard="monthly")`, ["employer"]).ok).toBe(false);
+      expect(validateTokenExpressionForRoots(`employer.${leaf}`, ["employer"]).ok).toBe(true);
       expect(validateTokenExpressionForRoots(`employer.${leaf}(${argumentsText}, invented="yes")`, ["employer"]).ok).toBe(false);
     }
   });

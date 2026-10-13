@@ -9,6 +9,24 @@ export const complianceScopeSchema = z.object({
 });
 export type ComplianceScope = z.infer<typeof complianceScopeSchema>;
 
+export const complianceLetterValuesSchema = z.object({
+  employer_name: z.string(),
+  missing_periods: z.string(),
+  delinquent_periods: z.string(),
+  delinquent_total: z.string(),
+  period_window: z.string(),
+});
+
+/** Frozen report output, not instructions to recalculate it at delivery. */
+export const complianceReportSnapshotSchema = z.object({
+  scope: complianceScopeSchema,
+  runAt: z.string().datetime(),
+  wizardName: z.string(),
+  accountName: z.string(),
+  employerByContact: z.record(z.string()),
+  valuesByEmployer: z.record(complianceLetterValuesSchema),
+});
+
 export interface ComplianceMonth {
   year: number;
   month: number;

@@ -41,6 +41,7 @@ export const BULK_PARTICIPANT_FIELDS = ["medium"];
 /** What `composeBulkParticipantEntity` needs; a participant row satisfies it. */
 export interface BulkParticipantEntitySource {
   id?: string;
+  messageId?: string;
   contactId: string;
   medium: string;
 }
@@ -60,6 +61,7 @@ export function composeBulkParticipantEntity(
   return {
     kind: BULK_PARTICIPANT_ENTITY_KIND,
     row: {
+      messageId: participant.messageId,
       ...(participant.id ? { id: participant.id } : {}),
       contactId: participant.contactId,
       medium: participant.medium,

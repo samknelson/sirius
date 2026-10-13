@@ -90,6 +90,7 @@ interface ComplianceRow {
 }
 
 interface DashboardResponse {
+  scope: import("@shared/employer-compliance").ComplianceScope;
   monthPeriods: Array<{ year: number; month: number }>;
   rows: ComplianceRow[];
 }
@@ -389,11 +390,13 @@ export default function EmployerComplianceDashboard() {
 
   const queueBulkMutation = useMutation({
     mutationFn: async () => {
+      if (!data) throw new Error("Run the compliance report before queueing a letter");
       return await apiRequest("POST", "/api/employer-compliance/queue-bulk", {
         name: bulkName,
         medium: bulkMedia,
         employerIds: Array.from(selectedEmployerIds),
         contactTypeIds: selectedContactTypeIds,
+        reportScope: data.scope,
       });
     },
     onSuccess: (resp: any) => {

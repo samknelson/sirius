@@ -105,11 +105,20 @@ export async function loadComplianceLetterValues(storage: IStorage, scope: Compl
   }
   const periods = compliancePeriods(scope);
   const deltas = await loadMonthlyDeltas(storage, scope, [employerId], periods);
-  const summary = summarizeCompliance(buildComplianceMonths(
+  const months = buildComplianceMonths(
     record.uploads, periods, deltas.get(employerId), scope.ledgerAccountIds.length > 0,
-  ));
+  );
+  return complianceLetterValues(record.employer.name, months, periods);
+}
+
+export function complianceLetterValues(
+  employerName: string,
+  months: Parameters<typeof summarizeCompliance>[0],
+  periods: Array<{ year: number; month: number }>,
+) {
+  const summary = summarizeCompliance(months);
   return {
-    employer_name: record.employer.name,
+    employer_name: employerName,
     missing_periods: summary.missing.map(compliancePeriodLabel).join(", ") || "No missing reporting periods.",
     delinquent_periods: summary.delinquent.map((period) =>
       `${compliancePeriodLabel(period)}: ${period.balanceDelta}`).join("; ") || "No delinquent statement periods.",

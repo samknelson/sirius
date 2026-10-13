@@ -5,7 +5,7 @@ import { requireComponent } from "./components";
 import { createBulkParticipantStorage } from "../storage/bulk/participants";
 import { insertBulkMessageSchema } from "@shared/schema/bulk/schema";
 import { complianceScopeSchema } from "@shared/employer-compliance";
-import { loadComplianceReport } from "../services/employer-compliance";
+import { loadComplianceReport, validateComplianceReferences, complianceLetterValues } from "../services/employer-compliance";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -63,9 +63,10 @@ export function registerEmployerComplianceRoutes(
           monthsBack: Math.max(1, Math.min(24, monthsBackNum)), ledgerAccountIds,
         });
         if (!parsedScope.success) return res.status(400).json({ message: "Invalid compliance report settings" });
-        res.json(await loadComplianceReport(storage, parsedScope.data, {
+        const report = await loadComplianceReport(storage, parsedScope.data, {
           companyId: typeof companyId === "string" ? companyId : null,
-        }));
+        });
+        res.json({ ...report, scope: parsedScope.data });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to load compliance dashboard";
@@ -134,10 +135,19 @@ export function registerEmployerComplianceRoutes(
     "/api/employer-compliance/queue-bulk",
     requireAuth,
     requireComponent("ledger"),
+    requireAccess("staff"),
     requireAccess("bulk.edit"),
     async (req, res) => {
       try {
-        const { name, medium, employerIds, contactTypeIds } = req.body ?? {};
+        const { name, medium, employerIds, contactTypeIds, reportScope } = req.body ?? {};
+
+        const parsedScope = complianceScopeSchema.safeParse(reportScope);
+        if (!parsedScope.success) {
+          return res.status(400).json({ message: "Valid compliance report settings are required" });
+        }
+        await validateComplianceReferences(storage, parsedScope.data);
+        const runAt = new Date().toISOString();
+        const report = await loadComplianceReport(storage, parsedScope.data);
 
         const parsed = insertBulkMessageSchema.safeParse({
           name,
@@ -159,6 +169,10 @@ export function registerEmployerComplianceRoutes(
         if (employerIdList.length === 0) {
           return res.status(400).json({ message: "employerIds is required" });
         }
+        const selectedRows = report.rows.filter(row => employerIdList.includes(row.employerId));
+        if (new Set(selectedRows.map(row => row.employerId)).size !== new Set(employerIdList).size) {
+          return res.status(400).json({ message: "A selected employer is no longer available in the report" });
+        }
 
         const typeIdList: string[] = Array.isArray(contactTypeIds)
           ? contactTypeIds.filter((v): v is string => typeof v === "string" && v.length > 0)
@@ -172,7 +186,14 @@ export function registerEmployerComplianceRoutes(
         const seen = new Set<string>();
         const contactIds: string[] = [];
         const employersCovered = new Set<string>();
+        const employerByContact: Record<string, string> = {};
         for (const r of rows) {
+          if (employerByContact[r.contactId] && employerByContact[r.contactId] !== r.employerId) {
+            return res.status(400).json({
+              message: "A selected contact represents multiple employers. Queue those employers separately so each letter has an unambiguous report.",
+            });
+          }
+          employerByContact[r.contactId] = r.employerId;
           employersCovered.add(r.employerId);
           if (!seen.has(r.contactId)) {
             seen.add(r.contactId);
@@ -183,7 +204,23 @@ export function registerEmployerComplianceRoutes(
           (id) => !employersCovered.has(id),
         );
 
-        const bulk = await storage.bulkMessages.create(parsed.data);
+        const { wizardPluginRegistry } = await import("../plugins/wizards/registry");
+        const accounts = await Promise.all(parsedScope.data.ledgerAccountIds.map(id => storage.ledger.accounts.get(id)));
+        const bulk = await storage.bulkMessages.create({
+          ...parsed.data,
+          data: {
+            complianceReport: {
+              scope: parsedScope.data,
+              runAt,
+              wizardName: wizardPluginRegistry.get(parsedScope.data.wizardType)!.name,
+              accountName: accounts.map(account => account!.name).join(", "),
+              employerByContact,
+              valuesByEmployer: Object.fromEntries(selectedRows.map(row => [
+                row.employerId, complianceLetterValues(row.employerName, row.months, report.monthPeriods),
+              ])),
+            },
+          },
+        });
         const participantStorage = createBulkParticipantStorage();
         const mediums = parsed.data.medium;
 
