@@ -331,7 +331,10 @@ export default function ComponentsConfigPage() {
           </AlertDescription>
         </Alert>
       )}
-      {isFetching && <p role="status" className="text-muted-foreground">Refreshing component status…</p>}
+      {isFetching && <p role="status" className="text-muted-foreground">
+        Checking component status directly from storage…
+        {componentConfigs.length > 0 && " Displayed values are last-confirmed until this check finishes."}
+      </p>}
 
       {lastError && (
         <Alert variant="destructive" data-testid="alert-component-error">

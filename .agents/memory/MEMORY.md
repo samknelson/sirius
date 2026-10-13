@@ -106,7 +106,7 @@
 - [Theme colour vars hold whole colours](theme-color-var-convention.md) — `var(--chart-1)`, never `hsl(var(--chart-1))`; nested colour is dropped at computed-value time with zero warnings (invisible chart line).
 - [Counting served work](counting-served-work.md) — usage counters: flag at the handler boundary (never infer from status), count on `close` / log on `finish`, write outside the caller's tx.
 - [Cross-process boot serialization](cross-process-boot-serialization.md) — two services boot one image against one DB: bring-up is exclusive (session advisory lock), every other boot write must be atomic/23505-retry/xact-lock, every wait bounded.
-- [Component commit coherency](component-commit-coherency.md) — same-value enable/repair saves can change owned configs; cross-process invalidation must observe commits, not only flag differences.
+- [Component state coherency](component-commit-coherency.md) — commits, not just flag differences, invalidate owned configs; the Components status page reads storage independently.
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
 - [Picker widgets inside repeatable rows](rjsf-array-item-widget-inference.md) — vendor widget inference skips array `items`; a picker in a rules list needs an explicit `uiSchema` or it renders as a text box.
 - [Alerting once from a repeating scan](repeating-scan-alert-once.md) — exactly-once is the send-once key (config+day+what+threshold), checked BEFORE the flood budget; events themselves repeat freely.

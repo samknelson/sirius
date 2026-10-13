@@ -27,6 +27,26 @@ beforeEach(() => {
 });
 
 describe("committed component state", () => {
+  it("keeps direct status reads independent of stale/uninitialized cache and broken listeners", async () => {
+    const c = await cache();
+    await c.loadComponentCache();
+    const revision = c.getComponentCacheRevision();
+    const listener = vi.fn(() => { throw new Error("Listener failed"); });
+    c.onComponentCacheChange(listener);
+    mocks.read.mockResolvedValue({ value: { facility: true }, version: "2" });
+    const { getComponentConfigsFromStorage } = await import("../../server/services/component-state");
+    expect((await getComponentConfigsFromStorage()).find(row => row.componentId === "facility")?.enabled).toBe(true);
+    expect(c.isComponentEnabledSync("facility")).toBe(false);
+    expect(c.getComponentCacheRevision()).toBe(revision);
+    expect(listener).not.toHaveBeenCalled();
+    c.invalidateComponentCache();
+    const invalidatedRevision = c.getComponentCacheRevision();
+    expect((await getComponentConfigsFromStorage()).find(row => row.componentId === "facility")?.enabled).toBe(true);
+    expect(c.isCacheInitialized()).toBe(false);
+    expect(c.getComponentCacheRevision()).toBe(invalidatedRevision);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("does not invalidate derived caches on unchanged reads", async () => {
     const c = await cache();
     await c.loadComponentCache();

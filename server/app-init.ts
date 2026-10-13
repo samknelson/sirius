@@ -18,7 +18,8 @@ import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
-import { loadComponentCache, onComponentCacheChange, startComponentCacheRefresh } from "./services/component-cache";
+import { onComponentCacheChange, startComponentCacheRefresh } from "./services/component-cache";
+import { refreshComponentStateForApi } from "./middleware/component-state";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
@@ -575,14 +576,7 @@ export async function bootstrapApp(
 
   // Refresh before auth/authorization and sync-only plugin gates on either API role.
   // A stale process must not accept/refuse traffic using an old component selection.
-  app.use("/api", async (_req, res, next) => {
-    try {
-      await loadComponentCache();
-      next();
-    } catch {
-      res.status(503).json({ message: "Current component settings are unavailable. Please retry." });
-    }
-  });
+  app.use("/api", refreshComponentStateForApi);
 
   // Browser sessions and the application API belong to api-user. Web-service
   // credentials use their own authentication middleware and do not need this.

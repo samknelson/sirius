@@ -1,11 +1,9 @@
 import { storage } from "../storage";
 import { getAllComponents, getComponentById } from "../../shared/components";
 import { logger } from "../logger";
-import { isInTransaction, onAfterCommit, runOutsideTransaction } from "../storage/transaction-context";
-
-export type ComponentEnabledMap = Record<string, boolean>;
-
-const COMPONENTS_VARIABLE_NAME = "components";
+import { isInTransaction, onAfterCommit } from "../storage/transaction-context";
+import { COMPONENTS_VARIABLE_NAME, readComponentStateFromStorage, resolveComponentEnabled, type ComponentEnabledMap } from "./component-state";
+export type { ComponentEnabledMap } from "./component-state";
 
 let cachedComponentState: ComponentEnabledMap | null = null;
 let cacheInitialized = false;
@@ -47,24 +45,10 @@ export function getComponentCacheRevision(): number {
 
 export async function loadComponentCache(): Promise<ComponentEnabledMap> {
   const sequence = ++readSequence;
-  // Global caches must never publish the caller's uncommitted transaction.
-  const read = runOutsideTransaction(() => storage.variables.getJsonState(COMPONENTS_VARIABLE_NAME));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let variable: Awaited<ReturnType<typeof storage.variables.getJsonState>>;
+  let version: string | undefined;
   let state: ComponentEnabledMap;
   try {
-    variable = await Promise.race([
-      read,
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Component state read timed out after 5 seconds")), 5_000);
-      }),
-    ]).finally(() => { if (timer) clearTimeout(timer); });
-    const value = variable?.value ?? {};
-    if (typeof value !== "object" || Array.isArray(value) ||
-        Object.values(value).some(flag => typeof flag !== "boolean")) {
-      throw new Error("The components variable must be an object of boolean flags");
-    }
-    state = Object.freeze({ ...value }) as ComponentEnabledMap;
+    ({ state, version } = await readComponentStateFromStorage());
   } catch (error) {
     // A failed refresh means "unknown", not "disabled" or "use defaults".
     // Invalidate sync gates too; an earlier failure cannot undo a newer good read.
@@ -79,11 +63,11 @@ export async function loadComponentCache(): Promise<ComponentEnabledMap> {
   // A slow earlier read cannot undo a later confirmed read.
   if (sequence >= publishedSequence) {
     publishedSequence = sequence;
-    const changed = !cacheInitialized || cachedComponentState === null || persistedVersion !== variable?.version ||
+    const changed = !cacheInitialized || cachedComponentState === null || persistedVersion !== version ||
       Object.keys(state).length !== Object.keys(cachedComponentState).length ||
       Object.entries(state).some(([id, flag]) => cachedComponentState![id] !== flag);
     cachedComponentState = state;
-    persistedVersion = variable?.version;
+    persistedVersion = version;
     cacheInitialized = true;
     if (changed) {
       cacheRevision++;
@@ -146,7 +130,7 @@ export function isComponentEnabledSync(componentId: string): boolean {
     return false;
   }
 
-  return cachedComponentState[componentId] ?? component.enabledByDefault;
+  return resolveComponentEnabled(component, cachedComponentState);
 }
 
 export function getEnabledComponentIdsSync(): string[] {
