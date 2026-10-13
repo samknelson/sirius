@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY_PROD:-$VITE_CLERK_PUBLISHABLE_KEY} vite build && esbuild server/production-entry.ts server/app-init.ts --platform=node --packages=external --bundle --format=esm --splitting --outdir=dist",
+    "build": "VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY_PROD:-$VITE_CLERK_PUBLISHABLE_KEY} node --max-old-space-size=1280 node_modules/vite/bin/vite.js build && esbuild server/production-entry.ts server/app-init.ts --platform=node --packages=external --bundle --format=esm --splitting --outdir=dist",
     "start": "NODE_ENV=production node dist/production-entry.js",
     "check": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p tsconfig.server.json && node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p tsconfig.client.json",
     "test": "vitest run",
