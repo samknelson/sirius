@@ -19,6 +19,24 @@ delete only provenance-marked inferred terminations. Downstream consumers
 requiring a failed eligibility decision must explicitly exclude inference,
 while general historical reporting may still include it.
 
+## Scan order and repair authority
+
+A failed-start snapshot must never become confirmed termination evidence merely
+because an earlier coverage month is populated later. Repair needs an explicitly
+approved, bounded chronological rescan; preserve the original snapshots first.
+Standalone live scans are not substitutes for saved queue-completion results.
+
+**Why:** the dependent Ageout investigation found a later month evaluated before
+its preceding coverage grants. The child really failed eligibility, but that
+run had no continuation evidence; borrowing later-written history would invent
+a decision the scan never made. Repair can also trigger billing and other
+listeners, which are not implicitly authorized.
+
+**How to apply:** distinguish refused starts, failed continuations, execution
+errors, and actual row deletions. Verify committed previous-month coverage
+before scanning the next approved month, and verify the saved-result termination
+handoff rather than directly editing lifecycle events.
+
 ## Stored coverage is not source-history completeness
 
 The user explicitly permits importer-reviewed rejects for historical event

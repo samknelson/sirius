@@ -47,6 +47,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { format } from "@/lib/date-format";
+import { getWmbResultCounts, isFailedContinuation } from "@shared/wmb-scan-outcomes";
 
 interface MonthStatus {
   id: string;
@@ -107,6 +108,8 @@ interface BenefitAction {
   eligible: boolean;
   action: "create" | "delete" | "none";
   executed: boolean;
+  executionError?: string;
+  actionReason?: string;
   pluginResults?: PluginResult[];
 }
 
@@ -134,23 +137,9 @@ function MonthName(month: number): string {
   return months[month - 1] || String(month);
 }
 
-function getResultCounts(resultSummary: any) {
-  let started = 0, continued = 0, terminated = 0;
-  
-  if (resultSummary?.actions && Array.isArray(resultSummary.actions)) {
-    for (const action of resultSummary.actions) {
-      if (action.scanType === "start" && action.eligible) started++;
-      else if (action.scanType === "continue") {
-        if (action.action === "delete") terminated++;
-        else if (action.eligible) continued++;
-      }
-    }
-  }
-  
-  return { started, continued, terminated };
-}
+const getResultCounts = getWmbResultCounts;
 
-function BenefitDetailsModal({ 
+export function BenefitDetailsModal({
   entry, 
   open, 
   onClose 
@@ -171,9 +160,11 @@ function BenefitDetailsModal({
     );
     return person?.name ? `Dependent: ${person.name}` : `Dependent: ${action.workerId}`;
   };
-  const started = actions.filter(a => a.scanType === "start" && a.eligible);
-  const continued = actions.filter(a => a.scanType === "continue" && a.eligible && a.action !== "delete");
-  const terminated = actions.filter(a => a.scanType === "continue" && a.action === "delete");
+  const started = actions.filter(a => !a.executionError && a.scanType === "start" && a.eligible);
+  const continued = actions.filter(a => !a.executionError && a.scanType === "continue" && a.eligible && a.action !== "delete");
+  const terminated = actions.filter(isFailedContinuation);
+  const refusedStarts = actions.filter(a => !a.executionError && a.scanType === "start" && !a.eligible);
+  const executionFailures = actions.filter(a => a.executionError);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -193,7 +184,7 @@ function BenefitDetailsModal({
             <div>
               <h4 className="font-medium flex items-center gap-2 mb-2 text-destructive">
                 <AlertCircle className="h-4 w-4" />
-                Scan Failed
+                Scan Execution Failed
               </h4>
               <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-200 dark:border-red-900">
                 {entry.lastError ? (
@@ -275,7 +266,7 @@ function BenefitDetailsModal({
             <div>
               <h4 className="font-medium flex items-center gap-2 mb-2 text-red-600 dark:text-red-400">
                 <TrendingDown className="h-4 w-4" />
-                Benefits Terminated ({terminated.length})
+                Failed Continuations ({terminated.length})
               </h4>
               <div className="space-y-2">
                 {terminated.map((action, i) => {
@@ -283,6 +274,11 @@ function BenefitDetailsModal({
                   return (
                     <div key={i} className="p-3 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-200 dark:border-red-900">
                       <div className="font-medium">{action.benefitName} · {personLabel(action)}</div>
+                      <p className="text-sm text-muted-foreground">
+                        {action.action === "delete" && action.executed
+                          ? "Current-month coverage row removed."
+                          : "Not eligible to continue; no current-month coverage row was removed."}
+                      </p>
                       {failedPlugins.length > 0 && (
                         <div className="mt-2 text-sm space-y-1">
                           <div className="text-muted-foreground text-xs mb-1">Failed eligibility checks:</div>
@@ -302,7 +298,36 @@ function BenefitDetailsModal({
             </div>
           )}
 
-          {!isFailed && started.length === 0 && continued.length === 0 && terminated.length === 0 && (
+          {refusedStarts.length > 0 && (
+            <div data-testid="failed-starts">
+              <h4 className="font-medium mb-2">Failed Starts ({refusedStarts.length})</h4>
+              <p className="text-sm text-muted-foreground mb-2">Eligibility refused. This is not a scan execution failure or continuation termination evidence.</p>
+              <div className="space-y-2">
+                {refusedStarts.map((action, i) => (
+                  <div key={i} className="p-3 rounded-md border bg-muted/50">
+                    <div className="font-medium">{action.benefitName} · {personLabel(action)}</div>
+                    <p className="text-sm text-muted-foreground">{action.action === "delete" && action.executed
+                      ? "Current-month coverage row removed." : "No current-month coverage row was removed."}</p>
+                    {action.pluginResults?.filter(pr => !pr.eligible).map((pr, j) => (
+                      <p key={j} className="text-sm mt-1"><span className="font-mono text-xs">{pr.pluginKey}</span> — {pr.reason}</p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {executionFailures.length > 0 && (
+            <div data-testid="execution-failures">
+              <h4 className="font-medium text-destructive mb-2">Benefit Execution Errors ({executionFailures.length})</h4>
+              {executionFailures.map((action, i) => (
+                <div key={i} className="p-3 rounded-md border">
+                  <div className="font-medium">{action.benefitName} · {personLabel(action)}</div>
+                  <p className="text-sm whitespace-pre-wrap break-words">{action.executionError}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {!isFailed && actions.length === 0 && (
             <div className="text-center text-muted-foreground py-4">
               No benefit changes recorded for this worker
             </div>
@@ -486,7 +511,7 @@ export default function WmbScanDetail() {
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1">
               <TrendingDown className="h-3 w-3" />
-              Benefits Terminated
+              Failed Continuations
             </CardDescription>
             <CardTitle className="text-2xl text-red-600 dark:text-red-400" data-testid="text-terminated">
               {status.benefitsTerminated}
@@ -494,7 +519,7 @@ export default function WmbScanDetail() {
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              Workers no longer eligible
+               Failed continuation checks, including months with no row to remove
             </p>
           </CardContent>
         </Card>
@@ -582,7 +607,7 @@ export default function WmbScanDetail() {
                 <SelectItem value="all">All outcomes</SelectItem>
                 <SelectItem value="started">Started benefits</SelectItem>
                 <SelectItem value="continued">Continued benefits</SelectItem>
-                <SelectItem value="terminated">Terminated benefits</SelectItem>
+                <SelectItem value="terminated">Failed continuations</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -597,7 +622,7 @@ export default function WmbScanDetail() {
                   <TableHead className="w-32">Source</TableHead>
                   <TableHead className="w-20 text-center">Started</TableHead>
                   <TableHead className="w-20 text-center">Continued</TableHead>
-                  <TableHead className="w-20 text-center">Terminated</TableHead>
+                  <TableHead className="w-28 text-center">Failed Continuations</TableHead>
                   <TableHead className="w-48">Completed</TableHead>
                   <TableHead className="w-24"></TableHead>
                 </TableRow>

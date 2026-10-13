@@ -14,6 +14,7 @@ import { eq, and, sql, gte, inArray, or, desc, asc } from "drizzle-orm";
 import type { DenormStaleSeed } from "./system/denorm";
 import { tableExists } from "./utils";
 import { wmbScanWindow } from "../services/wmb-scan-window";
+import { getWmbResultCounts } from "@shared/wmb-scan-outcomes";
 
 // Keep bulk writes comfortably below PostgreSQL's bind-parameter limit. Queue
 // inserts currently bind six values per worker, so this also keeps each
@@ -354,6 +355,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(COALESCE(${trustWmbScanQueue.resultSummary}->'actions', '[]'::jsonb)) AS action
             WHERE action->>'scanType' = 'start' AND (action->>'eligible')::boolean = true
+              AND COALESCE(action->>'executionError', '') = ''
           )`
         );
       } else if (filter?.outcome === "continued") {
@@ -362,14 +364,17 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(COALESCE(${trustWmbScanQueue.resultSummary}->'actions', '[]'::jsonb)) AS action
             WHERE action->>'scanType' = 'continue' AND (action->>'eligible')::boolean = true AND action->>'action' != 'delete'
+              AND COALESCE(action->>'executionError', '') = ''
           )`
         );
       } else if (filter?.outcome === "terminated") {
-        // Has at least one action with scanType=continue AND action=delete
+        // Failed continuation evidence, including months with no row to delete.
         conditions.push(
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(COALESCE(${trustWmbScanQueue.resultSummary}->'actions', '[]'::jsonb)) AS action
-            WHERE action->>'scanType' = 'continue' AND action->>'action' = 'delete'
+            WHERE action->>'scanType' = 'continue'
+              AND (action->>'eligible' = 'false' OR action->>'action' = 'delete')
+              AND COALESCE(action->>'executionError', '') = ''
           )`
         );
       }
@@ -812,26 +817,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
             });
         }
 
-        // Parse benefit outcomes from resultSummary
-        // Priority: check for termination (delete action) before continuation (eligible)
-        let benefitsStarted = 0;
-        let benefitsContinued = 0;
-        let benefitsTerminated = 0;
-        
-        if (resultSummary?.actions && Array.isArray(resultSummary.actions)) {
-          for (const action of resultSummary.actions) {
-            if (action.scanType === "start" && action.eligible) {
-              benefitsStarted++;
-            } else if (action.scanType === "continue") {
-              // Check termination first - a "delete" action means they lost eligibility
-              if (action.action === "delete") {
-                benefitsTerminated++;
-              } else if (action.eligible) {
-                benefitsContinued++;
-              }
-            }
-          }
-        }
+        const { started: benefitsStarted, continued: benefitsContinued,
+          terminated: benefitsTerminated } = getWmbResultCounts(resultSummary);
 
         // Update status counters including benefit counts
         const updateField = success ? "processedSuccess" : "processedFailed";

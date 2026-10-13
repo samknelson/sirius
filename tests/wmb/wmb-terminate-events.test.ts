@@ -158,6 +158,49 @@ afterAll(async () => {
 }, 60_000);
 
 describe("WMB terminate events — production queue completion path", () => {
+  it("does not turn dependent failed starts into confirmed termination evidence", async () => {
+    const month = 3;
+    await storage.wmbScanQueue.enqueueWorker(workerId, month, YEAR, TRIGGER);
+    const job = await storage.wmbScanQueue.claimNextJob([TRIGGER]);
+    const outcome = await processClaimedJob(storage, job!, undefined, {
+      runScan: async () => {
+        const base = scanResult(month, { eligible: false, action: "none" });
+        const actions = base.actions.map(a => ({ ...a, scanType: "start" as const }));
+        return { ...base, people: [
+          { workerId, name: "subscriber", role: "subscriber", relationType: null, previousMonthBenefitIds: [], actions: [] },
+          { workerId: dependentId, name: "dependent", role: "dependent", relationType: "child",
+            sourceRelationId: "selected", previousMonthBenefitIds: [], actions },
+        ] };
+      },
+    });
+    expect(outcome.success).toBe(true);
+    const saved = await storage.wmbScanQueue.getWorkerQueueEntry(workerId, month, YEAR);
+    expect((saved?.resultSummary as any).actions[0]).toMatchObject({ workerId: dependentId, scanType: "start", eligible: false });
+    const events = await storage.trustWmbEvents.listByWorkerAndType(dependentId, "terminate");
+    expect(events.filter(e => e.month === month && e.year === YEAR)).toHaveLength(0);
+  });
+  it("keeps execution errors visible without fabricating dependent termination evidence", async () => {
+    const month = 4;
+    await storage.wmbScanQueue.enqueueWorker(workerId, month, YEAR, TRIGGER);
+    const job = await storage.wmbScanQueue.claimNextJob([TRIGGER]);
+    const outcome = await processClaimedJob(storage, job!, undefined, {
+      runScan: async () => {
+        const base = scanResult(month, { eligible: false, action: "none" });
+        const actions = base.actions.map(a => ({ ...a, executionError: "Plugin error: fixture unavailable" }));
+        return { ...base, people: [
+          { workerId, name: "subscriber", role: "subscriber", relationType: null, previousMonthBenefitIds: [], actions: [] },
+          { workerId: dependentId, name: "dependent", role: "dependent", relationType: "child",
+            sourceRelationId: "selected", previousMonthBenefitIds: [benefitId], actions },
+        ] };
+      },
+    });
+    expect(outcome.success).toBe(false);
+    const saved = await storage.wmbScanQueue.getWorkerQueueEntry(workerId, month, YEAR);
+    expect(saved?.lastError).toContain("fixture unavailable");
+    expect((saved?.resultSummary as any).actions[0].executionError).toContain("fixture unavailable");
+    const events = await storage.trustWmbEvents.listByWorkerAndType(dependentId, "terminate");
+    expect(events.filter(e => e.month === month && e.year === YEAR)).toHaveLength(0);
+  });
   it("keeps partial dependent outcomes and failures in a failed queue result", async () => {
     const month = 5;
     await storage.wmbScanQueue.enqueueWorker(workerId, month, YEAR, TRIGGER);

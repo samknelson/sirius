@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { IStorage } from "../storage";
 import { enqueueMonthScan, processBatchQueueJobs, invalidateWorkerScans } from "../services/wmb-scan-queue";
 import { buildContentDisposition } from "../utils/content-disposition";
+import { getWmbResultCounts } from "@shared/wmb-scan-outcomes";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -199,17 +200,7 @@ export function registerWmbScanQueueRoutes(
         
         const rows = result.data.map(entry => {
           const summary = entry.resultSummary as any;
-          let started = 0, continued = 0, terminated = 0;
-          
-          if (summary?.actions && Array.isArray(summary.actions)) {
-            for (const action of summary.actions) {
-              if (action.scanType === "start" && action.eligible) started++;
-              else if (action.scanType === "continue") {
-                if (action.action === "delete") terminated++;
-                else if (action.eligible) continued++;
-              }
-            }
-          }
+          const { started, continued, terminated } = getWmbResultCounts(summary);
           
           return [
             entry.workerSiriusId || "",

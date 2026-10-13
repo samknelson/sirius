@@ -187,14 +187,13 @@ async function evaluatePersonBenefits(
       const scanType: ScanType = hadPreviousMonth ? "continue" : "start";
       const rules = rulesByBenefit.get(benefitId) || [];
 
-      // Losing an election selection or a policy benefit must not become a
-      // permission to grant coverage just because its rules disappeared.
+      // Policy membership and selected, valid relationships are scan guards.
+      // Benefit selection belongs to the configured Election rule; Linked
+      // rules may grant unelected benefits from this dependent's effective set.
       const refusal = !policyBenefitIds.includes(benefitId)
         ? "Benefit is no longer in the subscriber policy"
         : relationship && !allowStarts
           ? "Dependent is no longer selected by a date-valid subscriber election relationship"
-          : relationship && !election?.benefitIds?.includes(benefitId)
-            ? "Subscriber election does not select this benefit for the dependent"
           : null;
       const applicableRules = rules.filter(rule => rule.appliesTo.includes(scanType));
       if (!refusal && applicableRules.length === 0) {
