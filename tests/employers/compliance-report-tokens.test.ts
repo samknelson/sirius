@@ -1,17 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IStorage } from "../../server/storage";
-import { registerTokenPlugin } from "../../server/plugins/tokens/registry";
 import { createTokenEvalContext, renderTokens, validateTokenExpressionForRoots } from "../../server/plugins/tokens/evaluate";
-import "../../server/plugins/tokens/plugins/compliance";
+import { tokenContextRootNames } from "../../server/plugins/tokens/contexts";
+import { BULK_MESSAGE_TOKEN_CONTEXT } from "../../shared/token-contexts";
+import "../../server/modules/bulk/token-roots";
+import "../../server/plugins/tokens/plugins/field";
+import "../../server/plugins/tokens/plugins/address";
 
 vi.mock("../../server/logger", () => ({ logger: { warn: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/plugins/_core/gating", () => ({ isPluginComponentEnabledSync: () => true }));
-
-registerTokenPlugin({
-  metadata: { id: "test.report.participant", name: "Participant", description: "Test send",
-    segmentName: "bulk_participant", inputTypes: ["root"], outputType: "bulk_participant" },
-  async resolve(_entity, _args, ctx) { return ctx.roots.bulk_participant ?? null; },
-});
 
 const snapshot = {
   scope: { wizardType: "monthly", year: 2026, month: 10, monthsBack: 6,
@@ -28,7 +25,14 @@ const snapshot = {
 
 function fixture(data: unknown = { complianceReport: structuredClone(snapshot) }, contactId = "recipient") {
   const getById = vi.fn().mockResolvedValue({ id: "message", data });
-  const storage = { bulkMessages: { getById } } as unknown as IStorage;
+  const storage = {
+    bulkMessages: { getById },
+    bulkTokens: { getContactRow: async () => ({ id: contactId, displayName: "Example recipient" }) },
+    contacts: { addresses: { getContactPostalByContact: async () => [
+      { street: "1 Example Street", city: "Boston", state: "MA", postalCode: "02116",
+        isPrimary: true, isActive: true },
+    ] } },
+  } as unknown as IStorage;
   const ctx = createTokenEvalContext(storage, contactId, {
     seeds: [{ name: "bulk_participant",
       entity: { kind: "bulk_participant", row: { messageId: "message", contactId, medium: "email" } } }],
@@ -41,12 +45,35 @@ const token = (leaf: string, args = "") =>
   `{{bulk_participant.compliance_employer.${leaf}${args ? `(${args})` : ""}}}`;
 
 describe("saved compliance report tokens", () => {
+  it("validates and renders every statement recipient field using the real bulk vocabulary", async () => {
+    const fields = [
+      'bulk_participant.compliance_employer.field(name="name")',
+      'contact.field(name="display_name")',
+      'contact.address.field(name="street")',
+      'contact.address.field(name="city")',
+      'contact.address.field(name="state")',
+      'contact.address.field(name="postal_code")',
+    ];
+    const roots = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
+    for (const field of fields) {
+      expect(validateTokenExpressionForRoots(field, roots).ok, field).toBe(true);
+    }
+    const { ctx } = fixture();
+    expect((await renderTokens(fields.map(field => `{{${field}}}`).join("\n"), ctx)).output.split("\n"))
+      .toEqual(["Example employer", "Example recipient", "1 Example Street", "Boston", "MA", "02116"]);
+    for (const invalid of ["contact.display_name", "contact.address.street",
+      "bulk_participant.compliance_employer.name"]) {
+      expect(validateTokenExpressionForRoots(invalid, roots).ok).toBe(false);
+    }
+    expect(validateTokenExpressionForRoots(fields[0], ["contact"]).ok).toBe(false);
+  });
+
   it("offers argument-free report tokens in the existing bulk token context", () => {
     for (const leaf of ["compliance_missing_periods", "compliance_delinquent_periods",
       "compliance_delinquent_total", "compliance_period_window", "compliance_anchor_month",
       "compliance_report_run_date"]) {
       expect(validateTokenExpressionForRoots(
-        `bulk_participant.compliance_employer.${leaf}`, ["bulk_participant"],
+        `bulk_participant.compliance_employer.${leaf}`, tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT),
       ).ok).toBe(true);
     }
   });
