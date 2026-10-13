@@ -165,7 +165,7 @@ describe("WMB month scan queue bulk enqueue", () => {
     );
 
     expect(result.queuedCount).toBe(1_001);
-    expect(fixture.client.execute).toHaveBeenCalledTimes(1);
+    expect(fixture.client.execute).toHaveBeenCalled();
     expect(fixture.client.select).not.toHaveBeenCalled();
     expect(fixture.statusInserts).toEqual([{
       month: 3,

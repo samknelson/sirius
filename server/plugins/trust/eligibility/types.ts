@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Worker, Contact, Employer } from "@shared/schema";
+import type { Worker, Contact, Employer, WorkerTrustElection } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { BasePluginMetadata } from "../../_core";
 
@@ -31,6 +31,8 @@ export type BaseEligibilityConfig = z.infer<typeof baseEligibilityConfigSchema>;
  *   reasons when `relationship` is set.
  */
 export interface EligibilityContext {
+  /** Scan-resolved subscriber election. undefined means standalone lookup. */
+  election?: WorkerTrustElection | null;
   scanType: ScanType;
   asOfMonth: number;
   asOfYear: number;

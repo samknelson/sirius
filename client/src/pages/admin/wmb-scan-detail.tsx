@@ -99,6 +99,8 @@ interface PluginResult {
 }
 
 interface BenefitAction {
+  workerId?: string;
+  sourceRelationId?: string | null;
   benefitId: string;
   benefitName: string;
   scanType: "start" | "continue";
@@ -161,6 +163,14 @@ function BenefitDetailsModal({
 
   const isFailed = entry.status === "failed";
   const actions = (entry.resultSummary?.actions || []) as BenefitAction[];
+  const personLabel = (action: BenefitAction) => {
+    if (!action.workerId || action.workerId === entry.workerId && !action.sourceRelationId) return "Subscriber";
+    const person = (entry.resultSummary?.people || []).find(
+      (p: { workerId: string; sourceRelationId?: string | null }) =>
+        p.workerId === action.workerId && (p.sourceRelationId ?? null) === (action.sourceRelationId ?? null),
+    );
+    return person?.name ? `Dependent: ${person.name}` : `Dependent: ${action.workerId}`;
+  };
   const started = actions.filter(a => a.scanType === "start" && a.eligible);
   const continued = actions.filter(a => a.scanType === "continue" && a.eligible && a.action !== "delete");
   const terminated = actions.filter(a => a.scanType === "continue" && a.action === "delete");
@@ -208,7 +218,7 @@ function BenefitDetailsModal({
               <div className="space-y-2">
                 {started.map((action, i) => (
                   <div key={i} className="p-3 bg-green-50 dark:bg-green-950/20 rounded-md border border-green-200 dark:border-green-900">
-                    <div className="font-medium">{action.benefitName}</div>
+                    <div className="font-medium">{action.benefitName} · {personLabel(action)}</div>
                     {action.pluginResults && action.pluginResults.length > 0 && (
                       <div className="mt-2 text-sm space-y-1">
                         {action.pluginResults.map((pr, j) => (
@@ -239,7 +249,7 @@ function BenefitDetailsModal({
               <div className="space-y-2">
                 {continued.map((action, i) => (
                   <div key={i} className="p-3 bg-muted/50 rounded-md border">
-                    <div className="font-medium">{action.benefitName}</div>
+                    <div className="font-medium">{action.benefitName} · {personLabel(action)}</div>
                     {action.pluginResults && action.pluginResults.length > 0 && (
                       <div className="mt-2 text-sm space-y-1">
                         {action.pluginResults.map((pr, j) => (
@@ -272,7 +282,7 @@ function BenefitDetailsModal({
                   const failedPlugins = action.pluginResults?.filter(pr => !pr.eligible) || [];
                   return (
                     <div key={i} className="p-3 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-200 dark:border-red-900">
-                      <div className="font-medium">{action.benefitName}</div>
+                      <div className="font-medium">{action.benefitName} · {personLabel(action)}</div>
                       {failedPlugins.length > 0 && (
                         <div className="mt-2 text-sm space-y-1">
                           <div className="text-muted-foreground text-xs mb-1">Failed eligibility checks:</div>

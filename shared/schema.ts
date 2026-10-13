@@ -646,6 +646,8 @@ export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
   // Worker reads must not scan every run; keep the claim/remaining-run
   // indexes small by excluding terminal history (task 612).
   workerIdx: index("trust_wmb_scan_queue_worker_idx").on(table.workerId),
+  dependentResultIdx: index("trust_wmb_scan_queue_dependent_result_idx")
+    .using("gin", sql`(${table.resultSummary} -> 'people'::text)`),
   pendingClaimIdx: index("trust_wmb_scan_queue_pending_claim_idx")
     .on(table.scheduledFor.asc().nullsLast(), table.id.asc())
     .where(sql`(status)::text = 'pending'::text`),

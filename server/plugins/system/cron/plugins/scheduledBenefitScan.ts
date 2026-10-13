@@ -15,11 +15,11 @@ import { logger } from "../../../../logger";
 /** Trigger source identifying jobs enqueued by this scheduled sweep. */
 export const SCHEDULED_SWEEP_TRIGGER_SOURCE = "scheduled_sweep";
 
-const POPULATIONS = ["active_elections", "previous_month_benefit", "all_workers"] as const;
+const POPULATIONS = ["subscribers", "active_elections", "previous_month_benefit", "all_workers"] as const;
 
 const settingsSchema = z
   .object({
-    population: z.enum(POPULATIONS).default("active_elections"),
+    population: z.enum(POPULATIONS).default("subscribers"),
     frequency: z.enum(["weekly", "monthly"]).default("weekly"),
     dayOfWeek: z.number().int().min(0).max(6).optional(),
     dayOfMonth: z.number().int().min(1).max(28).optional(),
@@ -57,7 +57,7 @@ const settingsSchema = z
 type SweepSettings = z.infer<typeof settingsSchema>;
 
 const DEFAULT_SETTINGS: Record<string, unknown> = {
-  population: "active_elections",
+  population: "subscribers",
   frequency: "weekly",
   dayOfWeek: 1,
   runTime: "02:00",
@@ -72,14 +72,15 @@ const configSchema: JsonSchema = {
       type: "string",
       title: "Population",
       description:
-        "Who to enqueue, resolved per coverage month: workers with an active election in the coverage month; workers with a benefit in the month before the coverage month; or all workers.",
+        "Subscribers includes month-end elections and prior/current attributed coverage, including dependent-only grantors. The other choices explicitly scan narrower elections or benefit recipients, or every worker.",
       enum: [...POPULATIONS],
       enumNames: [
-        "Active elections (in coverage month)",
-        "Previous-month benefit (month before coverage month)",
+        "Subscribers (effective elections + attributed coverage)",
+        "Election-only subscribers (month-end)",
+        "Previous-month benefit recipients",
         "All workers",
       ],
-      default: "active_elections",
+      default: "subscribers",
     },
     frequency: {
       type: "string",

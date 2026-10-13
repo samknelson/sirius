@@ -12,6 +12,8 @@ import {
 } from "@shared/schema";
 import { eq, and, sql, gte, inArray, or, desc, asc } from "drizzle-orm";
 import type { DenormStaleSeed } from "./system/denorm";
+import { tableExists } from "./utils";
+import { wmbScanWindow } from "../services/wmb-scan-window";
 
 // Keep bulk writes comfortably below PostgreSQL's bind-parameter limit. Queue
 // inserts currently bind six values per worker, so this also keeps each
@@ -60,6 +62,8 @@ export interface PagedQueueEntriesResult {
 }
 
 export interface WmbScanQueueStorage {
+  /** Effective elections UNION own/dependent granting coverage in C-1 or C. */
+  getSubscriberIdsForMonth(month: number, year: number, employerId?: string): Promise<string[]>;
   // Status methods
   getMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus | undefined>;
   getStatusById(id: string): Promise<TrustWmbScanStatusWithScope | undefined>;
@@ -67,18 +71,11 @@ export interface WmbScanQueueStorage {
   createMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus>;
   updateMonthStatus(id: string, data: Partial<TrustWmbScanStatus>): Promise<TrustWmbScanStatus | undefined>;
 
-  /**
-   * Worker ids assigned to the employer for the scanned month, consistent
-   * with how the scan resolves a worker's policy: the worker's active trust
-   * election as of the last day of the month wins; otherwise the worker's
-   * home employer (worker_employment_denorm.home) is used.
-   */
+  /** Subscriber candidates scoped by election-at-month-end or home employer. */
   getEmployerWorkerIdsForMonth(employerId: string, month: number, year: number): Promise<string[]>;
 
   /**
-   * Distinct worker ids with a trust election ACTIVE at any point in the
-   * given month (election range overlaps the month). Used by the scheduled
-   * sweep's `active_elections` population resolver.
+   * Election-only alternative: election effective at scan month-end.
    */
   getWorkerIdsWithActiveElectionInMonth(month: number, year: number): Promise<string[]>;
 
@@ -134,7 +131,7 @@ export interface WmbScanQueueStorage {
    * the SAME transaction — the durable queue→denorm handoff (see
    * `processClaimedJob`).
    */
-  recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string, staleSeed?: DenormStaleSeed): Promise<JobResultInfo>;
+  recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string, staleSeed?: DenormStaleSeed | DenormStaleSeed[]): Promise<JobResultInfo>;
   
   // Invalidation
   invalidateWorkerScans(workerId: string): Promise<number>;
@@ -157,6 +154,43 @@ export interface WmbScanQueueStorage {
 
 export function createWmbScanQueueStorage(): WmbScanQueueStorage {
   const storage: WmbScanQueueStorage = {
+    async getSubscriberIdsForMonth(month, year, employerId) {
+      const client = getClient();
+      const { monthEndYmd, period } = wmbScanWindow(month, year);
+      const relationsAvailable = await tableExists("worker_relations");
+      const dependentGrantors = relationsAvailable ? sql`
+        UNION
+        SELECT r.worker_1 AS id FROM trust_wmb b
+        JOIN worker_relations r ON r.id = b.source_relation_id
+        WHERE b.year * 12 + b.month IN (${period - 1}, ${period})
+      ` : sql``;
+      const result = await client.execute(sql`
+        WITH subscribers AS (
+          SELECT e.worker_id AS id FROM worker_trust_elections e
+          WHERE e.start_ymd <= ${monthEndYmd}
+            AND (e.end_ymd IS NULL OR e.end_ymd >= ${monthEndYmd})
+          UNION
+          SELECT b.worker_id AS id FROM trust_wmb b
+          WHERE b.source_relation_id IS NULL
+            AND b.year * 12 + b.month IN (${period - 1}, ${period})
+          ${dependentGrantors}
+        )
+        SELECT DISTINCT s.id FROM subscribers s
+        JOIN workers w ON w.id = s.id
+        ${employerId ? sql`
+        LEFT JOIN LATERAL (
+          SELECT e.employer_id FROM worker_trust_elections e
+          WHERE e.worker_id = s.id AND e.start_ymd <= ${monthEndYmd}
+            AND (e.end_ymd IS NULL OR e.end_ymd >= ${monthEndYmd})
+          ORDER BY e.start_ymd DESC, e.id DESC LIMIT 1
+        ) el ON true
+        LEFT JOIN worker_employment_denorm hed ON hed.worker_id = s.id AND hed.home = true
+        WHERE COALESCE(el.employer_id, hed.employer_id) = ${employerId}
+        ` : sql``}
+        ORDER BY s.id
+      `);
+      return (result.rows as Array<{ id: string }>).map(r => r.id);
+    },
     async getMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus | undefined> {
       const client = getClient();
       // Multiple runs may exist per month/year; return the most recent one.
@@ -201,42 +235,17 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getEmployerWorkerIdsForMonth(employerId: string, month: number, year: number): Promise<string[]> {
-      const client = getClient();
-      // "Assigned to the employer for the month" mirrors the scan's policy
-      // resolution order: an active trust election as of the last day of the
-      // scanned month wins (elections always carry an employer); workers
-      // without an active election fall back to their home employer.
-      const monthEnd = new Date(year, month, 0);
-      const asOfYmd = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
-      const result = await client.execute(sql`
-        SELECT w.id AS id
-        FROM workers w
-        LEFT JOIN LATERAL (
-          SELECT e.employer_id
-          FROM worker_trust_elections e
-          WHERE e.worker_id = w.id
-            AND e.start_ymd <= ${asOfYmd}
-            AND (e.end_ymd IS NULL OR e.end_ymd >= ${asOfYmd})
-          ORDER BY e.start_ymd DESC
-          LIMIT 1
-        ) el ON true
-        LEFT JOIN worker_employment_denorm hed
-          ON hed.worker_id = w.id AND hed.home = true
-        WHERE COALESCE(el.employer_id, hed.employer_id) = ${employerId}
-      `);
-      return (result.rows as Array<{ id: string }>).map(r => r.id);
+      return storage.getSubscriberIdsForMonth(month, year, employerId);
     },
 
     async getWorkerIdsWithActiveElectionInMonth(month: number, year: number): Promise<string[]> {
       const client = getClient();
-      const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-      const end = new Date(year, month, 0); // last day of the month
-      const monthEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+      const { monthEndYmd: monthEnd } = wmbScanWindow(month, year);
       const result = await client.execute(sql`
         SELECT DISTINCT e.worker_id AS id
         FROM worker_trust_elections e
         WHERE e.start_ymd <= ${monthEnd}
-          AND (e.end_ymd IS NULL OR e.end_ymd >= ${monthStart})
+          AND (e.end_ymd IS NULL OR e.end_ymd >= ${monthEnd})
       `);
       return (result.rows as Array<{ id: string }>).map(r => r.id);
     },
@@ -477,7 +486,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       const populationIds =
         scope.type === "employer"
           ? await storage.getEmployerWorkerIdsForMonth(scope.employerId, month, year)
-          : (await client.select({ id: workers.id }).from(workers)).map(w => w.id);
+          : await storage.getSubscriberIdsForMonth(month, year);
 
       return client.transaction(async (tx) => {
         // Reuse the run with the SAME scope for this month, if any; runs with
@@ -750,7 +759,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       });
     },
 
-    async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string, staleSeed?: DenormStaleSeed): Promise<JobResultInfo> {
+    async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string, staleSeed?: DenormStaleSeed | DenormStaleSeed[]): Promise<JobResultInfo> {
       const client = getClient();
       return await client.transaction(async (tx) => {
         const [job] = await tx
@@ -774,14 +783,14 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         // recomputes immediately and flips the row back to `ok`; if it is
         // missing, skipped or fails, the row stays `stale` for the hourly
         // denorm_stale cron.
-        if (success && staleSeed) {
+        for (const seed of staleSeed ? (Array.isArray(staleSeed) ? staleSeed : [staleSeed]) : []) {
           const now = new Date();
           await tx
             .insert(denorm)
             .values({
-              entityId: staleSeed.entityId,
-              entityType: staleSeed.entityType,
-              configId: staleSeed.configId,
+              entityId: seed.entityId,
+              entityType: seed.entityType,
+              configId: seed.configId,
               status: "stale",
               computedAt: null,
               staleAt: now,

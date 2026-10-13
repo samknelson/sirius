@@ -5,7 +5,7 @@ import {
   trustWmbEvents,
   type TrustWmbEvent,
 } from "@shared/schema";
-import { eq, and, inArray, isNotNull, sql, lte } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, sql, lte, or, desc } from "drizzle-orm";
 
 export const WMB_INFERRED_PROVENANCE = "coverage_inferred";
 export function isInferredTermination(data: unknown): boolean {
@@ -41,7 +41,7 @@ export interface WorkerBenefitCoverage {
   month: number;
 }
 
-/** A persisted per-worker scan result row (successful, with a summary). */
+/** A persisted scan result affecting this worker (including partial failures). */
 export interface WorkerScanResultRow {
   year: number;
   month: number;
@@ -214,6 +214,7 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
       const client = getClient();
       const rows = await client
         .select({
+          queueWorkerId: trustWmbScanQueue.workerId,
           year: trustWmbScanQueue.year,
           month: trustWmbScanQueue.month,
           resultSummary: trustWmbScanQueue.resultSummary,
@@ -221,12 +222,28 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
         .from(trustWmbScanQueue)
         .where(
           and(
-            eq(trustWmbScanQueue.workerId, workerId),
-            eq(trustWmbScanQueue.status, "success"),
+            or(
+              eq(trustWmbScanQueue.workerId, workerId),
+              sql`(${trustWmbScanQueue.resultSummary}->'people') @> jsonb_build_array(jsonb_build_object('workerId', ${workerId}::text))`,
+            ),
+            inArray(trustWmbScanQueue.status, ["success", "failed"]),
             isNotNull(trustWmbScanQueue.resultSummary),
           ),
-        );
-      return rows;
+        )
+        .orderBy(desc(trustWmbScanQueue.completedAt), desc(trustWmbScanQueue.id));
+      const seen = new Set<string>();
+      return rows.filter(row => {
+        const key = `${row.queueWorkerId}:${row.year}:${row.month}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).map(row => ({
+        ...row,
+        resultSummary: {
+          actions: (row.resultSummary as any)?.actions?.filter((action: any) =>
+            !action.executionError && (!action.workerId || action.workerId === workerId)) ?? [],
+        },
+      }));
     },
 
     async pageHistoricalWorkers(after, limit, benefitId, workerId) {

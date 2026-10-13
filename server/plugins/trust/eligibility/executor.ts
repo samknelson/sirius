@@ -5,7 +5,7 @@ import type {
   EligibilityRule,
   ScanType,
 } from "./types";
-import type { Worker, Contact, Employer, PluginConfig } from "@shared/schema";
+import type { Worker, Contact, Employer, PluginConfig, WorkerTrustElection } from "@shared/schema";
 import { trustBenefitEligibilityExemptions } from "@shared/schema";
 import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { storage } from "../../../storage/database";
@@ -54,6 +54,7 @@ export class EligibilityRelationshipError extends Error {
 }
 
 export interface EligibilityEvaluationInput {
+  election?: WorkerTrustElection | null;
   scanType: ScanType;
   /** Subscriber worker id (the URL worker on the test page). */
   workerId: string;
@@ -70,6 +71,8 @@ export interface EligibilityEvaluationInput {
    */
   relationship?: {
     dependentWorkerId: string;
+    /** Scan-selected source identity; standalone evaluations may omit it. */
+    relationId?: string;
   };
   /**
    * Optionally evaluate as if the subscriber's employer is this one
@@ -287,12 +290,16 @@ async function buildContextParts(
     );
   }
 
-  const row = await storage.workerRelations.findActiveBetween(
+  const row = input.relationship.relationId
+    ? await storage.workerRelations.get(input.relationship.relationId)
+    : await storage.workerRelations.findActiveBetween(
     input.workerId,
     dependentWorkerId,
     asOfDate(asOfYear, asOfMonth),
   );
-  if (!row) {
+  const ymd = asOfYmd(asOfYear, asOfMonth);
+  if (!row || row.worker1 !== input.workerId || row.worker2 !== dependentWorkerId ||
+      !row.startYmd || row.startYmd > ymd || (row.endYmd && row.endYmd < ymd)) {
     throw new EligibilityRelationshipError(
       `No active relationship from worker ${input.workerId} to dependent ${dependentWorkerId} as of ${asOfYear}-${String(asOfMonth).padStart(2, "0")}`,
     );
@@ -375,6 +382,7 @@ export async function evaluateEligibilityRules(
     }
 
     const context: EligibilityContext = {
+      election: input.election,
       scanType: input.scanType,
       asOfMonth,
       asOfYear,
@@ -475,6 +483,7 @@ export async function evaluateBenefitEligibility(
     }
 
     const context: EligibilityContext = {
+      election: input.election,
       scanType: input.scanType,
       asOfMonth,
       asOfYear,

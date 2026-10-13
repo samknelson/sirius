@@ -43,6 +43,7 @@ const TRIGGER = run; // unique trigger source so claims never touch real jobs
 const YEAR = 2031; // far-future months so nothing real collides
 
 let workerId = "";
+let dependentId = "";
 let employerId = "";
 let benefitId = "";
 let denormConfigId = "";
@@ -119,6 +120,7 @@ beforeAll(async () => {
 
   const worker = await storage.workers.createWorker(`${run} worker`);
   workerId = worker.id;
+  dependentId = (await storage.workers.createWorker(`${run} dependent`)).id;
   const employer = await storage.employers.createEmployer({ name: `${run} employer` } as any);
   employerId = employer.id;
   const benefit = await storage.trustBenefits.createTrustBenefit({ name: `${run} benefit` } as any);
@@ -147,6 +149,7 @@ beforeAll(async () => {
 afterAll(async () => {
   // Worker delete cascades queue rows, wmb coverage, events, and denorm rows.
   if (workerId) await storage.workers.deleteWorker(workerId);
+  if (dependentId) await storage.workers.deleteWorker(dependentId);
   if (benefitId) await storage.trustBenefits.deleteTrustBenefit(benefitId);
   if (employerId) await storage.employers.deleteEmployer(employerId);
   if (createdDenormConfig && denormConfigId) {
@@ -155,6 +158,63 @@ afterAll(async () => {
 }, 60_000);
 
 describe("WMB terminate events — production queue completion path", () => {
+  it("keeps partial dependent outcomes and failures in a failed queue result", async () => {
+    const month = 5;
+    await storage.wmbScanQueue.enqueueWorker(workerId, month, YEAR, TRIGGER);
+    const job = await storage.wmbScanQueue.claimNextJob([TRIGGER]);
+    const outcome = await processClaimedJob(storage, job!, undefined, {
+      runScan: async () => {
+        const base = scanResult(month, { eligible: false, action: "none" });
+        return {
+          ...base,
+          people: [
+            { workerId, name: "subscriber", role: "subscriber", relationType: null,
+              previousMonthBenefitIds: [], actions: [], error: "subscriber policy unavailable" },
+            { workerId: dependentId, name: "dependent", role: "dependent", relationType: "child",
+              sourceRelationId: "old", previousMonthBenefitIds: [benefitId], actions: base.actions },
+          ],
+        };
+      },
+    });
+    expect(outcome.success).toBe(false);
+    const row = await storage.wmbScanQueue.getWorkerQueueEntry(workerId, month, YEAR);
+    expect(row?.status).toBe("failed");
+    expect(row?.lastError).toContain("subscriber policy unavailable");
+    expect((row?.resultSummary as any).actions[0].workerId).toBe(dependentId);
+    const events = await storage.trustWmbEvents.listByWorkerAndType(dependentId, "terminate");
+    expect(events.filter(e => e.month === month && e.year === YEAR && e.benefitId === benefitId)).toHaveLength(1);
+  });
+  it("persists dependent failed-continuation outcomes and hands off their own termination event", async () => {
+    const month = 6;
+    const queued = await storage.wmbScanQueue.enqueueWorker(workerId, month, YEAR, TRIGGER);
+    const job = await storage.wmbScanQueue.claimNextJob([TRIGGER]);
+    expect(job?.id).toBe(queued.id);
+    const result = await processClaimedJob(storage, job!, undefined, {
+      runScan: async () => {
+        const base = scanResult(month, { eligible: false, action: "none" });
+        return {
+          ...base,
+          people: [
+            { workerId, name: "subscriber", role: "subscriber", relationType: null,
+              previousMonthBenefitIds: [], actions: [] },
+            { workerId: dependentId, name: "dependent", role: "dependent", relationType: "child",
+              sourceRelationId: "prior-relation", previousMonthBenefitIds: [benefitId],
+              actions: base.actions },
+          ],
+        };
+      },
+    });
+    expect(result.success).toBe(true);
+    const recorded = await storage.wmbScanQueue.getWorkerQueueEntry(workerId, month, YEAR);
+    expect((recorded?.resultSummary as any).people[1].workerId).toBe(dependentId);
+    expect((recorded?.resultSummary as any).actions[0]).toMatchObject({
+      workerId: dependentId, sourceRelationId: "prior-relation", scanType: "continue",
+    });
+    const events = await storage.trustWmbEvents.listByWorkerAndType(dependentId, "terminate");
+    expect(events.filter(e => e.month === month && e.year === YEAR && e.benefitId === benefitId)).toHaveLength(1);
+    expect((await storage.denorm.get(dependentId, denormConfigId))?.status).toBe("ok");
+    expect(await terminateEventsFor(month)).toHaveLength(0);
+  });
   it("creates a terminate event for a failed continue with action 'none' (no coverage row to delete)", async () => {
     await runQueueJob(7, { eligible: false, action: "none" });
 

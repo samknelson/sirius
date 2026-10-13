@@ -5,7 +5,8 @@ import {
 } from "../plugins/trust/eligibility/executor";
 import type { EligibilityRule, ScanType } from "../plugins/trust/eligibility/types";
 import type { IStorage } from "../storage";
-import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } from "@shared/schema";
+import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility, WorkerTrustElection } from "@shared/schema";
+import { wmbScanWindow } from "./wmb-scan-window";
 import { logger } from "../logger";
 import { isComponentEnabledSync } from "./component-cache";
 import {
@@ -43,6 +44,8 @@ export interface BenefitScanPerson {
   relationType: string | null;
   previousMonthBenefitIds: string[];
   actions: BenefitScanAction[];
+  sourceRelationId?: string | null;
+  error?: string;
 }
 
 export interface BenefitsScanResult {
@@ -73,11 +76,8 @@ export interface BenefitsScanResult {
 
 export interface RunBenefitsScanOptions {
   /**
-   * When true, the scan also evaluates every dependent covered by the
-   * subscriber's active trust election and creates/removes `trust_wmb`
-   * rows keyed to each dependent's own worker id. Off by default so the
-   * monthly/batch policy-wide scan (which already enqueues each dependent
-   * worker as its own subscriber job) does not double-process dependents.
+     * Evaluate elected starts and prior/current attributed dependent coverage.
+     * Standalone callers can opt out; queue jobs always evaluate dependents.
    */
   includeDependents?: boolean;
   /**
@@ -86,13 +86,6 @@ export interface RunBenefitsScanOptions {
    * system default) is fetched once per run, not once per worker.
    */
   policyCache?: PolicyResolutionCache;
-}
-
-function getPreviousMonth(month: number, year: number): { month: number; year: number } {
-  if (month === 1) {
-    return { month: 12, year: year - 1 };
-  }
-  return { month: month - 1, year };
 }
 
 /**
@@ -117,16 +110,17 @@ async function evaluatePersonBenefits(
     subscriberWorkerId: string;
     subscriberWorker: Worker;
     personWorkerId: string;
-    relationship: { dependentWorkerId: string } | undefined;
+    relationship: { dependentWorkerId: string; relationId?: string } | undefined;
     /**
      * The worker_relations row this person's coverage comes through
      * (dependents only). Persisted on every WMB row the scan creates so
      * staff can tell an own benefit from a relation-sourced one. Not part
-     * of the create/delete diff: existing rows are matched purely on
-     * (worker, benefit, month, year), so re-running a scan on an
-     * already-correct worker never churns on this field.
+     * of ownership: scans only match rows with this exact source, never
+     * another subscriber's coverage or this person's independent coverage.
      */
     sourceRelationId: string | null;
+    election: WorkerTrustElection | null;
+    allowStarts: boolean;
     month: number;
     year: number;
     mode: "test" | "live";
@@ -142,6 +136,8 @@ async function evaluatePersonBenefits(
     personWorkerId,
     relationship,
     sourceRelationId,
+    election,
+    allowStarts,
     month,
     year,
     mode,
@@ -151,8 +147,9 @@ async function evaluatePersonBenefits(
     rulesByBenefit,
   } = params;
 
-  const personWmbRecords = await storage.trust.wmb.getWorkerBenefits(personWorkerId);
-  const prevMonth = getPreviousMonth(month, year);
+  const personWmbRecords = (await storage.trust.wmb.getWorkerBenefits(personWorkerId))
+    .filter(wmb => (wmb.sourceRelationId ?? null) === sourceRelationId);
+  const prevMonth = wmbScanWindow(month, year).previous;
   const previousMonthWmb = personWmbRecords.filter(
     (wmb: any) => wmb.month === prevMonth.month && wmb.year === prevMonth.year,
   );
@@ -161,46 +158,74 @@ async function evaluatePersonBenefits(
   const currentMonthWmb = personWmbRecords.filter(
     (wmb: any) => wmb.month === month && wmb.year === year,
   );
-  const currentMonthBenefitMap = new Map<string, any>(
-    currentMonthWmb.map((wmb: any) => [wmb.benefitId, wmb]),
-  );
+  const currentMonthBenefitMap = new Map<string, any[]>();
+  for (const row of currentMonthWmb) {
+    const rows = currentMonthBenefitMap.get(row.benefitId) ?? [];
+    rows.push(row);
+    currentMonthBenefitMap.set(row.benefitId, rows);
+  }
+  const coverageBenefitIds = new Set([...previousMonthBenefitIds, ...currentMonthBenefitMap.keys()]);
+  const canStart = allowStarts || (sourceRelationId === null && coverageBenefitIds.size === 0);
+  const evaluationBenefitIds = [...new Set([
+    ...(canStart ? policyBenefitIds : []), ...coverageBenefitIds,
+  ])].sort();
 
   let actions: BenefitScanAction[] = [];
   let presentBenefitIds = new Set<string>(currentMonthBenefitMap.keys());
-  const maxPasses = policyBenefitIds.length + 1;
+  const maxPasses = evaluationBenefitIds.length + 1;
 
   for (let pass = 0; pass < maxPasses; pass++) {
     const passActions: BenefitScanAction[] = [];
 
-    for (const benefitId of policyBenefitIds) {
+    for (const benefitId of evaluationBenefitIds) {
       const benefit = benefitsMap.get(benefitId);
       if (!benefit) {
-        if (pass === 0) {
-          logger.warn(`Benefit not found: ${benefitId}`, { service: "benefits-scan" });
-        }
-        continue;
+        throw new Error(`Coverage benefit not found: ${benefitId}`);
       }
 
-      const hadPreviousMonth = previousMonthBenefitIds.includes(benefitId);
+      const hadPreviousMonth = coverageBenefitIds.has(benefitId);
       const scanType: ScanType = hadPreviousMonth ? "continue" : "start";
       const rules = rulesByBenefit.get(benefitId) || [];
 
-      const eligibilityResult = await evaluateBenefitEligibility(benefitId, rules, {
+      // Losing an election selection or a policy benefit must not become a
+      // permission to grant coverage just because its rules disappeared.
+      const refusal = !policyBenefitIds.includes(benefitId)
+        ? "Benefit is no longer in the subscriber policy"
+        : relationship && !allowStarts
+          ? "Dependent is no longer selected by a date-valid subscriber election relationship"
+          : relationship && !election?.benefitIds?.includes(benefitId)
+            ? "Subscriber election does not select this benefit for the dependent"
+          : null;
+      const applicableRules = rules.filter(rule => rule.appliesTo.includes(scanType));
+      if (!refusal && applicableRules.length === 0) {
+        throw new Error(`No ${scanType} eligibility rules configured for benefit ${benefitId} in subscriber policy`);
+      }
+      const eligibilityResult = refusal ? {
+        eligible: false,
+        results: [{ pluginKey: "coverage-context", eligible: false, reason: refusal }],
+      } : await evaluateBenefitEligibility(benefitId, rules, {
         scanType,
         workerId: subscriberWorkerId,
         worker: subscriberWorker,
         relationship,
+        election,
+        employerId: employerIdForCreate || undefined,
         asOfMonth: month,
         asOfYear: year,
         stopAfterIneligible: false,
         presentBenefitIds,
       });
+      const evaluationError = eligibilityResult.results.find(r =>
+        r.reason?.startsWith("Plugin error:") || r.reason?.startsWith("Plugin not found:"));
 
       const hasCurrentRecord = currentMonthBenefitMap.has(benefitId);
       let action: "create" | "delete" | "none";
       let actionReason: string;
 
-      if (eligibilityResult.eligible) {
+      if (evaluationError) {
+        action = "none";
+        actionReason = evaluationError.reason!;
+      } else if (eligibilityResult.eligible) {
         if (hasCurrentRecord) {
           action = "none";
           actionReason = "Already has benefit for this month";
@@ -226,6 +251,7 @@ async function evaluatePersonBenefits(
         action,
         actionReason,
         pluginResults: eligibilityResult.results,
+        ...(evaluationError ? { executionError: evaluationError.reason } : {}),
       });
     }
 
@@ -269,6 +295,7 @@ async function evaluatePersonBenefits(
             for (const action of actions) {
               try {
                 if (action.action === "create") {
+                  if (!employerIdForCreate) throw new Error("Subscriber employer is unresolved");
                   await runInSavepoint(() =>
                     storage.trust.wmb.createWorkerBenefit({
                       workerId: personWorkerId,
@@ -283,9 +310,11 @@ async function evaluatePersonBenefits(
                 } else if (action.action === "delete") {
                   const existingRecord = currentMonthBenefitMap.get(action.benefitId);
                   if (existingRecord) {
-                    await runInSavepoint(() =>
-                      storage.trust.wmb.deleteWorkerBenefit(existingRecord.id),
-                    );
+                    for (const row of existingRecord) {
+                      await runInSavepoint(() =>
+                        storage.trust.wmb.deleteWorkerBenefit(row.id),
+                      );
+                    }
                     action.executed = true;
                   }
                 }
@@ -319,36 +348,29 @@ async function resolveCoveredDependents(
   subscriberWorkerId: string,
   month: number,
   year: number,
-): Promise<Array<{ workerId: string; name: string; relationType: string | null; relationId: string }>> {
+  election: WorkerTrustElection | null,
+): Promise<Array<{ workerId: string; name: string; relationType: string | null; relationId: string; allowStarts: boolean }>> {
   const asOfDate = new Date(year, month, 0);
-  const asOfYmd = `${asOfDate.getFullYear()}-${String(asOfDate.getMonth() + 1).padStart(2, "0")}-${String(asOfDate.getDate()).padStart(2, "0")}`;
 
-  const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
-    subscriberWorkerId,
-    asOfYmd,
-  );
-  if (!election) return [];
-
-  const relationshipIds = new Set(election.relationshipIds ?? []);
-  if (relationshipIds.size === 0) return [];
+  const relationshipIds = new Set(election?.relationshipIds ?? []);
 
   // The executor validates the relationship directionally (subscriber must be
   // `worker_1`), so we enumerate the subscriber's `worker_1` relations that are
   // active as of the scan date. `searchWorkerRelations` also resolves each
   // dependent's name and relation-type label in one call.
-  const relations = await storage.workerRelations.searchWorkerRelations({
+  const relations = relationshipIds.size ? await storage.workerRelations.searchWorkerRelations({
     workerId: subscriberWorkerId,
     role: "worker_1",
     activeAt: asOfDate,
-  });
+  }) : [];
 
   const seen = new Set<string>();
-  const dependents: Array<{ workerId: string; name: string; relationType: string | null; relationId: string }> = [];
+  const dependents: Array<{ workerId: string; name: string; relationType: string | null; relationId: string; allowStarts: boolean }> = [];
 
-  for (const rel of relations) {
+  for (const rel of [...relations].sort((a, b) => a.id.localeCompare(b.id))) {
     if (!relationshipIds.has(rel.id)) continue;
     const dependentWorkerId = rel.worker2;
-    if (dependentWorkerId === subscriberWorkerId || seen.has(dependentWorkerId)) continue;
+    if (rel.worker1 !== subscriberWorkerId || dependentWorkerId === subscriberWorkerId || seen.has(dependentWorkerId)) continue;
     seen.add(dependentWorkerId);
 
     const ow = rel.otherWorker;
@@ -361,10 +383,28 @@ async function resolveCoveredDependents(
       name,
       relationType: rel.relationTypeName ?? null,
       relationId: rel.id,
+      allowStarts: true,
+    });
+  }
+  // Stop candidates deliberately ignore today's membership and relation dates.
+  // Preserve each source identity, even if the same person has a new relation.
+  const coverage = await storage.trust.wmb.getSubscriberDependentCoverage(subscriberWorkerId, month, year);
+  for (const row of coverage) {
+    if (!row.sourceRelationId || dependents.some(dep => dep.workerId === row.workerId && dep.relationId === row.sourceRelationId)) continue;
+    if (row.workerId === subscriberWorkerId) throw new Error(`Invalid self-dependent coverage source ${row.sourceRelationId}`);
+    dependents.push({
+      workerId: row.workerId,
+      name: await storage.workers.getWorkerDisplayName(row.workerId),
+      relationType: row.relationType,
+      relationId: row.sourceRelationId,
+      allowStarts: false,
     });
   }
 
-  return dependents;
+  // Stop stale grants before attempting starts under a replacement relation.
+  return dependents.sort((a, b) =>
+    Number(a.allowStarts) - Number(b.allowStarts) ||
+    a.workerId.localeCompare(b.workerId) || a.relationId.localeCompare(b.relationId));
 }
 
 export async function runBenefitsScan(
@@ -400,7 +440,7 @@ export async function runBenefitsScan(
     throw new Error(`Worker not found: ${workerId}`);
   }
 
-  const { policy, policySource, employer } = await resolveWorkerPolicy(
+  const { policy, policySource, employer, election } = await resolveWorkerPolicy(
     storage,
     worker,
     month,
@@ -439,12 +479,16 @@ export async function runBenefitsScan(
   const people: BenefitScanPerson[] = [];
 
   // 1) Subscriber (the worker in the URL) — evaluated with no relationship.
+  const subscriberName = await storage.workers.getWorkerDisplayName(workerId);
+  try {
   const subscriberResult = await evaluatePersonBenefits(storage, {
     subscriberWorkerId: workerId,
     subscriberWorker: worker,
     personWorkerId: workerId,
     relationship: undefined,
     sourceRelationId: null,
+    election,
+    allowStarts: !!election,
     month,
     year,
     mode,
@@ -453,7 +497,6 @@ export async function runBenefitsScan(
     benefitsMap,
     rulesByBenefit,
   });
-  const subscriberName = await storage.workers.getWorkerDisplayName(workerId);
   people.push({
     workerId,
     name: subscriberName,
@@ -462,19 +505,29 @@ export async function runBenefitsScan(
     previousMonthBenefitIds: subscriberResult.previousMonthBenefitIds,
     actions: subscriberResult.actions,
   });
+  } catch (error) {
+    people.push({
+      workerId, name: subscriberName, role: "subscriber", relationType: null,
+      previousMonthBenefitIds: [], actions: [],
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   // 2) Covered dependents — each evaluated with the subscriber→dependent
   // relationship context so the Election plugin checks dependent coverage,
   // and each dependent's benefit records are keyed to their own worker id.
   if (options.includeDependents) {
-    const dependents = await resolveCoveredDependents(storage, workerId, month, year);
+    const dependents = await resolveCoveredDependents(storage, workerId, month, year, election);
     for (const dep of dependents) {
+      try {
       const depResult = await evaluatePersonBenefits(storage, {
         subscriberWorkerId: workerId,
         subscriberWorker: worker,
         personWorkerId: dep.workerId,
-        relationship: { dependentWorkerId: dep.workerId },
+        relationship: { dependentWorkerId: dep.workerId, relationId: dep.relationId },
         sourceRelationId: dep.relationId,
+        election,
+        allowStarts: dep.allowStarts,
         month,
         year,
         mode,
@@ -490,7 +543,16 @@ export async function runBenefitsScan(
         relationType: dep.relationType,
         previousMonthBenefitIds: depResult.previousMonthBenefitIds,
         actions: depResult.actions,
+        sourceRelationId: dep.relationId,
       });
+      } catch (error) {
+        people.push({
+          workerId: dep.workerId, name: dep.name, role: "dependent",
+          relationType: dep.relationType, sourceRelationId: dep.relationId,
+          previousMonthBenefitIds: [], actions: [],
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
@@ -537,7 +599,7 @@ async function resolveWorkerPolicy(
   month: number,
   year: number,
   policyCache: PolicyResolutionCache,
-): Promise<{ policy: Policy | null; policySource: string; employer: any | null }> {
+): Promise<{ policy: Policy | null; policySource: string; employer: any | null; election: WorkerTrustElection | null }> {
   // 1) Pick the EMPLOYER: the worker's active election for the scan month
   // (its employer, never its stored policy — the policy is derived from
   // employer history so plan-rule changes take effect without touching
@@ -545,8 +607,7 @@ async function resolveWorkerPolicy(
   // Use the last day of the scan month as the election "as of" date
   // (matching the dependent-coverage resolution in this file) so an election
   // that becomes active at any point during the scan month is picked up.
-  const monthEnd = new Date(year, month, 0);
-  const electionAsOfYmd = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+  const { monthEndYmd: electionAsOfYmd } = wmbScanWindow(month, year);
   const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
     worker.id,
     electionAsOfYmd,
@@ -571,5 +632,5 @@ async function resolveWorkerPolicy(
     targetDate,
     policyCache,
   );
-  return { policy: resolved.policy, policySource: resolved.policySource, employer };
+  return { policy: resolved.policy, policySource: resolved.policySource, employer, election: election ?? null };
 }

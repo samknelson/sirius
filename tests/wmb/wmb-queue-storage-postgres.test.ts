@@ -9,6 +9,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 const context = vi.hoisted(() => ({ getClient: vi.fn() }));
 vi.mock("../../server/storage/transaction-context", () => ({ getClient: context.getClient }));
 import { createWmbScanQueueStorage } from "../../server/storage/wmb-scan-queue";
+import { getScanPopulationResolver } from "../../server/services/benefit-scan-populations";
 
 // The application storage methods execute real SQL. Only connection selection
 // is replaced; no application/production database configuration is consulted.
@@ -40,6 +41,15 @@ describe.skipIf(process.env.WMB_QUEUE_STORAGE_PG !== "1")("WMB storage real Post
       CREATE INDEX trust_wmb_scan_queue_worker_idx ON trust_wmb_scan_queue(worker_id);
       CREATE INDEX trust_wmb_scan_queue_pending_claim_idx ON trust_wmb_scan_queue(scheduled_for,id) WHERE status='pending';
       CREATE INDEX trust_wmb_scan_queue_active_run_idx ON trust_wmb_scan_queue(status_id) WHERE status IN ('pending','processing')`);
+    await pool.query(`
+      CREATE TABLE workers(id varchar PRIMARY KEY);
+      CREATE TABLE worker_trust_elections(id varchar PRIMARY KEY, worker_id varchar, employer_id varchar,
+        start_ymd varchar, end_ymd varchar);
+      CREATE TABLE worker_relations(id varchar PRIMARY KEY, worker_1 varchar, worker_2 varchar, relation_type varchar);
+      CREATE TABLE trust_wmb(id varchar PRIMARY KEY, worker_id varchar, employer_id varchar, benefit_id varchar,
+        year int, month int, source_relation_id varchar);
+      CREATE TABLE worker_employment_denorm(worker_id varchar, employer_id varchar, home boolean);
+    `);
   });
   afterAll(async () => {
     await pool?.end();
@@ -47,7 +57,7 @@ describe.skipIf(process.env.WMB_QUEUE_STORAGE_PG !== "1")("WMB storage real Post
     if (root) rmSync(root, { recursive: true, force: true });
   });
   beforeEach(async () => {
-    await pool.query("TRUNCATE trust_wmb_scan_queue,trust_wmb_scan_status");
+    await pool.query("TRUNCATE trust_wmb_scan_queue,trust_wmb_scan_status,workers,worker_trust_elections,worker_relations,trust_wmb,worker_employment_denorm");
     await pool.query(`INSERT INTO trust_wmb_scan_status(id,month,year) VALUES ('a',1,2026),('b',2,2026),('c',3,2026)`);
   });
   it("returns the latest terminal result and correctly ordered queued months without other workers", async () => {
@@ -100,5 +110,52 @@ describe.skipIf(process.env.WMB_QUEUE_STORAGE_PG !== "1")("WMB storage real Post
     const failed = (await pool.query("SELECT status,last_error FROM trust_wmb_scan_queue WHERE id='2'")).rows[0];
     expect(failed).toEqual({ status: "failed", last_error: "expected failure" });
     expect(await storage.recordJobResult("missing", true, {})).toEqual({ scanCompleted: false });
+  });
+  it("selects distinct grantors at scan checkpoints and month-end elections, not dependent recipients", async () => {
+    await pool.query(`INSERT INTO workers(id) VALUES
+      ('elected'),('dependent-only-grantor'),('own-grantor'),('dependent'),
+      ('ended'),('future'),('early-only'),('historical'),('other')`);
+    await pool.query(`INSERT INTO worker_trust_elections(id,worker_id,employer_id,start_ymd,end_ymd) VALUES
+      ('e1','elected','A','2025-12-31',null),
+      ('e2','future','A','2026-02-01',null),
+      ('e3','early-only','A','2026-01-01','2026-01-15'),
+      ('e4','ended','A','2025-01-01','2025-12-31'),
+      ('e5','other','B','2026-01-31',null)`);
+    await pool.query(`INSERT INTO worker_relations(id,worker_1,worker_2) VALUES
+      ('r1','dependent-only-grantor','dependent'),('r2','other','dependent')`);
+    await pool.query(`INSERT INTO worker_employment_denorm(worker_id,employer_id,home) VALUES
+      ('dependent-only-grantor','A',true),('own-grantor','A',true),
+      ('historical','A',true),('dependent','B',true)`);
+    await pool.query(`INSERT INTO trust_wmb(id,worker_id,employer_id,benefit_id,year,month,source_relation_id) VALUES
+      ('w1','dependent','A','b',2025,12,'r1'),('w2','dependent','A','b',2026,1,'r1'),
+      ('w3','dependent','B','b',2026,1,'r2'),('w4','own-grantor','A','b',2026,1,null),
+      ('w5','historical','A','b',2025,11,null)`);
+    expect(await storage.getSubscriberIdsForMonth(1, 2026)).toEqual([
+      "dependent-only-grantor", "elected", "other", "own-grantor",
+    ]);
+    expect(await storage.getSubscriberIdsForMonth(1, 2026, "A")).toEqual([
+      "dependent-only-grantor", "elected", "own-grantor",
+    ]);
+    expect(await getScanPopulationResolver("subscribers")!.resolve({ wmbScanQueue: storage } as any, { month: 1, year: 2026 })).toEqual([
+      "dependent-only-grantor", "elected", "other", "own-grantor",
+    ]);
+    expect(getScanPopulationResolver("previous_month_benefit")?.label).toContain("benefit");
+    expect(getScanPopulationResolver("all_workers")?.label).toBe("All workers");
+    expect(await storage.getSubscriberIdsForMonth(2, 2026)).toEqual([
+      "dependent-only-grantor", "elected", "future", "other", "own-grantor",
+    ]);
+    expect(await storage.getWorkerIdsWithActiveElectionInMonth(1, 2026)).toEqual(
+      expect.arrayContaining(["elected", "other"]),
+    );
+    expect(await storage.getWorkerIdsWithActiveElectionInMonth(1, 2026)).not.toContain("early-only");
+  });
+  it("builds the dependent-result lookup index in the shape expected by the migration", async () => {
+    await pool.query(`CREATE INDEX trust_wmb_scan_queue_dependent_result_idx
+      ON trust_wmb_scan_queue USING gin ((result_summary -> 'people'))`);
+    const result = await pool.query(`SELECT pg_get_indexdef('trust_wmb_scan_queue_dependent_result_idx'::regclass) AS definition`);
+    expect(result.rows[0].definition).toBe(
+      "CREATE INDEX trust_wmb_scan_queue_dependent_result_idx ON public.trust_wmb_scan_queue USING gin (((result_summary -> 'people'::text)))",
+    );
+    await pool.query("DROP INDEX trust_wmb_scan_queue_dependent_result_idx");
   });
 });

@@ -21,8 +21,8 @@ import { getDenormStaleSeed } from "../plugins/system/denorm/mark-stale";
  * Per-worker, event-driven trigger sources. Jobs from these sources also
  * re-evaluate the worker's covered dependents (e.g. a DP payment must re-gate
  * the DP dependent's benefit, which is keyed to the dependent's own worker
- * id). Batch runs (monthly_batch / auto_hours_bulk) keep dependents off
- * because they already enqueue each worker in the population as its own job.
+ * id). Batch and scheduled jobs also evaluate dependents: coverage recipients
+ * are not necessarily independent subscribers.
  */
 export const PER_WORKER_AUTO_TRIGGER_SOURCES = [
   "worker_update",
@@ -100,16 +100,13 @@ export async function processClaimedJob(
   });
 
   try {
-    // Event-driven single-worker jobs also re-evaluate the worker's covered
-    // dependents; see PER_WORKER_AUTO_TRIGGER_SOURCES.
-    const includeDependents = PER_WORKER_AUTO_TRIGGER_SOURCES.includes(job.triggerSource);
     const result = await (deps.runScan ?? runBenefitsScan)(
       storage,
       job.workerId,
       job.month,
       job.year,
       "live",
-      { includeDependents, policyCache }
+      { includeDependents: true, policyCache }
     );
 
     // Durable queue→denorm handoff: resolve the trust-wmb-terminate stale
@@ -122,31 +119,35 @@ export async function processClaimedJob(
     // dashboard and recomputed by the hourly denorm_stale cron. A missing
     // config (seed === null) alerts via the admin log viewer inside the
     // helper.
-    const terminateStaleSeed = await getDenormStaleSeed(
-      "trust-wmb-terminate",
-      job.workerId,
-    );
+    const people = result.people.length ? result.people : [{
+      workerId: job.workerId, actions: result.actions,
+    }];
+    const actions = people.flatMap(person => person.actions.map(action => ({
+      ...action, workerId: person.workerId,
+      sourceRelationId: "sourceRelationId" in person ? person.sourceRelationId ?? null : null,
+    })));
+    const errors = [
+      ...result.people.flatMap(person => person.error ? [`${person.workerId}: ${person.error}`] : []),
+      ...actions.flatMap(action => action.executionError ? [`${action.workerId}: ${action.executionError}`] : []),
+    ];
+    const success = errors.length === 0;
+    const seeds = await Promise.all([...new Set(people.map(p => p.workerId))]
+      .map(id => getDenormStaleSeed("trust-wmb-terminate", id)));
 
     const jobResultInfo = await storage.wmbScanQueue.recordJobResult(
       job.id,
-      true,
+      success,
       {
         policyId: result.policyId,
         policyName: result.policyName,
         employerId: result.employerId,
         summary: result.summary,
-        actions: result.actions.map(a => ({
-          benefitId: a.benefitId,
-          benefitName: a.benefitName,
-          scanType: a.scanType,
-          eligible: a.eligible,
-          action: a.action,
-          executed: a.executed,
-          pluginResults: a.pluginResults,
-        })),
+        actions,
+        people: result.people,
+        errors,
       },
-      undefined,
-      terminateStaleSeed ?? undefined,
+      errors.length ? errors.join("; ") : undefined,
+      seeds.filter((seed): seed is NonNullable<typeof seed> => seed !== null),
     );
 
     logger.info(`Completed WMB scan job for worker ${job.workerId}`, {
@@ -160,12 +161,13 @@ export async function processClaimedJob(
     // trust-wmb-terminate denorm plugin react to this. Emit failures are
     // logged but never fail the job.
     try {
+      for (const person of people) {
       await eventBus.emit(EventType.TRUST_WMB_SCAN_WORKER_COMPLETED, {
         queueId: job.id,
-        workerId: job.workerId,
+        workerId: person.workerId,
         month: job.month,
         year: job.year,
-        actions: result.actions.map(a => ({
+        actions: person.actions.map(a => ({
           benefitId: a.benefitId,
           benefitName: a.benefitName,
           scanType: a.scanType,
@@ -175,6 +177,7 @@ export async function processClaimedJob(
           pluginResults: a.pluginResults,
         })),
       });
+      }
     } catch (emitError: any) {
       logger.error("Failed to emit per-worker WMB scan completion event", {
         service: "wmb-scan-queue",
@@ -188,7 +191,7 @@ export async function processClaimedJob(
       setImmediate(() => emitScanCompletedEvent(jobResultInfo.completedStatus!));
     }
 
-    return { processed: true, workerId: job.workerId, success: true };
+    return { processed: true, workerId: job.workerId, success };
   } catch (error: any) {
     logger.error(`Failed WMB scan job for worker ${job.workerId}`, {
       service: "wmb-scan-queue",

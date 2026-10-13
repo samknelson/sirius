@@ -7,7 +7,7 @@ import {
   workerRelations,
   type TrustWmb,
 } from "@shared/schema";
-import { sql, eq, and, desc, inArray, or, isNull, asc } from "drizzle-orm";
+import { sql, eq, and, desc, inArray, or, isNull, asc, getTableColumns } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "../utils";
 import {
   enqueueWorkerBenefitRoleHistoryInvalidations,
@@ -16,6 +16,7 @@ import { type StorageLoggingConfig } from "../middleware/logging";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
 import { getRequestContext } from "../../middleware/request-context";
+import { wmbScanWindow } from "../../services/wmb-scan-window";
 
 export interface ActiveBenefitWorkerCount {
   employerId: string;
@@ -93,6 +94,7 @@ export interface WmbEeContributionCoverage {
 }
 
 export interface TrustWmbStorage {
+  getSubscriberDependentCoverage(subscriberWorkerId: string, month: number, year: number): Promise<Array<TrustWmb & { relationType: string }>>;
   getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]>;
   /**
    * Distinct-worker coverage counts per (benefit, year, month), restricted to
@@ -181,6 +183,18 @@ export function createTrustWmbStorage(): TrustWmbStorage {
   }
 
   return {
+    async getSubscriberDependentCoverage(subscriberWorkerId, month, year) {
+      if (!(await tableExistsUtil("worker_relations"))) return [];
+      const { previous } = wmbScanWindow(month, year);
+      return getClient().select({ ...getTableColumns(trustWmb), relationType: workerRelations.relationType })
+        .from(trustWmb)
+        .innerJoin(workerRelations, eq(workerRelations.id, trustWmb.sourceRelationId))
+        .where(and(eq(workerRelations.worker1, subscriberWorkerId), or(
+          and(eq(trustWmb.month, month), eq(trustWmb.year, year)),
+          and(eq(trustWmb.month, previous.month), eq(trustWmb.year, previous.year)),
+        )))
+        .orderBy(asc(trustWmb.workerId), asc(trustWmb.sourceRelationId), asc(trustWmb.id));
+    },
     async getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]> {
       const client = getClient();
       const result = await client.execute(sql`

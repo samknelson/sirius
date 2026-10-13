@@ -26,6 +26,15 @@ the casted form. Verify by booting — the gate error prints expected vs found.
 plugin_kind = 'cron'`); first boot failed with
 `expected plugin_kind = 'cron', found (plugin_kind)::text = 'cron'::text`.
 
+**Expression indexes too:** A GIN index on `jsonb_col -> 'key'` is reflected
+as `jsonb_col -> 'key'::text`. Declare that cast explicitly in the schema's
+SQL expression, or startup refuses to boot even after migration succeeds.
+Declaring `jsonb_path_ops` inside the Drizzle SQL expression also fails:
+the checker treats the operator class as part of the expected column text,
+but the reflected column expression omits it. Use the default GIN operator
+class when exact drift-gate matching matters; verify at boot, not only by
+inspecting `pg_get_indexdef`.
+
 **Reserved-word identifier quoting (same root cause):** `normalizeIndexExpr`
 also does NOT strip double quotes around an *individual* identifier (it only
 strips quotes on table-qualified `"tbl"."col"` and a wholly-quoted expression).

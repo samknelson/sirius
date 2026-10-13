@@ -141,6 +141,18 @@ Grain: per worker × employer × period (`date_start`/`date_end`; ⚠ "monthly" 
 
 ---
 
+## S2 monthly scan interpretation
+
+After import, live WMB scans use the preceding and requested coverage months
+as continuation checkpoints. A subscriber is discovered from a month-end
+effective election or from own coverage (`source_relation_id IS NULL`) or
+dependent coverage (`worker_relations.worker_1` through `source_relation_id`)
+at either checkpoint. The receiving dependent is not independently a
+subscriber. Only the current election's directionally valid relationships
+can start dependent coverage; prior/current attributed rows still require a
+stop check after an election or relationship changes. This does not infer
+ownership for imported rows whose source relationship was lost.
+
 ## Addendum 2026-08-06 — T16–T19 build conventions (as shipped)
 
 **T16 elections.** Type tid resolves via the STAGED TERM NAME (FirstTime/OpenEnrollment/LifeEvent → `first_time`/`open_enrollment`/`life_event`), never hardcoded tids; `--type-map tid=code` exists for prod surprises. Untyped S1 elections load with NULL `enrollment_type` (S1 never required the field; inventing a type would be fiction). `field_sirius_trust_policy` is NOT stored on the S2 row (02 §5b — policy is derived via `resolveEmployerPolicyAsOf`); the nid is stashed in `data.s1PolicyNid` and id_map `policy` (from the adopt-only T-policies pass) covers audit. Benefit ORDER preserved verbatim. `active=No` + no end date → end-dated from `node.changed` (same convention as T15 relationships). Writes go through `workerTrustElections.createForMigration`: keeps worker/employer FK + date validation and the TRUST_ELECTION_SAVED emit, skips the dual-coverage assert + auto-end-dating (operator-edit reshaping logic must not rewrite history). **Sync conversion (2026-08-19, RUNBOOK §10):** drifted mapped rows now update through the matching `updateForMigration` (S1 wins, migration-owned fields verbatim), and S1-deleted elections hard-delete via the sweep — both under full side-effect suppression.

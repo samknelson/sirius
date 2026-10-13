@@ -5,8 +5,9 @@
  * to enqueue for a scan of C. Resolution is strictly a function of the
  * COVERAGE month, never the run date:
  *
- * - `active_elections`       → workers with an active trust election in C.
- * - `previous_month_benefit` → workers who had a benefit (WMB row) in C-1.
+ * - `subscribers`            → election at end of C or attributed coverage in C-1/C.
+ * - `active_elections`       → election-only subscribers effective at end of C.
+ * - `previous_month_benefit` → benefit recipients (not necessarily subscribers) in C-1.
  * - `all_workers`            → every worker (coverage-month independent).
  *
  * Registry-style so future sweep populations plug in without touching the
@@ -37,8 +38,15 @@ export function listScanPopulationTypes(): { id: string; label: string }[] {
 }
 
 registerScanPopulationResolver({
+  id: "subscribers",
+  label: "Subscribers with a month-end election or prior/current attributed coverage",
+  resolve: (storage, coverage) =>
+    storage.wmbScanQueue.getSubscriberIdsForMonth(coverage.month, coverage.year),
+});
+
+registerScanPopulationResolver({
   id: "active_elections",
-  label: "Workers with an active election in the coverage month",
+  label: "Election-only subscribers (effective at coverage month-end)",
   resolve: (storage, coverage) =>
     storage.wmbScanQueue.getWorkerIdsWithActiveElectionInMonth(coverage.month, coverage.year),
 });

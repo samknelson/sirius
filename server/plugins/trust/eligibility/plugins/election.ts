@@ -44,7 +44,7 @@ class ElectionPlugin extends EligibilityPlugin<ElectionConfig> {
       "default",
       { month: "long" },
     );
-    const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
+    const election = context.election !== undefined ? context.election : await storage.workerTrustElections.getActiveByWorkerAsOf(
       subscriberId,
       asOfYmd,
     );
@@ -76,8 +76,9 @@ class ElectionPlugin extends EligibilityPlugin<ElectionConfig> {
       for (const relId of relationshipIds) {
         const rel = await storage.workerRelations.get(relId);
         if (!rel) continue;
-        const pair = new Set([rel.worker1, rel.worker2]);
-        if (pair.has(subscriberId) && pair.has(dependentId)) {
+        if (rel.worker1 === subscriberId && rel.worker2 === dependentId &&
+            !!rel.startYmd && rel.startYmd <= asOfYmd &&
+            (!rel.endYmd || rel.endYmd >= asOfYmd)) {
           covered = true;
           break;
         }
