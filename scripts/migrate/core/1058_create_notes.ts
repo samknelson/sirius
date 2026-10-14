@@ -7,12 +7,12 @@ async function up(): Promise<void> {
   const tableCheck = await db.execute(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = 'notes'
+      WHERE table_schema = 'public' AND table_name IN ('notes', 'entity_notes')
     ) AS exists
   `);
   const exists = tableCheck.rows[0]?.exists === true || tableCheck.rows[0]?.exists === "t";
   if (exists) {
-    logger.info("notes table already exists, skipping", { service: "migration-1058" });
+    logger.info("notes or its replacement entity_notes already exists, skipping", { service: "migration-1058" });
     return;
   }
 

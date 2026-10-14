@@ -34,13 +34,26 @@ async function tableExists(table: string): Promise<boolean> {
 async function up(): Promise<void> {
   if (await tableExists("notes")) {
     if (await tableExists("entity_notes")) {
-      throw new Error(
-        "Both `notes` and `entity_notes` exist — refusing to guess which one is live. " +
-          "Resolve by hand before re-running.",
-      );
+      // Publish may have already installed the final table while an older
+      // startup migration recreated an empty predecessor. No rows need moving
+      // in that case. Leave its removal to the normal Publish schema diff.
+      const legacyRows = await db.execute(sql`
+        SELECT EXISTS (SELECT 1 FROM notes) AS has_rows
+      `);
+      const hasRows = legacyRows.rows?.[0]?.has_rows;
+      if (hasRows !== false && hasRows !== "f") {
+        throw new Error(
+          "Both `notes` and `entity_notes` exist and the legacy notes table is not confirmed empty — " +
+            "refusing to discard or guess how to merge its records.",
+        );
+      }
+      logger.info("entity_notes already exists; leaving empty legacy notes for Publish cleanup", {
+        service: SERVICE,
+      });
+    } else {
+      await db.execute(sql`ALTER TABLE notes RENAME TO entity_notes`);
+      logger.info("Renamed notes table to entity_notes", { service: SERVICE });
     }
-    await db.execute(sql`ALTER TABLE notes RENAME TO entity_notes`);
-    logger.info("Renamed notes table to entity_notes", { service: SERVICE });
   }
 
   if (!(await tableExists("entity_notes"))) {

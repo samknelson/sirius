@@ -25,6 +25,19 @@ migrations specifically.
   migration would delete) — never insert base rows without their subsidiary.
 - Never orphan base rows in base+subsidiary table pairs.
 
+Historical CREATE migrations must recognize a renamed successor, not just
+their original table name. A final-schema Publish followed by replay can
+otherwise recreate the retired predecessor and make the later rename refuse
+to run.
+
+**Why:** startup recreated an empty legacy notes table beside its already
+published successor, then stopped at the rename's ambiguity guard.
+
+**How to apply:** skip legacy creation when the successor exists. If recovering
+a previously failed replay, continue only when the legacy table is confirmed
+empty; refuse nonempty or unreadable legacy data. Leave obsolete-table removal
+to the normal Publish diff rather than adding startup DROP statements.
+
 Related: a stale `component_schema_state_<id>` claiming "active" while the
 component's tables were never created is self-healable in a core migration by
 guarding on the `components` variable + missing tables and calling
