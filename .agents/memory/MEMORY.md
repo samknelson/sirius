@@ -150,4 +150,5 @@
 - [One shared route, many gates](shared-route-context-gate.md) — a route answering for every surface resolves its policy from the resource NAMED in the request (fail closed, no fallback, refusal must match the catalog's availability); splitting one fetch in two reorders readiness and needs two failure surfaces.
 - [Shared catalog framework](catalog-framework.md) — catalog=code-supplied, registry=DB; entries derive on READ (component filter), offer≠vocabulary, tier decided from the reader (barrel hides tier-as-argument), version needs a process id.
 - [Application-managed data columns](application-managed-data-columns.md) — generic `data` columns are extension space for site-specific/features; core admin forms must not display, edit, or overwrite them.
+- [Offline mailing completion](offline-mail-download-completion.md) — downloading the mailing CSV must mark the bulk message sent; no separate Mark Sent step.
 - [Colliding core migration histories](colliding-core-migration-histories.md) — when two branches stamp different work at one version, renumber one lineage and replay missing prerequisite work before its first consumer.
