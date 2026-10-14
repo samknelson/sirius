@@ -6,8 +6,8 @@ import { registerMigration, type Migration } from "../../../server/services/migr
  * Move entity_metadata from a physical-table-shaped column to the stable
  * registry context id. Existing values are intentionally preserved.
  *
- * This runs after 1104; migrations 1103 and 1104 must continue to describe
- * the historical table_name column they were written against.
+ * This runs after 1104. Earlier repair migrations accept either name because
+ * Publish may have already installed the final schema before they run.
  */
 async function up(): Promise<void> {
   const columns = await db.execute(sql`

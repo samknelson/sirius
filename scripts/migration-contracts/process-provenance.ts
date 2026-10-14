@@ -59,10 +59,10 @@ export function rehearseProcessProvenanceMigrations(rootDir = process.cwd()): vo
     cleanup,
     [
       [/UPDATE ledger_payments p/, "payment rows are updated from metadata"],
-      [/m\.table_name = 'ledger_payments'/, "payment metadata is the source"],
+      [/m\.\$\{metadataContextColumn\} = 'ledger_payments'/, "payment metadata is the source"],
       [/ALTER TABLE ledger_payments RENAME COLUMN created_at TO date_created/, "the local payment name is restored"],
       [/UPDATE ledger_paymentmethods p/, "payment-method rows are updated from metadata"],
-      [/m\.table_name = 'ledger_paymentmethods'/, "payment-method metadata is the source"],
+      [/m\.\$\{metadataContextColumn\} = 'ledger_paymentmethods'/, "payment-method metadata is the source"],
       [/DELETE FROM entity_metadata/, "metadata cleanup happens after repair"],
     ],
     "pre-cleanup history",
@@ -76,7 +76,7 @@ export function rehearseProcessProvenanceMigrations(rootDir = process.cwd()): vo
   requireMatch(
     failures,
     cleanup,
-    /table_name IN \('ledger', 'ledger_ea', 'ledger_gateway_customers'\)/,
+    /\$\{metadataContextColumn\} IN \('ledger', 'ledger_ea', 'ledger_gateway_customers'\)/,
     "excluded ledger history: all three excluded tables are removed from metadata",
   );
 

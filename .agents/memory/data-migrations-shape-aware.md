@@ -24,6 +24,10 @@ migrations specifically.
   the LATER migration's data policy at insert time (e.g. skip rows a later
   migration would delete) — never insert base rows without their subsidiary.
 - Never orphan base rows in base+subsidiary table pairs.
+- Historical repairs before a rename must resolve the live column name too:
+  ordering the repair before the rename is not enough when Publish installs
+  the renamed column first. Test the compiled SQL for both schema shapes,
+  including cleanup predicates, not only its source text.
 
 Historical CREATE migrations must recognize a renamed successor, not just
 their original table name. A final-schema Publish followed by replay can

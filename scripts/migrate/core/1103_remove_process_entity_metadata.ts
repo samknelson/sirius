@@ -17,6 +17,24 @@ const SERVICE = "migration-1103";
  * a previously migrated record.
  */
 async function up(): Promise<void> {
+  // Publish can install the final column name before this historical repair
+  // runs. Resolve the metadata discriminator once, refusing ambiguous shapes.
+  const columns = await db.execute(sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'entity_metadata'
+      AND column_name IN ('table_name', 'context_id')
+  `);
+  const names = new Set((columns.rows ?? []).map(row =>
+    String((row as Record<string, unknown>).column_name),
+  ));
+  if (names.has("table_name") === names.has("context_id")) {
+    throw new Error(
+      "entity_metadata must have exactly one of table_name or context_id before process provenance repair",
+    );
+  }
+  const metadataContextColumn = sql.identifier(names.has("context_id") ? "context_id" : "table_name");
+
   await db.execute(sql`
     DO $$
     DECLARE
@@ -75,7 +93,7 @@ async function up(): Promise<void> {
         SET created_at = COALESCE(s.created_at, m.created_date),
             author_id = COALESCE(s.author_id, m.created_by)
         FROM entity_metadata m
-        WHERE m.table_name = 'snapshots'
+        WHERE m.${metadataContextColumn} = 'snapshots'
           AND m.entity_id = s.id
           AND m.created_date IS NOT NULL
           AND (s.created_at IS NULL OR s.author_id IS NULL);
@@ -114,7 +132,7 @@ async function up(): Promise<void> {
           UPDATE ledger_payments p
           SET created_at = m.created_date
           FROM entity_metadata m
-          WHERE m.table_name = 'ledger_payments'
+          WHERE m.${metadataContextColumn} = 'ledger_payments'
             AND m.entity_id = p.id
             AND m.created_date IS NOT NULL
             AND p.created_at IS NULL;
@@ -124,7 +142,7 @@ async function up(): Promise<void> {
           UPDATE ledger_payments p
           SET date_created = m.created_date
           FROM entity_metadata m
-          WHERE m.table_name = 'ledger_payments'
+          WHERE m.${metadataContextColumn} = 'ledger_payments'
             AND m.entity_id = p.id
             AND m.created_date IS NOT NULL
             AND p.date_created IS NULL;
@@ -144,7 +162,7 @@ async function up(): Promise<void> {
         UPDATE ledger_paymentmethods p
         SET created_at = m.created_date
         FROM entity_metadata m
-        WHERE m.table_name = 'ledger_paymentmethods'
+        WHERE m.${metadataContextColumn} = 'ledger_paymentmethods'
           AND m.entity_id = p.id
           AND m.created_date IS NOT NULL;
       END IF;
@@ -158,7 +176,7 @@ async function up(): Promise<void> {
         UPDATE ledger_gateway_customers p
         SET created_at = m.created_date
         FROM entity_metadata m
-        WHERE m.table_name = 'ledger_gateway_customers'
+        WHERE m.${metadataContextColumn} = 'ledger_gateway_customers'
           AND m.entity_id = p.id
           AND m.created_date IS NOT NULL;
       END IF;
@@ -174,7 +192,7 @@ async function up(): Promise<void> {
         UPDATE auth_identities a
         SET created_at = m.created_date
         FROM entity_metadata m
-        WHERE m.table_name = 'auth_identities'
+        WHERE m.${metadataContextColumn} = 'auth_identities'
           AND m.entity_id = a.id
           AND m.created_date IS NOT NULL;
       END IF;
@@ -187,7 +205,7 @@ async function up(): Promise<void> {
         UPDATE auth_identities a
         SET updated_at = COALESCE(m.modified_date, m.created_date)
         FROM entity_metadata m
-        WHERE m.table_name = 'auth_identities'
+        WHERE m.${metadataContextColumn} = 'auth_identities'
           AND m.entity_id = a.id
           AND COALESCE(m.modified_date, m.created_date) IS NOT NULL;
       END IF;
@@ -201,7 +219,7 @@ async function up(): Promise<void> {
         UPDATE worker_msh w
         SET created_at = m.created_date
         FROM entity_metadata m
-        WHERE m.table_name = 'worker_msh'
+        WHERE m.${metadataContextColumn} = 'worker_msh'
           AND m.entity_id = w.id
           AND m.created_date IS NOT NULL;
       END IF;
@@ -210,9 +228,9 @@ async function up(): Promise<void> {
 
   const result = await db.execute(sql`
     DELETE FROM entity_metadata
-    WHERE table_name IN ('ledger', 'ledger_ea', 'ledger_gateway_customers')
-       OR table_name LIKE '%denorm%'
-       OR table_name IN (${sql.join(
+    WHERE ${metadataContextColumn} IN ('ledger', 'ledger_ea', 'ledger_gateway_customers')
+       OR ${metadataContextColumn} LIKE '%denorm%'
+       OR ${metadataContextColumn} IN (${sql.join(
          EXCLUDED_METADATA_TABLES.map((tableName) => sql`${tableName}`),
          sql`, `,
        )})
