@@ -205,6 +205,7 @@ export default function RestartPage() {
       (await apiRequest("POST", "/api/admin/restart/reload", ids ? { ids } : {})) as {
         results: ReloadResult[];
         pendingRestartVariables: PendingRestartVariable[];
+        convergence?: { localComplete: boolean; message: string };
       },
     onSuccess: (data) => {
       setReloadResults(data.results);
@@ -216,7 +217,7 @@ export default function RestartPage() {
         title: failed.length === 0 ? "Configuration reloaded" : "Reload finished with errors",
         description:
           failed.length === 0
-            ? `${data.results.length} subsystem${data.results.length === 1 ? "" : "s"} re-read.`
+            ? data.convergence?.message ?? `${data.results.length} subsystem${data.results.length === 1 ? "" : "s"} re-read in this process.`
             : `${failed.length} of ${data.results.length} failed.`,
         variant: failed.length === 0 ? undefined : "destructive",
       });
@@ -462,8 +463,10 @@ export default function RestartPage() {
             Reload configuration
           </CardTitle>
           <CardDescription>
-            Re-reads the subsystems below in place. No downtime, nobody is signed out, and
-            nothing is interrupted.
+            Selected reloads apply to this server only. Reload all also requests shared
+            configuration invalidation: other servers converge on their next healthy
+            five-second poll. Remote acknowledgments are not collected. Restart-only
+            wiring is unchanged; already-running work is not interrupted.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -529,6 +532,15 @@ export default function RestartPage() {
             )}
             Reload all
           </Button>
+
+          {reloadResults?.filter(result => !info.reloadable.some(entry => entry.id === result.id)).map(result => (
+            <div key={result.id} className="text-sm" role="status">
+              <span className="font-medium">{result.label}: </span>
+              <span className={result.ok ? "text-muted-foreground" : "text-destructive"}>
+                {result.message} ({result.durationMs}ms)
+              </span>
+            </div>
+          ))}
 
           <div>
             <h3 className="text-sm font-semibold mb-2">Restart only</h3>

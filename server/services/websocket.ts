@@ -25,7 +25,12 @@ interface NotificationSummaryMessage {
   };
 }
 
-type WebSocketMessage = AlertUpdateMessage | NotificationSummaryMessage;
+interface BadgeGrantMessage {
+  type: "badge_granted";
+  payload: { badgeName: string };
+}
+
+type WebSocketMessage = AlertUpdateMessage | NotificationSummaryMessage | BadgeGrantMessage;
 
 const connections: Map<string, Set<UserConnection>> = new Map();
 let wss: WebSocketServer | null = null;
@@ -277,6 +282,14 @@ export function broadcastAlertUpdate(userId: string, unreadCount: number): void 
   broadcastToUser(userId, {
     type: "alert_update",
     payload: { unreadCount },
+  });
+}
+
+/** One-shot feedback only: disconnected browsers silently miss this flash. */
+export function broadcastBadgeGrant(userId: string, badgeName: string): void {
+  broadcastToUser(userId, {
+    type: "badge_granted",
+    payload: { badgeName },
   });
 }
 

@@ -389,6 +389,7 @@ import "./plugins/tos-absence-notifier";
 import "./plugins/edls-sheet-status-notifier";
 import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
+import "./plugins/new-ip-sign-in";
 import "./plugins/dispatch-fore-notifier";
 import "./plugins/sitespecific-t631-interview";
 import "./plugins/wc-usage-alert";

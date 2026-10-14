@@ -37,7 +37,7 @@ export interface RunDataRetentionOptions {
  * the single `data-retention` cron job.
  *
  * For each eligible plugin (required component on, config row present and
- * enabled) it calls `cleanup(mode)`. Per-plugin failures are isolated so one
+ * enabled) it calls `cleanup(mode, settings)`. Per-plugin failures are isolated so one
  * failing plugin does not abort the sweep — the remaining plugins still run.
  */
 export async function runDataRetention(
@@ -75,7 +75,10 @@ export async function runDataRetention(
         continue;
       }
 
-      const result = await plugin.cleanup(mode);
+      const result = await plugin.cleanup(mode, {
+        ...(plugin.getDefaultSettings?.() ?? {}),
+        ...(config.data ?? {}),
+      });
       totalDeleted += result.count;
       perPlugin.push({
         pluginId,

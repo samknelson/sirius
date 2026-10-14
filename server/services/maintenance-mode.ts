@@ -8,9 +8,9 @@
  * (SQLSTATE 25006), enforced by the connection itself rather than per-route
  * code. Reads are unaffected, so the site stays browsable.
  *
- * Enforcement rides the pool's `acquire` event, which fires on EVERY
- * checkout (new or reused connection). The SET issued in the handler is
- * queued on the client ahead of whatever query triggered the checkout, so
+ * Enforcement rides the pool's awaited checkout handoff, on EVERY
+ * checkout (new or reused connection). The SET finishes before the client
+ * is handed to whatever query triggered the checkout, so
  * each checkout reflects the CURRENT flag — including connections that were
  * checked out (and therefore untouchable) at the moment the mode changed:
  * they get corrected the next time they are acquired. A connection mid-query
@@ -33,12 +33,16 @@
  * without importing the connection pool. This module owns loading and
  * refreshing that flag; that module owns the refusal (Task #1338).
  */
-import { pool } from "../storage/db";
+import { registerPoolCheckoutInitializer } from "../storage/db";
 import { logger } from "../logger";
 import { getSystemMode, isMaintenanceMode } from "./system-mode";
 import { isMaintenanceActive, setMaintenanceActive } from "./maintenance-flag";
+import { readConfigurationSnapshot } from "../storage/configuration-revisions";
+import { runOutsideTransaction } from "../storage/transaction-context";
 
 let armed = false;
+let generation = 0;
+export function invalidateMaintenanceSnapshot(): void { generation++; }
 
 /** Tracks the read-only state last applied to each pooled connection. */
 const APPLIED_READ_ONLY = Symbol("maintenanceReadOnlyApplied");
@@ -58,19 +62,28 @@ function applyMaintenanceFlag(active: boolean): void {
  * Re-read `system_mode` and apply the maintenance flag. Called from the
  * variable registry's onWrite hook after a system_mode write commits.
  */
-export async function refreshMaintenanceFlag(): Promise<void> {
+export async function refreshMaintenanceFlag(waitForDeferred = true): Promise<void> {
   if (!armed) return; // scripts / pre-boot: enforcement not armed, nothing to apply
-  const mode = await getSystemMode();
+  const current = ++generation;
+  // An outage must NEVER be interpreted as permission to exit maintenance.
+  const mode = await readConfigurationSnapshot(() => getSystemMode(true));
+  if (current !== generation) return;
   applyMaintenanceFlag(isMaintenanceMode(mode));
   if (!isMaintenanceActive()) {
     const { runDeferredStartupOperations } = await import("./startup-deferrals");
-    await runDeferredStartupOperations();
+    const deferred = runOutsideTransaction(() => runDeferredStartupOperations());
+    // Deferred boot repairs are separate work, not an infrastructure poll.
+    // They retain their own failure queue and cannot stall revision observation.
+    if (waitForDeferred) await deferred;
+    else void deferred.catch(error => logger.warn("Deferred startup retry failed", {
+      source: "maintenance-mode", error: String(error),
+    }));
   }
 }
 
 /**
  * Arm connection-level read-only enforcement. Called ONCE from
- * `bootstrapApp`; loads the current mode and installs the pool `acquire`
+ * `bootstrapApp`; loads the current mode and installs the awaited checkout
  * hook. Safe to call again (no-op).
  */
 export async function armMaintenanceEnforcement(): Promise<void> {
@@ -81,25 +94,22 @@ export async function armMaintenanceEnforcement(): Promise<void> {
   // desired state. New connections start with the server default (off), so
   // only maintenance entries/exits and fresh connections during maintenance
   // pay the extra round-trip; steady state is a no-op property check.
-  pool.on("acquire", (client: any) => {
+  registerPoolCheckoutInitializer(async (client: any) => {
     const desired = isMaintenanceActive();
     const current: boolean = client[APPLIED_READ_ONLY] ?? false;
     if (current === desired) return;
-    client[APPLIED_READ_ONLY] = desired;
-    client
-      .query(`SET default_transaction_read_only = ${desired ? "on" : "off"}`)
-      .catch((error: unknown) => {
-        // Unknown state: clear the marker so the next acquire retries.
-        client[APPLIED_READ_ONLY] = undefined;
-        logger.error("Failed to apply read-only state on pool checkout", {
-          source: "maintenance-mode",
-          desired,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+    try {
+      await client.query(`SET default_transaction_read_only = ${desired ? "on" : "off"}`);
+      client[APPLIED_READ_ONLY] = desired;
+    } catch (error) {
+      client[APPLIED_READ_ONLY] = undefined;
+      // Fail the checkout and discard the connection, never lend a writable
+      // client while the shared vendor-refusal flag says maintenance is on.
+      throw error;
+    }
   });
 
-  const mode = await getSystemMode();
+  const mode = await readConfigurationSnapshot(() => getSystemMode(true));
   if (isMaintenanceMode(mode)) {
     applyMaintenanceFlag(true);
   }

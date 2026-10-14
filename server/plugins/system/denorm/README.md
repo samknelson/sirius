@@ -77,6 +77,33 @@ Plugins that construct storages via factories (`createWorkerBanStorage()`
 etc.) are tracked through the lint's `FACTORY_NAMESPACES` map — extend it
 when a plugin starts using a new factory.
 
+## Configured, source-owned derivations
+
+The framework passes the **same resolved configuration** to `compute`,
+`backfill`, and `findWidows`. Event dispatch and sweeps process every enabled
+configuration, while keeping the existing per-plugin sweep limits and summary
+shape. Singleton plugins can continue ignoring the extra argument.
+
+A plugin may opt into `replaceOnCompute` for a derivation owned by its source
+record. The shared apply transaction deletes the previous status (cascading to
+its payload), then creates/writes the replacement. A `null` computation removes
+the old derivation without creating a new status. Existing plugins retain their
+in-place semantics, including their existing interpretation of null payloads.
+Updating a source-owned configuration clears its statuses; ordinary backfill
+rebuilds them with the new configuration. Configuration deletion uses the
+existing configuration-to-status FK cascade.
+
+`workerBadgeFromNote` uses the note ID as its entity ID. Its unique worker/badge
+claim never overwrites another note's award. Backfill therefore looks for a
+missing **award**, not just a missing status: a previously processed, losing note
+can re-grant after the owning note disappears. Cleanup includes sources that no
+longer qualify, and invalid source/payload relationships left by missed events.
+There is no aggregate note count, retained revocation, or immediate handoff.
+
+The rule is configured at `/admin/plugin-configs/denorm` after enabling
+`worker.badges`. Note types must apply to Workers; badge types are managed through
+the unified `worker-badge-type` options list.
+
 ## Reviewing relationships
 
 `GET /api/denorm/relationships` (admin-gated, registry-only) serializes every

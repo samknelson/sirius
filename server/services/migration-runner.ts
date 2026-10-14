@@ -545,10 +545,10 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
         (enable.driftTables?.length ?? 0) > 0 &&
         (componentMigrations.get(component.id) ?? []).length > 0
       ) {
-        // Chicken-and-egg: the component has no schema-state variable AND its
-        // existing table drifts from the expected schema in exactly the way a
-        // pending registered migration would fix. enableComponentSchema pushes
-        // the schema BEFORE running migrations, so it fails on that drift.
+        // Chicken-and-egg: a partially retained schema has no state variable
+        // AND a retained table drifts in a way a pending migration would fix.
+        // The enable flow migrates complete retained schemas first, but partial
+        // schemas still need push-first creation and can fail on retained drift.
         // Seed a minimal state at migrationVersion 0 (migrations are required
         // to be idempotent), run the pending migrations to bring the table up
         // to date, then retry the enable flow to reflect the now-conforming

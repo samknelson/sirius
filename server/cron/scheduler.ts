@@ -7,7 +7,7 @@ import {
   executeCronPlugin,
 } from "../plugins/system/cron";
 import { getEnabledComponentIds } from "../modules/components";
-import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/event-bus";
+import { readConfigurationSnapshot } from "../storage/configuration-revisions";
 
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
@@ -31,33 +31,22 @@ interface ScheduledJob {
 class CronScheduler {
   private scheduledJobs: Map<string, ScheduledJob> = new Map();
   private isRunning: boolean = false;
-  private configSubscriptionRegistered = false;
+  private ownsWork = false;
+  private snapshotGeneration = 0;
+  private reloadFlight?: Promise<void>;
+  private scheduleWarnings: string[] = [];
 
-  /**
-   * Subscribe (once) to cron config saves so edits made through the generic
-   * plugin admin modal — which write `plugin_configs` directly and emit
-   * `PLUGIN_CONFIG_SAVED` after commit — reschedule live instead of waiting for
-   * the next process restart. The legacy `/settings` + `/:name` PATCH routes
-   * used to call `reload()` explicitly; that responsibility now lives here so it
-   * fires no matter which write path edits a cron config.
-   */
-  private registerConfigSubscription(): void {
-    if (this.configSubscriptionRegistered) return;
-    this.configSubscriptionRegistered = true;
-    eventBus.on({
-      name: 'cron-scheduler:reload-on-config-save',
-      description:
-        'Reload scheduled cron tasks when a cron plugin config is created, updated, or deleted.',
-      event: EventType.PLUGIN_CONFIG_SAVED,
-      handler: async (payload: PluginConfigSavedPayload) => {
-        if (payload.kind !== 'cron') return;
-        await this.reload();
-      },
-    });
+  setOwnership(ownsWork: boolean): void { this.ownsWork = ownsWork; }
+  isStarted(): boolean { return this.isRunning; }
+  invalidateSnapshot(): void { this.snapshotGeneration++; }
+  getScheduleSummary(): string {
+    const count = this.scheduledJobs.size;
+    return `${count} job${count === 1 ? "" : "s"} scheduled.` +
+      (this.scheduleWarnings.length ? ` Skipped jobs: ${this.scheduleWarnings.join("; ")}.` : "");
   }
 
   async start(): Promise<void> {
-    this.registerConfigSubscription();
+    if (!this.ownsWork) return;
 
     if (this.isRunning) {
       logger.warn('Cron scheduler is already running', { service: 'cron-scheduler' });
@@ -86,6 +75,7 @@ class CronScheduler {
   }
 
   async stop(): Promise<void> {
+    this.invalidateSnapshot();
     if (!this.isRunning) {
       return;
     }
@@ -93,7 +83,7 @@ class CronScheduler {
     logger.info('Stopping cron scheduler', { service: 'cron-scheduler' });
 
     for (const [jobName, { task }] of Array.from(this.scheduledJobs.entries())) {
-      task.stop();
+      task.destroy();
       logger.debug(`Stopped scheduled job: ${jobName}`, { service: 'cron-scheduler' });
     }
 
@@ -104,28 +94,60 @@ class CronScheduler {
   }
 
   async reload(): Promise<void> {
+    // A selected reload must never start cron in a non-owning API role, or
+    // bypass the existing maintenance-startup deferral.
+    if (!this.ownsWork || !this.isRunning) return;
     logger.info('Reloading cron scheduler', { service: 'cron-scheduler' });
-    await this.stop();
-    await this.start();
+    this.invalidateSnapshot();
+    await this.loadAndScheduleJobs();
   }
 
   private async loadAndScheduleJobs(): Promise<void> {
-    const envelopes = await storage.pluginConfigs.search('cron', { enabled: true });
-    const jobs = envelopes.map((e) => this.toScheduledJob(e));
-
-    logger.info(`Found ${jobs.length} enabled cron jobs`, { service: 'cron-scheduler' });
-
-    for (const job of jobs) {
-      try {
-        await this.scheduleJob(job);
-      } catch (error) {
-        logger.error(`Failed to schedule job: ${job.name}`, {
-          service: 'cron-scheduler',
-          jobName: job.name,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    if (this.reloadFlight) return this.reloadFlight;
+    const work = (async () => {
+      while (this.isRunning) {
+        const generation = this.snapshotGeneration;
+        const envelopes = await readConfigurationSnapshot(() => storage.pluginConfigs.search('cron', { enabled: true }));
+        if (!this.isRunning) return;
+        if (generation !== this.snapshotGeneration) continue;
+        const next = new Map<string, ScheduledJob>();
+        const warnings: string[] = [];
+        for (const envelope of envelopes) {
+          const job = this.toScheduledJob(envelope);
+          try {
+            const task = this.scheduleJob(job, warnings);
+            if (task) next.set(job.configurationId, { job, task });
+          } catch (error) {
+            // Persisted bad job configuration is isolated, not a failure to
+            // obtain an authoritative snapshot. Healthy jobs still refresh.
+            const message = `${job.name}: ${error instanceof Error ? error.message : String(error)}`;
+            warnings.push(message);
+            logger.error("Failed to schedule cron job; skipping it", {
+              service: "cron-scheduler", jobName: job.name, message,
+            });
+          }
+        }
+        // No awaits between the generation check and publication. A failed
+        // snapshot leaves the last confirmed schedule intact, pending retry.
+        for (const { task } of this.scheduledJobs.values()) task.destroy();
+        this.scheduledJobs = next;
+        for (const [id, { job, task }] of next) {
+          try { task.start(); }
+          catch (error) {
+            task.destroy();
+            next.delete(id);
+            warnings.push(`${job.name}: ${error instanceof Error ? error.message : String(error)}`);
+            logger.error("Failed to start scheduled cron job; skipping it", {
+              service: "cron-scheduler", jobName: job.name,
+            });
+          }
+        }
+        this.scheduleWarnings = warnings;
+        return;
       }
-    }
+    })();
+    this.reloadFlight = work;
+    try { await work; } finally { this.reloadFlight = undefined; }
   }
 
   /** Project a plugin-config envelope into the scheduler's normalized job shape. */
@@ -140,9 +162,10 @@ class CronScheduler {
     };
   }
 
-  private async scheduleJob(job: ScheduledCronJob): Promise<void> {
+  private scheduleJob(job: ScheduledCronJob, warnings: string[]): cron.ScheduledTask | undefined {
     // Check if a plugin is registered for this job
     if (!cronPluginRegistry.has(job.name)) {
+      warnings.push(`${job.name}: no registered plugin`);
       logger.warn(`No plugin registered for job: ${job.name}`, {
         service: 'cron-scheduler',
         jobName: job.name,
@@ -152,32 +175,27 @@ class CronScheduler {
 
     // Validate cron expression
     if (!cron.validate(job.schedule)) {
-      logger.error(`Invalid cron expression for job: ${job.name}`, {
-        service: 'cron-scheduler',
-        jobName: job.name,
-        schedule: job.schedule,
+      warnings.push(`${job.name}: invalid cron expression`);
+      logger.error("Invalid cron expression; skipping job", {
+        service: "cron-scheduler", jobName: job.name, schedule: job.schedule,
       });
       return;
     }
 
     // Create scheduled task
-    const task = cron.schedule(
+    const task = cron.createTask(
       job.schedule,
       async () => {
         await this.executeJob(job, false);
       }
     );
 
-    // Start the task immediately
-    task.start();
-
-    this.scheduledJobs.set(job.name, { job, task });
-
     logger.info(`Scheduled job: ${job.name}`, {
       service: 'cron-scheduler',
       jobName: job.name,
       schedule: job.schedule,
     });
+    return task;
   }
 
   async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<string> {
@@ -322,7 +340,7 @@ class CronScheduler {
   }
 
   isJobScheduled(jobName: string): boolean {
-    return this.scheduledJobs.has(jobName);
+    return Array.from(this.scheduledJobs.values()).some(({ job }) => job.name === jobName);
   }
 
   getScheduledJobCount(): number {

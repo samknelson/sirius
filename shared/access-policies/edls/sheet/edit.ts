@@ -12,7 +12,6 @@ const policy = definePolicy({
   describeRequirements: () => [
     { permission: 'edls.manager' },
     { permission: 'edls.coordinator' },
-    { permission: 'edls.worker.advisor' },
     { permission: 'edls.supervisor', condition: 'draft sheets where user is assigned supervisor' }
   ],
   
@@ -32,7 +31,7 @@ const policy = definePolicy({
       };
     }
     
-    if (await ctx.hasAnyPermission(['edls.manager', 'edls.coordinator', 'edls.worker.advisor'])) {
+    if (await ctx.hasAnyPermission(['edls.manager', 'edls.coordinator'])) {
       return { granted: true, reason: 'User has edit permission' };
     }
     

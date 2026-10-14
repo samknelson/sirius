@@ -44,6 +44,7 @@
 - [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists); COBRA = employer siriusId "COBRA".
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
+- [Worker badge ownership](worker-badge-ownership.md) — awards derive from system activity; only denorm plugins maintain awarded rows, never manual UX assignment.
 - [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
 - [Inbound maintenance refusal ordering](inbound-maintenance-gate.md) — an always-on refusal goes at the FRONT of middleware assembly (body parsers 400/413 first, auth writes a last-used stamp); router registration must assert it.
 - [Maintenance-mode write lock + vendor refusal](maintenance-mode-write-lock.md) — read-only per pool checkout AND one guard refusing every outbound vendor call off the same import-free flag; allowInMaintenanceMode unlocks the DB only.
@@ -84,7 +85,7 @@
 - [Credential redaction in logs](audit-log-credential-redaction.md) — bearer-like values leak via TWO paths (storage before/after payload AND the API responsePreview key allowlist); log identifiers + hasX booleans, prove with a canary scan.
 - [Batch-grain logging & lost chronology](logging-batch-grain-and-lost-chronology.md) — whole-set replace: `metadataEntityId: () => undefined` (NOT mode 'none', it kills the host touch); no-provenance rows reorder by a business key; redact before-state too.
 - [Storage logging hook name conventions](storage-logging-hook-name-conventions.md) — before/after state is synthesized ONLY for create*/update*/delete* names; setX/clearX/upsert get undefined beforeState, so create-vs-update descriptions silently lie.
-- [Component migration/push parity](component-migration-push-parity.md) — the enable-path push leaves FKs UNNAMED (`<t>_<c>_fkey`) while keeping declared unique names; a creation migration must match, proven by snapshot-drop-migrate-compare.
+- [Component migration/push parity](component-migration-push-parity.md) — test fresh, enabled, retained-disabled, and missing-state upgrades; enable-path FKs use Postgres names.
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Vendor put on a shared framework by its registrar](framework-wrapping-at-registration.md) — strip the runnable half into a private map at registration (lint the accessor's importers); the lexical per-file lint goes blind, so check "only handlers reach the vendor" BACKWARDS.
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
@@ -105,6 +106,8 @@
 - [Theme colour vars hold whole colours](theme-color-var-convention.md) — `var(--chart-1)`, never `hsl(var(--chart-1))`; nested colour is dropped at computed-value time with zero warnings (invisible chart line).
 - [Counting served work](counting-served-work.md) — usage counters: flag at the handler boundary (never infer from status), count on `close` / log on `finish`, write outside the caller's tx.
 - [Cross-process boot serialization](cross-process-boot-serialization.md) — two services boot one image against one DB: bring-up is exclusive (session advisory lock), every other boot write must be atomic/23505-retry/xact-lock, every wait bounded.
+- [Component state coherency](component-commit-coherency.md) — commits, not just flag differences, invalidate owned configs; the Components status page reads storage independently.
+- [Configuration coherency boundaries](configuration-coherency-boundaries.md) — scoped participation, ambient-free reads, truthful reload/restart semantics and eventual (not acknowledged) remote convergence.
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
 - [Picker widgets inside repeatable rows](rjsf-array-item-widget-inference.md) — vendor widget inference skips array `items`; a picker in a rules list needs an explicit `uiSchema` or it renders as a text box.
 - [Alerting once from a repeating scan](repeating-scan-alert-once.md) — exactly-once is the send-once key (config+day+what+threshold), checked BEFORE the flood budget; events themselves repeat freely.
@@ -146,3 +149,7 @@
 - [Node BlockList IPv4 mapping](node-blocklist-ipv4-mapping.md) — an IPv6 `::ffff:0:0/96` block also rejects ordinary IPv4 addresses in Node; don't combine it with a public-IPv4 allow check.
 - [Local WS test in split roles](local-ws-test-split-roles.md) — api-user must reach its own dispatcher for admin tests, but ordinary /api/ws traffic must remain api-ws-owned.
 - [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.
+- [Session-history boundaries](session-history-anonymous-scope.md) — user-associated capture only, no storage audit/metadata, opt-in retention; first observed values silently establish baselines.
+- [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
+- [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
+- [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.

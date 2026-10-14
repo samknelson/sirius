@@ -4,9 +4,10 @@ import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
-import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
+import { initAccessControl, registerEntityLoader, clearAccessCache } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { initializeSessionHistoryListener } from "./services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
@@ -17,6 +18,8 @@ import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
+import { onComponentCacheChange } from "./services/component-cache";
+import { refreshComponentStateForApi } from "./middleware/component-state";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
@@ -277,6 +280,7 @@ export async function bootstrapApp(
   // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
   // without writing anything. See `server/services/bringup.ts`.
   await runSchemaBringUp();
+  initializeSessionHistoryListener(storage.sessionHistory);
 
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that
@@ -351,6 +355,10 @@ export async function bootstrapApp(
 
   // Register permissions from enabled components
   syncComponentPermissions();
+  onComponentCacheChange(() => {
+    clearAccessCache();
+    syncComponentPermissions();
+  });
   logger.info("Component permissions synced", { source: "startup" });
 
   // Initialize dispatch eligibility plugin system
@@ -447,10 +455,11 @@ export async function bootstrapApp(
   // config writes matter. The cache is generic (per-kind) and lazy; this only
   // registers its single PLUGIN_CONFIG_SAVED listener.
   {
-    const { initializePluginConfigCache } = await import(
+    const { initializePluginConfigCache, invalidateAllPluginConfigCaches } = await import(
       "./plugins/_core/plugin-config-cache"
     );
     initializePluginConfigCache();
+    onComponentCacheChange(invalidateAllPluginConfigCaches);
   }
   logger.info("Plugin-config cache initialized", { source: "startup" });
 
@@ -564,6 +573,10 @@ export async function bootstrapApp(
     });
   }
 
+  // Refresh before auth/authorization and sync-only plugin gates on either API role.
+  // A stale process must not accept/refuse traffic using an old component selection.
+  app.use("/api", refreshComponentStateForApi);
+
   // Browser sessions and the application API belong to api-user. Web-service
   // credentials use their own authentication middleware and do not need this.
   if (roles.has("api-user")) {
@@ -597,6 +610,7 @@ export async function bootstrapApp(
 
   // User API owns browser socket sessions and application background work.
   // api-ws-only containers never initialize either singleton.
+  cronScheduler.setOwnership(roles.has("api-user"));
   if (roles.has("api-user")) {
     const { getSession } = await import("./auth");
     const sessionMiddleware = getSession();
@@ -608,6 +622,10 @@ export async function bootstrapApp(
       logger.info("Cron scheduler started", { source: "startup" });
     });
   }
+
+  // One infrastructure watcher in every backend role, independent of plugin cron.
+  const { initializeConfigurationCoherency } = await import("./services/configuration-cache-registry");
+  await initializeConfigurationCoherency(roles.has("api-user"));
 
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -1116,7 +1116,7 @@ function EdlsSheetAssignmentsContent() {
 
 function AssignmentsAccessGate() {
   const { sheet } = useEdlsSheetLayout();
-  const { canAccess, isLoading } = useAccessCheck("edls.sheet.edit", sheet.id);
+  const { canAccess, isLoading } = useAccessCheck("edls.sheet.assign", sheet.id);
 
   if (isLoading) {
     return <Skeleton className="h-32 w-full" />;

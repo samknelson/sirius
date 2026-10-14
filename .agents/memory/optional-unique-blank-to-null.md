@@ -5,6 +5,15 @@ description: How to normalize an optional, uniquely-constrained text column in a
 
 # Optional unique text field: blank means absent
 
+Normalization must run before generic optional-field blank skipping, across
+ordinary writes, imports, and direct storage calls.
+**Why:** otherwise clearing a visible optional unique field is silently
+discarded and its old value remains, even though a shared schema declares a
+blank-to-NULL transform.
+**How to apply:** verify that every write path actually consumes the resource's
+shared schema before filtering optional fields; declaring the schema alone is
+not enforcement.
+
 For a nullable column with a UNIQUE constraint (external-id style fields such as
 `sirius_id`), normalize in the shared insert schema, not in the route:
 

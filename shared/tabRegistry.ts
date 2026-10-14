@@ -168,6 +168,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
       { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/workers/{id}/dashboard', permission: 'staff' },
       { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
+      { id: 'badges', label: 'Badges', hrefTemplate: '/workers/{id}/badges', policyId: 'worker.view', component: 'worker.badges' },
       { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
       { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
@@ -493,7 +494,7 @@ export const edlsSheetTabTree: HierarchicalTab[] = [
   ] },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
-  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.assign', component: 'edls' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls', children: [
     { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
     { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
@@ -686,6 +687,7 @@ export const userTabTree: HierarchicalTab[] = [
   },
   { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/users/{id}/dashboard', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
+  { id: 'session_history', label: 'Session History', hrefTemplate: '/users/{id}/session_history', permission: 'admin', component: 'system.session_history' },
 ];
 
 /**

@@ -1,6 +1,7 @@
 import { eventBus, EventType, type PluginConfigSavedPayload } from "../../services/event-bus";
 import { logger } from "../../logger";
 import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
+import { readConfigurationSnapshot } from "../../storage/configuration-revisions";
 
 const SERVICE = "plugin-config-cache";
 
@@ -24,7 +25,7 @@ async function build(kind: string): Promise<PluginConfigWithSubsidiary[]> {
   const { storage } = await import("../../storage");
   // Filter `enabled: true` in the DB so a growing pile of disabled configs
   // costs nothing here.
-  const envelopes = await storage.pluginConfigs.search(kind, { enabled: true });
+  const envelopes = await readConfigurationSnapshot(() => storage.pluginConfigs.search(kind, { enabled: true }));
   logger.info("Plugin-config cache rebuilt", {
     service: SERVICE,
     kind,
@@ -54,11 +55,12 @@ export async function getEnabledConfigsForKind(
     .then((built) => {
       // Only stamp the cache if no invalidation happened while building.
       if ((generation.get(kind) ?? 0) === gen) cache.set(kind, built);
-      loading.delete(kind);
+      if (loading.get(kind) === promise) loading.delete(kind);
+      if ((generation.get(kind) ?? 0) !== gen) return getEnabledConfigsForKind(kind);
       return built;
     })
     .catch((error) => {
-      loading.delete(kind);
+      if (loading.get(kind) === promise) loading.delete(kind);
       throw error;
     });
   loading.set(kind, promise);
@@ -72,7 +74,15 @@ export async function getEnabledConfigsForKind(
  */
 export function invalidatePluginConfigCache(kind: string): void {
   cache.delete(kind);
+  loading.delete(kind);
   generation.set(kind, (generation.get(kind) ?? 0) + 1);
+}
+
+/** Component-owned config writes in another process invalidate all lazy slices. */
+export function invalidateAllPluginConfigCaches(): void {
+  for (const kind of new Set([...cache.keys(), ...loading.keys(), ...generation.keys()])) {
+    invalidatePluginConfigCache(kind);
+  }
 }
 
 let initialized = false;

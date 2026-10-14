@@ -555,7 +555,7 @@ export function registerEdlsSheetsRoutes(
   });
   const assignmentGenerationSchema = z.object({ generationId: z.string().uuid() });
 
-  app.post("/api/edls/sheets/:sheetId/crews/:crewId/assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.edit', req => req.params.sheetId), async (req, res) => {
+  app.post("/api/edls/sheets/:sheetId/crews/:crewId/assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.assign', req => req.params.sheetId), async (req, res) => {
     try {
       const { sheetId, crewId } = req.params;
       const parsed = createAssignmentSchema.safeParse(req.body);
@@ -620,7 +620,7 @@ export function registerEdlsSheetsRoutes(
     "/api/edls/sheets/:sheetId/assignments/:assignmentId",
     requireAuth,
     edlsComponent,
-    requireAccess('edls.sheet.edit', (req) => req.params.sheetId),
+    requireAccess('edls.sheet.assign', (req) => req.params.sheetId),
     async (req, res) => {
       try {
         const { sheetId, assignmentId } = req.params;
@@ -665,7 +665,7 @@ export function registerEdlsSheetsRoutes(
     "/api/edls/sheets/:sheetId/assignments/:assignmentId",
     requireAuth,
     edlsComponent,
-    requireAccess('edls.sheet.edit', (req) => req.params.sheetId),
+    requireAccess('edls.sheet.assign', (req) => req.params.sheetId),
     async (req, res) => {
       try {
         const { sheetId, assignmentId } = req.params;
@@ -726,7 +726,7 @@ export function registerEdlsSheetsRoutes(
     "/api/edls/sheets/:id/trash-lock",
     requireAuth,
     edlsComponent,
-    requireAccess('edls.sheet.edit', (req) => req.params.id),
+    requireAccess('edls.sheet.assign', (req) => req.params.id),
     async (req, res) => {
       try {
         const { id } = req.params;
@@ -757,7 +757,7 @@ export function registerEdlsSheetsRoutes(
 
   /**
    * The only write path for the sheet's worker-notification opt-in. Same
-   * middleware chain and the same `edls.sheet.edit` authorization as the trash
+   * middleware chain and the same `edls.sheet.assign` authorization as the trash
    * lock above, which is what refuses the change on a Scheduled or Trash
    * sheet. Unlike the trash lock this is a plain column, not a key in the
    * sheet's `data` JSONB.
@@ -770,7 +770,7 @@ export function registerEdlsSheetsRoutes(
     "/api/edls/sheets/:id/notifications-enabled",
     requireAuth,
     edlsComponent,
-    requireAccess('edls.sheet.edit', (req) => req.params.id),
+    requireAccess('edls.sheet.assign', (req) => req.params.id),
     async (req, res) => {
       try {
         const { id } = req.params;

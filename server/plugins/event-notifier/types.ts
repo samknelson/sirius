@@ -261,6 +261,19 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   subscribedEvents: EventType[];
   /** The media this notifier is capable of producing a message for. */
   supportedMedia: NotificationMedium[];
+  /** Stable occurrence key, including for token-template composition. */
+  getSendKey?(
+    ctx: EventNotifierEventContext,
+    recipient: NotifierRecipient,
+    medium: NotificationMedium,
+  ): string | undefined;
+  /** Skip a recipient/channel before composition or creating a comm row. */
+  shouldSendToRecipient?(
+    medium: NotificationMedium,
+    recipient: NotifierRecipient,
+    ctx: EventNotifierEventContext,
+    configData?: unknown,
+  ): Promise<boolean>;
 
   /**
    * Resolve the recipients for a fired event. An empty array means "nobody to

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown, Plug, KeyRound } from "lucide-react";
 import { apiRequest , getApiErrorMessage } from "@/lib/queryClient";
-import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
+import type { ComponentDefinition, ComponentConfig } from "@shared/components";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface EnvVarInfo {
@@ -45,11 +45,27 @@ export default function ComponentsConfigPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  const allComponents = useMemo(() => getAllComponents(), []);
-
-  const { data: componentConfigs = [], isLoading, isFetching } = useQuery<ComponentConfig[]>({
+  const { data: componentConfigs = [], isLoading, isFetching, isError, refetch } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
+    queryFn: async () => {
+      const configs = await apiRequest("GET", "/api/components/config");
+      if (!Array.isArray(configs) || configs.some(c =>
+        !c?.definition || c.definition.id !== c.componentId || typeof c.enabled !== "boolean" ||
+        typeof c.definition.name !== "string" || typeof c.definition.description !== "string" ||
+        typeof c.definition.enabledByDefault !== "boolean") ||
+        new Set(configs.map(c => c.componentId)).size !== configs.length) {
+        throw new Error("The server returned an incomplete component catalog. Refresh after the deployment finishes.");
+      }
+      return configs;
+    },
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
+  const allComponents = useMemo(() =>
+    componentConfigs.flatMap(config => config.definition ? [config.definition] : []), [componentConfigs]);
+  const catalogIncomplete = allComponents.length !== componentConfigs.length;
+  const states = new Map(componentConfigs.map(config => [config.componentId, config.enabled]));
 
   // Declared env vars, linked to components by declaration.category ===
   // component.id (a convention — "core"/"platform" and any category that
@@ -65,7 +81,8 @@ export default function ComponentsConfigPage() {
     return map;
   }, [envVars]);
 
-  const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
+  const actionLock = useRef(false);
+  const submissionLock = useRef(false);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmText, setConfirmText] = useState("");
@@ -81,22 +98,45 @@ export default function ComponentsConfigPage() {
     driftTables: Array<{ tableName: string; hasRows: boolean; detail: string }>;
   } | null>(null);
 
+  const refreshConfirmedState = async (componentId: string, enabled: boolean): Promise<boolean> => {
+    await queryClient.cancelQueries({ queryKey: ["/api/components/config"] });
+    // Patch only the confirmed flag; never replace unrelated switches optimistically.
+    queryClient.setQueryData<ComponentConfig[]>(["/api/components/config"], previous =>
+      previous?.map(config => config.componentId === componentId ? { ...config, enabled } : config));
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["/api/components/config"] }, { throwOnError: true });
+      const latest = queryClient.getQueryData<ComponentConfig[]>(["/api/components/config"]);
+      if (latest?.find(c => c.componentId === componentId)?.enabled !== enabled) {
+        toast({ title: "Component state changed", description: "Another change was detected. The current server state is shown.", variant: "destructive" });
+        return false;
+      }
+      return true;
+    } catch {
+      toast({ title: "Change saved; refresh failed", description: "The server confirmed the change, but current status could not be refreshed. Retry the status refresh.", variant: "destructive" });
+      return false;
+    }
+  };
+
   const updateComponentMutation = useMutation({
     mutationFn: async ({ componentId, enabled, confirmDestructive, retainData }: { componentId: string; enabled: boolean; confirmDestructive?: string; retainData?: boolean }) => {
-      return apiRequest("PUT", `/api/components/config/${componentId}`, { enabled, confirmDestructive, retainData });
+      await queryClient.cancelQueries({ queryKey: ["/api/components/config"] });
+      const result = await apiRequest("PUT", `/api/components/config/${componentId}`, { enabled, confirmDestructive, retainData });
+      if (result?.componentId !== componentId || result.enabled !== enabled) {
+        throw new Error(result?.message || "The server did not confirm the requested component state.");
+      }
+      return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (data, variables) => {
       setLastError(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
-      toast({
+      if (await refreshConfirmedState(variables.componentId, data.enabled)) toast({
         title: "Component Updated",
-        description: `Component ${variables.enabled ? "enabled" : "disabled"} successfully.`,
+        description: `Component ${data.enabled ? "enabled" : "disabled"} successfully.`,
       });
       setPendingAction(null);
       setConfirmText("");
       setDataAction("retain");
     },
-    onError: (error: any, variables) => {
+    onError: async (error: any, variables) => {
       const data = error?.data;
       const isDependencyError = Array.isArray(data?.missingDependencies) && data.missingDependencies.length > 0;
       const failedOps = Array.isArray(data?.schemaOperations)
@@ -116,29 +156,32 @@ export default function ComponentsConfigPage() {
         description: data?.message || getApiErrorMessage(error, "Failed to update component."),
         variant: "destructive",
       });
-      setLocalStates(prev => ({
-        ...prev,
-        [variables.componentId]: !variables.enabled,
-      }));
+      // A failed lifecycle operation may already have safely disabled the flag.
+      // Re-read it instead of assuming that the requested change was reversed.
+      await queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
       setPendingAction(null);
       setConfirmText("");
       setDataAction("retain");
     },
+    onSettled: () => { actionLock.current = false; submissionLock.current = false; },
   });
 
   const repairComponentMutation = useMutation({
     mutationFn: async ({ componentId }: { componentId: string }) => {
-      return apiRequest("POST", `/api/components/config/${componentId}/repair`, {});
+      const result = await apiRequest("POST", `/api/components/config/${componentId}/repair`, {});
+      if (result?.componentId !== componentId || result.enabled !== true) {
+        throw new Error(result?.message || "The server did not confirm that the repaired component is enabled.");
+      }
+      return result;
     },
-    onSuccess: (data: any, variables) => {
+    onSuccess: async (data: any, variables) => {
       setLastError(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
-      toast({
+      if (await refreshConfirmedState(variables.componentId, data.enabled)) toast({
         title: "Component Repaired",
         description: data?.message || `Component ${variables.componentId} was repaired and enabled.`,
       });
     },
-    onError: (error: any, variables) => {
+    onError: async (error: any, variables) => {
       const data = error?.data;
       const failedOps = Array.isArray(data?.schemaOperations)
         ? data.schemaOperations.filter((op: any) => !op.success)
@@ -157,23 +200,19 @@ export default function ComponentsConfigPage() {
         description: data?.message || getApiErrorMessage(error, "Failed to repair component."),
         variant: "destructive",
       });
+      await queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
     },
+    onSettled: () => { actionLock.current = false; },
   });
 
-  useEffect(() => {
-    if (!updateComponentMutation.isPending && !isFetching) {
-      const states: Record<string, boolean> = {};
-      allComponents.forEach((component: ComponentDefinition) => {
-        const config = componentConfigs.find(c => c.componentId === component.id);
-        states[component.id] = config ? config.enabled : component.enabledByDefault;
-      });
-      setLocalStates(states);
-    }
-  }, [componentConfigs, allComponents, updateComponentMutation.isPending, isFetching]);
+  const busy = isCheckingSchema || updateComponentMutation.isPending || repairComponentMutation.isPending ||
+    isFetching || isError || catalogIncomplete;
 
   const handleToggle = async (componentId: string, enabled: boolean) => {
+    if (busy || actionLock.current || pendingAction) return;
     const component = allComponents.find(c => c.id === componentId);
     if (!component) return;
+    actionLock.current = true;
 
     if (component.managesSchema) {
       setIsCheckingSchema(true);
@@ -186,6 +225,7 @@ export default function ComponentsConfigPage() {
             variant: "destructive",
           });
           setIsCheckingSchema(false);
+          actionLock.current = false;
           return;
         }
         const schemaInfo: SchemaInfo = await response.json();
@@ -202,17 +242,19 @@ export default function ComponentsConfigPage() {
           return;
         }
       } catch (error) {
-        console.error("Failed to fetch schema info:", error);
+        toast({ title: "Schema Check Failed", description: getApiErrorMessage(error, "Unable to retrieve schema information."), variant: "destructive" });
+        setIsCheckingSchema(false);
+        actionLock.current = false;
+        return;
       }
       setIsCheckingSchema(false);
     }
 
-    setLocalStates(prev => ({ ...prev, [componentId]: enabled }));
     updateComponentMutation.mutate({ componentId, enabled });
   };
 
   const handleConfirmAction = () => {
-    if (!pendingAction) return;
+    if (!pendingAction || busy || submissionLock.current) return;
 
     const isDisabling = !pendingAction.enabled;
     const hasActiveTables = pendingAction.schemaInfo?.tablesExist.some(exists => exists);
@@ -227,7 +269,7 @@ export default function ComponentsConfigPage() {
       return;
     }
 
-    setLocalStates(prev => ({ ...prev, [pendingAction.componentId]: pendingAction.enabled }));
+    submissionLock.current = true;
     updateComponentMutation.mutate({
       componentId: pendingAction.componentId,
       enabled: pendingAction.enabled,
@@ -237,6 +279,8 @@ export default function ComponentsConfigPage() {
   };
 
   const handleCancelAction = () => {
+    if (updateComponentMutation.isPending || repairComponentMutation.isPending) return;
+    actionLock.current = false;
     setPendingAction(null);
     setConfirmText("");
     setDataAction("retain");
@@ -278,6 +322,19 @@ export default function ComponentsConfigPage() {
           Disabling a component will hide its functionality from all users.
         </AlertDescription>
       </Alert>
+      {(isError || catalogIncomplete) && (
+        <Alert variant="destructive" data-testid="alert-component-status">
+          <AlertDescription>
+            Current component status is unavailable or the server catalog is incomplete.
+            Any displayed switches are last-confirmed values, not evidence that a feature was disabled.
+            <Button variant="outline" className="ml-3" onClick={() => void refetch()} disabled={isFetching}>Retry status refresh</Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {isFetching && <p role="status" className="text-muted-foreground">
+        Checking component status directly from storage…
+        {componentConfigs.length > 0 && " Displayed values are last-confirmed until this check finishes."}
+      </p>}
 
       {lastError && (
         <Alert variant="destructive" data-testid="alert-component-error">
@@ -334,8 +391,12 @@ export default function ComponentsConfigPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={repairComponentMutation.isPending}
-                    onClick={() => repairComponentMutation.mutate({ componentId: lastError.componentId })}
+                    disabled={busy || !!pendingAction}
+                    onClick={() => {
+                      if (actionLock.current) return;
+                      actionLock.current = true;
+                      repairComponentMutation.mutate({ componentId: lastError.componentId });
+                    }}
                     data-testid="button-repair-component"
                   >
                     {repairComponentMutation.isPending ? (
@@ -354,7 +415,7 @@ export default function ComponentsConfigPage() {
         </Alert>
       )}
 
-      {sortedComponents.length === 0 ? (
+      {sortedComponents.length === 0 && !isError && !catalogIncomplete ? (
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
@@ -438,9 +499,9 @@ export default function ComponentsConfigPage() {
                       <TableCell className="text-right">
                         <Switch
                           id={`component-${component.id}`}
-                          checked={localStates[component.id] || false}
+                          checked={states.get(component.id) ?? false}
                           onCheckedChange={(checked) => handleToggle(component.id, checked)}
-                          disabled={isCheckingSchema}
+                          disabled={busy || !!pendingAction}
                           data-testid={`switch-component-${component.id}`}
                         />
                       </TableCell>
@@ -706,13 +767,13 @@ export default function ComponentsConfigPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCancelAction} data-testid="button-cancel">
+            <Button variant="outline" onClick={handleCancelAction} disabled={updateComponentMutation.isPending} data-testid="button-cancel">
               Cancel
             </Button>
             <Button
               variant={pendingAction?.enabled ? "default" : (dataAction === "delete" ? "destructive" : "default")}
               onClick={handleConfirmAction}
-              disabled={updateComponentMutation.isPending || (!pendingAction?.enabled && dataAction === "delete" && confirmText !== "DELETE")}
+              disabled={busy || (!pendingAction?.enabled && dataAction === "delete" && confirmText !== "DELETE")}
               data-testid="button-confirm"
             >
               {updateComponentMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

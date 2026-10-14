@@ -45,6 +45,7 @@ interface EnvRow {
   isSet: boolean;
   value: string | null;
   valueFingerprint?: string;
+  changeTakesEffect?: string;
 }
 
 let app: Express;
@@ -117,6 +118,20 @@ describe("secret fingerprints on the environment listing", () => {
       secret.valueFingerprint,
       "fingerprint should be the shared digest of the effective value",
     ).toBe(fingerprintEnvironmentValue(SECRET_A).slice(0, ENV_FINGERPRINT_LENGTH));
+  });
+
+  it("browser identifier key uses the existing concealed restart-only presentation", async () => {
+    const value = "synthetic-device-cookie-key-for-env-presentation";
+    getRawProcessEnv().DEVICE_COOKIE_HMAC = value;
+    try {
+      const { rows } = await listing();
+      expect(row(rows, "DEVICE_COOKIE_HMAC")).toMatchObject({
+        secret: true, isSet: true, value: null, changeTakesEffect: "restart",
+      });
+      expect(row(rows, "DEVICE_COOKIE_HMAC").valueFingerprint).toHaveLength(ENV_FINGERPRINT_LENGTH);
+    } finally {
+      delete getRawProcessEnv().DEVICE_COOKIE_HMAC;
+    }
   });
 
   it("the secret value appears nowhere in the serialized response", async () => {

@@ -1,5 +1,5 @@
 import { registerTokenPlugin } from "../registry";
-import { tokenEntityOf } from "../types";
+import { memo, tokenEntityOf } from "../types";
 import { formatPhpDate, fmtDateShort } from "../php-date";
 
 function nowOf(entity: unknown, fallback: Date): Date {
@@ -30,7 +30,7 @@ registerTokenPlugin({
   metadata: {
     id: "token.system",
     name: "System",
-    description: "System values (dates, year) independent of the recipient",
+    description: "System values (site name, dates, year) independent of the recipient",
     segmentName: SYSTEM_ROOT_NAME,
     inputTypes: ["root"],
     outputType: "system",
@@ -42,6 +42,23 @@ registerTokenPlugin({
   },
   async resolve(_entity, _args, ctx) {
     return { kind: "system", row: { now: ctx.now } };
+  },
+});
+
+registerTokenPlugin({
+  metadata: {
+    id: "token.system.siteName",
+    name: "Site name",
+    shortLabel: "site name",
+    description: "The site's configured name",
+    segmentName: "site_name",
+    inputTypes: ["system"],
+    outputType: "value",
+    example: "Example Site",
+  },
+  async resolve(_entity, _args, ctx) {
+    const setting = await memo(ctx, "system:site_name", () => ctx.storage.variables.getByName("site_name"));
+    return typeof setting?.value === "string" ? setting.value : "";
   },
 });
 

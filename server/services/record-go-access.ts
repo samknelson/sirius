@@ -5,8 +5,13 @@ import { storage } from "../storage";
 import { buildContext, checkAccess } from "./access-policy-evaluator";
 import {
   recordGoAccessRequirement,
+  resolveRecordGoSource,
+  presentRecordGo,
   type RecordGoResolution,
 } from "./record-go";
+import { getEntityNoteContext } from "./entity-notes/registry";
+import { resolveEntityContextAvailability } from "../modules/entity-contexts";
+import type { RecordGoPresentation } from "@shared/utils/record-go";
 
 type ResolvedRecordGo = Extract<RecordGoResolution, { kind: "resolved" }>;
 
@@ -38,9 +43,30 @@ export async function authorizeRecordGoUser(
   if (requirement.componentId && !(await isComponentEnabled(requirement.componentId))) {
     return false;
   }
+  if (requirement.kind === "permission"
+    && (!user || !(await storage.users.userHasPermission(user.id, requirement.id)))) return false;
+
+  if (resolution.metadata.contextId === "entity_notes") {
+    const parent = resolution.parent;
+    if (!parent?.workerId || parent.noteContextId !== "worker") return false;
+    const availability = await resolveEntityContextAvailability({
+      framework: "entity-notes", contextId: parent.noteContextId,
+    });
+    if (!availability.available) return false;
+    const notesContext = getEntityNoteContext(parent.noteContextId);
+    if (!notesContext?.checkAccessForUser) return false;
+    return await notesContext.checkAccessForUser("view", parent.workerId, user)
+      && await notesContext.entityExists(parent.workerId)
+      && (await checkAccess("worker.view", user, parent.workerId)).granted;
+  }
+  if (resolution.metadata.contextId === "worker_skills") {
+    const workerId = resolution.parent?.workerId;
+    if (!workerId || !(await storage.workers.getWorker(workerId))) return false;
+    return (await checkAccess("worker.view", user, workerId)).granted;
+  }
 
   if (requirement.kind === "permission") {
-    return !!user && await storage.users.userHasPermission(user.id, requirement.id);
+    return true;
   }
 
   let entityId = resolution.metadata.entityId;
@@ -61,4 +87,13 @@ export async function authorizeRecordGoUser(
 
   const result = await checkAccess(requirement.id, user, entityId);
   return result.granted;
+}
+
+/** A missing or unauthorized origin must not reveal even its label. */
+export async function presentAuthorizedRecordGoSource(
+  user: User | null, entityType: string, entityId: string,
+): Promise<RecordGoPresentation | null> {
+  const resolution = await resolveRecordGoSource(entityType, entityId);
+  if (resolution.kind !== "resolved" || !(await authorizeRecordGoUser(user, resolution))) return null;
+  return presentRecordGo(resolution);
 }

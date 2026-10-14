@@ -367,20 +367,16 @@ export default function EdlsTasksPage() {
         setBulkError(`Line ${idx + 1}: invalid CSV quoting.`);
         return;
       }
-      if (fields.length !== 2) {
+      if (fields.length < 1 || fields.length > 2) {
         setBulkError(
-          `Line ${idx + 1}: expected exactly 2 fields (sirius_id,name), got ${fields.length}. Quote names containing commas, e.g. 123,"Setup, teardown".`
+          `Line ${idx + 1}: expected 1 or 2 fields (sirius_id or sirius_id,name), got ${fields.length}. The name is optional and defaults to the Sirius ID. Quote names containing commas, e.g. 123,"Setup, teardown".`
         );
         return;
       }
       const siriusId = fields[0].trim();
-      const name = fields[1].trim();
+      const name = fields[1]?.trim() || siriusId;
       if (!siriusId) {
         setBulkError(`Line ${idx + 1}: sirius_id is blank.`);
-        return;
-      }
-      if (!name) {
-        setBulkError(`Line ${idx + 1}: name is blank.`);
         return;
       }
       rows.push({ siriusId, name, line: idx + 1 });
@@ -736,7 +732,8 @@ export default function EdlsTasksPage() {
                 <DialogTitle>Bulk Edit Tasks</DialogTitle>
                 <DialogDescription>
                   Edit all of a department's tasks at once as CSV lines in the form{" "}
-                  <code>sirius_id,name</code> (one task per line). Rows are matched by
+                  <code>sirius_id,name</code> or just <code>sirius_id</code> (one task per line).
+                  If the name is omitted or blank, the Sirius ID is used as the name. Rows are matched by
                   Sirius ID: new IDs are added, changed names are updated, and IDs
                   removed from the list are deleted. Quote names containing commas,
                   e.g. <code>123,"Setup, teardown"</code>.
@@ -759,12 +756,12 @@ export default function EdlsTasksPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bulk-csv">Tasks (sirius_id,name)</Label>
+                  <Label htmlFor="bulk-csv">Tasks (sirius_id, optional name)</Label>
                   <Textarea
                     id="bulk-csv"
                     value={bulkCsv}
                     onChange={(e) => setBulkCsv(e.target.value)}
-                    placeholder={bulkDepartmentId ? "sirius_id,name" : "Select a department first"}
+                    placeholder={bulkDepartmentId ? "123,Setup\n456" : "Select a department first"}
                     disabled={!bulkDepartmentId}
                     rows={12}
                     className="font-mono text-sm"

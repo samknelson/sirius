@@ -78,6 +78,8 @@ export interface ComponentDefinition {
 export interface ComponentConfig {
   componentId: string;
   enabled: boolean;
+  /** Server-registered metadata; old consumers may ignore it. */
+  definition?: ComponentDefinition;
 }
 
 export interface ComponentSchemaManifest {
@@ -448,6 +450,19 @@ export const componentRegistry: ComponentDefinition[] = [
       schemaPath: "./shared/schema/worker/certifications/schema.ts",
       tables: ["options_certifications", "worker_certifications"]
     }
+  },
+  {
+    id: "worker.badges",
+    name: "Worker Badges",
+    description: "Worker badges awarded through system activity and maintained by denorm plugins",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/badges/schema.ts",
+      tables: ["options_worker_badge_types", "worker_badges_denorm"],
+    },
   },
   {
     id: "worker.ratings",
@@ -980,6 +995,19 @@ export const componentRegistry: ComponentDefinition[] = [
         ordering: 20,
       },
     ],
+  },
+  {
+    id: "system.session_history",
+    name: "Session History",
+    description: "Persistent history of user login sessions",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/system/session-history-schema.ts",
+      tables: ["session_history"]
+    }
   },
   {
     id: "system.sftp.client",

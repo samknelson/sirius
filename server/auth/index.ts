@@ -1,5 +1,6 @@
 import type { Express, RequestHandler, Request } from "express";
 import passport from "passport";
+import { captureRequestIpContext } from "../middleware/request-context";
 import session from "express-session";
 import { StorageSessionStore } from "./session-store";
 import { loadAuthConfig, getProviderConfig } from "./config";
@@ -14,6 +15,8 @@ import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
 import { getEnvironmentVariable } from "../config/env-registry";
+import { observeSuccessfulSignIns } from "./sign-in-events";
+import { createDeviceCookieMiddleware } from "./device-cookie";
 
 const getStorage = () => require("../storage").storage;
 
@@ -90,8 +93,11 @@ export async function setupAuth(app: Express): Promise<void> {
   const config = getAuthConfig();
 
   app.set("trust proxy", 1);
+  app.use(captureRequestIpContext);
+  app.use(createDeviceCookieMiddleware());
   app.use(getSession());
   app.use(passport.initialize());
+  app.use(observeSuccessfulSignIns);
   app.use(passport.session());
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));

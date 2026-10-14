@@ -18,13 +18,16 @@ export interface MetadataRecordContext {
   table: PgTable<TableConfig>;
   label: string;
   hrefTemplate: string | null;
+  /** Source-kind names used by denorm; navigation still uses this same context. */
+  entityTypes?: readonly string[];
 }
 
 const context = (
   table: PgTable<TableConfig>,
   label: string,
   hrefTemplate: string | null,
-): MetadataRecordContext => ({ table, label, hrefTemplate });
+  entityTypes?: readonly string[],
+): MetadataRecordContext => ({ table, label, hrefTemplate, entityTypes });
 
 export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   bargaining_units: context(coreSchema.bargainingUnits, "Bargaining Units", "/bargaining-units/{id}"),
@@ -55,9 +58,9 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   employer_companies: context(coreSchema.employerCompanies, "Employer Companies", null),
   employer_contacts: context(coreSchema.employerContacts, "Employer Contacts", "/employer-contacts/{id}"),
   employer_policy_history: context(coreSchema.employerPolicyHistory, "Employer Policy History", null),
-  employers: context(coreSchema.employers, "Employers", "/employers/{id}"),
+  employers: context(coreSchema.employers, "Employers", "/employers/{id}", ["employer"]),
   entity_files: context(coreSchema.entityFiles, "Record Attachments", null),
-  entity_notes: context(coreSchema.entityNotes, "Record Notes", null),
+  entity_notes: context(coreSchema.entityNotes, "Record Notes", null, ["entity_note"]),
   events: context(coreSchema.events, "Events", "/events/{id}"),
   facilities: context(coreSchema.facilities, "Facilities", "/facility/{id}"),
   files: context(coreSchema.files, "Files", null),
@@ -70,7 +73,7 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   grievance_timeline_templates: context(coreSchema.grievanceTimelineTemplates, "Grievance Timeline Templates", "/grievance-timeline-template/{id}"),
   grievance_users: context(coreSchema.grievanceUsers, "Grievance Staff", null),
   grievance_workers: context(coreSchema.grievanceWorkers, "Grievance Workers", null),
-  grievances: context(coreSchema.grievances, "Grievances", "/grievance/{id}"),
+  grievances: context(coreSchema.grievances, "Grievances", "/grievance/{id}", ["grievance"]),
   ledger_accounts: context(coreSchema.ledgerAccounts, "Ledger Accounts", "/ledger/accounts/{id}"),
   ledger_payment_batches: context(coreSchema.ledgerPaymentBatches, "Ledger Payment Batches", "/ledger/payment-batch/{id}"),
   ledger_paymentmethods: context(coreSchema.ledgerPaymentMethods, "Ledger Payment Methods", null),
@@ -104,11 +107,11 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   worker_ids: context(coreSchema.workerIds, "Worker Identifiers", null),
   worker_ratings: context(coreSchema.workerRatings, "Worker Ratings", null),
   worker_relations: context(coreSchema.workerRelations, "Worker Relations", null),
-  worker_skills: context(coreSchema.workerSkills, "Worker Skills", null),
+  worker_skills: context(coreSchema.workerSkills, "Worker Skills", null, ["worker_skill"]),
   worker_steward_assignments: context(coreSchema.workerStewardAssignments, "Worker Steward Assignments", null),
   worker_tos: context(coreSchema.workerTos, "Worker Terms Acceptance", null),
   worker_trust_elections: context(coreSchema.workerTrustElections, "Trust Elections", "/trust/election/{id}"),
-  workers: context(coreSchema.workers, "Workers", "/workers/{id}"),
+  workers: context(coreSchema.workers, "Workers", "/workers/{id}", ["worker"]),
   ws_client_credentials: context(coreSchema.wsClientCredentials, "Web Service Credentials", null),
   ws_client_grants: context(coreSchema.wsClientGrants, "Web Service Access Grants", null),
   ws_client_ip_rules: context(coreSchema.wsClientIpRules, "Web Service IP Rules", null),

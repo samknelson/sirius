@@ -45,6 +45,11 @@ export function captureRestartBaseline(): void {
   baseline = next;
 }
 
+/** A restart-only lazy consumer records its first successfully applied value. */
+export function captureAppliedRestartVariable(name: string): void {
+  if (baseline?.has(name)) baseline.set(name, hashValue(name));
+}
+
 export interface PendingRestartVariable {
   name: string;
   description: string;

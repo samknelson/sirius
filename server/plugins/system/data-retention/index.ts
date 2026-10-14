@@ -7,6 +7,7 @@ import {
   baseSearchSchemaShape,
 } from "../../_core";
 import { dataRetentionPluginRegistry } from "./registry";
+import type { DataRetentionPlugin } from "./types";
 
 export * from "./types";
 export {
@@ -33,6 +34,12 @@ function registerDataRetentionKind(): void {
     // Managing retention plugins is admin-only infrastructure, mirroring cron.
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    validateConfig: async (plugin, config) => {
+      if (!plugin.configSchema) return { valid: true };
+      const { validateAgainstSchema } = await import("../../../lib/json-schema-validator");
+      const result = validateAgainstSchema(plugin.configSchema, config ?? {});
+      return { valid: result.valid, errors: result.errors };
+    },
   });
   // Retention configs carry no relational dimension, so the base envelope is
   // the whole config — no subsidiary table (mirrors denorm).
@@ -53,13 +60,13 @@ function registerDataRetentionKind(): void {
     // Retention plugins are singletons, so the boot-time seeder needs a
     // default flat config to insert when a plugin has no row yet.
     seedDefault: (plugin) => {
-      const p = plugin as { metadata: { id: string; name: string } };
+      const p = plugin as DataRetentionPlugin;
       return {
         pluginId: p.metadata.id,
         name: p.metadata.name,
-        enabled: true,
+        enabled: p.defaultEnabled ?? true,
         ordering: 0,
-        data: {},
+        data: p.getDefaultSettings?.() ?? {},
       };
     },
   });
@@ -85,3 +92,4 @@ import "./plugins/expiredFloodEvents";
 import "./plugins/oldCronLogs";
 import "./plugins/expiredReports";
 import "./plugins/edlsSheetSnapshots";
+import "./plugins/sessionHistory";

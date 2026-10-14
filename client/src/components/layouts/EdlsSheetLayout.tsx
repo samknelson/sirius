@@ -16,11 +16,10 @@ interface EdlsSheetWithRelations extends EdlsSheet {
 }
 
 function sheetHeading(sheet: EdlsSheet): string {
-  // ymd is a date-only string; rearrange its parts without timezone conversion.
-  const [year, month, day] = sheet.ymd.split("-");
+  // ymd is already yyyy-mm-dd; use it directly without timezone conversion.
   const title = sheet.title.trim();
   const number = /^#?\s*(\d+)$/.exec(title);
-  return `${day}-${month}-${year} - ${number ? `#${number[1]}` : title}`;
+  return `${sheet.ymd} - ${number ? `#${number[1]}` : title}`;
 }
 
 interface EdlsSheetLayoutContextValue {
