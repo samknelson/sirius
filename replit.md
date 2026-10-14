@@ -268,6 +268,29 @@ previous result.
 
 # Non-Negotiable Rules
 
+## User-facing changes MUST include in-app help
+
+For planning **and** implementation of any user-facing feature or screen
+change (including changed actions, labels, permissions, prerequisites, or
+status meanings), load
+[in-app-help-authoring](.agents/skills/in-app-help-authoring/SKILL.md).
+Add or update the affected help in the existing `/config/helps` framework
+**in the same task** as the change; do not defer it to a documentation task.
+If no help update is needed, record a specific reason in the task's
+completion notes (for example, a visual-only adjustment that leaves the
+existing guidance accurate). Help-content-only work also uses this skill.
+
+Prefer code-owned built-in system entries for product documentation.
+Preserve database-backed, admin-authored entries for organization-specific
+guidance; do not overwrite or replace them with product help.
+
+Applicable task plans and acceptance criteria must include help verification:
+confirm the guidance describes the shipped behavior, is listed at
+`/config/helps`, shows its summary and any details on intended pages, and
+does not match unrelated pages. Follow the skill's checklist and report
+what was verified, any verification limits, or the no-update rationale
+before completing the task.
+
 ## All schema changes MUST ship with a migration
 
 There is exactly one way to change the database shape: write a migration
