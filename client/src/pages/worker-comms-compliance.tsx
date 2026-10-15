@@ -305,7 +305,7 @@ export default function WorkerCommsCompliance() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Monthly distribution review</p>
               <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight sm:text-4xl">Make the missing list actionable.</h2>
               <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                A definition describes who should receive a notice and which tagged communication records count as evidence. The report compares those groups for the current benefit month.
+                A definition describes who should receive a notice and which tagged communication records count as evidence. Each definition can use the current benefit month, all past benefit history, a rolling lookback, or a specific date range.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 {canManage ? <Button onClick={() => openEditor(null)}><Plus className="mr-2 h-4 w-4" />Create a definition</Button> : <p className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">Ask a benefits administrator to create the first definition.</p>}

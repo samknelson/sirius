@@ -243,7 +243,7 @@ export function CommsDefinitionEditor({
           <div>
             <h3 className="font-semibold">What counts as evidence</h3>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              Compliance compares this month’s eligible workers with communication-history records carrying the chosen tag and a selected status. Creating or queueing a message alone is not evidence; queued and sending are not delivery confirmation, and offline does not confirm physical receipt.
+              Compliance compares the configured worker population and benefit-history period with communication-history records carrying the chosen tag and a selected status. Creating or queueing a message alone is not evidence; queued and sending are not delivery confirmation, and offline does not confirm physical receipt.
             </p>
           </div>
         </div>
