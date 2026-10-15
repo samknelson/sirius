@@ -38,6 +38,7 @@ const Reports = lazy(() => import("@/pages/reports"));
 const ReportType = lazy(() => import("@/pages/report-type"));
 const ContactExport = lazy(() => import("@/pages/contact-export"));
 const Workers = lazy(() => import("@/pages/workers"));
+const WorkerCommsCompliance = lazy(() => import("@/pages/worker-comms-compliance"));
 const WorkersAdd = lazy(() => import("@/pages/workers-add"));
 const WorkerView = lazy(() => import("@/pages/worker-view"));
 const WorkerName = lazy(() => import("@/pages/worker-name"));
@@ -564,6 +565,14 @@ function Router() {
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkersAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/comms-compliance">
+        <ProtectedRoute permission="staff" component="worker.comms_compliance">
+          <AuthenticatedLayout>
+            <WorkerCommsCompliance />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { ExistingMessageChooserContent, type ExistingBulkMessageOption } from "@/components/bulk/existing-message-chooser-content";
 import { ChevronDown, Loader2, MailPlus, ListChecks, Send } from "lucide-react";
+import type { ComplianceView } from "@shared/worker-comms-compliance";
 
 const LARGE_DRAFT_THRESHOLD = 100;
 
@@ -44,6 +45,7 @@ interface ComponentConfig {
 }
 
 interface ListBulkActionProps {
+  reportSelection?: { definitionId: string; view: ComplianceView };
   selectedContactIds: string[];
   totalMatching: number;
   visibleSelectedCount: number;
@@ -72,6 +74,7 @@ const MEDIUM_OPTIONS: { value: Medium; label: string }[] = [
 ];
 
 export function ListBulkAction({
+  reportSelection,
   selectedContactIds,
   totalMatching,
   visibleSelectedCount,
@@ -114,6 +117,7 @@ export function ListBulkAction({
       return apiRequest("POST", "/api/bulk-messages/from-recipients", {
         contactIds: selectedContactIds,
         sourceLabel,
+        reportSelection,
         medium,
       });
     },
@@ -138,6 +142,7 @@ export function ListBulkAction({
     mutationFn: (bulkMessageId) => apiRequest("POST", "/api/bulk-messages/from-recipients", {
       contactIds: selectedContactIds,
       bulkMessageId,
+      reportSelection,
     }),
     onSuccess: async (result) => {
       const targetId = result.bulkMessage.id;

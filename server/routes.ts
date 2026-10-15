@@ -83,6 +83,7 @@ import { registerBusinessCalendarRoutes } from "./modules/business-calendars";
 import { registerHelpRoutes } from "./modules/helps";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
+import { registerWorkerCommsComplianceRoutes } from "./modules/worker-comms-compliance";
 import { registerEmployerRoutes, registerEmployerLookupRoutes, registerEmployerCountsRoute } from "./modules/employers/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
@@ -540,6 +541,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register employer compliance dashboard routes
   registerEmployerComplianceRoutes(app, requireAuth);
+  registerWorkerCommsComplianceRoutes(app, requireAuth);
 
   // Register worker steward assignments routes
   registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);

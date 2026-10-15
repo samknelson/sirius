@@ -3,6 +3,7 @@ import { type VariableStorage, createVariableStorage, variableLoggingConfig } fr
 import { type SnapshotsStorage, createSnapshotsStorage, snapshotsLoggingConfig } from "./system/snapshots";
 import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
+import { createWorkerCommsComplianceStorage, type WorkerCommsComplianceStorage } from "./worker-comms-compliance";
 import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } from "./employers/employers";
 import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust/benefits";
@@ -222,6 +223,7 @@ import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentities
 import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
 export interface IStorage {
+  workerCommsCompliance: WorkerCommsComplianceStorage;
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
@@ -348,6 +350,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  workerCommsCompliance: WorkerCommsComplianceStorage;
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
@@ -473,6 +476,7 @@ export class DatabaseStorage implements IStorage {
   grievanceContracts: GrievanceContractStorage;
 
   constructor() {
+    this.workerCommsCompliance = createWorkerCommsComplianceStorage();
     this.variables = withStorageLogging(
       createVariableStorage(),
       variableLoggingConfig,

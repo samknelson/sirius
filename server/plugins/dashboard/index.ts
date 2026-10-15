@@ -165,6 +165,7 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/welcome-messages";
 import "./plugins/bookmarks";
+import "./plugins/worker-comms-compliance";
 import "./plugins/reports";
 import "./plugins/employer-monthly-uploads";
 import "./plugins/wmb-scan-status";

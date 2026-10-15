@@ -31,6 +31,7 @@ import "./token-roots";
 import { tokenContextRootNames } from "../../plugins/tokens/contexts";
 import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
 import { downloadMailCsv, MailCsvError } from "./mail-csv";
+import { assertWorkerCommsSelection, WorkerCommsError } from "../../services/worker-comms-compliance";
 
 /**
  * How many of a message's sends the studio previews against.
@@ -165,6 +166,11 @@ export function registerBulkMessageRoutes(
       const finalName = requestedName ?? autoName;
 
       const uniqueIds = Array.from(new Set(contactIds as string[]));
+      if ("reportSelection" in body) {
+        const { getEffectiveUser } = await import("../masquerade");
+        const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
+        await assertWorkerCommsSelection(storage, dbUser, body.reportSelection, uniqueIds);
+      }
       const existingIds = await storage.contacts.getExistingIds(uniqueIds);
       const validContactIds = new Set(existingIds);
       const missingCount = uniqueIds.length - validContactIds.size;
@@ -228,6 +234,7 @@ export function registerBulkMessageRoutes(
         recipientsMissing: missingCount,
       });
     } catch (error: unknown) {
+      if (error instanceof WorkerCommsError) return res.status(error.status).json({ message: error.message });
       const message = error instanceof Error ? error.message : "Failed to enqueue bulk message recipients";
       return res.status(500).json({ message });
     }
