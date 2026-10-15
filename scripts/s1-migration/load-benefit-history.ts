@@ -231,6 +231,7 @@ interface ResolvedSpan {
   employerFromElection: boolean;
   startIdx: number;
   endIdx: number | null; // null = open-ended
+  legacyEndIdx: number | null;
 }
 
 const PAGE = 2000;

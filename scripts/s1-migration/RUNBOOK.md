@@ -1,3 +1,19 @@
+## Historical financial-link correction — separate operator approval
+
+Before corrected wet money sync on an existing target, follow
+[financial worker links](../../docs/s1-migration/financial-worker-links.md).
+The separate `repair-financial-links.ts --checkpoint <label>` command defaults
+to read-only inventory. Applying its plan requires separate review and
+`--wet --approve <exact-evidenceHash>`. Never add this repair to a fleet,
+restage as part of it, or bypass historical-identity refusals with force.
+For separately approved normal S1-wins sync (not link-only correction),
+stream-specific inventory hashes may be supplied with
+`--financial-links-checkpoint`, `--approve-payment-links` and
+`--approve-ledger-links`; see the operator contract for review and stale-hash
+refusal rules.
+Compare source and staging at the same verified checkpoint; a newer live AR
+count is not a linkage-repair acceptance target. Real remote proof is pending.
+
 # Daily bounded range staging (Task 540)
 
 Daily staging of the large node bundles is split into disjoint NID ranges.

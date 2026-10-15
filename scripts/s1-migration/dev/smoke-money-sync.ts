@@ -372,7 +372,6 @@ async function installBillingFixture(): Promise<BillingFixture> {
     const existingEa = rowsOf(await db.execute(sql`
       SELECT id FROM ledger_ea WHERE account_id = ${accountId} AND entity_id = ${target.employerId}
     `))[0];
-    const now = new Date();
     const probe = await baoHourlyChargePlugin.execute(
       {
         trigger: "hours_saved",
@@ -395,8 +394,6 @@ async function installBillingFixture(): Promise<BillingFixture> {
         employerId: target.employerId,
         account: accountId,
         settings: { billedEmploymentStatusIds: [target.employmentStatusId] },
-        createdAt: now,
-        updatedAt: now,
       },
     );
     const createdEa = rowsOf(await db.execute(sql`

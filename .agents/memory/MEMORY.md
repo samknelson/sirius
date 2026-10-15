@@ -1,3 +1,4 @@
+- [Financial contact identity](financial-contact-worker-authority.md) — S1 contact NIDs intentionally represent workers financially; exact source-worker mapping proves identity, not destination cardinality.
 - [Migration initial-load scale](migration-initial-load-scale.md) — batch bookkeeping too; incremental rehearsals can hide fresh-target costs, and progress rates alone do not locate the bottleneck.
 - Environment variables — [in-app overrides](env-overrides-framework.md) (env wins unless released; all registered vars overridable; one ENV_{NAME} row) and [registry](env-var-registry.md) (all reads through getEnvironmentVariable; even comments trigger the checker).
 - [Entity metadata eligibility](entity-metadata-eligibility.md) — record history is for directly maintained records; central policy rejects process families at writes, reads, registry, and cleanup.

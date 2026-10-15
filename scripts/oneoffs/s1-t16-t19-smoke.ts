@@ -384,7 +384,7 @@ async function main() {
     const payId = payMap.get(N.payment)?.s2Id;
     check("t19 mapped", Boolean(payId));
     if (payId) {
-      const [p] = await storage.ledger.payments.getByIds([payId]);
+      const p = await storage.ledger.payments.get(payId);
       check("t19 amount", Number(p?.amount) === 123.45, p?.amount);
       check("t19 status cleared", p?.status === "cleared", p?.status);
       check("t19 allocated", p?.allocated === true, p?.allocated);

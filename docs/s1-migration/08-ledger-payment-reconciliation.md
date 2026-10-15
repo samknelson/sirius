@@ -1,5 +1,15 @@
 # 08 — Ledger/payment reconciliation kit (rehearsal → production gate)
 
+## Financial identity verification gate
+
+Fund-level balance equality alone does not prove correct ownership. The
+balance harness also independently verifies exact source-derived payer and
+participant identity and internal per-entity/account attribution, including
+source-unchanged rows. Follow [financial worker links](financial-worker-links.md)
+for the dry-run/hash-approval repair sequence and same-checkpoint operator
+proof. Payer and allocation beneficiary are not required to be identical.
+
+
 Purpose: reconcile the S1 money streams (AR ledger + payments) against S2 on
 the rehearsal database, root-cause every payment that failed to import, and
 verify reference linkage end-to-end — separating tooling artifacts from true

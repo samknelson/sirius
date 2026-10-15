@@ -70,6 +70,7 @@ import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun, pagedRawLedger, stagedRawLedgerCount, ensureRawLedgerTable } from "./lib/staging";
 import { ensureIdMap, getMappings } from "./lib/idmap";
 import { RejectLog, LOADER_PAGE_SIZE, pagedStaged, stagedCountOf, chunk, strOf, targetNidOf } from "./lib/loader-utils";
+import { inventoryFinancialLinks, publicFinancialInventory } from "./lib/financial-link-inventory";
 import {
   AMOUNT_RE,
   toCents,
@@ -400,6 +401,13 @@ async function main() {
   );
 
   const failures: string[] = [];
+  // Independent of money allow-lists/tolerance and source fingerprints:
+  // equal fund totals cannot excuse attribution to the wrong person.
+  const identity = await inventoryFinancialLinks("current-local-staging", { retainRebinds: false });
+  report.financialIdentity = publicFinancialInventory(identity);
+  if (identity.blocked || identity.mismatched || identity.counts.attribution_mismatches) {
+    failures.push("financial participant/payer identity or per-entity/account attribution mismatch");
+  }
   const aggregate: AccountAgg = { ar: emptyStream(), pay: emptyStream() };
   const perAccountReport: Array<Record<string, unknown>> = [];
 

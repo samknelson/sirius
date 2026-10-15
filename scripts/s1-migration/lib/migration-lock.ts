@@ -16,10 +16,12 @@ interface LockPool {
  * bootstrap-target keeps that lock in its parent session and marks child
  * processes so they do not deadlock trying to acquire the same key.
  */
-export async function acquireMigrationSeedLock(pool: LockPool): Promise<LockClient | null> {
+export async function acquireMigrationSeedLock(pool: LockPool, options?: { standalone?: boolean }): Promise<LockClient | null> {
   if (
-    getEnvironmentVariable("S1_BOOTSTRAP_LOCK_HELD") === "1" ||
-    getEnvironmentVariable("S1_SYNC_LOCK_HELD") === "1"
+    !options?.standalone && (
+      getEnvironmentVariable("S1_BOOTSTRAP_LOCK_HELD") === "1" ||
+      getEnvironmentVariable("S1_SYNC_LOCK_HELD") === "1"
+    )
   ) return null;
   const client = await pool.connect();
   const [{ got }] = (await client.query(

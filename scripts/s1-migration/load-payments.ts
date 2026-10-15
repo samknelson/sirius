@@ -78,6 +78,11 @@ import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf
 import { makeProgressLogger } from "./lib/progress";
 import { buildEntityResolver, ensureLedgerAccounts } from "./lib/resolvers";
 import { AMOUNT_RE, PAYMENT_STATUS_MAP as STATUS_MAP, type S2PaymentStatus } from "./lib/parity";
+import { financialReferenceNids, loadFinancialSourceIndex, rowsOf } from "./lib/financial-identity";
+import { sameFinancialCoordinate } from "./lib/financial-identity-plan";
+import { acquireMigrationSeedLock } from "./lib/migration-lock";
+import { inventoryFinancialLinks, publicFinancialInventory } from "./lib/financial-link-inventory";
+import { authorizeFinancialSyncLinks, isApprovedFinancialRebind } from "./lib/financial-sync-approval";
 import {
   classifyRow,
   parseForceReconcile,
@@ -92,7 +97,7 @@ import {
 const LOADER = "t19-payments";
 const BUNDLE = "sirius_payment";
 const ENTITY = "payment";
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2; // Exact source contact → worker identity, including unchanged targets.
 const DRY_RUN = process.argv.includes("--dry-run");
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
@@ -125,12 +130,15 @@ const FATAL_REASONS = [
 
 async function main() {
   const startedAt = new Date();
+  const migrationLock = await acquireMigrationSeedLock(pgPool);
   await ensureStagingSchema();
   await ensureIdMap();
 
   const detail: Record<string, unknown> = {};
   const rejects = new RejectLog();
   const summary = emptySummary();
+  const financialSource = await loadFinancialSourceIndex();
+  const approvedLinks = await authorizeFinancialSyncLinks("payment");
   throttleStorageOpLogs();
 
   detail.staged = await stagedCountOf(BUNDLE);
@@ -167,7 +175,10 @@ async function main() {
   const provenanceByNid = new Map<number, string>();
   for (const r of (provenanceRes as unknown as { rows: Array<{ id: string; nid: string }> }).rows) {
     const n = Number(r.nid);
-    if (Number.isFinite(n) && !provenanceByNid.has(n)) provenanceByNid.set(n, r.id);
+    if (Number.isFinite(n)) {
+      if (provenanceByNid.has(n)) throw new Error("Duplicate migration payment provenance; review before sync");
+      provenanceByNid.set(n, r.id);
+    }
   }
 
   // Currency preflight map — replaces the storage create() cross-check that
@@ -213,7 +224,18 @@ async function main() {
       getMappings("term", typeTids),
       getMappings(ENTITY, staged.map((s) => s.nid)),
     ]);
-    const resolveEntity = await buildEntityResolver(payerNids);
+    const resolveEntity = await buildEntityResolver(payerNids, financialSource);
+    const targetIds = [...new Set(staged.map((s) => paymentMap.get(s.nid)?.s2Id ?? provenanceByNid.get(s.nid)).filter((v): v is string => !!v))];
+    const currentTargets = new Map<string, { id: string; entityType: string; entityId: string; accountId: string; ledgerEaId: string; source: string; sourceNid: string }>();
+    for (const batch of chunk(targetIds, 500)) {
+      for (const row of rowsOf<{ id: string; entityType: string; entityId: string; accountId: string; ledgerEaId: string; source: string; sourceNid: string }>(await db.execute(sql`
+        SELECT p.id, ea.entity_type AS "entityType", ea.entity_id AS "entityId",
+          ea.account_id AS "accountId", p.ledger_ea_id AS "ledgerEaId",
+          p.details->>'source' AS source, p.details->>'s1Nid' AS "sourceNid"
+        FROM ledger_payments p LEFT JOIN ledger_ea ea ON ea.id = p.ledger_ea_id
+        WHERE p.id IN (${sql.join(batch.map((id) => sql`${id}`), sql`, `)})
+      `))) currentTargets.set(row.id, row);
+    }
 
     const expectations: Array<{
       nid: number;
@@ -278,7 +300,8 @@ async function main() {
       continue;
     }
 
-    const payerNid = targetNidOf(f, "field_sirius_payer");
+    const payerRefs = financialReferenceNids(f.field_sirius_payer);
+    const payerNid = payerRefs.length === 1 ? payerRefs[0] : null;
     if (payerNid == null) {
       rejects.add("payer_ref_missing", { nid }, nid);
       continue;
@@ -317,9 +340,22 @@ async function main() {
     // ---- sync classification ----
     const mapping = paymentMap.get(nid);
     const disposition = classifyRow(mapping, s.contentHash ?? null, LOGIC_VERSION, FORCE_RECONCILE);
+    const existingId = mapping?.s2Id ?? provenanceByNid.get(nid);
+    const current = existingId ? currentTargets.get(existingId) : undefined;
+    if (current && (current.source !== "s1-migration" || current.sourceNid !== String(nid))) {
+      throw new Error("Payment mapping ownership conflict; review before sync");
+    }
+    const identityDrift = !!current && !sameFinancialCoordinate(entity, accountId, current);
+    if (current && identityDrift && !isApprovedFinancialRebind(approvedLinks, current.id, current.ledgerEaId, entity, accountId)) {
+      if (!DRY_RUN) throw new Error("Historical financial identity drift: review repair-financial-links dry run before wet sync");
+      rejects.add("historical_identity_repair_required", { nid }, nid);
+      continue;
+    }
 
-    if (disposition === "unchanged") {
+    if (disposition === "unchanged" && current && !identityDrift) {
       summary.unchanged++;
+      expectations.push({ nid, s2Id: current.id, amount, status: mapped.status,
+        allocated: mapped.status === "cleared", ledgerEaId: current.ledgerEaId });
       continue;
     }
 
@@ -347,8 +383,9 @@ async function main() {
       let eaId = eaCache.get(eaKey);
       if (!eaId) {
         const ea = await storage.ledger.ea.getOrCreate(entity.entityType, entity.entityId, accountId);
+        if (!ea.id || !sameFinancialCoordinate(entity, accountId, ea)) throw new Error("Canonical EA disagrees");
         eaId = ea.id;
-        eaCache.set(eaKey, eaId);
+        eaCache.set(eaKey, ea.id);
       }
       const details: Record<string, unknown> = { source: "s1-migration", s1Nid: nid };
       const check = strOf(f, "field_sirius_check_number");
@@ -530,6 +567,11 @@ async function main() {
     `)) as unknown as { rows: Array<{ account_id: string; n: number; total: string }> }
   ).rows;
   detail.loadedPerAccount = loadedAgg;
+  if (!DRY_RUN) {
+    const identity = await inventoryFinancialLinks("current-local-staging", { streams: ["payment"], retainRebinds: false });
+    detail.financialIdentity = publicFinancialInventory(identity);
+    verifyFailures += identity.blocked + identity.mismatched + (identity.counts.attribution_mismatches ?? 0);
+  }
 
   detail.rejectSamples = rejects.samples;
   if (verifySamples.length > 0) detail.verifyFailureSamples = verifySamples;
@@ -551,6 +593,7 @@ async function main() {
   if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
   await drainStorageSideEffects();
+  if (migrationLock) { await migrationLock.query("SELECT pg_advisory_unlock(727001)"); migrationLock.release(); }
   await pgPool.end();
   const code = loaderExitCode(result);
   if (code !== 0 && result.rejectGate.status === "fail") {

@@ -1145,7 +1145,10 @@ for (let i = 0; i < 30; i++) {
   const status = i < 26 ? 'Cleared' : (i < 28 ? 'Received' : (i === 28 ? 'Canceled' : 'Failed'));
   await fd('field_data_field_sirius_payment_status', [{bundle:'sirius_payment', entity_id:pnid, values:{field_sirius_payment_status_value:status}}]);
   if (status !== 'Cleared') trap('payment_noncleared_status');
-  await fd('field_data_field_sirius_payer', [{bundle:'sirius_payment', entity_id:pnid, values:{field_sirius_payer_target_id:w.nid}}]);
+  // S1 worker-view payment search uses CONTACT as payer, not the worker NID.
+  // Keep one employer payer to prove that relationship stays employer-owned.
+  const payerNid = i === 4 ? employers[0] : w.contactNid;
+  await fd('field_data_field_sirius_payer', [{bundle:'sirius_payment', entity_id:pnid, values:{field_sirius_payer_target_id:payerNid}}]);
   await fd('field_data_field_sirius_ledger_account', [{bundle:'sirius_payment', entity_id:pnid, values:{field_sirius_ledger_account_target_id:pick(ledgerAccounts)}}]);
   // tz_handling=site: UTC stored
   await fd('field_data_field_sirius_datetime_created', [{bundle:'sirius_payment', entity_id:pnid, values:{field_sirius_datetime_created_value:randDate(2026, 2026)}}]);
@@ -1187,7 +1190,7 @@ for (let i = 0; i < 30; i++) {
   const chargeRef = refPool[i % refPool.length];
   if (chargeRef === 19_777_777) trap('ledger_reference_unresolvable');
   // participant: mostly workers; a couple of contact/employer participants
-  const participant = i === 3 ? w.contactNid : (i === 4 ? employers[0] : w.nid);
+  const participant = i === 4 ? employers[0] : w.contactNid;
   if (i === 3) trap('ledger_contact_participant');
   if (i === 4) trap('ledger_employer_participant');
   await conn.query(`INSERT INTO sirius_ledger_ar (ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant, ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json)

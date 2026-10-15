@@ -75,6 +75,11 @@ import { RejectLog, LOADER_PAGE_SIZE, chunk, throttleStorageOpLogs } from "./lib
 import { makeProgressLogger } from "./lib/progress";
 import { buildEntityResolver, ensureLedgerAccounts, laStatementYmd } from "./lib/resolvers";
 import { AMOUNT_RE, toCents as parseCents, centsToStr } from "./lib/parity";
+import { loadFinancialSourceIndex } from "./lib/financial-identity";
+import { sameFinancialCoordinate } from "./lib/financial-identity-plan";
+import { acquireMigrationSeedLock } from "./lib/migration-lock";
+import { inventoryFinancialLinks, publicFinancialInventory } from "./lib/financial-link-inventory";
+import { authorizeFinancialSyncLinks, isApprovedFinancialRebind } from "./lib/financial-sync-approval";
 import {
   canonicalJson,
   classifyRow,
@@ -88,7 +93,7 @@ import {
 
 const LOADER = "t18-ledger";
 const ENTITY = "ledger-ar";
-const LOGIC_VERSION = 2; // v2 (Task 414): payperiod crosswalk provenance (hours) / pay-period reference resolution (ledger)
+const LOGIC_VERSION = 3; // Exact source contact → worker identity; target checks include unchanged rows.
 const CHARGE_PLUGIN = "s1-import";
 const KEY_RE = /^ar-(\d+)$/;
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -158,6 +163,9 @@ interface ExistingRow {
   referenceType: string | null;
   referenceId: string | null;
   data: unknown;
+  entityType: string;
+  entityId: string;
+  accountId: string;
 }
 
 async function fetchExistingByKeys(keys: string[]): Promise<Map<string, ExistingRow>> {
@@ -165,10 +173,10 @@ async function fetchExistingByKeys(keys: string[]): Promise<Map<string, Existing
   for (const batch of chunk(keys, 500)) {
     if (batch.length === 0) continue;
     const res = (await db.execute(sql`
-      SELECT id, charge_plugin_key AS key, amount::text AS amount, memo, ea_id,
+       SELECT l.id, charge_plugin_key AS key, amount::text AS amount, memo, ea_id,
              statement_ymd, extract(epoch FROM date)::bigint AS date_epoch,
-             reference_type, reference_id, data
-        FROM ledger
+              reference_type, reference_id, l.data, ea.entity_type, ea.entity_id, ea.account_id
+         FROM ledger l LEFT JOIN ledger_ea ea ON ea.id = l.ea_id
        WHERE charge_plugin = ${CHARGE_PLUGIN}
          AND charge_plugin_key IN (${sql.join(batch.map((k) => sql`${k}`), sql`, `)})
     `)) as unknown as {
@@ -176,6 +184,7 @@ async function fetchExistingByKeys(keys: string[]): Promise<Map<string, Existing
         id: string; key: string; amount: string; memo: string | null; ea_id: string;
         statement_ymd: string | null; date_epoch: string | number | null;
         reference_type: string | null; reference_id: string | null; data: unknown;
+         entity_type: string; entity_id: string; account_id: string;
       }>;
     };
     for (const r of res.rows) {
@@ -190,6 +199,7 @@ async function fetchExistingByKeys(keys: string[]): Promise<Map<string, Existing
         referenceType: r.reference_type ?? null,
         referenceId: r.reference_id ?? null,
         data: r.data,
+        entityType: r.entity_type, entityId: r.entity_id, accountId: r.account_id,
       });
     }
   }
@@ -198,6 +208,7 @@ async function fetchExistingByKeys(keys: string[]): Promise<Map<string, Existing
 
 async function main() {
   const startedAt = new Date();
+  const migrationLock = await acquireMigrationSeedLock(pgPool);
   await ensureStagingSchema();
   await ensureRawLedgerTable();
   await ensureIdMap();
@@ -205,6 +216,8 @@ async function main() {
   const detail: Record<string, unknown> = {};
   const rejects = new RejectLog();
   const summary = emptySummary();
+  const financialSource = await loadFinancialSourceIndex();
+  const approvedLinks = await authorizeFinancialSyncLinks("ar");
 
   detail.staged = await stagedRawLedgerCount();
   const byStatus: Record<string, number> = {};
@@ -341,7 +354,7 @@ async function main() {
 
     // ---- per-page participant + reference resolution maps ----
     const participantNids = staged.map((r) => r.participant).filter((n): n is number => n != null);
-    const resolveEntity = await buildEntityResolver(participantNids);
+    const resolveEntity = await buildEntityResolver(participantNids, financialSource);
 
     const refNids = [...new Set(staged.map((r) => r.reference).filter((n): n is number => n != null))];
     const refMaps = new Map<string, Map<number, { s2Id: string; stub: boolean }>>();
@@ -371,9 +384,8 @@ async function main() {
 
     // ---- batched existing-row fetch — only rows that may need storage work
     // (everything except the unchanged fast path) ----
-    const keysNeedingRow = staged
-      .filter((r) => dispositions.get(r.ledgerId) !== "unchanged")
-      .map((r) => `ar-${r.ledgerId}`);
+    // Source hashes cannot prove related mappings or destination ownership.
+    const keysNeedingRow = staged.map((r) => `ar-${r.ledgerId}`);
     const existingRows = await fetchExistingByKeys(keysNeedingRow);
 
     // page-local mapping inserts, bulk-flushed at page end
@@ -429,7 +441,23 @@ async function main() {
     if (ref) refTypeCounts[ref.referenceType] = (refTypeCounts[ref.referenceType] ?? 0) + 1;
 
     const chargePluginKey = `ar-${id}`;
-    const disposition = dispositions.get(id)!;
+    const existingTarget = existingRows.get(chargePluginKey);
+    if (existingTarget) {
+      const provenance = existingTarget.data as Record<string, unknown> | null;
+      if (provenance?.source !== "s1-migration" || Number(provenance?.s1LedgerId) !== id) {
+        throw new Error("Ledger provenance conflict; review before sync");
+      }
+    }
+    const identityDrift = !!existingTarget && !sameFinancialCoordinate(entity, accountId, existingTarget);
+    if (existingTarget && identityDrift && !isApprovedFinancialRebind(approvedLinks, existingTarget.id, existingTarget.eaId, entity, accountId)) {
+      // Historical rebinds need deterministic dry-run evidence approval,
+      // even when --force-reconcile or a version bump selected the row.
+      if (!DRY_RUN) throw new Error("Historical financial identity drift: review repair-financial-links dry run before wet sync");
+      rejects.add("historical_identity_repair_required", { ledgerId: id }, id);
+      continue;
+    }
+    const disposition = identityDrift || !existingTarget && dispositions.get(id) === "unchanged"
+      ? "changed" : dispositions.get(id)!;
     const mapping = mappings.get(id);
 
     // Track expectation regardless of path — verify compares the DB's
@@ -459,8 +487,9 @@ async function main() {
       let eaId = eaCache.get(eaKey);
       if (!eaId) {
         const ea = await storage.ledger.ea.getOrCreate(entity.entityType, entity.entityId, accountId);
+        if (!ea.id || !sameFinancialCoordinate(entity, accountId, ea)) throw new Error("Canonical EA disagrees");
         eaId = ea.id;
-        eaCache.set(eaKey, eaId);
+        eaCache.set(eaKey, ea.id);
       }
       const data: Record<string, unknown> = { source: "s1-migration", s1LedgerId: id };
       if (r.key) data.s1Key = r.key;
@@ -649,6 +678,11 @@ async function main() {
     }
   }
   detail.perAccount = perAccount;
+  if (!DRY_RUN) {
+    const identity = await inventoryFinancialLinks("current-local-staging", { streams: ["ar"], retainRebinds: false });
+    detail.financialIdentity = publicFinancialInventory(identity);
+    verifyFailures += identity.blocked + identity.mismatched + (identity.counts.attribution_mismatches ?? 0);
+  }
 
   // ---- advance fingerprints for updated rows — only when verify passed.
   // The aggregate verify cannot attribute a failure to specific rows, so on
@@ -678,6 +712,7 @@ async function main() {
   if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
   await drainStorageSideEffects();
+  if (migrationLock) { await migrationLock.query("SELECT pg_advisory_unlock(727001)"); migrationLock.release(); }
   await pgPool.end();
   const code = loaderExitCode(result);
   if (code !== 0 && result.rejectGate.status === "fail") {

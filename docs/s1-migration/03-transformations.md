@@ -1,5 +1,15 @@
 # Transformation Logic (per NEEDS-TRANSFORM entry)
 
+## Financial identity clarification
+
+T18 participants and T19 payers independently resolve CONTACT NIDs through
+the proven staged worker→contact relationship and exact destination worker
+mapping. Transaction references retain their separate payment/hour crosswalks.
+Historical reassignment requires the reviewed, link-only repair described in
+[financial worker links](financial-worker-links.md); neither a logic-version
+bump nor force-reconcile authorizes it.
+
+
 Each T# is referenced from [02-mapping.md](02-mapping.md). Global rules first, then the numbered transforms.
 
 ## Global rules

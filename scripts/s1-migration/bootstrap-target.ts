@@ -92,7 +92,7 @@ function runStep(label: string, script: string) {
 
 async function main() {
   console.log(`[bootstrap-target] target: ${describeDatabaseTarget(resolveDatabaseUrl())}`);
-  setEnvironmentVariable("ALLOW_EMPTY_DB_BOOTSTRAP", "1");
+  setEnvironmentVariable("ALLOW_EMPTY_DB_BOOTSTRAP", "1", "environment");
 
   // Imports AFTER env setup; these mirror server/app-init.ts boot order.
   const { ensureEmptyDatabaseBootstrap } = await import("../../server/services/empty-db-bootstrap");
@@ -293,7 +293,7 @@ async function main() {
 
   // --- 4/5. Components + seeds (child processes: fresh caches per step) ---
   const base = path.dirname(new URL(import.meta.url).pathname);
-    setEnvironmentVariable("S1_BOOTSTRAP_LOCK_HELD", "1");
+    setEnvironmentVariable("S1_BOOTSTRAP_LOCK_HELD", "1", "environment");
   try {
     const pauseBeforeChildrenMs = Number(getEnvironmentVariable("S1_BOOTSTRAP_TEST_PAUSE_BEFORE_CHILDREN_MS") ?? "0");
     if (Number.isFinite(pauseBeforeChildrenMs) && pauseBeforeChildrenMs > 0) {

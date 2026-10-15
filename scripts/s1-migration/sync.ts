@@ -417,6 +417,13 @@ async function main() {
       }
       if (step.extraArgs?.length) args.push(...step.extraArgs);
       if (pol.extraArgs?.length) args.push(...pol.extraArgs);
+      // Explicit per-stream operator review; never a profile default.
+      const financialApproval = step.id === "payments" ? argValue("--approve-payment-links")
+        : step.id === "ledger" ? argValue("--approve-ledger-links") : undefined;
+      if (financialApproval) {
+        args.push("--approve-financial-links", financialApproval,
+          "--financial-links-checkpoint", argValue("--financial-links-checkpoint") ?? "");
+      }
 
       console.log(`\n[sync] ── ${step.id} (${step.script}${args.length ? " " + args.join(" ") : ""})`);
       const run = runChild(step.script, args, path.join(tmpDir, `${step.id}.json`));

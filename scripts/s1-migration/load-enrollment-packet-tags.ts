@@ -450,6 +450,7 @@ async function main() {
               } else {
                 try {
                   const row = await createPacketComm(contactId, date, nid, matchedTid);
+                  if (!row) throw new Error("Migration comm creation returned no row");
                   targetCommId = row.id;
                   createdThisRun.add(row.id);
                 } catch {
@@ -457,6 +458,10 @@ async function main() {
                   rejects.add("create_failed", { nid }, nid);
                   continue;
                 }
+              }
+              if (!targetCommId) {
+                rejects.add("create_failed", { nid }, nid);
+                continue;
               }
               commsCreated++;
               provenanceByContact.set(contactId, targetCommId);
@@ -587,6 +592,7 @@ async function main() {
 
       try {
         const row = await createPacketComm(contactId, commDate, nid, matchedTid);
+        if (!row) throw new Error("Migration comm creation returned no row");
         await putMapping(ID_MAP_ENTITY, nid, row.id, {
           stub: false,
           loader: LOADER,

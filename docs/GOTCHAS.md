@@ -1,5 +1,15 @@
 # Operational gotchas
 
+## Migrated financial identity is not the raw contact mapping
+
+S1 intentionally uses a worker's contact NID as financial payer/participant.
+The exact staged worker NID and its worker mapping must prove the destination
+identity; one destination worker sharing a contact is not proof. Never reparent
+a shared EA or equate payment payer with allocation beneficiary. Fingerprint
+matches do not prove identity dependencies stayed unchanged. Existing wrong
+links require the separately approved, dry-run-first repair:
+[operator contract](s1-migration/financial-worker-links.md).
+
 Hard-won traps that cost real debugging time. Migration-loader items come from
 the 2026-08 real-data rehearsal (ECS one-off tasks → `migration-rehearsal-2026-08-06`).
 Authoritative procedure: [`scripts/s1-migration/RUNBOOK.md`](../scripts/s1-migration/RUNBOOK.md);

@@ -10,6 +10,8 @@ import { storage } from "../../../server/storage/database";
 import { MIGRATION_SYSTEM_TIME_ZONE } from "./timezone-pin";
 import { getMappings, putMapping } from "./idmap";
 import { loadStaged, type StagedNode } from "./loader-utils";
+import { resolveFinancialPage, type FinancialSourceIndex } from "./financial-identity";
+import type { FinancialEntity } from "./financial-identity-plan";
 
 // ---------------------------------------------------------------------------
 // Multi-value entityreference extraction (delta order preserved)
@@ -229,38 +231,21 @@ export async function resolveBenefitNidMap(loader: string, dryRun: boolean): Pro
 // T18/T19 financial-entity resolution (ledger participants, payment payers)
 // ---------------------------------------------------------------------------
 
-export interface ResolvedEntity {
-  entityType: "worker" | "contact" | "employer";
-  entityId: string;
-  via: "worker" | "shell-worker" | "contact" | "employer";
-}
+export type ResolvedEntity = FinancialEntity;
 
 /**
- * Build a nid → ledger-entity resolver over the id_map. Priority:
- *   worker → shell-worker (relationship alt-contact shells, keyed by the
- *   CONTACT nid, resolve as workers) → contact → employer.
- * Contact-typed EAs are legal but unusual — callers count them for review.
+ * Prove the exact staged worker → mapped worker → mapped contact chain.
+ * Conflicts never fall back to a contact. Transaction references use their
+ * separate crosswalk and must not pass through this resolver.
  */
 export async function buildEntityResolver(
   nids: Iterable<number>,
+  source: FinancialSourceIndex,
 ): Promise<(nid: number) => ResolvedEntity | null> {
-  const ids = [...new Set(nids)];
-  const [workers, shells, contacts, employers] = await Promise.all([
-    getMappings("worker", ids),
-    getMappings("shell-worker", ids),
-    getMappings("contact", ids),
-    getMappings("employer", ids),
-  ]);
+  const { decisions } = await resolveFinancialPage(nids, source);
   return (nid) => {
-    const w = workers.get(nid);
-    if (w) return { entityType: "worker", entityId: w.s2Id, via: "worker" };
-    const sw = shells.get(nid);
-    if (sw) return { entityType: "worker", entityId: sw.s2Id, via: "shell-worker" };
-    const c = contacts.get(nid);
-    if (c) return { entityType: "contact", entityId: c.s2Id, via: "contact" };
-    const e = employers.get(nid);
-    if (e) return { entityType: "employer", entityId: e.s2Id, via: "employer" };
-    return null;
+    const decision = decisions.get(nid);
+    return decision?.ok ? decision.entity : null;
   };
 }
 

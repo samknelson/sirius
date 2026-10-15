@@ -1,5 +1,14 @@
 # S1 → S2 Mapping Table
 
+## Financial identity correction
+
+Financial participants and payment payers use the worker's CONTACT NID in S1.
+Resolve the explicit staged contact→worker relationship through the exact
+worker mapping and destination contact identity, not destination cardinality.
+See [financial worker links](financial-worker-links.md) for the authoritative
+contract, conflict policy, read-only inventory and separately approved repair.
+
+
 One row per S1 field (and per `sirius_*` / core-table column group), grouped by the S1 bundle it serves. Destination is a concrete S2 `table.column` wherever one exists. Classes: **direct**, **NEEDS-TRANSFORM (T#)** (transform spelled out in [03-transformations.md](03-transformations.md)), **AMBIGUOUS-SOURCE (Q#/N#)** / **masked (Q#)** (see [05-open-questions.md](05-open-questions.md)), **NO-S2-EQUIVALENT**, **DROP**.
 
 > **Revised per [06-strategy-revision.md](06-strategy-revision.md):** the source is MariaDB 10.6.25; column types now come from `profile/columns.tsv` (see regenerated [01-field-inventory.md](01-field-inventory.md)), and the bundle census is definitive. Destination decisions below mostly survive; the grievance section is descoped (§9a) and four previously-invisible bundles are added (§5d, §13).
