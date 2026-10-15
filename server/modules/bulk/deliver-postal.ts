@@ -12,6 +12,7 @@ import type { TokenRootSeed } from "../../plugins/tokens/types";
 import { BULK_POSTAL_MERGE_ROOT_NAMES } from "./token-roots";
 import { parseTokenChain } from "@shared/tokens";
 import { mediumField, tokenCleanerFor } from "../../delivery/shape";
+import { selectActivePostalAddress } from "./postal-address";
 
 // By key, never by position — see `deliver-email.ts`. Bulk postal
 // authors only the description: the printed content of the letter comes
@@ -21,9 +22,7 @@ const DESCRIPTION_SPEC = mediumField("postal", "description");
 
 export async function resolvePostalAddress(storage: IStorage, contactId: string): Promise<PostalAddress | null> {
   const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
-  const primary = addresses.find(a => a.isPrimary && a.isActive);
-  const active = addresses.find(a => a.isActive);
-  const addr = primary || active;
+  const addr = selectActivePostalAddress(addresses);
   if (!addr) return null;
   const contact = await storage.contacts.getContact(contactId);
   return {

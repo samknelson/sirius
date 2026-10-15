@@ -9,6 +9,8 @@ export const validate = createNoopValidator<InsertBulkMessage, BulkMessage>();
 export interface BulkMessageStorage {
   getAll(filters?: { status?: string; medium?: string; name?: string }): Promise<BulkMessage[]>;
   getById(id: string): Promise<BulkMessage | undefined>;
+  /** Call inside a transaction to serialize completion and repeat downloads. */
+  getByIdForUpdate(id: string): Promise<BulkMessage | undefined>;
   create(data: InsertBulkMessage): Promise<BulkMessage>;
   update(id: string, data: Partial<InsertBulkMessage>): Promise<BulkMessage | undefined>;
   delete(id: string): Promise<boolean>;
@@ -16,6 +18,11 @@ export interface BulkMessageStorage {
 
 export function createBulkMessageStorage(): BulkMessageStorage {
   const storage: BulkMessageStorage = {
+    async getByIdForUpdate(id) {
+      const [row] = await getClient().select().from(bulkMessages)
+        .where(eq(bulkMessages.id, id)).for("update");
+      return row;
+    },
     async getAll(filters?: { status?: string; medium?: string; name?: string }): Promise<BulkMessage[]> {
       const client = getClient();
       const conditions: SQL[] = [];

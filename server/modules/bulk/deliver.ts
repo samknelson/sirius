@@ -136,9 +136,16 @@ export async function deliverToContact(
     return { success: false, error: "Bulk message not found", errorCode: "NOT_FOUND" };
   }
 
-  const tagIds = await resolveTagIdsForMedium(storage, bulkMessage.data, medium);
   const bulkData = (bulkMessage.data ?? {}) as Record<string, unknown>;
   const offline = bulkData.offline === true;
+  if (offline && medium === "postal") {
+    return {
+      success: false,
+      error: "Offline postal delivery uses Download mail CSV on the Deliver tab.",
+      errorCode: "MAIL_CSV_REQUIRED",
+    };
+  }
+  const tagIds = await resolveTagIdsForMedium(storage, bulkMessage.data, medium);
   const seeds = bulkSendSeeds({ id: participantId, messageId, contactId, medium });
 
   switch (medium) {
@@ -179,6 +186,11 @@ export async function deliverToParticipant(
     userId,
     participantId,
   });
+
+  // An offline mailing export is not a failed individual send attempt.
+  if (result.errorCode === "MAIL_CSV_REQUIRED") {
+    return { ...result, participantId, alreadySent: false };
+  }
 
   if (result.commId) {
     await rawParticipantStorage.update(participantId, {

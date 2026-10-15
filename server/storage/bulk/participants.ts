@@ -1,8 +1,8 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, comm } from "../../../shared/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { contacts, workers, comm, contactPostal, type ContactPostal } from "../../../shared/schema";
+import { eq, and, ne, desc, notInArray } from "drizzle-orm";
 import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
@@ -32,9 +32,14 @@ export interface BulkParticipantDeliveryStatRow {
 }
 
 export interface BulkParticipantStorage {
+  getMailingContacts(messageId: string): Promise<Array<{
+    contactId: string;
+    name: string | null;
+    address: ContactPostal | null;
+  }>>;
   getById(id: string): Promise<BulkParticipant | undefined>;
   getByMessageId(messageId: string): Promise<BulkParticipant[]>;
-  getPendingByMessageId(messageId: string, limit: number): Promise<BulkParticipant[]>;
+  getPendingByMessageId(messageId: string, limit: number, excludedMedia?: string[]): Promise<BulkParticipant[]>;
   listForMessageWithRelations(messageId: string): Promise<BulkParticipantWithRelations[]>;
   getDeliveryStats(messageId: string): Promise<BulkParticipantDeliveryStatRow[]>;
   create(data: InsertBulkParticipant): Promise<BulkParticipant>;
@@ -48,6 +53,20 @@ export interface BulkParticipantStorage {
 
 export function createBulkParticipantStorage(): BulkParticipantStorage {
   const storage: BulkParticipantStorage = {
+    async getMailingContacts(messageId) {
+      return getClient().select({
+        contactId: bulkParticipants.contactId,
+        name: contacts.displayName,
+        address: contactPostal,
+      }).from(bulkParticipants)
+        .innerJoin(contacts, eq(contacts.id, bulkParticipants.contactId))
+        .leftJoin(contactPostal, eq(contactPostal.contactId, contacts.id))
+        .where(and(
+          eq(bulkParticipants.messageId, messageId),
+          eq(bulkParticipants.medium, "postal"),
+        ))
+        .orderBy(contacts.displayName, contacts.id, desc(contactPostal.isPrimary));
+    },
     async createIfMissing(data: InsertBulkParticipant): Promise<BulkParticipant | undefined> {
       const [row] = await getClient()
         .insert(bulkParticipants)
@@ -76,7 +95,7 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
         .where(eq(bulkParticipants.messageId, messageId));
     },
 
-    async getPendingByMessageId(messageId: string, limit: number): Promise<BulkParticipant[]> {
+    async getPendingByMessageId(messageId: string, limit: number, excludedMedia: string[] = []): Promise<BulkParticipant[]> {
       const client = getClient();
       return await client
         .select()
@@ -84,6 +103,7 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
         .where(and(
           eq(bulkParticipants.messageId, messageId),
           eq(bulkParticipants.status, "pending"),
+          excludedMedia.length ? notInArray(bulkParticipants.medium, excludedMedia) : undefined,
         ))
         .limit(limit);
     },

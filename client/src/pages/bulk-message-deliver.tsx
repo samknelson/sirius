@@ -31,6 +31,7 @@ import {
   Users,
   RotateCcw,
   Pause,
+  Download,
   Mail,
   MessageSquare,
   MapPin,
@@ -249,6 +250,12 @@ function BulkMessageDeliverContent() {
   const queryClient = useQueryClient();
   const [sendDate, setSendDate] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [mailCsvLoading, setMailCsvLoading] = useState(false);
+  const isOfflinePostal =
+    (bulkMessage.data as { offline?: boolean } | null)?.offline === true &&
+    (Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium]).includes("postal");
+  const hasOtherMedia = bulkMessage.medium.some(medium => medium !== "postal");
+  const showQueueControls = !isOfflinePostal || hasOtherMedia;
 
   const { data: coverage } = useQuery<TokenCoverageResponse>({
     queryKey: ["/api/bulk-messages", bulkMessage.id, "token-coverage"],
@@ -304,6 +311,79 @@ function BulkMessageDeliverContent() {
     statusMutation.mutate({ status: "draft", sendDate: null });
   };
 
+  const handleDownloadMailCsv = async () => {
+    setMailCsvLoading(true);
+    toast({ title: "Preparing mail CSV", description: "Collecting postal recipient details…" });
+    try {
+      // This endpoint returns a CSV attachment. apiRequest parses response bodies
+      // as JSON, so use the same authenticated request pattern while preserving
+      // the raw response needed to download the attachment.
+      const response = await fetch(`/api/bulk-messages/${bulkMessage.id}/mail-csv`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        let message = response.statusText || "The mail CSV could not be prepared.";
+        try {
+          const errorBody = await response.json();
+          message = errorBody.message || errorBody.error || message;
+        } catch {
+          // Keep the status message for non-JSON error responses.
+        }
+        throw new Error(message);
+      }
+      const contentType = response.headers.get("Content-Type") || "";
+      if (!contentType.toLowerCase().includes("text/csv")) {
+        let message = "The server did not return a CSV file.";
+        try {
+          const refusal = await response.json();
+          message = refusal.message || refusal.error || message;
+        } catch {
+          // Keep the explicit content-type error for non-JSON responses.
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const missingAddressCount = Number(response.headers.get("X-Missing-Address-Count") || 0);
+      const recipientCount = Number(response.headers.get("X-Recipient-Count") || 0);
+
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      const disposition = response.headers.get("Content-Disposition");
+      const serverFilename = disposition?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)?.[1]
+        ?.replace(/^"|"$/g, "");
+      anchor.download = (serverFilename || `${bulkMessage.name || "bulk-message"}-mail.csv`)
+        .replace(/[^a-z0-9._-]+/gi, "-")
+        .replace(/^-+|-+$/g, "");
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "delivery-stats"] });
+      toast({
+        title: "Mailing list downloaded",
+        description: missingAddressCount > 0
+          ? `${recipientCount || "Postal"} postal recipients exported. ${missingAddressCount} missing address${missingAddressCount === 1 ? "" : "es"} will be blank in the CSV.`
+          : `${recipientCount || "Postal"} postal recipients exported.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Could not download mailing list",
+        description: getApiErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    } finally {
+      // The server may already have completed the message if the browser failed
+      // while receiving/saving its response. Always refresh the authoritative state.
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id] });
+      setMailCsvLoading(false);
+    }
+  };
+
   const scheduledDate = bulkMessage.sendDate
     ? new Date(bulkMessage.sendDate).toLocaleDateString()
     : undefined;
@@ -325,10 +405,36 @@ function BulkMessageDeliverContent() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {bulkMessage.status === "draft" && (
+          {isOfflinePostal && (
+            <div className="space-y-4" data-testid="section-offline-postal">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Downloading the mail CSV marks this whole message as sent; it is not proof that mail was physically sent.
+                  The file contains postal recipients only. Recipients without an address are included with blank address fields.
+                  {hasOtherMedia && " Complete delivery for the other media before downloading; this download completes the whole message."}
+                </AlertDescription>
+              </Alert>
+              <Button
+                onClick={handleDownloadMailCsv}
+                disabled={mailCsvLoading}
+                data-testid="button-download-mail-csv"
+              >
+                {mailCsvLoading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {mailCsvLoading ? "Preparing CSV…" : "Download mail CSV"}
+              </Button>
+            </div>
+          )}
+          {showQueueControls && bulkMessage.status === "draft" && (
             <div className="space-y-4" data-testid="section-draft">
               <p className="text-sm text-muted-foreground">
-                Queue this message for delivery. You can optionally set a future send date.
+                {isOfflinePostal
+                  ? "Queue the other media for delivery. Postal recipients are handled only by the CSV download above."
+                  : "Queue this message for delivery. You can optionally set a future send date."}
               </p>
               <div className="flex items-end gap-4">
                 <div className="space-y-2">
@@ -362,7 +468,7 @@ function BulkMessageDeliverContent() {
             </div>
           )}
 
-          {bulkMessage.status === "queued" && (
+          {showQueueControls && bulkMessage.status === "queued" && (
             <div className="space-y-4" data-testid="section-queued">
               {scheduledDate && (
                 <div className="flex items-center gap-2 text-sm">
@@ -406,7 +512,7 @@ function BulkMessageDeliverContent() {
             </div>
           )}
 
-          {bulkMessage.status === "sent" && (
+          {showQueueControls && bulkMessage.status === "sent" && (
             <div className="space-y-4" data-testid="section-sent">
               <div className="flex items-center gap-2 text-sm">
                 <CheckCircle className="h-4 w-4 text-green-500" />
@@ -432,7 +538,7 @@ function BulkMessageDeliverContent() {
 
       <TokenCoverageCard messageId={bulkMessage.id} />
 
-      <DeliveryStatsCard messageId={bulkMessage.id} />
+      {showQueueControls && <DeliveryStatsCard messageId={bulkMessage.id} />}
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent data-testid="dialog-confirm-missing-tokens">

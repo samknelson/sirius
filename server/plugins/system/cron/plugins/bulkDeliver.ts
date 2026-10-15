@@ -110,7 +110,8 @@ registerCronPlugin({
 
       for (const msg of eligibleMessages) {
         const totalBatch = msg.medium.reduce((sum, m) => sum + getBatchSizeForMedium(settings, m), 0);
-        const pending = await rawParticipantStorage.getPendingByMessageId(msg.id, totalBatch);
+        const excludedMedia = (msg.data as { offline?: boolean } | null)?.offline === true ? ["postal"] : [];
+        const pending = await rawParticipantStorage.getPendingByMessageId(msg.id, totalBatch, excludedMedia);
         totalPending += pending.length;
         messageSummaries.push({
           id: msg.id,
@@ -140,7 +141,8 @@ registerCronPlugin({
       const mediumCounts: Record<string, number> = {};
 
       const totalBatch = msg.medium.reduce((sum, m) => sum + getBatchSizeForMedium(settings, m), 0);
-      const pendingParticipants = await rawParticipantStorage.getPendingByMessageId(msg.id, totalBatch);
+      const excludedMedia = (msg.data as { offline?: boolean } | null)?.offline === true ? ["postal"] : [];
+      const pendingParticipants = await rawParticipantStorage.getPendingByMessageId(msg.id, totalBatch, excludedMedia);
 
       for (const participant of pendingParticipants) {
         const participantMedium = participant.medium;

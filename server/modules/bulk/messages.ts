@@ -30,6 +30,7 @@ import {
 import "./token-roots";
 import { tokenContextRootNames } from "../../plugins/tokens/contexts";
 import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
+import { downloadMailCsv, MailCsvError } from "./mail-csv";
 
 /**
  * How many of a message's sends the studio previews against.
@@ -83,6 +84,25 @@ export function registerBulkMessageRoutes(
   storage: IStorage
 ) {
   const rawParticipantStorage = createBulkParticipantStorage();
+
+  app.post("/api/bulk-messages/:id/mail-csv", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      const output = await downloadMailCsv(storage, req.params.id);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      // Do not interpolate user-controlled message names into headers.
+      res.setHeader("Content-Disposition", 'attachment; filename="bulk-mail.csv"');
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Recipient-Count", String(output.recipientCount));
+      res.setHeader("X-Missing-Address-Count", String(output.missingAddressCount));
+      res.send(output.content);
+    } catch (error) {
+      const status = error instanceof MailCsvError ? error.status : 500;
+      res.status(status).json({
+        message: error instanceof MailCsvError ? error.message : "Unable to prepare the mailing CSV. Please try again.",
+      });
+    }
+  });
 
   app.get("/api/bulk-messages", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
