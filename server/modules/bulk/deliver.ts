@@ -105,7 +105,7 @@ export async function resolveAddress(
   return resolveAddressForMedium(storage, bulkMessage.medium[0], contactId);
 }
 
-async function resolveTagIdsForMedium(
+export async function resolveTagIdsForMedium(
   storage: IStorage,
   bulkData: unknown,
   medium: string,

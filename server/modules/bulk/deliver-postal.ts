@@ -13,6 +13,7 @@ import { BULK_POSTAL_MERGE_ROOT_NAMES } from "./token-roots";
 import { parseTokenChain } from "@shared/tokens";
 import { mediumField, tokenCleanerFor } from "../../delivery/shape";
 import { selectActivePostalAddress } from "./postal-address";
+import type { BulkMessagesPostal } from "../../../shared/schema/bulk/schema";
 
 // By key, never by position — see `deliver-email.ts`. Bulk postal
 // authors only the description: the printed content of the letter comes
@@ -43,12 +44,22 @@ export async function deliverPostal(
   userId?: string,
   tagIds?: string[],
   offline?: boolean,
+  offlineExport?: {
+    toAddress: PostalAddress;
+    sendKey: string;
+    fallbackDescription: string;
+  },
 ): Promise<DeliverContactResult> {
-  const postalContent = await storage.bulkMessagesPostal.getByBulkId(messageId);
-  if (!postalContent) {
+  const configuredContent = await storage.bulkMessagesPostal.getByBulkId(messageId);
+  if (!configuredContent && !offlineExport) {
     return { success: false, error: "No postal content configured for this message", errorCode: "NO_CONTENT" };
   }
-  const addr = await resolvePostalAddress(storage, contactId);
+  // A mailing-list export doesn't require provider content to have been
+  // authored. Its history still identifies the real bulk message.
+  const postalContent: Partial<BulkMessagesPostal> = configuredContent ?? {
+    description: offlineExport?.fallbackDescription,
+  };
+  const addr = offlineExport?.toAddress ?? await resolvePostalAddress(storage, contactId);
   if (!addr) {
     return { success: false, error: "Contact has no postal address", errorCode: "NO_ADDRESS" };
   }
@@ -63,9 +74,10 @@ export async function deliverPostal(
     country: postalContent.fromCountry || "US",
   } : undefined;
   const ctx = createTokenEvalContext(storage, contactId, { seeds });
-  const renderedDescription = postalContent.description
+  const description = postalContent.description || offlineExport?.fallbackDescription;
+  const renderedDescription = description
     ? (
-        await renderTokens(postalContent.description, ctx, {
+        await renderTokens(description, ctx, {
           strictUnknown: true,
           clean: tokenCleanerFor(DESCRIPTION_SPEC) ?? undefined,
         })
@@ -78,7 +90,7 @@ export async function deliverPostal(
   // list: a Lob template is authored outside this app, so a key that
   // stops being supplied is a hole in a letter nobody can see coming.
   const tokenMerge: Record<string, string> = {};
-  for (const entry of buildTokenPickerEntries(BULK_POSTAL_MERGE_ROOT_NAMES)) {
+  for (const entry of configuredContent ? buildTokenPickerEntries(BULK_POSTAL_MERGE_ROOT_NAMES) : []) {
     const parsed = parseTokenChain(entry.id);
     if (!parsed.ok) continue;
     const result = await evaluateChain(parsed.segments, ctx);
@@ -101,7 +113,8 @@ export async function deliverPostal(
     doubleSided: postalContent.doubleSided || undefined,
     userId,
     tagIds,
-    sendOffline: offline,
+    sendOffline: offlineExport ? true : offline,
+    sendKey: offlineExport?.sendKey,
   });
   const addrStr = [addr.name, addr.addressLine1, addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
   return {

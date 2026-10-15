@@ -88,7 +88,10 @@ export function registerBulkMessageRoutes(
   app.post("/api/bulk-messages/:id/mail-csv", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     try {
-      const output = await downloadMailCsv(storage, req.params.id);
+      const { getEffectiveUser } = await import("../masquerade");
+      const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
+      if (!dbUser?.id) return res.status(401).json({ message: "User not authenticated" });
+      const output = await downloadMailCsv(storage, req.params.id, dbUser.id);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       // Do not interpolate user-controlled message names into headers.
       res.setHeader("Content-Disposition", 'attachment; filename="bulk-mail.csv"');

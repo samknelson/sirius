@@ -6,9 +6,20 @@ const mocks = vi.hoisted(() => ({
   mailingContacts: vi.fn(),
   getByIdForUpdate: vi.fn(),
   update: vi.fn(),
+  participants: vi.fn(),
+  link: vi.fn(),
+  deliverPostal: vi.fn(),
 }));
 vi.mock("../../server/storage/bulk/participants", () => ({
-  createBulkParticipantStorage: () => ({ getMailingContacts: mocks.mailingContacts }),
+  createBulkParticipantStorage: () => ({
+    getMailingContacts: mocks.mailingContacts, getByMessageId: mocks.participants,
+  }),
+}));
+vi.mock("../../server/modules/bulk/deliver-postal", () => ({ deliverPostal: mocks.deliverPostal }));
+vi.mock("../../server/modules/bulk/deliver", () => ({ resolveTagIdsForMedium: async () => ["postal-tag"] }));
+vi.mock("../../server/plugins/tokens/plugins/bulk-participant", () => ({
+  BULK_PARTICIPANT_ROOT_NAME: "bulk_participant",
+  composeBulkParticipantEntity: (participant: unknown) => participant,
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
   runInTransaction: (fn: () => Promise<unknown>) => fn(),
@@ -18,6 +29,7 @@ import { buildMailCsv, downloadMailCsv } from "../../server/modules/bulk/mail-cs
 
 const storage = {
   bulkMessages: { getByIdForUpdate: mocks.getByIdForUpdate, update: mocks.update },
+  bulkParticipants: { update: mocks.link },
 } as unknown as IStorage;
 const address = (overrides: Partial<ContactPostal> = {}) => ({
   isActive: true, isPrimary: false, street: "10 Main St",
@@ -34,6 +46,16 @@ beforeEach(() => {
     { contactId: "one", name: "Full Name", address: address() },
   ]);
   mocks.update.mockResolvedValue({ id: "message", status: "sent" });
+  mocks.participants.mockResolvedValue([{
+    id: "participant", messageId: "message", contactId: "one", medium: "postal", commId: null,
+  }]);
+  mocks.deliverPostal.mockResolvedValue({ success: true, commId: "offline-comm" });
+  mocks.link.mockImplementation(async (id, data) => {
+    mocks.participants.mockResolvedValue([{
+      id, messageId: "message", contactId: "one", medium: "postal", ...data,
+    }]);
+    return { id, ...data };
+  });
 });
 
 describe("offline mailing CSV", () => {
@@ -80,6 +102,55 @@ describe("offline mailing CSV", () => {
     const second = await downloadMailCsv(storage, "message");
     expect(second.csv).toBe(first.csv);
     expect(mocks.update).toHaveBeenCalledTimes(1);
+    expect(mocks.deliverPostal).toHaveBeenCalledTimes(1);
+    expect(mocks.link).toHaveBeenCalledWith("participant", {
+      status: "see_comm", commId: "offline-comm", message: null,
+    });
+  });
+
+  it("repairs missing history on already-sent exports, recording offline mail with actor and tag attribution", async () => {
+    mocks.getByIdForUpdate.mockResolvedValue({
+      name: "Test Mailing", medium: ["postal"], data: { offline: true }, status: "sent",
+    });
+    await downloadMailCsv(storage, "message", "staff-user");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.deliverPostal).toHaveBeenCalledWith(
+      storage, "message", "one", expect.any(Array), "staff-user", ["postal-tag"], true,
+      expect.objectContaining({
+        sendKey: "bulk-postal-export:message",
+        fallbackDescription: "Test Mailing",
+        toAddress: expect.objectContaining({ addressLine1: "10 Main St", zip: "00501" }),
+      }),
+    );
+    expect(mocks.link).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pretend a history write or participant link failure completed the mailing", async () => {
+    mocks.deliverPostal.mockResolvedValueOnce({ success: false, error: "record failed" });
+    await expect(downloadMailCsv(storage, "message")).rejects.toThrow("record offline");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.link).not.toHaveBeenCalled();
+    mocks.link.mockResolvedValueOnce(undefined);
+    await expect(downloadMailCsv(storage, "message")).rejects.toThrow("link offline");
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("preserves existing comm links and other media, but records missing-address postal recipients", async () => {
+    mocks.participants.mockResolvedValue([
+      { id: "existing", contactId: "one", medium: "postal", commId: "previous-comm" },
+      { id: "email", contactId: "one", medium: "email", commId: null },
+      { id: "missing", messageId: "message", contactId: "missing", medium: "postal", commId: null },
+    ]);
+    mocks.mailingContacts.mockResolvedValue([
+      { contactId: "one", name: "Existing", address: address() },
+      { contactId: "missing", name: "No Address", address: null },
+    ]);
+    const result = await downloadMailCsv(storage, "message");
+    expect(result.missingAddressCount).toBe(1);
+    expect(mocks.deliverPostal).toHaveBeenCalledTimes(1);
+    expect(mocks.deliverPostal.mock.calls[0][2]).toBe("missing");
+    expect(mocks.deliverPostal.mock.calls[0][7].toAddress.addressLine1).toBe("");
+    expect(mocks.link.mock.calls[0][0]).toBe("missing");
   });
 
   it("does not mark sent on empty exports or failed preparation", async () => {
