@@ -2,6 +2,7 @@ import type { Help } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
 import { trustProvidersHelp } from "./trust-providers";
+import { adminUserPermissionsHelp } from "./admin-user-permissions";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -21,6 +22,7 @@ export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
   trustProvidersHelp,
+  adminUserPermissionsHelp,
 ];
 
 function toHelp(entry: SystemHelpEntry): HelpWithSource {

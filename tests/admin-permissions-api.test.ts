@@ -36,6 +36,7 @@ beforeAll(async () => {
   mocks.storage.users = createUserStorage();
 
   const app = express();
+  app.use(express.json());
   registerUserRoutes(
     app,
     (_req, _res, next) => next(),
@@ -67,5 +68,36 @@ describe("admin permissions API", () => {
       module: "core",
     });
     expect(permissionRegistry.isRegistryInitialized()).toBe(true);
+  });
+
+  it("accepts a list of permission keys on the existing bulk-assignment route", async () => {
+    const assignBulk = vi.spyOn(mocks.storage.users!, "assignPermissionsToRoleBulk")
+      .mockImplementation(async (roleId, permissionKeys) =>
+        permissionKeys.map((permissionKey) => ({
+          roleId,
+          permissionKey,
+          assignedAt: new Date("2026-10-15T00:00:00.000Z"),
+        })),
+      );
+
+    try {
+      const response = await fetch(`${baseUrl}/api/admin/roles/role-a/permissions/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissionKeys: ["metadata.view", "staff"] }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({
+        message: "2 permission(s) assigned successfully",
+        assignments: [
+          { roleId: "role-a", permissionKey: "metadata.view" },
+          { roleId: "role-a", permissionKey: "staff" },
+        ],
+      });
+      expect(assignBulk).toHaveBeenCalledWith("role-a", ["metadata.view", "staff"]);
+    } finally {
+      assignBulk.mockRestore();
+    }
   });
 });
