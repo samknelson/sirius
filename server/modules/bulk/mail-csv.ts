@@ -3,12 +3,9 @@ import type { IStorage } from "../../storage";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { runInTransaction } from "../../storage/transaction-context";
 import { selectActivePostalAddress } from "./postal-address";
-import { deliverPostal } from "./deliver-postal";
+import { createOfflinePostalExportStorage, type OfflinePostalRecord } from "../../storage/bulk/offline-postal";
+import { prepareOfflinePostalRecord } from "./offline-postal-content";
 import { resolveTagIdsForMedium } from "./deliver";
-import {
-  BULK_PARTICIPANT_ROOT_NAME,
-  composeBulkParticipantEntity,
-} from "../../plugins/tokens/plugins/bulk-participant";
 
 export class MailCsvError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -90,22 +87,17 @@ export async function downloadMailCsv(storage: IStorage, messageId: string, user
     const content = Buffer.from(output.csv, "utf8");
     const contacts = mailingContacts(rows);
     const participants = await participantStorage.getByMessageId(messageId);
-    const tagIds = await resolveTagIdsForMedium(storage, bulk.data, "postal");
-    for (const participant of participants) {
-      if (participant.medium !== "postal" || participant.commId) continue;
-      const contact = contacts.get(participant.contactId);
-      if (!contact) throw new Error("Mailing recipient is no longer available");
-      const address = selectActivePostalAddress(contact.addresses);
-      const street = address?.street.split(/\r\n|\r|\n/) ?? [];
-      const result = await deliverPostal(storage, messageId, participant.contactId, [{
-        name: BULK_PARTICIPANT_ROOT_NAME,
-        entity: composeBulkParticipantEntity(participant),
-      }], userId, tagIds, true, {
-        // Comm uniqueness already includes medium + contact; the message key
-        // remains stable even if a recipient is removed and re-added.
-        sendKey: `bulk-postal-export:${messageId}`,
-        fallbackDescription: bulk.name,
-        toAddress: {
+    const pending = participants.filter(participant => participant.medium === "postal" && !participant.commId);
+    if (pending.length) {
+      const configuredContent = await storage.bulkMessagesPostal.getByBulkId(messageId);
+      const tagIds = await resolveTagIdsForMedium(storage, bulk.data, "postal");
+      const records: OfflinePostalRecord[] = [];
+      for (const participant of pending) {
+        const contact = contacts.get(participant.contactId);
+        if (!contact) throw new Error("Mailing recipient is no longer available");
+        const address = selectActivePostalAddress(contact.addresses);
+        const street = address?.street.split(/\r\n|\r|\n/) ?? [];
+        records.push(await prepareOfflinePostalRecord(storage, participant, contact.name, {
           name: contact.name,
           addressLine1: street[0] ?? "",
           addressLine2: street.slice(1).join("\n") || undefined,
@@ -113,15 +105,9 @@ export async function downloadMailCsv(storage: IStorage, messageId: string, user
           state: address?.state ?? "",
           zip: address?.postalCode ?? "",
           country: address?.country ?? "US",
-        },
-      });
-      // A spent key can return the original comm even if a prior participant
-      // link was lost. Link it rather than creating a duplicate history row.
-      if (!result.commId) throw new Error("Unable to record offline postal communication");
-      const linked = await storage.bulkParticipants.update(participant.id, {
-        commId: result.commId, status: "see_comm", message: null,
-      });
-      if (!linked) throw new Error("Unable to link offline postal communication");
+        }, configuredContent, bulk.name));
+      }
+      await createOfflinePostalExportStorage().record(messageId, records, tagIds, userId);
     }
     if (bulk.status !== "sent") {
       const updated = await storage.bulkMessages.update(messageId, { status: "sent", sendDate: null });

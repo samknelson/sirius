@@ -468,7 +468,7 @@ interface ResolvedHooks {
  * (masqueraded) actor; the real session user is recorded here under
  * `masqueradedBy` so the audit trail keeps full provenance.
  */
-function withMasqueradeMeta(
+export function withMasqueradeMeta(
   details: Record<string, any>,
   context: ReturnType<typeof getRequestContext>,
 ): Record<string, any> {
