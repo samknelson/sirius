@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { EffectiveEmailPreview } from "@/components/comm/EffectiveEmailPreview";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -1094,14 +1095,7 @@ export function TemplateStudio({
               {subject?.rendered || <span className="italic text-muted-foreground">(no subject — email would not send)</span>}
             </p>
           </div>
-          <iframe
-            title="Email body preview"
-            sandbox=""
-            referrerPolicy="no-referrer"
-            className="w-full min-h-96 border-0 bg-white"
-            data-testid="studio-preview-email-body"
-            srcDoc={`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>body { font: 14px Arial, sans-serif; padding: 12px; overflow-wrap: anywhere; } img { max-width: 100%; } table { border-collapse: collapse; }</style></head><body>${body?.rendered || "<p><em>(empty body)</em></p>"}</body></html>`}
-          />
+          <EffectiveEmailPreview bodyHtml={body?.rendered ?? ""} testId="studio-preview-email-body" />
           <div className="px-4 pb-3 space-y-1">
             <FieldIssues field={subject} />
             <FieldIssues field={body} />

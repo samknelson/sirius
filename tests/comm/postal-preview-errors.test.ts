@@ -3,6 +3,9 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ render: vi.fn(), log: vi.fn() }));
+vi.mock("../../server/services/comm/message-defaults", () => ({
+  getPostalDefaults: async () => ({ letterheadHtml: "", footerHtml: "", showPageCount: false }),
+}));
 vi.mock("../../server/services/comm/letter-pdf", () => ({ renderLetterPdf: mocks.render }));
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: async () => ({ dbUser: { id: "staff" } }) }));
 vi.mock("../../server/flood/service", () => ({
@@ -57,6 +60,8 @@ describe("safe actionable postal preview failures", () => {
     expect(response.headers.get("content-type")).toContain("application/pdf");
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.text()).toBe("%PDF-test");
-    expect(mocks.render).toHaveBeenCalledWith("<p>private-letter-canary</p>", { previewGuides: true });
+    expect(mocks.render).toHaveBeenCalledWith("<p>private-letter-canary</p>", {
+      previewGuides: true, defaults: { letterheadHtml: "", footerHtml: "", showPageCount: false },
+    });
   });
 });

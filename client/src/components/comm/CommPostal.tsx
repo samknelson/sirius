@@ -380,7 +380,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
     return {
       type: "success" as const,
       title: "Ready to Send",
-      message: "This address is verified and can receive postal mail.",
+      message: "This address is verified and can receive postal mail. App-composed letters use site-wide branding at delivery; Lob templates are unchanged.",
     };
   };
 

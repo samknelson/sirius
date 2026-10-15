@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useEffect } from "react";
+import { MessageDefaultsSettings } from "@/components/comm/MessageDefaultsSettings";
 
 interface PostalProviderInfo {
   id: string;
@@ -272,6 +273,8 @@ export default function PostalConfigPage() {
           Manage your postal provider for sending letters and verifying addresses
         </p>
       </div>
+
+      <MessageDefaultsSettings channel="postal" />
 
       <Card>
         <CardHeader>

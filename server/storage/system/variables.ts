@@ -24,6 +24,7 @@ export interface VariableStorage {
   getByName(name: string): Promise<Variable | undefined>;
   getByNamePrefix(prefix: string): Promise<Variable[]>;
   create(variable: InsertVariable): Promise<Variable>;
+  setByName(name: string, value: unknown): Promise<Variable>;
   update(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByNamePrefix(prefix: string): Promise<number>;
@@ -31,6 +32,11 @@ export interface VariableStorage {
 
 export function createVariableStorage(): VariableStorage {
   return {
+    async setByName(name: string, value: unknown): Promise<Variable> {
+      const [row] = await getClient().insert(variables).values({ name, value })
+        .onConflictDoUpdate({ target: variables.name, set: { value } }).returning();
+      return row;
+    },
     async getAll(): Promise<Variable[]> {
       const client = getClient();
       const allVariables = await client.select().from(variables);
@@ -97,6 +103,7 @@ export const variableLoggingConfig = defineLoggingConfig<VariableStorage>({
   module: 'variables',
   table: 'variables',
   methods: {
+    setByName: { getEntityId: (args) => args[0] },
     create: { getEntityId: (args) => args[0]?.name },
     update: {},
     delete: {},

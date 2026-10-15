@@ -27,6 +27,7 @@ import {
   refuseUnrenderedTokens,
 } from "./ComposeTemplateStudio";
 import type { ComposeTemplateTarget } from "@shared/comm-compose";
+import { EffectiveEmailPreview } from "./EffectiveEmailPreview";
 
 interface EmailOptinResponse {
   exists: boolean;
@@ -384,6 +385,10 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess, compos
         </div>
 
         <CommTagPicker medium="email" value={tagIds} onChange={setTagIds} />
+        <details>
+          <summary className="cursor-pointer text-sm font-medium">Delivery preview</summary>
+          <EffectiveEmailPreview bodyHtml={bodyHtml} />
+        </details>
       </CardContent>
       <CardFooter className="flex justify-end gap-2">
         <Button

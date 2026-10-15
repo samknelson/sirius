@@ -177,6 +177,19 @@ export function registerCommRoutes(
     }
   });
 
+  app.get("/api/comm/:id/postal-preview", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const record = await commStorage.getCommWithDetails(req.params.id);
+      if (!record?.postalDetails?.body) return res.status(404).json({ message: "Recorded letter not found." });
+      const { renderRecordedLetter } = await import("../services/comm/recorded-letter");
+      const pdf = await renderRecordedLetter(record.postalDetails);
+      return res.set("Cache-Control", "no-store").type("application/pdf").send(pdf);
+    } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
+      return res.status(422).json({ message: "Unable to render the recorded letter. Its saved content and layout snapshot have not changed." });
+    }
+  });
+
   app.put("/api/comm/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;

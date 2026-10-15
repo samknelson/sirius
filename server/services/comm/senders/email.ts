@@ -9,6 +9,7 @@ import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import { getEmailDefaults, prepareEmailContent } from "../message-defaults";
 
 export interface SendEmailRequest {
   contactId: string;
@@ -69,11 +70,17 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
   const { contactId, toEmail, toName, subject, fromEmail, fromName, replyTo, userId, tagIds, sendOffline, sendKey } = request;
   // One-off forms can bypass token composition. Apply the same final policy
   // here too, before recording or handing HTML to the transport.
-  const { normalizeTemplateHtml, htmlToPlainText } = await import("@shared/utils/html");
-  const bodyHtml = request.bodyHtml === undefined
-    ? undefined
-    : normalizeTemplateHtml(request.bodyHtml, { preserveTokens: false });
-  const bodyText = bodyHtml === undefined ? request.bodyText : htmlToPlainText(bodyHtml);
+  let defaults;
+  let bodyHtml: string | undefined;
+  let bodyText: string | undefined;
+  try {
+    if (!subject.trim()) throw new Error("A subject is required.");
+    defaults = await getEmailDefaults();
+    ({ html: bodyHtml, text: bodyText } = prepareEmailContent(request, defaults));
+  } catch (error) {
+    if (isMaintenanceModeError(error)) throw error;
+    return { success: false, errorCode: "VALIDATION_ERROR", error: error instanceof Error ? error.message : "Unable to prepare email." };
+  }
 
   if (sendOffline) {
     try {
@@ -98,7 +105,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
           subject,
           bodyText: bodyText || null,
           bodyHtml: bodyHtml || null,
-          data: {},
+          data: { messageDefaults: defaults },
         });
 
         if (tagIds && tagIds.length > 0) {
@@ -182,7 +189,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         subject,
         bodyText: bodyText || null,
         bodyHtml: bodyHtml || null,
-        data: {},
+        data: { messageDefaults: defaults },
       });
 
       if (tagIds && tagIds.length > 0) {

@@ -379,13 +379,16 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
               {comm.postalDetails.body && (
                 <div>
                   <Label className="text-muted-foreground">Letter Body</Label>
-                  <iframe
+                  {(comm.postalDetails.data as Record<string, unknown> | null)?.messageDefaults ? (
+                    <iframe title="Recorded letter PDF preview" src={`/api/comm/${comm.id}/postal-preview`}
+                      className="mt-1 w-full h-[70vh] rounded-md border bg-white" data-testid="iframe-postal-body" />
+                  ) : <iframe
                     title="Letter body preview"
                     sandbox=""
                     srcDoc={comm.postalDetails.body}
                     className="mt-1 w-full h-96 rounded-md border bg-white"
                     data-testid="iframe-postal-body"
-                  />
+                  />}
                 </div>
               )}
               {comm.postalDetails.fromName && (

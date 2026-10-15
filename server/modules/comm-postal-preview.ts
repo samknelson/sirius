@@ -8,6 +8,7 @@ import { logger } from "../logger";
 import { getEffectiveUser } from "./masquerade";
 import { LetterImageError } from "../services/comm/letter-image-error";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
+import { getPostalDefaults } from "../services/comm/message-defaults";
 
 type Middleware = (
   req: Request,
@@ -102,6 +103,7 @@ export function registerCommPostalPreviewRoutes(
         const { renderLetterPdf } = await import("../services/comm/letter-pdf");
         const pdf = await renderLetterPdf(parsed.data.body, {
           previewGuides: true,
+          defaults: await getPostalDefaults(),
         });
 
         res.set({
@@ -120,8 +122,9 @@ export function registerCommPostalPreviewRoutes(
           service: "comm-postal-preview",
           errorType: error instanceof Error ? error.name : typeof error,
         });
-        return res.status(error instanceof LetterImageError ? 422 : 500).json({
-          message: error instanceof LetterImageError ? error.message : "Unable to generate the PDF preview",
+        const layoutError = error instanceof Error && error.name === "LetterLayoutError";
+        return res.status(error instanceof LetterImageError || layoutError ? 422 : 500).json({
+          message: error instanceof LetterImageError || layoutError ? (error as Error).message : "Unable to generate the PDF preview",
         });
       }
     },

@@ -3,6 +3,12 @@ name: Browser fixture lifecycle
 description: Standalone Vite browser tests can mask assertion failures during shutdown; portal animations also affect keyboard focus.
 ---
 
+Keyboard events do not cross an iframe's document boundary.
+
+**Why:** Preview interaction can leave focus inside the child document. Parent-dialog dismissal and child-document keyboard behavior are separate contracts.
+
+**How to apply:** Test parent-owned controls in the parent document rather than assuming a page-level keyboard event reaches them.
+
 Report browser failures before awaiting fixture-server cleanup, and bound cleanup with a referenced timeout.
 
 **Why:** Vite shutdown waited on unfinished transforms after releasing its handles; Node exited with code 13, hiding the original navigation failure. A cold frontend compile also exceeded a short navigation timeout.

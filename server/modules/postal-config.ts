@@ -5,8 +5,10 @@ import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
 import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
+import { registerMessageDefaultsRoutes } from "./message-defaults";
 
 export function registerPostalConfigRoutes(app: Express) {
+  registerMessageDefaultsRoutes(app, "postal");
   app.get(
     "/api/config/postal",
     requireAccess('admin'),

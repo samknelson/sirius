@@ -38,7 +38,7 @@ vi.mock("../../server/storage/comm", () => ({
 }));
 
 vi.mock("../../server/storage", () => ({
-  storage: { commTags: { setTags: vi.fn() } },
+  storage: { commTags: { setTags: vi.fn() }, variables: { getByName: vi.fn(async () => undefined) } },
 }));
 
 vi.mock("../../server/storage/transaction-context", () => ({

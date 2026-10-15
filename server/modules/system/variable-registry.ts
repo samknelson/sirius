@@ -29,6 +29,7 @@ import {
   ONLINE_PAYMENT_AUTHORIZATION_VARIABLE,
   onlinePaymentAuthorizationTextsSchema,
 } from "@shared/ledger/online-payments";
+import { emailMessageDefaultsSchema, postalMessageDefaultsSchema } from "@shared/message-defaults";
 
 /**
  * Unified per-variable registry.
@@ -80,6 +81,8 @@ const terminologyValueSchema = terminologySchema.transform((terms) => {
 });
 
 const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
+  "message_defaults:email": { readTier: "admin", writeTier: "admin", schema: emailMessageDefaultsSchema },
+  "message_defaults:postal": { readTier: "admin", writeTier: "admin", schema: postalMessageDefaultsSchema },
   // Staff-readable, gated by the grievance component (deadline coloring)
   "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
 

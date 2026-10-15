@@ -11,6 +11,8 @@ import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
 import { resolveLobCallbackStatus } from '../callback-handlers/lob';
 import { isRemoteLetterDocument } from '@shared/utils/html/letter-page';
+import { getPostalDefaults } from "../message-defaults";
+import type { PostalMessageDefaults } from "@shared/message-defaults";
 
 export interface SendPostalRequest {
   contactId: string;
@@ -100,11 +102,14 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
    * mailed by hand is the page that would have printed.
    */
   let file = requestedFile;
+  let defaults: PostalMessageDefaults | undefined;
   if (file !== undefined && !isRemoteLetterDocument(file)) {
     try {
       const { prepareLetterHtml } = await import("../letter-pdf");
-      file = await prepareLetterHtml(file);
+      defaults = await getPostalDefaults();
+      file = await prepareLetterHtml(file, defaults.letterheadHtml);
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       return {
         success: false,
         error: error instanceof Error ? error.message : "Invalid letter content",
@@ -122,6 +127,13 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
   if (sendOffline) {
     try {
+      // Offline recording must refuse the same unsafe layouts as delivery.
+      // It stores the effective HTML plus the exact footer/count snapshot.
+      if (file !== undefined && defaults) {
+        await (await import("../letter-pdf")).renderLetterPdf(file, {
+          defaults: { ...defaults, letterheadHtml: "" },
+        });
+      }
       const returnAddress = fromAddress;
       const claimed = await runInTransaction(async () => {
         const comm = await commStorage.createComm({
@@ -158,6 +170,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
           color: color || false,
           doubleSided: doubleSided || false,
           data: {
+            ...(defaults ? { messageDefaults: defaults } : {}),
             ...(templateId ? { templateId } : {}),
             ...(mergeVariables ? { mergeVariables } : {}),
           },
@@ -233,7 +246,9 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         ? undefined
         : isRemoteLetterDocument(file)
           ? await (await import("../remote-letter-pdf")).downloadRemoteLetterPdf(file)
-          : await (await import("../letter-pdf")).renderLetterPdf(file);
+          : await (await import("../letter-pdf")).renderLetterPdf(file, {
+            defaults: defaults ? { ...defaults, letterheadHtml: "" } : undefined,
+          });
     } catch (error) {
       if (isMaintenanceModeError(error)) throw error;
       return {
@@ -279,7 +294,11 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         mailType: mailType || 'usps_first_class',
         color: color || false,
         doubleSided: doubleSided || false,
-        data: {},
+        data: {
+          ...(defaults ? { messageDefaults: defaults } : {}),
+          ...(templateId ? { templateId } : {}),
+          ...(mergeVariables ? { mergeVariables } : {}),
+        },
       });
 
       if (tagIds && tagIds.length > 0) {

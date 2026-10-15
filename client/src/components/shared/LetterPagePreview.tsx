@@ -139,6 +139,8 @@ export function LetterPagePreview({
       </div>
       <p className="text-xs text-muted-foreground" data-testid={`${testId}-note`}>
         This is the actual multi-page PDF produced by the mailing renderer.
+        It includes the current site-wide Postal Letterhead, repeating footer,
+        and page-count setting. Defaults are selected again at delivery.
         Preview-only guides mark the {G.sideMarginIn}" page margins and the
         page-one {G.addressBlock.widthIn}" × {G.addressBlock.heightIn}" area
         reserved for the address. The guides are not printed on mailed letters.

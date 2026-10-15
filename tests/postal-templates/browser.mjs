@@ -106,6 +106,7 @@ function api(url, method, body) {
     return [{ id: "saved-postal", name: "Saved Postal Letter", content }];
   }
   if (method === "GET" && p === "/api/token-studio/graph") return { segments: [], pickerEntries: [], fieldIndex: {} };
+  if (method === "POST" && p === "/api/comm/email/preview") return { html: body.bodyHtml, text: body.bodyHtml };
   if (method === "GET" && p === "/api/token-studio/tree/roots") return { roots: [] };
   if (method === "GET" && ["/api/comm-compose/preview-seeds", "/api/bulk-messages/bulk-fixture/preview-seeds"].includes(p)) return { roots: [] };
   if (method === "POST" && ["/api/template-studio/preview", "/api/comm-compose/render"].includes(p)) {

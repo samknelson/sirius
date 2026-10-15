@@ -189,7 +189,7 @@ function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
         testId="card-email-template"
         fields={EMAIL_FIELDS}
         values={form}
-        footnote="A subject is required — an email without one is not sent. A plain-text version is generated automatically for recipients whose mail client can't display HTML."
+        footnote="A subject is required. The site-wide Email Letterhead is added at delivery, including to the generated plain-text alternative. Queued messages use the defaults in effect when delivered; this saved body stays separate."
         action={
           <TokenStudioButton
             label="Edit in Template Studio"
@@ -296,7 +296,7 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
         testId="card-postal-template"
         fields={POSTAL_FIELDS}
         values={{ bodyHtml: form.bodyHtml, description: form.description }}
-        footnote="Use either a composed letter body or an existing Lob template/file. The standard postal layout and sanitization are applied when the letter is sent."
+        footnote="Use either a composed letter body or an existing Lob template/file. Composed letters receive the current site-wide Postal Letterhead, repeating footer and optional page count at delivery. Lob templates and remote documents are unchanged."
         action={
           <TokenStudioButton
             label="Edit in Template Studio"

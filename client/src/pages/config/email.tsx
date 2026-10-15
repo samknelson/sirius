@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useEffect } from "react";
+import { MessageDefaultsSettings } from "@/components/comm/MessageDefaultsSettings";
 
 interface EmailProviderInfo {
   id: string;
@@ -186,6 +187,8 @@ export default function EmailConfigPage() {
           Manage your email provider for sending messages
         </p>
       </div>
+
+      <MessageDefaultsSettings channel="email" />
 
       <Card>
         <CardHeader>
