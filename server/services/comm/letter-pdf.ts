@@ -13,15 +13,13 @@ import { LetterImageError, letterFailureContext } from "./letter-image-error";
 import { storageLogger } from "../../logger";
 import { isMaintenanceModeError } from "../maintenance-flag";
 import type { PostalMessageDefaults } from "@shared/message-defaults";
+import { LetterLayoutError } from "./letter-layout-error";
+export { LetterLayoutError } from "./letter-layout-error";
 
 // Footer lives above the printer clearance, within a separate reserved band.
 // Body ends at 1.5", footer occupies 0.5"–1.25", page count sits at 0.3".
 export const POSTAL_FOOTER_MAX_HEIGHT_IN = 0.75;
 const EMPTY_DEFAULTS: PostalMessageDefaults = { letterheadHtml: "", footerHtml: "", showPageCount: false };
-
-export class LetterLayoutError extends Error {
-  constructor(message: string) { super(message); this.name = "LetterLayoutError"; }
-}
 
 export const MAX_LETTER_BODY_BYTES = 200_000;
 const renderQueue = new LetterRenderQueue();
@@ -148,17 +146,21 @@ export async function renderLetterPdf(
         decodeFailure === -1 ? "Image decoding timed out." : "Image is not a valid decodable PNG or JPEG.",
         decodeFailure === -1 ? 1 : decodeFailure,
       );
-      const layout = await page.evaluate(() => {
+       // Puppeteer serializes these callbacks into a separate JS realm.
+       // Keep ALL browser callbacks closure-free, including compiler helpers:
+       // assigning a nested function adds esbuild/tsx's out-of-realm __name.
+       // Inline callbacks do not acquire inferred-name helpers.
+       const layout = await page.evaluate(() => {
         const footer = document.body.lastElementChild as HTMLElement;
         const heads = Array.from(document.querySelectorAll<HTMLElement>("#site-postal-letterhead"));
-        const tooWide = (root: HTMLElement) => {
+         const wide = [footer, ...heads].map((root) => {
           const bounds = root.getBoundingClientRect();
           return [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))].some((el) => {
             const box = el.getBoundingClientRect();
             return box.width > 0 && (box.right > bounds.right + 1 || box.left < bounds.left - 1 ||
               el.scrollWidth > el.clientWidth + 1);
           });
-        };
+         });
         // Page breaks and fixed-height clipping in branding would undermine
         // both measurement and first-page-only semantics. Refuse, don't clip.
         const unsafeBranding = [footer, ...heads].some((root) =>
@@ -170,9 +172,9 @@ export async function renderLetterPdf(
           }));
         const result = {
           footerHeight: footer.getBoundingClientRect().height,
-          footerWide: tooWide(footer),
+           footerWide: wide[0],
           headHeight: Math.max(0, ...heads.map((head) => head.getBoundingClientRect().height)),
-          headWide: heads.some(tooWide),
+           headWide: wide.slice(1).some(Boolean),
           unsafeBranding,
           footerHtml: footer.innerHTML,
         };

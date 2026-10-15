@@ -14,6 +14,7 @@ vi.mock("../../server/flood/service", () => ({
 vi.mock("../../server/logger", () => ({ logger: { error: mocks.log, warn: mocks.log } }));
 import { registerCommPostalPreviewRoutes } from "../../server/modules/comm-postal-preview";
 import { LetterImageError } from "../../server/services/comm/letter-image-error";
+import { LetterLayoutError } from "../../server/services/comm/letter-layout-error";
 import { MaintenanceModeError } from "../../server/services/maintenance-flag";
 
 describe("safe actionable postal preview failures", () => {
@@ -42,11 +43,22 @@ describe("safe actionable postal preview failures", () => {
     expect(await response.json()).toEqual({ message: "Could not load letter image 3: SVG external resources are not allowed." });
   });
   it("does not expose unexpected browser errors or private URLs", async () => {
-    mocks.render.mockRejectedValue(new Error("https://user:password@example.com/?signature=private-letter-canary"));
+    mocks.render.mockRejectedValue(Object.assign(
+      new Error("https://user:password@example.com/?signature=private-letter-canary"),
+      { name: "private-letter-canary" },
+    ));
     const response = await preview();
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ message: "Unable to generate the PDF preview" });
     expect(JSON.stringify(mocks.log.mock.calls)).not.toMatch(/password|signature|canary/);
+  });
+  it("shows genuine layout refusals, not errors spoofing their name", async () => {
+    mocks.render.mockRejectedValueOnce(new LetterLayoutError("Reduce the footer height."));
+    const refusal = await preview();
+    expect(refusal.status).toBe(422);
+    expect(await refusal.json()).toEqual({ message: "Reduce the footer height." });
+    mocks.render.mockRejectedValueOnce(Object.assign(new Error("private-letter-canary"), { name: "LetterLayoutError" }));
+    expect(await (await preview()).json()).toEqual({ message: "Unable to generate the PDF preview" });
   });
   it("preserves maintenance refusal rather than masking it as image failure", async () => {
     mocks.render.mockRejectedValue(new MaintenanceModeError("Lob", "download letter images"));

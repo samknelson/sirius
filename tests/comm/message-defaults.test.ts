@@ -23,6 +23,8 @@ vi.mock("../../server/services/comm/letter-pdf", () => ({
 import { getEmailDefaults, getPostalDefaults, prepareEmailContent, validateEmailDefaults, validatePostalDefaults } from "../../server/services/comm/message-defaults";
 import { registerMessageDefaultsRoutes } from "../../server/modules/message-defaults";
 import { renderLetterPdf } from "../../server/services/comm/letter-pdf";
+import { LetterLayoutError } from "../../server/services/comm/letter-layout-error";
+import { LetterImageError } from "../../server/services/comm/letter-image-error";
 import { htmlToPlainText } from "@shared/utils/html";
 import { findSystemHelpsForPath } from "../../server/help/system";
 
@@ -91,6 +93,22 @@ describe("site-wide message defaults", () => {
       defaults: { letterheadHtml: "<p>Postal draft</p>", footerHtml: "<p>Foot</p>", showPageCount: true },
       previewGuides: true,
     });
+    expect(saved.size).toBe(0);
+  });
+
+  it("hides unexpected postal failures but retains controlled layout and image guidance", async () => {
+    for (const error of [
+      new Error("https://private.invalid/?signature=private-html-canary"),
+      Object.assign(new Error("private-html-canary"), { name: "LetterLayoutError" }),
+      new LetterLayoutError("Postal Footer must fit. Reduce its content."),
+      new LetterImageError("invalid", "Image must be PNG or JPEG.", 2),
+    ]) {
+      vi.mocked(renderLetterPdf).mockRejectedValueOnce(error);
+      const result = await call("postal", "POST", {}, "admin", "/preview");
+      const controlled = error instanceof LetterLayoutError || error instanceof LetterImageError;
+      expect(result.status).toBe(controlled ? 422 : 500);
+      expect(await result.json()).toEqual({ message: controlled ? error.message : "Unable to generate the PDF preview" });
+    }
     expect(saved.size).toBe(0);
   });
 

@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { CommEmail } from "@/components/comm/CommEmail";
 import { AuthProvider } from "@/contexts/AuthContext";
 import "@/index.css";
+import LetterTemplateDetailPage from "@/pages/admin/letter-template-detail";
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}><AuthProvider><TooltipProvider>
@@ -19,6 +20,7 @@ createRoot(document.getElementById("root")!).render(
       <Route path="/config/email"><EmailConfigPage /></Route>
       <Route path="/config/postal"><PostalConfigPage /></Route>
       <Route path="/config/helps"><HelpsConfigPage /></Route>
+      <Route path="/admin/letter-templates/:id"><LetterTemplateDetailPage /></Route>
       <Route path="/workers/fixture/comm/send-email"><CommEmail contactId="fixture" email="recipient@example.invalid" contactName="Fixture Recipient" /></Route>
     </main><Toaster />
   </TooltipProvider></AuthProvider></QueryClientProvider>,

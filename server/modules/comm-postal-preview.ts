@@ -6,7 +6,7 @@ import {
 import { checkFlood, recordFloodEvent } from "../flood/service";
 import { logger } from "../logger";
 import { getEffectiveUser } from "./masquerade";
-import { LetterImageError } from "../services/comm/letter-image-error";
+import { letterPreviewFailure } from "../services/comm/letter-preview-error";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 import { getPostalDefaults } from "../services/comm/message-defaults";
 
@@ -120,12 +120,9 @@ export function registerCommPostalPreviewRoutes(
         // details derived from private letter content.
         logger.error("Failed to render postal PDF preview", {
           service: "comm-postal-preview",
-          errorType: error instanceof Error ? error.name : typeof error,
         });
-        const layoutError = error instanceof Error && error.name === "LetterLayoutError";
-        return res.status(error instanceof LetterImageError || layoutError ? 422 : 500).json({
-          message: error instanceof LetterImageError || layoutError ? (error as Error).message : "Unable to generate the PDF preview",
-        });
+         const failure = letterPreviewFailure(error);
+         return res.status(failure.status).json({ message: failure.message });
       }
     },
   );

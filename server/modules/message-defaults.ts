@@ -7,6 +7,7 @@ import {
   validateEmailDefaults, validatePostalDefaults,
 } from "../services/comm/message-defaults";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
+import { letterPreviewFailure } from "../services/comm/letter-preview-error";
 
 /** Only admin settings routes accept overrides. Send-facing previews cannot. */
 export function registerMessageDefaultsRoutes(app: Express, medium: "email" | "postal"): void {
@@ -40,9 +41,14 @@ export function registerMessageDefaultsRoutes(app: Express, medium: "email" | "p
         return res.type("application/pdf").send(pdf);
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(error instanceof z.ZodError ? 400 : 422).json({
-          message: error instanceof Error ? error.message : "Unable to prepare message defaults.",
-        });
+         if (error instanceof z.ZodError) {
+           return res.status(400).json({ message: error.message });
+         }
+         if (preview && medium === "postal") {
+           const failure = letterPreviewFailure(error);
+           return res.status(failure.status).json({ message: failure.message });
+         }
+         res.status(500).json({ message: "Unable to prepare message defaults." });
       }
     });
   }

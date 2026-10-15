@@ -10,7 +10,7 @@
     "check": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p tsconfig.server.json && node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p tsconfig.client.json",
     "test": "vitest run",
     "test:browser:postal-templates": "node tests/postal-templates/browser.mjs",
-    "test:browser:message-defaults": "tsx tests/message-defaults/browser.mts",
+    "test:browser:message-defaults": "node --import tsx --import ./tests/comm/fixtures/postal-runtime-register.mjs tests/message-defaults/browser.mts",
     "test:browser:config-navigation": "node tests/config-navigation/browser.mjs",
     "test:browser:top-navigation": "node tests/top-navigation/browser.mjs",
     "test:watch": "vitest",
