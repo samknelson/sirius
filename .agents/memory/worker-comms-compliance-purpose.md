@@ -26,3 +26,16 @@ only workers who still qualify in the current month.
 **How to apply:** Add explicit historical modes without silently changing old
 definitions. Explain the monthly granularity of the source and keep dashboard,
 report results and bulk-message recipient selection on the same cohort.
+
+Historical matching uses any selected benefit in any one included month, not
+continuous coverage throughout the window. A last-N-month window includes the
+current site-calendar month plus N-1 preceding months; explicit date ranges
+include any overlapping benefit month, with both endpoints inclusive.
+
+**Why:** The approved history-filter scope extends the existing monthly benefit
+population model; it does not claim daily enrollment precision or add a
+communication deadline relative to enrollment.
+
+**How to apply:** Keep the resolved period visible and retain current-month
+behavior for definitions without an explicit history choice. Communication
+sent-date filters remain independent of the benefit-population period.

@@ -3,6 +3,7 @@ import { getClient } from "./transaction-context";
 import { buildWorkerPopulationCondition } from "./workers";
 import { isComponentEnabledSync } from "../services/component-cache";
 import type { ComplianceView, WorkerCommsCounts, WorkerCommsDefinition, WorkerCommsOptions, WorkerCommsReport } from "@shared/worker-comms-compliance";
+import { resolveBenefitPeriod } from "@shared/worker-comms-compliance";
 
 export function qualifyingCommPredicate(definition: WorkerCommsDefinition) {
   // All restrictions refer to ONE communication, not separate per-condition EXISTS.
@@ -14,7 +15,7 @@ export function qualifyingCommPredicate(definition: WorkerCommsDefinition) {
     ${definition.sentThrough ? sql`AND cm.sent < (${definition.sentThrough}::date + INTERVAL '1 day')` : sql``}`;
 }
 
-export function compliancePopulationCte(definition: WorkerCommsDefinition) {
+export function compliancePopulationCte(definition: WorkerCommsDefinition, referenceMonth = currentBenefitMonth()) {
   const p = definition.population;
   // Refuse a saved restriction whose component is now unavailable: never broaden.
   for (const [component, selected] of [
@@ -26,7 +27,7 @@ export function compliancePopulationCte(definition: WorkerCommsDefinition) {
       throw Object.assign(new Error(`This definition requires the ${component} component`), { status: 409 });
     }
   }
-  const population = buildWorkerPopulationCondition(p);
+  const population = buildWorkerPopulationCondition(p, resolveBenefitPeriod(p, referenceMonth));
   return sql`WITH evidence AS (
     SELECT DISTINCT ON (cm.contact_id) cm.contact_id, cm.id, cm.status, cm.medium, cm.sent
     FROM comm cm INNER JOIN contacts c ON c.id = cm.contact_id
@@ -73,8 +74,8 @@ export function createWorkerCommsComplianceStorage() {
       return { tags, memberStatuses, benefits, employers, employerTypes, bargainingUnits, representatives,
         benefitsEnabled, bargainingUnitsEnabled, politicalEnabled };
     },
-    async report(definition: WorkerCommsDefinition, view: ComplianceView, page: number, pageSize: number): Promise<WorkerCommsReport> {
-      const result = await getClient().execute(sql`${compliancePopulationCte(definition)},
+    async report(definition: WorkerCommsDefinition, view: ComplianceView, page: number, pageSize: number, referenceMonth = currentBenefitMonth()): Promise<WorkerCommsReport> {
+      const result = await getClient().execute(sql`${compliancePopulationCte(definition, referenceMonth)},
         filtered AS (SELECT * FROM population WHERE ${complianceViewPredicate(view)}),
         paged AS (SELECT * FROM filtered ORDER BY name,"workerId" LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize})
         SELECT (SELECT count(*)::integer FROM population) AS population,
@@ -84,10 +85,11 @@ export function createWorkerCommsComplianceStorage() {
           COALESCE((SELECT json_agg(paged ORDER BY name,"workerId") FROM paged), '[]'::json) AS rows`);
       const record = result.rows[0] as unknown as WorkerCommsCounts & Pick<WorkerCommsReport, "rows" | "total">;
       return { definition, counts: { population: record.population, with: record.with, without: record.without },
-        rows: record.rows, total: record.total, page, pageSize, benefitMonth: currentBenefitMonth() };
+        rows: record.rows, total: record.total, page, pageSize, benefitMonth: referenceMonth,
+        benefitPeriod: resolveBenefitPeriod(definition.population, referenceMonth) };
     },
-    async contacts(definition: WorkerCommsDefinition, view: ComplianceView): Promise<string[]> {
-      const result = await getClient().execute(sql`${compliancePopulationCte(definition)}
+    async contacts(definition: WorkerCommsDefinition, view: ComplianceView, referenceMonth = currentBenefitMonth()): Promise<string[]> {
+      const result = await getClient().execute(sql`${compliancePopulationCte(definition, referenceMonth)}
         SELECT DISTINCT "contactId" FROM population WHERE ${complianceViewPredicate(view)} ORDER BY "contactId"`);
       return result.rows.map(row => String(row.contactId));
     },

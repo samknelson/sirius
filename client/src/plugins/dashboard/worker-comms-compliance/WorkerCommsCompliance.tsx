@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 import { getCommStatusLabel } from "@shared/commStatus";
-import type { WorkerCommsCounts, WorkerCommsDefinition } from "@shared/worker-comms-compliance";
+import { resolveBenefitPeriod, type ResolvedBenefitPeriod, type WorkerCommsCounts, type WorkerCommsDefinition } from "@shared/worker-comms-compliance";
 import { cn } from "@/lib/utils";
 
 interface DashboardComplianceContent {
@@ -13,6 +13,7 @@ interface DashboardComplianceContent {
     definition: WorkerCommsDefinition;
     tagName: string;
     counts: WorkerCommsCounts | null;
+    benefitPeriod?: ResolvedBenefitPeriod;
     error?: string;
   }>;
   benefitMonth: string;
@@ -45,7 +46,7 @@ export function WorkerCommsCompliance(_props: DashboardPluginProps) {
             Distribution compliance
           </CardTitle>
           <p className="mt-2 text-xs text-muted-foreground">
-            {data?.benefitMonth ? `Benefit month · ${monthLabel(data.benefitMonth)}` : "Monthly review"}
+            {data?.benefitMonth ? `Reference month · ${monthLabel(data.benefitMonth)}` : "Benefit reference month"}
           </p>
         </div>
         <Button variant="ghost" size="icon" aria-label="Refresh compliance summary" onClick={() => refetch()} disabled={isFetching}>
@@ -78,7 +79,16 @@ export function WorkerCommsCompliance(_props: DashboardPluginProps) {
           </div>
         ) : (
           <div className="space-y-2">
-            {data.definitions.map(({ definition, tagName, counts, error }) => (
+            {data.definitions.map(({ definition, tagName, counts, error, benefitPeriod }) => {
+              let period = benefitPeriod;
+              if (!period) {
+                try {
+                  period = resolveBenefitPeriod(definition.population, data.benefitMonth);
+                } catch {
+                  period = undefined;
+                }
+              }
+              return (
               <Link
                 key={definition.id}
                 href={`/workers/comms-compliance?definitionId=${encodeURIComponent(definition.id)}&view=without`}
@@ -95,7 +105,14 @@ export function WorkerCommsCompliance(_props: DashboardPluginProps) {
                       <span>Medium: {mediumLabel(definition)}</span>
                       <span aria-hidden="true">·</span>
                       <span>Sent: {sentRange(definition)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Benefit history: {period?.label ?? "Period unavailable"}</span>
                     </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      {definition.population.benefitIds.length
+                        ? "Any selected benefit in any included month matches; monthly coverage overlap is used."
+                        : "No benefit restriction."} Communication sent dates are separate.
+                    </p>
                     {error ? (
                       <div className="mt-1 text-xs text-destructive">{error}</div>
                     ) : counts ? (
@@ -120,7 +137,8 @@ export function WorkerCommsCompliance(_props: DashboardPluginProps) {
                   </div>
                 )}
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

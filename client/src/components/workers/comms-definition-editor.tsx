@@ -2,10 +2,12 @@ import { useState, type FormEvent } from "react";
 import { Check, ChevronDown, X } from "lucide-react";
 import { COMM_STATUSES, COMM_STATUS_LABELS } from "@shared/commStatus";
 import type {
+  BenefitPeriod,
   WorkerCommsDefinition,
   WorkerCommsDefinitionInput,
   WorkerCommsOptions,
 } from "@shared/worker-comms-compliance";
+import { workerCommsDefinitionSchema } from "@shared/worker-comms-compliance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +24,7 @@ interface CommsDefinitionEditorProps {
 }
 
 type DefinitionForm = Omit<WorkerCommsDefinition, "id">;
+type BenefitPeriodMode = BenefitPeriod["mode"];
 
 const CONTACT_STATUSES = [
   ["all", "Any contact status"],
@@ -179,6 +182,17 @@ export function CommsDefinitionEditor({
       population: { ...definition.population, memberStatusIds: [...definition.population.memberStatusIds], benefitIds: [...definition.population.benefitIds] },
     } : emptyDefinition(),
   );
+  const initialBenefitPeriod = definition?.population.benefitPeriod;
+  const [benefitPeriodMode, setBenefitPeriodMode] = useState<BenefitPeriodMode>(initialBenefitPeriod?.mode ?? "current");
+  const [lookbackMonths, setLookbackMonths] = useState(
+    initialBenefitPeriod?.mode === "lookback" ? String(initialBenefitPeriod.months) : "6",
+  );
+  const [benefitFrom, setBenefitFrom] = useState(
+    initialBenefitPeriod?.mode === "range" ? initialBenefitPeriod.from : "",
+  );
+  const [benefitThrough, setBenefitThrough] = useState(
+    initialBenefitPeriod?.mode === "range" ? initialBenefitPeriod.through : "",
+  );
   const [formError, setFormError] = useState("");
 
   const setPopulation = <K extends keyof WorkerCommsDefinitionInput["population"]>(
@@ -198,13 +212,27 @@ export function CommsDefinitionEditor({
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError("");
-    if (!form.name.trim()) return setFormError("Give this definition a name.");
-    if (!form.commTagId) return setFormError("Choose the communication tag that identifies this notice.");
-    if (!form.statuses.length) return setFormError("Choose at least one communication status.");
-    if (form.sentFrom && form.sentThrough && form.sentThrough < form.sentFrom) {
-      return setFormError("Sent through must be on or after sent from.");
+    const benefitPeriod: BenefitPeriod = benefitPeriodMode === "lookback"
+      ? { mode: "lookback", months: Number(lookbackMonths) }
+      : benefitPeriodMode === "range"
+        ? { mode: "range", from: benefitFrom, through: benefitThrough }
+        : { mode: benefitPeriodMode };
+    const populationWithoutPeriod = { ...form.population };
+    delete populationWithoutPeriod.benefitPeriod;
+    const value: WorkerCommsDefinitionInput = {
+      ...form,
+      name: form.name.trim(),
+      population: {
+        ...populationWithoutPeriod,
+        ...(form.population.benefitIds.length > 0 ? { benefitPeriod } : {}),
+      },
+    };
+    const parsed = workerCommsDefinitionSchema.safeParse(value);
+    if (!parsed.success) {
+      setFormError(parsed.error.issues[0]?.message ?? "Check the definition fields and try again.");
+      return;
     }
-    onSave({ ...form, name: form.name.trim() });
+    onSave(parsed.data);
   };
 
   return (
@@ -294,6 +322,51 @@ export function CommsDefinitionEditor({
           </div>
           <MultiChoice label="Member statuses" options={[{ id: "none", name: "No member status" }, ...options.memberStatuses]} value={form.population.memberStatusIds} onChange={(memberStatusIds) => setPopulation("memberStatusIds", memberStatusIds)} />
           <MultiChoice label="Benefits" options={options.benefits} value={form.population.benefitIds} onChange={(benefitIds) => setPopulation("benefitIds", benefitIds)} disabled={!options.benefitsEnabled} help={!options.benefitsEnabled ? "Benefits are currently unavailable for editing." : "A worker can match any selected benefit."} />
+          <fieldset className="space-y-3 rounded-md border border-border bg-muted/20 p-3" disabled={form.population.benefitIds.length === 0}>
+            <legend className="px-1 text-sm font-medium">Benefit history period</legend>
+            {form.population.benefitIds.length === 0 ? (
+              <p className="text-xs leading-relaxed text-muted-foreground">Select at least one benefit to apply a history period. With no benefits selected, benefits do not restrict the population.</p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="benefit-period-mode">Include benefit history</Label>
+                  <select
+                    id="benefit-period-mode"
+                    value={benefitPeriodMode}
+                    onChange={(event) => setBenefitPeriodMode(event.target.value as BenefitPeriodMode)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="current">Current benefit month</option>
+                    <option value="ever">Ever through reference month</option>
+                    <option value="lookback">Last N months</option>
+                    <option value="range">Date range</option>
+                  </select>
+                </div>
+                {benefitPeriodMode === "lookback" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="benefit-lookback-months">Number of months</Label>
+                    <Input id="benefit-lookback-months" type="number" min={1} max={1200} step={1} value={lookbackMonths} onChange={(event) => setLookbackMonths(event.target.value)} />
+                    <p className="text-xs leading-relaxed text-muted-foreground">The last N months includes the current month plus the N−1 preceding months.</p>
+                  </div>
+                )}
+                {benefitPeriodMode === "range" && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="benefit-from">Benefit from</Label>
+                      <Input id="benefit-from" type="date" value={benefitFrom} onChange={(event) => setBenefitFrom(event.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="benefit-through">Benefit through</Label>
+                      <Input id="benefit-through" type="date" value={benefitThrough} onChange={(event) => setBenefitThrough(event.target.value)} />
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Any selected benefit in any included month is enough to match. Benefit history is evaluated by monthly overlap; communication sent dates above are a separate filter.
+                </p>
+              </>
+            )}
+          </fieldset>
           <div className="space-y-2">
             <Label htmlFor="bargaining-unit">Bargaining unit</Label>
             {!options.bargainingUnitsEnabled ? (

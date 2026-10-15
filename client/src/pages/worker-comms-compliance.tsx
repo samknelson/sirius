@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import { getCommStatusLabel } from "@shared/commStatus";
 import type {
-  ComplianceView, WorkerCommsDefinition, WorkerCommsDefinitionInput,
+  ComplianceView, ResolvedBenefitPeriod, WorkerCommsDefinition, WorkerCommsDefinitionInput,
   WorkerCommsOptions, WorkerCommsReport,
 } from "@shared/worker-comms-compliance";
+import { resolveBenefitPeriod } from "@shared/worker-comms-compliance";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -119,6 +120,17 @@ export default function WorkerCommsCompliance() {
     enabled: !!activeDefinition,
   });
   const report = reportQuery.data;
+  let resolvedBenefitPeriod: ResolvedBenefitPeriod | undefined;
+  if (report && activeDefinition) {
+    resolvedBenefitPeriod = report.benefitPeriod;
+    if (!resolvedBenefitPeriod) {
+      try {
+        resolvedBenefitPeriod = resolveBenefitPeriod(activeDefinition.population, report.benefitMonth);
+      } catch {
+        resolvedBenefitPeriod = undefined;
+      }
+    }
+  }
   const rows = report?.rows ?? [];
   const total = report?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -322,7 +334,7 @@ export default function WorkerCommsCompliance() {
                     )}
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {report?.benefitMonth ? `Current benefit month: ${formatMonth(report.benefitMonth)}.` : "Current benefit month is determined by the report."} A draft or queue action alone is not evidence: history must show the selected tag and status. Offline does not confirm physical receipt.
+                    {report ? `Benefit history: ${resolvedBenefitPeriod?.label ?? "period unavailable"}. Reference month: ${formatMonth(resolvedBenefitPeriod?.referenceMonth ?? report.benefitMonth)}.` : "Benefit history is evaluated using the report’s reference month."} {activeDefinition?.population.benefitIds.length ? "Any selected benefit overlapping any included month is enough to match." : "Benefits do not restrict this population."} A draft or queue action alone is not evidence: history must show the selected tag and status. Offline does not confirm physical receipt.
                   </p>
                   {activeDefinition && (
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -447,7 +459,7 @@ export default function WorkerCommsCompliance() {
                   )}
                 </section>
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  These counts reflect communication history records matching the configured tag, status, medium, and sent dates. For postal or other offline communications, the recorded status is not proof of physical receipt.
+                  Population eligibility uses the configured benefit-history period at month granularity; when benefits are selected, one selected benefit in any included month is enough. Evidence matches the configured tag, status, medium, and separate communication sent-date range. For postal or other offline communications, the recorded status is not proof of physical receipt.
                 </p>
               </>
             )}

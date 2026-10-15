@@ -322,7 +322,7 @@ function _buildContactStatusCondition(contactStatus: string | undefined) {
 import { buildNameIdSearchCondition, buildContactSearchCondition } from "./worker-search-conditions";
 
 /** Shared population predicate, against workers w / contacts c. */
-export function buildWorkerPopulationCondition(params: InternalSearchParams) {
+export function buildWorkerPopulationCondition(params: InternalSearchParams, benefitWindow?: { fromMonth: string | null; throughMonth: string | null }) {
   const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId, representativeId } = params;
 
   const now = new Date();
@@ -363,8 +363,10 @@ export function buildWorkerPopulationCondition(params: InternalSearchParams) {
         SELECT 1 FROM trust_wmb wmb
         WHERE wmb.worker_id = w.id
         AND wmb.benefit_id IN (${sql.join(selectedBenefits.map(id => sql`${id}`), sql`, `)})
-        AND wmb.month = ${currentMonth}
-        AND wmb.year = ${currentYear}
+        ${benefitWindow ? sql`
+          ${benefitWindow.fromMonth ? sql`AND (wmb.year, wmb.month) >= (${Number(benefitWindow.fromMonth.slice(0, 4))}, ${Number(benefitWindow.fromMonth.slice(5, 7))})` : sql``}
+          ${benefitWindow.throughMonth ? sql`AND (wmb.year, wmb.month) <= (${Number(benefitWindow.throughMonth.slice(0, 4))}, ${Number(benefitWindow.throughMonth.slice(5, 7))})` : sql``}
+        ` : sql`AND wmb.month = ${currentMonth} AND wmb.year = ${currentYear}`}
       )`
     : sql``;
 
