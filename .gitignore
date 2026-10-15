@@ -11,6 +11,7 @@ vite.config.ts.*
 *.tar.gz.replit
 replit.nix
 .cache/
+/generated-artifacts/
 screenshots/postal-template-failure.png
 screenshots/postal-template-regression.png
 __replit_disk_meta.json
