@@ -14,3 +14,15 @@ The first version intentionally uses current-month benefit eligibility, not hist
 **Why:** The agreed starting point is the worker list's population semantics; historical cohorts are a separate product decision rather than a different interpretation of the same filter.
 
 **How to apply:** Keep the benefit month explicit in report and dashboard presentation. Do not silently change benefit filters into historical matching when extending the compliance criteria.
+
+The owner subsequently requested explicit benefit-history choices: ever had a
+selected benefit, had it in the last N months (for example six), or had it
+between specified dates (for example January 1 through December 31, 2025).
+These are benefit-population windows, separate from communication sent dates.
+
+**Why:** Distribution tracking must include former benefit recipients, not
+only workers who still qualify in the current month.
+
+**How to apply:** Add explicit historical modes without silently changing old
+definitions. Explain the monthly granularity of the source and keep dashboard,
+report results and bulk-message recipient selection on the same cohort.
