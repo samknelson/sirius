@@ -39,3 +39,13 @@ communication deadline relative to enrollment.
 **How to apply:** Keep the resolved period visible and retain current-month
 behavior for definitions without an explicit history choice. Communication
 sent-date filters remain independent of the benefit-population period.
+
+The owner shares this component with a related, expanded codebase and wants
+the two codebases to remain easy to merge.
+
+**Why:** Independent copies that rename the component or replace shared
+frameworks make later reconciliation harder.
+
+**How to apply:** Preserve canonical component identity and source paths.
+Transfer shared-framework changes surgically, retain a known source baseline,
+and keep target-specific additions rather than overwriting complete files.
