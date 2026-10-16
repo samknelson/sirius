@@ -13,6 +13,7 @@
     "test:browser:message-defaults": "node --import tsx --import ./tests/comm/fixtures/postal-runtime-register.mjs tests/message-defaults/browser.mts",
     "test:browser:config-navigation": "node tests/config-navigation/browser.mjs",
     "test:browser:top-navigation": "node tests/top-navigation/browser.mjs",
+    "test:browser:worker-comms-compliance": "node --import tsx tests/comm/compliance-browser.mjs",
     "test:watch": "vitest",
     "lint": "tsx scripts/dev/lint.ts",
     "db:push": "tsx scripts/db-push.ts",

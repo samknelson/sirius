@@ -183,3 +183,4 @@ import "./plugins/bao-worker-coverage";
 import "./plugins/wc-usage";
 import "./plugins/ws-usage-byplugin";
 import "./plugins/ws-usage-byclient";
+import "./plugins/worker-comms-compliance";

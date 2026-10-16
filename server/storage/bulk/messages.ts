@@ -9,6 +9,11 @@ export const validate = createNoopValidator<InsertBulkMessage, BulkMessage>();
 export interface BulkMessageStorage {
   getAll(filters?: { status?: string; medium?: string; name?: string }): Promise<BulkMessage[]>;
   getById(id: string): Promise<BulkMessage | undefined>;
+  /** Must be called within a transaction; serializes recipient handoff with draft changes. */
+  getForUpdate(id: string): Promise<BulkMessage | undefined>;
+  getEligibleDrafts(): Promise<BulkMessage[]>;
+  /** Permanently close recipient handoff before any participant vendor call. */
+  markDeliveryStarted(id: string): Promise<void>;
   create(data: InsertBulkMessage): Promise<BulkMessage>;
   update(id: string, data: Partial<InsertBulkMessage>): Promise<BulkMessage | undefined>;
   delete(id: string): Promise<boolean>;
@@ -16,6 +21,29 @@ export interface BulkMessageStorage {
 
 export function createBulkMessageStorage(): BulkMessageStorage {
   const storage: BulkMessageStorage = {
+    async getForUpdate(id) {
+      const [row] = await getClient().select().from(bulkMessages).where(eq(bulkMessages.id, id)).for("update");
+      return row;
+    },
+    async getEligibleDrafts() {
+      return getClient().select().from(bulkMessages).where(sql`
+        ${bulkMessages.status} = 'draft'
+        AND (${bulkMessages.data}->>'recipientDeliveryStarted') IS DISTINCT FROM 'true'
+        AND jsonb_array_length(to_jsonb(${bulkMessages.medium})) > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM bulk_participants bp WHERE bp.message_id = ${bulkMessages.id}
+          AND (bp.status <> 'pending' OR bp.comm_id IS NOT NULL)
+        )
+      `);
+    },
+    async markDeliveryStarted(id) {
+      // UPDATE takes the same row lock as handoff. Commit before contacting a
+      // vendor, so a crash/lost response cannot reopen a partially used draft.
+      const rows = await getClient().update(bulkMessages).set({
+        data: sql`COALESCE(${bulkMessages.data}, '{}'::jsonb) || '{"recipientDeliveryStarted":true}'::jsonb`,
+      }).where(eq(bulkMessages.id, id)).returning({ id: bulkMessages.id });
+      if (!rows.length) throw new Error("Bulk message no longer exists");
+    },
     async getAll(filters?: { status?: string; medium?: string; name?: string }): Promise<BulkMessage[]> {
       const client = getClient();
       const conditions: SQL[] = [];
@@ -57,7 +85,14 @@ export function createBulkMessageStorage(): BulkMessageStorage {
       const client = getClient();
       const [updated] = await client
         .update(bulkMessages)
-        .set(data)
+        .set({
+          ...data,
+          ...(data.data !== undefined ? {
+            data: sql`CASE WHEN ${bulkMessages.data}->>'recipientDeliveryStarted' = 'true'
+              THEN COALESCE(${JSON.stringify(data.data)}::jsonb, '{}'::jsonb) || '{"recipientDeliveryStarted":true}'::jsonb
+              ELSE ${JSON.stringify(data.data)}::jsonb END`,
+          } : {}),
+        })
         .where(eq(bulkMessages.id, id))
         .returning();
       return updated || undefined;

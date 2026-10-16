@@ -172,6 +172,8 @@ export async function deliverToParticipant(
     return { participantId, alreadySent: true, success: false, error: "Participant already processed", errorCode: "ALREADY_SENT" };
   }
 
+  await storage.bulkMessages.markDeliveryStarted(messageId);
+
   const result = await deliverToContact(storage, {
     messageId,
     contactId: participant.contactId,

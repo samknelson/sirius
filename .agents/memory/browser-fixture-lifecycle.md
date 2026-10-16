@@ -15,6 +15,12 @@ Report browser failures before awaiting fixture-server cleanup, and bound cleanu
 
 **How to apply:** For standalone browser runners, distinguish navigation time from interaction time and print the primary error before cleanup. After confirming or cancelling a Radix alert, wait until its portal disappears before typing into the underlying editor: value hydration can complete while the closing overlay still intercepts clicks.
 
+Authenticated fixtures must wait for both resolved authentication and the hydrated user before mounting a protected route.
+
+**Why:** A fixture that mounts protected routing immediately can navigate to sign-in between a successful mocked auth response and context hydration. That is a fixture readiness failure, not evidence of denied staff permissions.
+
+**How to apply:** Keep the real route guard; gate fixture mounting on the auth context's ready/authenticated answer. After closing help or other Radix dialogs, wait for the whole dialog portal and body pointer lock to clear before clicking the next control.
+
 Separate browser-launch failure from page failure in fixture diagnosis.
 
 **Why:** The browser wrapper could report a valid version yet fail to expose its debugging endpoint; a different executable completed the same fixture. The default launch timeout also proved too short under load.

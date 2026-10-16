@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -30,6 +30,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ChevronDown, Loader2, MailPlus, ListChecks } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ExistingMessageChooserContent, type ExistingBulkMessageOption } from "./existing-message-chooser-content";
+import type { ComplianceView } from "@shared/worker-comms-compliance";
 
 const LARGE_DRAFT_THRESHOLD = 100;
 
@@ -39,6 +42,7 @@ interface ComponentConfig {
 }
 
 interface ListBulkActionProps {
+  reportSelection?: { definitionId: string; view: ComplianceView };
   selectedContactIds: string[];
   totalMatching: number;
   visibleSelectedCount: number;
@@ -59,6 +63,7 @@ const MEDIUM_OPTIONS: { value: Medium; label: string }[] = [
 ];
 
 export function ListBulkAction({
+  reportSelection,
   selectedContactIds,
   totalMatching,
   visibleSelectedCount,
@@ -70,6 +75,9 @@ export function ListBulkAction({
 }: ListBulkActionProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [chosenBulkMessageId, setChosenBulkMessageId] = useState<string | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<Record<Medium, boolean>>({
     email: true,
     sms: false,
@@ -85,12 +93,34 @@ export function ListBulkAction({
   });
 
   const bulkEnabled = componentConfig.find(c => c.componentId === "bulk")?.enabled ?? false;
+  const existingMessagesQuery = useQuery<ExistingBulkMessageOption[]>({
+    queryKey: ["/api/bulk-messages/eligible-drafts"],
+    enabled: chooserOpen,
+    staleTime: 0,
+  });
+  const addToExistingMutation = useMutation<{
+    bulkMessage: { id: string }; participantsCreated: number; participantsSkipped: number;
+  }, Error, string>({
+    mutationFn: (bulkMessageId) => apiRequest("POST", "/api/bulk-messages/from-recipients", {
+      contactIds: selectedContactIds, bulkMessageId,
+      ...(reportSelection ? { reportSelection } : {}),
+    }),
+    onSuccess: async (result) => {
+      setChooserOpen(false);
+      setChosenBulkMessageId(null);
+      await queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages"] });
+      toast({ title: "Recipients added to draft", description: `${result.participantsCreated} recipient/channel entries added; ${result.participantsSkipped} already present. Nothing was sent.` });
+      navigate(`/bulk/${result.bulkMessage.id}/recipients/list`);
+    },
+    onError: (error) => toast({ title: "Couldn’t add recipients", description: error.message, variant: "destructive" }),
+  });
 
   const createMutation = useMutation<{ bulkMessage: { id: string }; participantsCreated: number; recipientsResolved: number; recipientsMissing: number }, Error, Medium[]>({
     mutationFn: async (medium) => {
       return apiRequest("POST", "/api/bulk-messages/from-recipients", {
         contactIds: selectedContactIds,
         sourceLabel,
+        ...(reportSelection ? { reportSelection } : {}),
         medium,
       });
     },
@@ -180,7 +210,7 @@ export function ListBulkAction({
           <Button
             variant="default"
             size="sm"
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || addToExistingMutation.isPending}
             data-testid={`${testIdPrefix}-trigger`}
           >
             Bulk Action
@@ -215,8 +245,33 @@ export function ListBulkAction({
           ) : (
             messageItem
           )}
+          <DropdownMenuItem
+            disabled={noSelection || createMutation.isPending || addToExistingMutation.isPending}
+            onSelect={() => { setChosenBulkMessageId(null); setChooserOpen(true); }}
+            data-testid={`${testIdPrefix}-existing-message`}
+          >
+            Add to existing draft
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <Dialog open={chooserOpen} onOpenChange={(open) => { if (!addToExistingMutation.isPending) setChooserOpen(open); }}>
+        <DialogContent data-testid={`${testIdPrefix}-existing-dialog`}>
+          <ExistingMessageChooserContent
+            messages={existingMessagesQuery.data ?? []}
+            isLoading={existingMessagesQuery.isLoading}
+            isError={existingMessagesQuery.isError}
+            isFetching={existingMessagesQuery.isFetching}
+            selectedContactCount={selectionCount}
+            selectedBulkMessageId={chosenBulkMessageId}
+            isPending={addToExistingMutation.isPending}
+            testIdPrefix={testIdPrefix}
+            onSelect={setChosenBulkMessageId}
+            onRetry={() => { void existingMessagesQuery.refetch(); }}
+            onCancel={() => setChooserOpen(false)}
+            onSubmit={() => { if (chosenBulkMessageId) addToExistingMutation.mutate(chosenBulkMessageId); }}
+          />
+        </DialogContent>
+      </Dialog>
       <AlertDialog open={confirmOpen} onOpenChange={(open) => { if (!createMutation.isPending) setConfirmOpen(open); }}>
         <AlertDialogContent data-testid={`${testIdPrefix}-confirm-dialog`}>
           <AlertDialogHeader>

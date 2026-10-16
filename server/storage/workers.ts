@@ -353,7 +353,7 @@ export interface WorkerStorage {
   getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>>;
 }
 
-interface InternalSearchParams {
+export interface InternalSearchParams {
   ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   isSubscriber?: WorkerBenefitRoleFilters["isSubscriber"];
   isDependent?: WorkerBenefitRoleFilters["isDependent"];
@@ -369,10 +369,12 @@ interface InternalSearchParams {
   employerTypeId?: string;
   bargainingUnitId?: string;
   benefitId?: string;
+  benefitIds?: string[];
   contactStatus?: string;
   hasMultipleEmployers?: boolean;
   jobTitle?: string;
   memberStatusId?: string;
+  memberStatusIds?: string[];
   representativeId?: string;
   includeBenefits?: boolean;
   page?: number;
@@ -445,12 +447,10 @@ function periodValue(period: string): number {
   return year * 12 + month;
 }
 
-async function _searchWorkers(params: InternalSearchParams): Promise<InternalSearchResult> {
-  const client = getClient();
+/** Shared list/report population, against workers w and contacts c. */
+export function buildWorkerPopulationCondition(params: InternalSearchParams, benefitWindow?: { fromMonth: string | null; throughMonth: string | null }) {
   const nameIdSearch = params.nameIdSearch?.trim() ?? '';
   const contactSearch = params.contactSearch?.trim() ?? '';
-  const sortOrder = params.sortOrder ?? 'asc';
-  const sortBy = params.sortBy ?? 'lastName';
   const {
     employerId,
     employerTypeId,
@@ -566,13 +566,16 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     ? sql`AND w.bargaining_unit_id = ${bargainingUnitId}`
     : sql``;
 
-  const benefitCondition = (benefitId && benefitsEnabled)
+  const selectedBenefits = params.benefitIds?.length ? params.benefitIds : benefitId ? [benefitId] : [];
+  const benefitCondition = (selectedBenefits.length && benefitsEnabled)
     ? sql`AND EXISTS (
         SELECT 1 FROM trust_wmb wmb
         WHERE wmb.worker_id = w.id
-        AND wmb.benefit_id = ${benefitId}
-        AND wmb.month = ${currentMonth}
-        AND wmb.year = ${currentYear}
+        AND wmb.benefit_id IN (${sql.join(selectedBenefits.map(id => sql`${id}`), sql`, `)})
+        ${benefitWindow ? sql`
+          ${benefitWindow.fromMonth ? sql`AND (wmb.year, wmb.month) >= (${Number(benefitWindow.fromMonth.slice(0, 4))}, ${Number(benefitWindow.fromMonth.slice(5, 7))})` : sql``}
+          ${benefitWindow.throughMonth ? sql`AND (wmb.year, wmb.month) <= (${Number(benefitWindow.throughMonth.slice(0, 4))}, ${Number(benefitWindow.throughMonth.slice(5, 7))})` : sql``}
+        ` : sql`AND wmb.month = ${currentMonth} AND wmb.year = ${currentYear}`}
       )`
     : sql``;
 
@@ -590,10 +593,13 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       )`
     : sql``;
 
-  const memberStatusCondition = memberStatusId
-    ? memberStatusId === 'none'
-      ? sql`AND NOT EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id)`
-      : sql`AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = ${memberStatusId})`
+  const selectedStatuses = params.memberStatusIds?.length ? params.memberStatusIds : memberStatusId ? [memberStatusId] : [];
+  const memberStatusCondition = selectedStatuses.length
+    ? sql`AND (
+      ${selectedStatuses.includes('none') ? sql`NOT EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id)` : sql`false`}
+      OR EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id
+        AND wmd.ms_id IN (${sql.join(selectedStatuses.map(id => sql`${id}`), sql`, `)}))
+    )`
     : sql``;
 
   const representativeCondition = (representativeId && politicalEnabled)
@@ -654,7 +660,19 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       )`
     : sql``;
 
-  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition} ${roleCondition}`;
+  return sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition} ${roleCondition}`;
+}
+
+async function _searchWorkers(params: InternalSearchParams): Promise<InternalSearchResult> {
+  const client = getClient();
+  const sortOrder = params.sortOrder ?? 'asc';
+  const sortBy = params.sortBy ?? 'lastName';
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const benefitsEnabled = isComponentEnabledSync('trust.benefits');
+  const bargainingUnitsEnabled = isComponentEnabledSync('bargainingunits');
+  const allConditions = buildWorkerPopulationCondition(params);
 
   const isPaginated = params.page !== undefined && params.pageSize !== undefined;
   const isExportBatch = params.exportLimit !== undefined;

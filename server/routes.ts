@@ -42,6 +42,7 @@ import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/workers/ids";
 import { registerWorkerMonthlyCoverageHistoryRoute } from "./modules/workers/monthly-coverage-history";
 import { registerWorkerExportRoute } from "./modules/workers/export";
+import { registerWorkerCommsComplianceRoutes } from "./modules/worker-comms-compliance";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import {
   registerMasqueradeRoutes,
@@ -412,6 +413,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   
   // Register worker IDs routes
   registerWorkerIdsRoutes(app, requireAuth, requirePermission);
+  registerWorkerCommsComplianceRoutes(app, requireAuth);
 
   // Register address validation routes
   registerAddressValidationRoutes(app, requireAuth, requirePermission);

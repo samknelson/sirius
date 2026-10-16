@@ -29,6 +29,9 @@ import {
 import "./token-roots";
 import { tokenContextRootNames } from "../../plugins/tokens/contexts";
 import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
+import { requireComponent } from "../components";
+import { handoffBulkRecipients } from "../../services/bulk-recipient-handoff";
+import { WorkerCommsError } from "../../services/worker-comms-compliance";
 
 /**
  * How many of a message's sends the studio previews against.
@@ -83,6 +86,12 @@ export function registerBulkMessageRoutes(
 ) {
   const rawParticipantStorage = createBulkParticipantStorage();
 
+  app.get("/api/bulk-messages/eligible-drafts", requireAuth, requireAccess('bulk.edit'), requireComponent("bulk"), async (_req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    try { res.json(await storage.bulkMessages.getEligibleDrafts()); }
+    catch { res.status(500).json({ message: "Unable to load eligible drafts" }); }
+  });
+
   app.get("/api/bulk-messages", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
@@ -114,18 +123,23 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.post("/api/bulk-messages/from-recipients", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+  app.post("/api/bulk-messages/from-recipients", requireAuth, requireAccess('bulk.edit'), requireComponent("bulk"), async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
     try {
       const body = req.body ?? {};
       const contactIds: unknown = body.contactIds;
       if (!Array.isArray(contactIds) || contactIds.length === 0 || !contactIds.every(c => typeof c === 'string' && c.length > 0)) {
         return res.status(400).json({ message: "contactIds must be a non-empty array of strings" });
       }
+      const bulkMessageId = body.bulkMessageId;
+      if (bulkMessageId !== undefined && (typeof bulkMessageId !== "string" || !bulkMessageId.trim())) {
+        return res.status(400).json({ message: "bulkMessageId must be a non-empty string" });
+      }
 
       const requestedMedium = Array.isArray(body.medium) && body.medium.length > 0 ? body.medium : ['email'];
       const allowedMedia = ['sms', 'email', 'inapp', 'postal'];
       const filteredMedium = Array.from(new Set((requestedMedium as unknown[]).filter(m => typeof m === 'string' && allowedMedia.includes(m)))) as string[];
-      if (filteredMedium.length === 0) {
+      if (bulkMessageId === undefined && filteredMedium.length === 0) {
         return res.status(400).json({ message: "At least one valid medium is required" });
       }
 
@@ -135,54 +149,21 @@ export function registerBulkMessageRoutes(
       const autoName = `${sourceLabel} — ${dateLabel} — ${contactIds.length} recipient${contactIds.length === 1 ? '' : 's'}`;
       const finalName = requestedName ?? autoName;
 
-      const uniqueIds = Array.from(new Set(contactIds as string[]));
-      const existingIds = await storage.contacts.getExistingIds(uniqueIds);
-      const validContactIds = new Set(existingIds);
-      const missingCount = uniqueIds.length - validContactIds.size;
-      if (missingCount > 0) {
-        const unresolvedIds = uniqueIds.filter(id => !validContactIds.has(id));
-        return res.status(400).json({
-          message: `${missingCount} of ${uniqueIds.length} supplied contactIds do not resolve to real contacts`,
-          unresolvedContactIds: unresolvedIds.slice(0, 50),
-          unresolvedCount: missingCount,
-        });
-      }
-
-      const parsed = insertBulkMessageSchema.safeParse({
-        name: finalName,
-        medium: filteredMedium,
-        status: 'draft',
-      });
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
-      }
-
-      const { created, participantsCreated } = await runInTransaction(async () => {
-        const draft = await storage.bulkMessages.create(parsed.data);
-        let count = 0;
-        // Iterate the original deduped order so participant insert order matches
-        // the recipient order the caller supplied.
-        for (const cid of uniqueIds) {
-          for (const m of draft.medium) {
-            await rawParticipantStorage.create({
-              messageId: draft.id,
-              contactId: cid,
-              medium: m,
-            });
-            count++;
-          }
-        }
-        return { created: draft, participantsCreated: count };
-      });
-
-      return res.status(201).json({
-        bulkMessage: created,
-        participantsCreated,
-        recipientsRequested: uniqueIds.length,
-        recipientsResolved: validContactIds.size,
-        recipientsMissing: missingCount,
-      });
+      const { getEffectiveUser } = await import("../masquerade");
+      const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
+      if (!dbUser) return res.status(401).json({ message: "User not authenticated" });
+      return res.status(201).json(await handoffBulkRecipients(storage, {
+        contactIds, bulkMessageId, name: finalName, medium: filteredMedium, actor: dbUser,
+        reportSelection: body.reportSelection, hasReportSelection: "reportSelection" in body,
+      }));
     } catch (error: unknown) {
+      if (error instanceof WorkerCommsError) return res.status(error.status).json({ message: error.message });
+      // A legacy single-recipient add can race the handoff. The unique
+      // constraint wins; the transaction has already rolled back all writes.
+      const conflict = error as { code?: string; cause?: { code?: string } };
+      if (conflict?.code === "23505" || conflict?.cause?.code === "23505") {
+        return res.status(409).json({ message: "Recipients changed while adding to the draft. Refresh and try again." });
+      }
       const message = error instanceof Error ? error.message : "Failed to create bulk message from recipients";
       return res.status(500).json({ message });
     }

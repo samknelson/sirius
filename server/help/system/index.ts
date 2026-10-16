@@ -5,6 +5,7 @@ import { trustProvidersHelp } from "./trust-providers";
 import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
 import { adminUserPermissionsHelp } from "./admin-user-permissions";
 import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefaultsHelp } from "./message-defaults";
+import { workerCommsComplianceHelp } from "./worker-comms-compliance";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -23,6 +24,7 @@ export interface SystemHelpEntry {
 export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
+  workerCommsComplianceHelp,
   trustProvidersHelp,
   workerBenefitsSummaryHelp,
   adminUserPermissionsHelp,

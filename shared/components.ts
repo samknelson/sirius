@@ -139,6 +139,13 @@ export interface ComponentSchemaState {
 // Central registry of all available components
 export const componentRegistry: ComponentDefinition[] = [
   {
+    id: "worker.comms_compliance",
+    name: "Worker Comms Compliance",
+    description: "Report on worker populations and qualifying tagged communications",
+    enabledByDefault: false,
+    category: "core",
+  },
+  {
     id: "ledger",
     name: "Ledger",
     description: "Functionality for tracking charges and payments",

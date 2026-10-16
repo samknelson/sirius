@@ -1,4 +1,5 @@
 import { runInTransaction } from "./transaction-context";
+import { createWorkerCommsComplianceStorage, type WorkerCommsComplianceStorage } from "./worker-comms-compliance";
 import { type VariableStorage, createVariableStorage, variableLoggingConfig } from "./system/variables";
 import { type SnapshotsStorage, createSnapshotsStorage, snapshotsLoggingConfig } from "./system/snapshots";
 import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
@@ -238,6 +239,7 @@ import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentities
 import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
 export interface IStorage {
+  workerCommsCompliance: WorkerCommsComplianceStorage;
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
@@ -377,6 +379,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  workerCommsCompliance = createWorkerCommsComplianceStorage();
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;

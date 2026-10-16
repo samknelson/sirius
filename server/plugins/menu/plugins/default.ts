@@ -90,6 +90,14 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
           testId: "menu-workers-list",
         },
         {
+          id: "worker-comms-compliance",
+          label: "Comms Compliance",
+          icon: "ClipboardCheck",
+          href: "/workers/comms-compliance",
+          testId: "menu-worker-comms-compliance",
+          gate: { allOf: [{ policy: "staff" }, { component: "worker.comms_compliance" }] },
+        },
+        {
           id: "bao-cobra-cases",
           label: "COBRA",
           icon: "Shield",
