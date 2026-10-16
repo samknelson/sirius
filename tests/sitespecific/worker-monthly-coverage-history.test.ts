@@ -16,8 +16,12 @@ const mocks = vi.hoisted(() => ({
   search: vi.fn(),
   getMonthlyAccountHistoryByEntityAndAccount: vi.fn(),
   getBaoEeAccountIdsByWorker: vi.fn(),
+  readWorkerImportedCoverageEvidence: vi.fn(),
 }));
 
+vi.mock("../../server/storage/worker-imported-coverage", () => ({
+  readWorkerImportedCoverageEvidence: mocks.readWorkerImportedCoverageEvidence,
+}));
 vi.mock("../../server/storage/database", () => ({
   storage: {
     trust: { wmb: {
@@ -56,6 +60,7 @@ import {
 describe("worker monthly coverage history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.readWorkerImportedCoverageEvidence.mockResolvedValue(null);
     mocks.getWorkerBenefitPresence.mockResolvedValue([]);
     mocks.getSubscriberDependentHistoryStart.mockResolvedValue({ available: true, earliest: null });
     mocks.getSubscriberDependentHistory.mockResolvedValue({ available: true, rows: [] });
@@ -418,5 +423,65 @@ describe("worker monthly coverage history", () => {
     const history = await buildWorkerMonthlyCoverageHistory("worker", 0, 12, new Date("2024-02-15T12:00:00Z"));
     expect(history.months[0].dependentCoverage).toEqual({ state: "available", dependents: [] });
     expect(history.months[1].dependentCoverage).toMatchObject({ state: "available", dependents: [{ personId: "child" }] });
+  });
+
+  it("uses verified complete imports only for missing decisions and never hides pending/errors/No Election", async () => {
+    mocks.getWorkerBenefitPresence.mockResolvedValue([{ year: 2024, month: 1, benefitName: "Medical" }]);
+    mocks.readWorkerImportedCoverageEvidence.mockResolvedValue({
+      identityVerified: true, snapshotVerified: true, firstMonthIndex: 2020 * 12, desiredMonthIndexes: [],
+      report: {
+        loader: "t17-benefit-history", dryRun: false,
+        verify: { status: "pass", failures: 0 },
+        rejectGate: { status: "pass", counts: {} }, blockingFindings: [],
+        detail: { staged: 10, openEndThrough: "2024-04", historicalEventEvidence: {
+          complete: true, inclusiveCutoff: "2024-04", stagedSpans: 10,
+          processedSpans: 10, rejectedSpans: 0, verifyFailures: 0,
+        } },
+      },
+    });
+    const build = () => buildWorkerMonthlyCoverageHistory("worker", 0, 12, new Date("2024-04-15T12:00:00Z"));
+    let history = await build();
+    expect(history.months[0]).toMatchObject({
+      status: "inactive", decisionSource: "import",
+      decisionExplanation: "Imported coverage history — scanned in the previous system.", reasons: [],
+    });
+    expect(history.months[3]).toMatchObject({ status: "active", decisionSource: "recorded" });
+    mocks.getWorkerCoverageHistoryScans.mockResolvedValue([
+      { id: "pending", year: 2024, month: 4, status: "processing" },
+      { id: "failed", year: 2024, month: 3, status: "failed", completedAt: new Date() },
+      { id: "unreadable", year: 2024, month: 2, status: "success", completedAt: new Date(), resultSummary: "bad-json" },
+    ]);
+    history = await build();
+    expect(history.months[0]).toMatchObject({ status: "unknown", decisionSource: "pending", decisionExplanation: "A coverage scan is still in progress." });
+    expect(history.months[1]).toMatchObject({ status: "unknown", decisionSource: "unavailable" });
+    expect(history.months[2]).toMatchObject({ status: "unknown", decisionSource: "unavailable", decisionExplanation: "The completed coverage scan result is unreadable." });
+    mocks.getWorkerCoverageHistoryScans.mockResolvedValue([{
+      id: "scan", year: 2024, month: 4, status: "success", completedAt: new Date(),
+      resultSummary: { actions: [{ action: "none", eligible: false, pluginResults: [{ pluginKey: "election", eligible: false }] }] },
+    }]);
+    expect((await build()).months[0]).toMatchObject({ status: "inactive", decisionSource: "scan", reasons: ["No Election"] });
+    mocks.getWorkerCoverageHistoryScans.mockRejectedValue(new Error("unavailable"));
+    history = await build();
+    expect(history.months[0]).toMatchObject({ status: "unknown", decisionSource: "unavailable", decisionExplanation: "Coverage records could not be loaded." });
+    // A scan read failure must not erase positive recorded coverage.
+    expect(history.months[3]).toMatchObject({ status: "active", decisionSource: "recorded" });
+  });
+
+  it("returns explicit provenance unavailability for missing staging and incomplete imports", async () => {
+    mocks.getWorkerHoursMonthly.mockResolvedValue([{ year: 2024, month: 1, totalHours: "100" }]);
+    mocks.readWorkerImportedCoverageEvidence.mockRejectedValue(new Error("missing staging"));
+    const build = () => buildWorkerMonthlyCoverageHistory("worker", 0, 1, new Date("2024-04-15T12:00:00Z"));
+    expect((await build()).months[0]).toMatchObject({
+      status: "unknown", decisionSource: "unavailable",
+      decisionExplanation: "Imported history provenance is unavailable for this month.",
+    });
+    mocks.readWorkerImportedCoverageEvidence.mockResolvedValue({
+      identityVerified: true, snapshotVerified: true, firstMonthIndex: 2020 * 12, desiredMonthIndexes: [],
+      report: { loader: "t17-benefit-history", dryRun: false },
+    });
+    expect((await build()).months[0]).toMatchObject({
+      status: "unknown", decisionSource: "unavailable",
+      decisionExplanation: "Imported source history is incomplete or has not been verified for this month.",
+    });
   });
 });

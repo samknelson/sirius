@@ -1,5 +1,7 @@
 import type { TrustWmbScanQueue } from "@shared/schema";
 import type { CoveredDependent, DependentCoverageEvidence } from "@shared/covered-dependent-history";
+import { IMPORTED_COVERAGE_NOTE, type CoverageDecisionSource } from "@shared/monthly-coverage-decision";
+import { resolveImportedHistory } from "./imported-coverage-authority";
 import type { SubscriberDependentHistoryRow } from "../../../storage/trust/wmb";
 import { storage } from "../../../storage/database";
 import {
@@ -29,6 +31,8 @@ export interface WorkerMonthlyCoverageHistoryMonth {
   employerHours: Array<{ employerId: string | null; employerName: string; reported: number | null }> | null;
   hours: { reported: number | null; required: number | null } | null;
   status: "active" | "inactive" | "unknown";
+  decisionSource?: CoverageDecisionSource;
+  decisionExplanation?: string;
   reasons: string[];
   medical: string[];
   dental: string[];
@@ -256,6 +260,9 @@ export function scanDecisionForMonth(
   if (latest?.status === "pending" || latest?.status === "processing") {
     return { status: "unknown", reasons: ["A coverage scan is still in progress."] };
   }
+  if (latest && latest.status !== "success") {
+    return { status: "unknown", reasons: ["The coverage scan did not complete successfully. A reliable decision is unavailable."] };
+  }
   const completed = latest;
   if (
     !completed ||
@@ -267,6 +274,9 @@ export function scanDecisionForMonth(
     return { status: "unknown", reasons: ["No reliable completed coverage decision is available."] };
   }
   const failedCauses = failedBaoCauses(completed.resultSummary);
+  if (!Array.isArray((completed.resultSummary as { actions?: unknown } | null)?.actions)) {
+    return { status: "unknown", reasons: ["The completed coverage scan result is unreadable."] };
+  }
   return {
     status: "inactive",
     reasons: failedCauses.length ? failedCauses : ["No failed BAO eligibility rule was recorded for this month."],
@@ -499,13 +509,38 @@ export async function buildWorkerMonthlyCoverageHistory(
     return result;
   };
 
+  // Import fallback is allowed only for a successful empty local read with NO
+  // scan attempt. A pending/failed/unreadable attempt must remain visible.
+  const importCandidates = benefitsRead.status === "fulfilled" && scansRead.status === "fulfilled"
+    ? pageOrdinals.map(fromOrdinal).filter(({ year, month }) =>
+      !benefitRows.some(row => row.year === year && row.month === month) &&
+      !scanRows.some(row => row.year === year && row.month === month))
+    : [];
+  const importedHistory = await resolveImportedHistory(workerId, importCandidates);
   const months: WorkerMonthlyCoverageHistoryMonth[] = [];
   for (const ordinal of pageOrdinals) {
     const { year, month } = fromOrdinal(ordinal);
     const source = fromOrdinal(ordinal - 3);
-  const decision = benefitsRead.status === "fulfilled" && scansRead.status === "fulfilled"
+    const recorded = benefitRows.some(row => row.year === year && row.month === month);
+    let decision: ScanDecision = recorded ? { status: "active", reasons: [] }
+      : benefitsRead.status === "fulfilled" && scansRead.status === "fulfilled"
       ? scanDecisionForMonth(scanRows, benefitRows, year, month)
       : { status: "unknown" as const, reasons: ["Coverage records could not be loaded."] };
+    const scansForMonth = scanRows.filter(row => row.year === year && row.month === month);
+    let decisionSource: CoverageDecisionSource = recorded ? "recorded"
+      : decision.status === "inactive" ? "scan"
+      : decision.reasons.includes("A coverage scan is still in progress.") ? "pending" : "unavailable";
+    let decisionExplanation = decision.status === "unknown" ? decision.reasons.join(" · ") : undefined;
+    if (decision.status === "unknown" && !scansForMonth.length && importedHistory.has(ordinal)) {
+      const authority = importedHistory.get(ordinal)!;
+      if (authority.state === "verified") {
+        decision = { status: "inactive", reasons: [] };
+        decisionSource = "import";
+        decisionExplanation = IMPORTED_COVERAGE_NOTE;
+      } else {
+        decisionExplanation = authority.explanation;
+      }
+    }
     const benefits = classifyBenefitPresence(benefitRows.filter((row) => row.year === year && row.month === month));
     const sourceHours = hoursRead.status === "fulfilled"
       ? hoursByOrdinal.get(toOrdinal(source.year, source.month)) ?? { employers: [], reported: 0 }
@@ -554,6 +589,8 @@ export async function buildWorkerMonthlyCoverageHistory(
       employerHours: sourceHours?.employers ?? null,
       hours,
       ...decision,
+      decisionSource,
+      decisionExplanation,
       medical: benefits.medical,
       dental: benefits.dental,
       other: benefits.other,

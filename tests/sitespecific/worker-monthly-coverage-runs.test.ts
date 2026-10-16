@@ -33,4 +33,13 @@ describe("monthly coverage runs", () => {
     expect(coverageRunStatus(row(2025, 5, "unknown", ["No Election"]))).toBe("unknown");
     expect(coverageRunStatus(row(2025, 5, "active", ["No Election"]))).toBe("active");
   });
+
+  it("joins mixed-origin inactive months across page boundaries but keeps pending distinct", () => {
+    const scanned = { ...row(2025, 5, "inactive", ["Low Hours"]), decisionSource: "scan" as const };
+    const imported = { ...row(2025, 4, "inactive"), decisionSource: "import" as const };
+    const pending = { ...row(2025, 3, "unknown"), decisionSource: "pending" as const };
+    const unavailable = row(2025, 2, "unknown");
+    const runs = groupCoverageRuns([scanned, imported, pending, unavailable]);
+    expect(runs.map(run => [run.status, run.rows.length])).toEqual([["inactive", 2], ["pending", 1], ["unknown", 1]]);
+  });
 });

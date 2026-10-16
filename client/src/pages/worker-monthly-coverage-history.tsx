@@ -10,6 +10,7 @@ import "@/plugins/dashboard/bao-worker-coverage/bao-worker-coverage.css";
 import { coverageRunLabel, groupCoverageRuns, type CoverageRunStatus } from "./monthly-coverage-runs";
 import type { DependentCoverageEvidence } from "@shared/covered-dependent-history";
 import { CoveredDependentsMonth, CoveredDependentsSpan } from "./covered-dependents";
+import { IMPORTED_COVERAGE_NOTE, type CoverageDecisionSource } from "@shared/monthly-coverage-decision";
 
 interface Month {
   year: number;
@@ -29,6 +30,8 @@ export interface MonthlyCoverageRow {
   employerHours?: Array<{ employerId: string | null; employerName: string; reported: number | null }> | null;
   hours: { reported: number | null; required: number | null } | null;
   status: "active" | "inactive" | "unknown";
+  decisionSource?: CoverageDecisionSource;
+  decisionExplanation?: string;
   reasons: string[];
   medical: string[];
   dental: string[];
@@ -83,7 +86,7 @@ const unenrolledRunStyle: CSSProperties = {
 };
 const monthKey = (row: MonthlyCoverageRow) => `${row.coverageMonth.year}-${row.coverageMonth.month}`;
 const runClass = (status: CoverageRunStatus) =>
-  `coverage-first-decision${status === "inactive" ? " coverage-first-decision--not-covered" : status === "unknown" || status === "unenrolled" ? " coverage-first-decision--quiet" : ""}`;
+  `coverage-first-decision${status === "inactive" ? " coverage-first-decision--not-covered" : status === "unknown" || status === "pending" || status === "unenrolled" ? " coverage-first-decision--quiet" : ""}`;
 const badgeClass = (status: CoverageRunStatus) =>
   `coverage-first-status ${status === "active" ? "coverage-first-status--covered" : status === "inactive" ? "coverage-first-status--not-covered" : "coverage-first-status--quiet"}`;
 
@@ -130,13 +133,12 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
         <CardHeader>
           <CardTitle>Monthly coverage history</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Coverage months are based on work three months earlier. Only recorded benefits and confirmed scan decisions are shown as known.
+            Coverage months are based on work three months earlier. Decisions use recorded coverage, completed scans, or verified imported history. Missing evidence does not mean Inactive.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-block h-2 w-2 rounded-full bg-[hsl(170_40%_38%)]" /> Active
-            <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(8_58%_43%)]" /> Inactive · scan decision
+            <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(8_58%_43%)]" /> Inactive · scan decision or verified imported history
             <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(32_38%_43%)]" /> Unenrolled · no election recorded
-            <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[hsl(39_22%_55%)]" /> Not confirmed
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -147,7 +149,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
               <Button variant="outline" size="sm" className="ml-3" onClick={() => query.refetch()}>Retry</Button>
             </div>
           )}
-          {pages?.some((page) => page.partial) && <p role="status" className="rounded-lg border p-3 text-sm">Some coverage details are unavailable. Months without a confirmed decision are shown as unknown. The history may be incomplete.</p>}
+          {pages?.some((page) => page.partial) && <p role="status" className="rounded-lg border p-3 text-sm">Some coverage details are unavailable. Pending or unavailable evidence is explained for each month, not treated as an inactive decision. The history may be incomplete.</p>}
           {pages?.some((page) => page.dependentHistoryAvailable === false) && <p role="status" className="text-sm">The earliest dependent coverage evidence is unavailable; older dependent-only months may be missing.</p>}
           {first && first.total === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{first.partial ? "No monthly history could be confirmed from the available evidence." : "No monthly coverage, dependent coverage, hours, scan, or charge history has been recorded for this worker."}</p>}
           {runs.map((run, index) => {
@@ -158,7 +160,9 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
             const oldest = run.rows[run.rows.length - 1].coverageMonth.label;
             const range = run.rows.length === 1 ? newest : `${oldest} – ${newest}`;
             const row = run.rows.find((item) => monthKey(item) === selectedMonths[id]) ?? run.rows[0];
-            const reasons = [...new Set(run.rows.flatMap((item) => item.reasons))].filter(Boolean).join(" · ");
+            const importedCount = run.rows.filter(item => item.decisionSource === "import").length;
+            const scanReasons = run.rows.filter(item => item.decisionSource !== "import")
+              .map(item => `${item.coverageMonth.label}: ${item.reasons.join(" · ") || "No scan reason recorded."}`).join("; ");
             return (
               <section
                 key={id}
@@ -175,14 +179,20 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                     onClick={() => setOpenRuns((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
                     className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
-                    <span className={badgeClass(run.status)} style={run.status === "unenrolled" ? unenrolledBadgeStyle : undefined}>
+                    <span className={run.status === "unknown" || run.status === "pending" ? "text-sm font-medium" : badgeClass(run.status)} style={run.status === "unenrolled" ? unenrolledBadgeStyle : undefined}>
                       {coverageRunLabel(run.status)}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-semibold">{range}</span>
                       {run.status === "inactive" && (
                         <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                          Reason: {reasons || "No scan reason recorded."}
+                          {importedCount > 0 && <span className="block">{importedCount} imported {importedCount === 1 ? "month" : "months"}: {IMPORTED_COVERAGE_NOTE}</span>}
+                          {scanReasons && <span className="block">Scan reasons by month: {scanReasons}</span>}
+                        </span>
+                      )}
+                      {(run.status === "unknown" || run.status === "pending") && (
+                        <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                          {run.rows.map(item => `${item.coverageMonth.label}: ${item.decisionExplanation || item.reasons.join(" · ") || "A reliable coverage decision is not available for this month."}`).join("; ")}
                         </span>
                       )}
                       {index === runs.length - 1 && query.hasNextPage && (
@@ -241,7 +251,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                   <p className="text-xs font-medium text-muted-foreground">Coverage month</p>
                   <h4 className="text-base font-semibold">{row.coverageMonth.label}</h4>
                 </div>
-                <span className={`${badgeClass(run.status)} order-3 col-span-2 justify-self-center text-center sm:order-2 sm:col-span-1`} style={run.status === "unenrolled" ? unenrolledBadgeStyle : undefined} role="status">
+                <span className={`${row.status === "unknown" ? "text-sm font-medium" : badgeClass(run.status)} order-3 col-span-2 justify-self-center text-center sm:order-2 sm:col-span-1`} style={run.status === "unenrolled" ? unenrolledBadgeStyle : undefined} role="status">
                   {coverageRunLabel(run.status)}
                 </span>
                 <div className="order-2 min-w-0 text-right sm:order-3">
@@ -288,7 +298,10 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                       </TooltipProvider>
                     </div>
                   )}
-                  {run.status === "inactive" && (
+                  {row.decisionSource === "import" && (
+                    <p className="mt-3 border-t pt-3 text-muted-foreground">{IMPORTED_COVERAGE_NOTE}</p>
+                  )}
+                  {run.status === "inactive" && row.decisionSource !== "import" && (
                     <p className="mt-3 border-t pt-3 text-muted-foreground">
                       <span className="font-medium text-foreground">Scan reason: </span>
                       {row.reasons.length ? row.reasons.join(" · ") : "No specific reason confirmed by the scan."}
@@ -327,7 +340,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                 </section>
               </div>
               <CoveredDependentsMonth evidence={row.dependentCoverage} month={row.coverageMonth.label} />
-              {row.status === "unknown" && <p className="mt-3 rounded-md bg-muted/40 p-3 text-muted-foreground">A reliable coverage decision is not available for this month.</p>}
+               {row.status === "unknown" && <p className="mt-3 rounded-md bg-muted/40 p-3 text-muted-foreground">{row.decisionExplanation || row.reasons.join(" · ") || "A reliable coverage decision is not available for this month."}</p>}
               {first?.showCharges && (
                 <p className="mt-3 border-t pt-3">
                   Posted EE-fund benefit charge: <strong className="tabular-nums">{row.charge === null ? "Unavailable" : `$${row.charge}`}</strong>

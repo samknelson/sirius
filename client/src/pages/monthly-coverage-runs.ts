@@ -1,11 +1,13 @@
 import type { MonthlyCoverageRow } from "./worker-monthly-coverage-history";
 
-export type CoverageRunStatus = MonthlyCoverageRow["status"] | "unenrolled";
+export type CoverageRunStatus = MonthlyCoverageRow["status"] | "unenrolled" | "pending";
 export type CoverageRun = { status: CoverageRunStatus; rows: MonthlyCoverageRow[] };
 
 /** Only the scan's explicit, sole no-election failure can mean Unenrolled. */
 export function coverageRunStatus(row: MonthlyCoverageRow): CoverageRunStatus {
+  if (row.status === "unknown" && row.decisionSource === "pending") return "pending";
   return row.status === "inactive" &&
+    row.decisionSource !== "import" &&
     row.reasons.length === 1 &&
     row.reasons[0].trim() === "No Election"
     ? "unenrolled"
@@ -16,7 +18,8 @@ export function coverageRunLabel(status: CoverageRunStatus): string {
   if (status === "active") return "Active";
   if (status === "inactive") return "Inactive";
   if (status === "unenrolled") return "Unenrolled";
-  return "Not confirmed";
+  if (status === "pending") return "Scan pending";
+  return "Coverage unavailable";
 }
 
 /** Group the entire loaded, newest-first sequence, not each API page separately. */

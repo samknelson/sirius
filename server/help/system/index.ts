@@ -2,6 +2,7 @@ import type { Help } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
 import { trustProvidersHelp } from "./trust-providers";
+import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
 import { adminUserPermissionsHelp } from "./admin-user-permissions";
 import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefaultsHelp } from "./message-defaults";
 
@@ -23,6 +24,7 @@ export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
   trustProvidersHelp,
+  workerBenefitsSummaryHelp,
   adminUserPermissionsHelp,
   emailMessageDefaultsHelp,
   postalMessageDefaultsHelp,

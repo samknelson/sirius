@@ -54,7 +54,7 @@ async function click(element: Element | null) {
 }
 
 function runButton(index: number): HTMLButtonElement {
-  const buttons = container.querySelectorAll<HTMLButtonElement>("section[aria-label^='Active coverage'], section[aria-label^='Inactive coverage'], section[aria-label^='Unenrolled coverage'], section[aria-label^='Not confirmed coverage']");
+  const buttons = container.querySelectorAll<HTMLButtonElement>("section[aria-label^='Active coverage'], section[aria-label^='Inactive coverage'], section[aria-label^='Unenrolled coverage'], section[aria-label^='Coverage unavailable coverage'], section[aria-label^='Scan pending coverage']");
   const button = buttons[index]?.querySelector<HTMLButtonElement>("h3 > button");
   if (!button) throw new Error(`Missing run ${index}`);
   return button;
@@ -151,7 +151,7 @@ describe("worker monthly coverage status runs", () => {
     expect(runButton(0).textContent).toContain("April 2025 – May 2025");
     expect(runButton(1).textContent).toContain("Inactive");
     expect(runButton(1).textContent).toContain("No Election · Low Hours");
-    expect(runButton(2).textContent).toContain("Not confirmed");
+    expect(runButton(2).textContent).toContain("Coverage unavailable");
     await click(runButton(0));
     expect(container.querySelector('[data-testid="monthly-coverage-card"]')?.textContent).toContain("Election record: No Election");
     await click(runButton(2));
@@ -166,7 +166,8 @@ describe("worker monthly coverage status runs", () => {
     unknown.dental = ["Legacy dental"];
     response([page([unknown])]);
     await render();
-    expect(runButton(0).textContent).toContain("Not confirmed");
+    expect(runButton(0).textContent).toContain("Coverage unavailable");
+    expect(container.textContent).not.toContain("Not confirmed");
     await click(runButton(0));
     expect(container.textContent).toContain("Employer hours unavailable.");
     expect(container.textContent).toContain("Legacy medical");
@@ -194,7 +195,7 @@ describe("worker monthly coverage status runs", () => {
     expect(container.textContent).toContain("Monthly coverage history is unavailable");
   });
 
-  it("shows dependent-only coverage separately in an Unenrolled span, updates ranges on pagination, and retains selected detail", async () => {
+  it("shows dependent names only, deduplicates across pages, and preserves selected-month membership", async () => {
     const may = row(2025, 5, "inactive", ["No Election"]);
     may.dependentCoverage = { state: "available", dependents: [{
       personId: "child", name: "Child A", relationship: "Child",
@@ -205,16 +206,23 @@ describe("worker monthly coverage status runs", () => {
     await render();
     await click(runButton(0));
     const summary = () => container.querySelector('[aria-label="Covered dependents in loaded span"]')!;
-    expect(summary().textContent).toContain("April 2025 – May 2025");
+    expect(summary().textContent).not.toContain("April 2025");
+    expect(summary().textContent).not.toContain("May 2025");
+    expect(summary().querySelectorAll("li")).toHaveLength(1);
+    expect(summary().textContent).toContain("Child A · Child");
+    expect(summary().textContent).not.toContain("Medical for child");
     expect(summary().textContent).toContain("Older months have not loaded");
     const card = container.querySelector('[data-testid="monthly-coverage-card"]')!;
-    expect(card.querySelector('[aria-label="Covered dependents for May 2025"]')?.textContent).toContain("Medical for child");
+    expect(card.querySelector('[aria-label="Covered dependents for May 2025"]')?.textContent).toContain("Child A · Child");
+    expect(card.querySelector('[aria-label="Covered dependents for May 2025"]')?.textContent).not.toContain("Medical for child");
+    expect(card.querySelector('[aria-label="Covered dependents for May 2025"] svg')).toBeNull();
     expect(card.querySelector('[aria-label="Benefits for May 2025"]')?.textContent).not.toContain("Child A");
     expect(card.textContent).toContain("Unenrolled");
     const march = { ...may, coverageMonth: month(2025, 3) };
     response([page([may, april], 4), page([march, row(2025, 2, "inactive", ["No Election"])], 4)]);
     await render();
-    expect(summary().textContent).toContain("March 2025 – May 2025");
+    expect(summary().textContent).not.toContain("March 2025");
+    expect(summary().querySelectorAll("li")).toHaveLength(1);
     expect(summary().textContent).not.toContain("Older months have not loaded");
     expect(container.querySelectorAll("h3 > button")).toHaveLength(1);
     expect(container.querySelector('[data-testid="monthly-coverage-card"]')?.getAttribute("aria-label")).toBe("Coverage for May 2025");
@@ -237,5 +245,50 @@ describe("worker monthly coverage status runs", () => {
     response([page([row(2025, 5, "unknown")], 2), page([may], 2, { partial: true })]);
     await render();
     expect(container.textContent).toContain("Some coverage details are unavailable");
+  });
+
+  it("joins imported and scan inactive months across pages without borrowing explanations", async () => {
+    const may = row(2025, 5, "inactive", ["Low Hours"]);
+    may.decisionSource = "scan";
+    const april = row(2025, 4, "inactive");
+    april.decisionSource = "import";
+    april.decisionExplanation = "Imported coverage history — scanned in the previous system.";
+    response([page([may], 2)], true);
+    await render();
+    await click(runButton(0));
+    response([page([may], 2), page([april], 2)]);
+    await render();
+    expect(container.querySelectorAll("h3 > button")).toHaveLength(1);
+    expect(runButton(0).textContent).toContain("1 imported month: Imported coverage history");
+    expect(runButton(0).textContent).toContain("May 2025: Low Hours");
+    expect(runButton(0).textContent).not.toContain("April 2025: Low Hours");
+    let card = container.querySelector('[data-testid="monthly-coverage-card"]')!;
+    expect(card.textContent).toContain("Scan reason: Low Hours");
+    expect(card.textContent).not.toContain("previous system");
+    await click(Array.from(container.querySelectorAll('[role="group"] button')).find(button => button.textContent?.includes("April 2025")) ?? null);
+    card = container.querySelector('[data-testid="monthly-coverage-card"]')!;
+    expect(card.textContent).toContain(april.decisionExplanation);
+    expect(card.textContent).not.toContain("Scan reason");
+    expect(card.textContent).not.toContain("Low Hours");
+    expect(card.textContent).toContain("Inactive");
+  });
+
+  it("shows pending and unavailable explanations rather than coverage badges", async () => {
+    const pending = row(2025, 5, "unknown", ["A coverage scan is still in progress."]);
+    pending.decisionSource = "pending";
+    pending.decisionExplanation = pending.reasons[0];
+    const failed = row(2025, 4, "unknown");
+    failed.decisionSource = "unavailable";
+    failed.decisionExplanation = "The completed coverage scan result is unreadable.";
+    response([page([pending, failed])]);
+    await render();
+    expect(runButton(0).textContent).toContain("Scan pending");
+    expect(runButton(0).textContent).toContain(pending.decisionExplanation);
+    expect(runButton(1).textContent).toContain(failed.decisionExplanation);
+    expect(runButton(0).querySelector(".coverage-first-status")).toBeNull();
+    expect(runButton(1).querySelector(".coverage-first-status")).toBeNull();
+    expect(container.textContent).not.toContain("Not confirmed");
+    await click(runButton(1));
+    expect(container.querySelector('[data-testid="monthly-coverage-card"]')?.textContent).toContain(failed.decisionExplanation);
   });
 });

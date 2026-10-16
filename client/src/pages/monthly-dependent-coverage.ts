@@ -1,43 +1,24 @@
 import type { CoveredDependent } from "@shared/covered-dependent-history";
 import type { MonthlyCoverageRow } from "./worker-monthly-coverage-history";
 
-type Month = MonthlyCoverageRow["coverageMonth"];
-export interface DependentRange {
-  from: Month;
-  through: Month;
-  person: CoveredDependent;
-}
-
-/** Summarize only loaded, available months; gaps never imply continuity. */
+/** One person per loaded span, regardless of benefit changes or disjoint appearances.
+ * Use the newest retained metadata; this is not a historical identity snapshot. */
 export function summarizeDependentCoverage(rows: MonthlyCoverageRow[]) {
-  const people = new Map<string, DependentRange[]>();
+  const people = new Map<string, CoveredDependent>();
   let unavailableMonths = 0;
-  for (const row of [...rows].sort((a, b) => ordinal(a.coverageMonth) - ordinal(b.coverageMonth))) {
+  for (const row of [...rows].sort((a, b) =>
+    (b.coverageMonth.year * 12 + b.coverageMonth.month) -
+    (a.coverageMonth.year * 12 + a.coverageMonth.month))) {
     if (row.dependentCoverage?.state !== "available") {
       unavailableMonths++;
       continue;
     }
     for (const person of row.dependentCoverage.dependents) {
-      const ranges = people.get(person.personId) ?? [];
-      const last = ranges[ranges.length - 1];
-      if (last && ordinal(row.coverageMonth) - ordinal(last.through) === 1 &&
-          signature(last.person) === signature(person)) {
-        last.through = row.coverageMonth;
-      } else {
-        ranges.push({ from: row.coverageMonth, through: row.coverageMonth, person });
-      }
-      people.set(person.personId, ranges);
+      if (!people.has(person.personId)) people.set(person.personId, person);
     }
   }
   return {
-    people: [...people.entries()].map(([personId, ranges]) => ({ personId, ranges }))
-      .sort((a, b) => a.ranges[0].person.name.localeCompare(b.ranges[0].person.name) || a.personId.localeCompare(b.personId)),
+    people: [...people.values()].sort((a, b) => a.name.localeCompare(b.name) || a.personId.localeCompare(b.personId)),
     unavailableMonths,
   };
-}
-
-function ordinal(month: Month) { return month.year * 12 + month.month; }
-function signature(person: CoveredDependent) {
-  return JSON.stringify([person.name, person.relationship,
-    person.benefits.map((benefit) => [benefit.id, benefit.name]).sort((a, b) => a[0].localeCompare(b[0]))]);
 }
