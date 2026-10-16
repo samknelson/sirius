@@ -73,6 +73,52 @@ afterEach(async () => {
 });
 
 describe("worker monthly coverage status runs", () => {
+  it.each([
+    { name: "successfully loaded empty reports", employers: [], reported: 0, expected: "Unreported" },
+    { name: "recorded zero hours", employers: [0], reported: 0, expected: "0 hours" },
+    { name: "positive decimal hours", employers: [88.25, 12.5], reported: 100.75, expected: "100.75 hours" },
+    { name: "failed employer read", employers: null, reported: null, expected: "Unavailable" },
+    { name: "absent employer evidence with a zero total", employers: undefined, reported: 0, expected: "Unavailable" },
+    { name: "null-valued employer evidence", employers: [null], reported: null, expected: "Unavailable" },
+    { name: "mixed known and null employer amounts", employers: [88.25, null], reported: null, expected: "Unavailable" },
+    { name: "null employer amount even with a numeric total", employers: [null], reported: 0, expected: "Unavailable" },
+    { name: "empty employers with a null total", employers: [], reported: null, expected: "Unavailable" },
+    { name: "missing reported total", employers: [], reported: undefined, expected: "Unavailable" },
+    { name: "unreadable total", employers: [], reported: NaN, expected: "Unavailable" },
+  ])("distinguishes $name in the selector and selected-month total", async ({ employers, reported, expected }) => {
+    const july = row(2025, 7, "active");
+    july.employerHours = employers == null ? employers : employers.map((amount, index) => ({
+      employerId: `employer-${index}`, employerName: `Employer ${index}`, reported: amount,
+    }));
+    july.hours = reported === undefined ? null : { reported, required: 100 };
+    response([page([july, row(2025, 6, "active")])]);
+    await render();
+    await click(runButton(0));
+    const picker = container.querySelector('[role="group"] button');
+    expect(picker?.textContent).toContain(`Work: April 2025 · ${expected}`);
+    const card = container.querySelector('[data-testid="monthly-coverage-card"]')!;
+    expect(card.textContent).toContain(`Total reported across employers: ${expected}`);
+    expect(card.textContent).toContain(`Applicable threshold: ${reported === undefined ? "Unavailable" : "100 hours"}`);
+    expect(card.textContent).toContain("Work monthApril 2025");
+    expect(card.textContent).toContain("Active");
+    if (employers?.length === 0) {
+      expect(card.textContent).toContain("No employer hours recorded for this work month.");
+    } else if (employers == null) {
+      expect(card.textContent).toContain("Employer hours unavailable.");
+    } else {
+      const breakdown = card.querySelector('[aria-label="Work-month evidence for April 2025"] ul')!;
+      expect(breakdown.querySelectorAll("li")).toHaveLength(employers.length);
+      employers.forEach((amount, index) => {
+        expect(breakdown.querySelectorAll("li")[index].textContent)
+          .toBe(`Employer ${index}${amount === null ? "Unavailable" : `${amount} hours`}`);
+      });
+    }
+    // Selecting another month must restore its own positive evidence.
+    await click(container.querySelectorAll('[role="group"] button')[1]);
+    expect(container.querySelector('[data-testid="monthly-coverage-card"]')?.textContent)
+      .toContain("Total reported across employers: 88.25 hours");
+  });
+
   it("starts compact, then opens a run and selects one month with its original evidence", async () => {
     const june = row(2025, 6, "active");
     june.medical = ["Medical A", "Medical B"];

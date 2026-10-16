@@ -59,6 +59,20 @@ function formatHours(value: number | null | undefined): string {
     : `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} hours`;
 }
 
+function formatReportedHours(row: MonthlyCoverageRow): string {
+  const reported = row.hours?.reported;
+  // Only a successful, empty employer read proves that no hours were reported.
+  if (
+    !Array.isArray(row.employerHours) ||
+    typeof reported !== "number" || !Number.isFinite(reported) ||
+    row.employerHours.some((employer) =>
+      typeof employer.reported !== "number" || !Number.isFinite(employer.reported))
+  ) return "Unavailable";
+  return row.employerHours.length === 0 && reported === 0
+    ? "Unreported"
+    : formatHours(reported);
+}
+
 function NamedBenefit({ benefit }: { benefit: BenefitIcon }) {
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2">
@@ -230,7 +244,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                           >
                             <span className="block">{monthRow.coverageMonth.label}</span>
                             <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                              Work: {monthRow.workMonth.label} · {formatHours(monthRow.hours?.reported)}
+                              Work: {monthRow.workMonth.label} · {formatReportedHours(monthRow)}
                             </span>
                           </button>
                         ))}
@@ -330,7 +344,7 @@ export function WorkerMonthlyCoverageHistory({ workerId }: { workerId: string })
                     </ul>
                   )}
                   <div className="mt-3 border-t pt-3">
-                    <p>Total reported across employers: <strong className="tabular-nums">{formatHours(row.hours?.reported)}</strong></p>
+                    <p>Total reported across employers: <strong className="tabular-nums">{formatReportedHours(row)}</strong></p>
                     <p className="mt-1">Applicable threshold: <strong className="tabular-nums">{formatHours(row.hours?.required)}</strong></p>
                     {(row.hours?.reported === null || row.hours?.reported === undefined ||
                       row.hours.required === null || row.hours.required === undefined) && (

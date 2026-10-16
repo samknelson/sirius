@@ -14,6 +14,10 @@ describe("Benefits Summary built-in help", () => {
     expect(help.details).toContain("scanned in the previous system");
     expect(help.details).toContain("Scan pending");
     expect(help.details).toContain("Coverage unavailable");
+    expect(help.details).toContain("<strong>Unreported</strong>");
+    expect(help.details).toContain("no employer hours records exist for that work month");
+    expect(help.details).toContain("<strong>0 hours</strong> means reports were recorded and their total is zero");
+    expect(help.details).toContain("<strong>Unavailable</strong> means hours evidence is missing, unreadable, or could not be loaded");
     expect(help.details).not.toContain("<script");
   });
   it("matches the summary route but not sibling screens, suffixes or unrelated pages", () => {

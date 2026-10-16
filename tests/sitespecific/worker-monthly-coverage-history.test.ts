@@ -152,6 +152,29 @@ describe("worker monthly coverage history", () => {
     expect(history).toEqual({ months: [], total: 0, showCharges: false, partial: false, dependentHistoryAvailable: true });
   });
 
+  it("preserves empty, recorded zero, positive, null, unreadable, and failed hours evidence", async () => {
+    mocks.getWorkerBenefitPresence.mockResolvedValue([{ year: 2025, month: 7, benefitName: "Medical" }]);
+    const build = () => buildWorkerMonthlyCoverageHistory("worker", 0, 1, new Date("2025-07-15T12:00:00Z"));
+    const empty = await build();
+    expect(empty.months[0]).toMatchObject({
+      workMonth: { label: "April 2025" }, employerHours: [], hours: { reported: 0 },
+    });
+    for (const [totalHours, reported] of [["0", 0], ["12.25", 12.25], [null, null], ["unreadable", null]] as const) {
+      mocks.getWorkerHoursMonthly.mockResolvedValue([{
+        year: 2025, month: 4, employerId: "a", employer: { name: "Employer A" }, totalHours,
+      }]);
+      const history = await build();
+      expect(history.months[0]).toMatchObject({
+        employerHours: [{ employerId: "a", employerName: "Employer A", reported }],
+        hours: { reported }, status: "active",
+      });
+    }
+    mocks.getWorkerHoursMonthly.mockRejectedValue(new Error("Hours could not be loaded"));
+    const failed = await build();
+    expect(failed.partial).toBe(true);
+    expect(failed.months[0]).toMatchObject({ employerHours: null, hours: null, status: "active" });
+  });
+
   it("uses only medical and dental types and preserves other plan names", () => {
     expect(classifyBenefitPresence([
       { benefitName: "Medical PPO", benefitTypeName: "Medical" },
