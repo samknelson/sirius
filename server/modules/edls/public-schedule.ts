@@ -8,7 +8,7 @@ import { checkFlood, recordFloodEvent } from "../../flood/service";
 import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
 import { logger } from "../../logger";
 import type { AssignmentForWorker } from "../../storage/edls/assignments";
-import { entityMetadataStorage } from "../../storage/system/entity-metadata";
+import { projectWorkerAssignments } from "../../services/edls-worker-assignment";
 import { getSystemTimeZone } from "../../config/system-timezone";
 import {
   buildContext,
@@ -171,38 +171,7 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         // Review notices must not expose unconfirmed job, crew, location, or
         // other detail fields even in the public JSON response. Only confirmed
         // assignments need an update age and revision.
-        const metadata = await entityMetadataStorage.getMany(
-          resolved.assignments
-            .filter((assignment) => assignment.sheetStatus === "lock" || assignment.sheetStatus === "reserved")
-            .map((assignment) => assignment.assignmentId),
-        );
-        const assignments: PublicWorkerSchedule["assignments"] = resolved.assignments.map((assignment) => {
-          if (assignment.sheetStatus === "draft" || assignment.sheetStatus === "request") {
-            return {
-              assignmentId: assignment.assignmentId,
-              ymd: assignment.ymd,
-              sheetStatus: assignment.sheetStatus,
-            };
-          }
-          // The storage read is restricted to PUBLIC_SHEET_STATUSES; never
-          // publish full details for a newly added or unexpected status.
-          if (assignment.sheetStatus !== "lock" && assignment.sheetStatus !== "reserved") {
-            throw new Error("Unexpected EDLS public schedule sheet status");
-          }
-          const record = metadata.get(assignment.assignmentId);
-          const ownMetadata = record?.contextId === "edls_assignments" ? record : null;
-          const modified = ownMetadata?.modified.date;
-          return {
-            ...assignment,
-            sheetStatus: assignment.sheetStatus,
-            revision: ownMetadata && Number.isSafeInteger(ownMetadata.rev) && ownMetadata.rev > 0
-              ? ownMetadata.rev
-              : null,
-            updatedAt: modified && Number.isFinite(modified.getTime())
-              ? modified.toISOString()
-              : null,
-          };
-        });
+        const assignments = await projectWorkerAssignments(resolved.assignments);
         const { startYmd, endYmd } = scheduleWindow();
         const workerBackPath = await getWorkerBackPath(
           req,

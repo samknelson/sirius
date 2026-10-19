@@ -43,6 +43,8 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
   const schemaAny = schema as Record<string, unknown>;
 
   const channel = (schemaAny["x-token-channel"] as string) ?? "";
+  const variant = schemaAny["x-token-variant"] as string | undefined;
+  const templateKey = variant ? `${variant}_${channel}` : channel;
   // Both stamped into this group at registration, from the id the
   // notifier is actually registered under: the notifier whose defaults
   // this card fetches (and whose preview records the studio fetches),
@@ -100,9 +102,10 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
     const timer = setTimeout(() => setSettledConfig(configQuery), 400);
     return () => clearTimeout(timer);
   }, [configQuery, settledConfig]);
-  const depQuery = settledConfig
-    ? `?config=${encodeURIComponent(settledConfig)}`
-    : "";
+  const params = new URLSearchParams();
+  if (settledConfig) params.set("config", settledConfig);
+  if (variant) params.set("variant", variant);
+  const depQuery = params.size ? `?${params}` : "";
 
   const {
     data: defaultTemplates,
@@ -265,6 +268,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
 
       {canEdit && studioOpen && (
         <NotifierTemplateStudio
+        templateKey={templateKey}
           open={studioOpen}
           onOpenChange={setStudioOpen}
           channel={channel}

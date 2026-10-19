@@ -11,6 +11,7 @@ import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
 import { useAuth } from "@/contexts/AuthContext";
 import { assignmentUpdateAge } from "@/lib/assignment-update-age";
 import { isValidTimeZone } from "@shared/utils/timezone";
+import { EDLS_REVIEW_NOTICE, workerAssignmentFields } from "@shared/edls-worker-assignment";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;
@@ -107,27 +108,6 @@ function formatDayHeading(ymd: Ymd): string {
     month: "long",
     day: "numeric",
   });
-}
-
-function formatTime(time: string | null | undefined): string {
-  if (!time) return "";
-  const [hours, minutes] = time.split(":");
-  const hour = parseInt(hours, 10);
-  if (Number.isNaN(hour)) return "";
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
-}
-
-/**
- * The time this worker is due: the per-assignment override when one was
- * entered, otherwise the crew's start time.
- */
-function effectiveStartTime(assignment: ConfirmedScheduleAssignment): string {
-  const override = assignment.data && typeof (assignment.data as { startTime?: unknown }).startTime === "string"
-    ? (assignment.data as { startTime: string }).startTime
-    : null;
-  return formatTime(override || assignment.startTime);
 }
 
 /** A labelled field. Empty values render blank rather than being hidden. */
@@ -247,36 +227,23 @@ export function AssignmentDetails({
         data-testid={`assignment-${assignment.assignmentId}`}
       >
         <p data-testid={`text-requested-review-${assignment.assignmentId}`}>
-          The assignment for this day is being reviewed. This page will be updated when the assignment is final.
+          {EDLS_REVIEW_NOTICE}
         </p>
       </div>
     );
   }
 
   if (assignment.sheetStatus !== "lock" && assignment.sheetStatus !== "reserved") return null;
+  const fields = workerAssignmentFields(assignment);
 
   return (
     <div className="space-y-4" data-testid={`assignment-${assignment.assignmentId}`}>
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <Field label="Event" value={assignment.jobGroup?.name ?? ""} testId="text-event" />
-          <Field label="Event Status" value={assignment.showStatus?.name ?? ""} testId="text-event-status" />
-          <Field label="Department" value={assignment.department?.name ?? ""} testId="text-department" />
-          <Field label="Job #" value={assignment.sheetTitle ?? ""} testId="text-job-number" />
-          <Field label="Facility" value={assignment.facility?.name ?? ""} testId="text-facility" />
+          {fields.slice(0, 5).map(field => <Field key={field.testId} {...field} />)}
         </div>
         <div className="space-y-2">
-          <Field label="Crew" value={assignment.crewTitle ?? ""} testId="text-crew" />
-          <Field label="Task" value={assignment.task?.name ?? ""} testId="text-task" />
-          {assignment.classification && (
-            <Field
-              label="Classification"
-              value={assignment.classification.code || assignment.classification.name}
-              testId="text-classification"
-            />
-          )}
-          <Field label="Start Time" value={effectiveStartTime(assignment)} testId="text-start-time" />
-          <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
+          {fields.slice(5).map(field => <Field key={field.testId} {...field} />)}
         </div>
       </div>
       <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />

@@ -105,6 +105,14 @@ export async function buildNotifierStudioRecords(
           : undefined;
 
   for (const root of roots) {
+    if (root.scope === "recipient") {
+      // A send-scoped context has no standalone record id. Never replay it
+      // without its recipient or offer an unrelated record as its substitute.
+      recordsByRoot[root.name] = [];
+      emptyRecordsNotes[root.name] =
+        "This context is specific to a delivered recipient. Preview uses fictional examples; no access links are issued.";
+      continue;
+    }
     const records = sharedNote ? [] : await replayRoot(root, replayed, plugin.id);
     recordsByRoot[root.name] = records;
     if (records.length === 0) {
@@ -209,6 +217,7 @@ async function replayRoot(
     const ctx: EventNotifierEventContext = {
       event: entry.eventType,
       payload: entry.payload,
+      preview: true,
     };
     let id: string | undefined;
     try {
@@ -269,6 +278,7 @@ async function replayRecipients(
     const ctx: EventNotifierEventContext = {
       event: entry.eventType,
       payload: entry.payload,
+      preview: true,
     };
     try {
       const recipients = (await plugin.getRecipients?.(ctx, configData)) ?? [];

@@ -189,7 +189,7 @@ function channelGroup(
  * block's description so authors see a couple of relevant tokens.
  */
 export function templatesSchemaBlock(
-  opts?: { exampleTokens?: string[] },
+  opts?: { exampleTokens?: string[]; variants?: Array<{ id: string; label: string; channels: TemplateChannel[] }> },
 ): Record<string, unknown> {
   const examples = opts?.exampleTokens ?? [];
   const block: Record<string, unknown> = {
@@ -227,6 +227,16 @@ export function templatesSchemaBlock(
       ),
     },
   };
+  const groups = block.properties as Record<string, Record<string, unknown>>;
+  for (const variant of opts?.variants ?? []) {
+    for (const channel of variant.channels) {
+      groups[`${variant.id}_${channel}`] = {
+        ...groups[channel],
+        title: `${variant.label} — ${groups[channel].title}`,
+        "x-token-variant": variant.id,
+      };
+    }
+  }
   if (examples.length > 0) {
     block.description = `Leave a field untouched to keep the notifier's default. Example tokens: ${examples.join(
       " ",

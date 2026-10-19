@@ -481,6 +481,7 @@ async function dispatchForConfig(
     const { resolveTemplates } = await import("./token-templates");
     const built: import("../tokens/types").TokenRootSeed[] = [];
     for (const root of plugin.tokenTemplates.roots) {
+      if (root.scope === "recipient") continue;
       const entity = await root.build(ctx);
       if (!entity) {
         if (root.optional) continue;
@@ -509,19 +510,34 @@ async function dispatchForConfig(
   }
 
   for (const recipient of recipients) {
+    let recipientContext = seeds && templates && renderCache
+      ? { seeds, templates, cache: renderCache }
+      : null;
+    if (plugin.tokenTemplates && recipientContext) {
+      const { buildRecipientTemplateContext } = await import("./token-templates");
+      recipientContext = await buildRecipientTemplateContext(
+        plugin, ctx, recipient, configData, recipientContext,
+      );
+      if (!recipientContext) {
+        logger.warn("Event-notifier could not load a recipient template record; skipping recipient", {
+          service: SERVICE, pluginId, contactId: recipient.contactId,
+        });
+        continue;
+      }
+    }
     for (const medium of active) {
       if (plugin.shouldSendToRecipient &&
         !await plugin.shouldSendToRecipient(medium, recipient, ctx, configData)) continue;
       let content: NotifierMessageContent | null = null;
-      if (plugin.tokenTemplates && seeds && templates && renderCache) {
+      if (plugin.tokenTemplates && recipientContext) {
         const { composeFromTemplates } = await import("./token-templates");
         const composed = await composeFromTemplates(
           plugin,
           medium,
           recipient,
-          seeds,
-          templates,
-          renderCache,
+          recipientContext.seeds,
+          recipientContext.templates,
+          recipientContext.cache,
         );
         content = composed.content;
         if (!content && composed.blankRequired.length > 0) {

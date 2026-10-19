@@ -9,11 +9,14 @@ import {
 import { absoluteUrl } from "../../../lib/base-url";
 import { logger } from "../../../logger";
 import { registerEventNotifier } from "../registry";
+import { templatesSchemaBlock } from "../template-schema";
+import { projectWorkerAssignments } from "../../../services/edls-worker-assignment";
+import { renderWorkerAssignmentSms } from "@shared/edls-worker-assignment";
+import type { AssignmentForWorker } from "../../../storage/edls/assignments";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
   type NotificationMedium,
-  type NotifierMessageContent,
   type NotifierRecipient,
 } from "../types";
 
@@ -55,25 +58,6 @@ function isNotifiableSheetYmd(ymd: unknown): boolean {
 }
 
 /**
- * The message body for a worker who IS on the sheet. Fixed wording: the link
- * differs per recipient, and token record roots are built once per event
- * rather than once per recipient, so this notifier composes its own message
- * instead of going through the template path.
- */
-const SENTENCE =
-  "Your crew assignment has been posted or updated. Please follow the link below and accept.";
-
-/**
- * The message body for a worker who has been TAKEN OFF the sheet. Names the
- * date, because the worker's only cue is the text itself: they are not being
- * pointed at a row they can open, and they may be on other crews that week.
- */
-function removedSentence(ymd: string): string {
-  const when = isValidYmd(ymd) ? formatYmd(ymd, "weekday-long") : ymd;
-  return `You are no longer scheduled on the crew for ${when}. Please follow the link below for your current schedule.`;
-}
-
-/**
  * The worker's own EDLS schedule page, keyed by THEIR access token.
  *
  * `/edls-sched/:access_uuid` is the public worker schedule page: holding the
@@ -108,8 +92,9 @@ const ACCESS_TOKEN_COMPONENT = "worker.aat";
  * once. Null when no token could be issued — the caller drops that recipient
  * rather than texting them a link that cannot resolve.
  */
-async function resolveAccessToken(workerId: string): Promise<string | null> {
+async function resolveAccessToken(workerId: string, preview = false): Promise<string | null> {
   const { storage } = await import("../../../storage");
+  if (preview) return (await storage.workerAat.getByWorker(workerId))?.accessUuid || null;
   try {
     const { record } = await storage.workerAat.ensureAccessUuid(workerId);
     if (record.accessUuid) return record.accessUuid;
@@ -134,6 +119,7 @@ async function resolveAccessToken(workerId: string): Promise<string | null> {
  * the message against the same assignment the message was about.
  */
 interface ResolvedAssignment {
+  assignment: AssignmentForWorker;
   assignmentId: string;
   crewId: string;
   generationId: string;
@@ -449,10 +435,63 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
   requiredComponent: "edls",
   subscribedEvents: [EventType.EDLS_SHEET_SAVED],
   supportedMedia: ["sms"],
+  tokenTemplates: {
+    roots: [{
+      name: "edls", kind: "edls", label: "EDLS worker notification",
+      description: "The triggering sheet and this recipient's covered assignments and schedule.",
+      scope: "recipient",
+      async build(ctx, recipient) {
+        const resolved = recipient && recipientByContact.get(ctx)?.get(recipient.contactId);
+        if (!resolved) return null;
+        const { sheet } = payloadOf(ctx);
+        const { storage } = await import("../../../storage");
+        const employer = sheet.employerId ? await storage.employers.getEmployer(sheet.employerId) : null;
+        // Hidden/unexpected statuses never publish job/crew details, even when
+        // selected as trigger statuses. No seven-day restriction on future sends.
+        const assignments = resolved.kind === "assigned"
+          ? resolved.covered.map(covered => covered.assignment)
+          : [];
+        const visible = assignments.filter(a =>
+          ["draft", "request", "lock", "reserved"].includes(a.sheetStatus),
+        );
+        const projected = await projectWorkerAssignments(visible);
+        const renderSms = projected.map(renderWorkerAssignmentSms).join("\n\n") ||
+          (resolved.kind === "assigned" ? renderWorkerAssignmentSms({ ymd: sheet.ymd, sheetStatus: sheet.status }) : "");
+        return {
+          kind: "edls",
+          row: {
+            date: formatYmd(sheet.ymd, "weekday-long"),
+            employer: employer ?? null,
+            worker: {
+              id: resolved.workerId,
+              schedule: { url: workerScheduleUrl(resolved.accessUuid) },
+              assignment: { render_sms: renderSms },
+            },
+          },
+        };
+      },
+    }],
+    defaultTemplates: () => ({
+      sms: { body: "Updated work assignment from {{edls.employer}}:\n{{edls.worker.assignment.render_sms}}\n\nAccept or decline:\n{{edls.worker.schedule.url}}" },
+    }),
+    variants: {
+      removed: {
+        defaultTemplates: () => ({
+          sms: { body: "You are no longer scheduled on the crew for {{edls.date}}.\n\nView your current schedule:\n{{edls.worker.schedule.url}}" },
+        }),
+      },
+    },
+    selectVariant: (ctx, recipient) =>
+      recipientByContact.get(ctx)?.get(recipient.contactId)?.kind === "removed" ? "removed" : undefined,
+  },
   configSchema: {
     type: "object",
     required: ["statuses"],
     properties: {
+      templates: templatesSchemaBlock({
+        exampleTokens: ["{{edls.worker.schedule.url}}", "{{edls.worker.assignment.render_sms}}"],
+        variants: [{ id: "removed", label: "Removal", channels: ["sms"] }],
+      }),
       statuses: {
         type: "array",
         title: "Trigger statuses",
@@ -555,13 +594,14 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     const recipients: NotifierRecipient[] = [];
     for (const [contactId, group] of byContact) {
       if (!optins.get(group[0].phoneNumber)?.optin) continue;
-      const accessUuid = await resolveAccessToken(group[0].workerId);
+      const accessUuid = await resolveAccessToken(group[0].workerId, ctx.preview);
       if (!accessUuid) continue;
       resolved.set(contactId, {
         kind: "assigned",
         workerId: group[0].workerId,
         accessUuid,
         covered: group.map((t) => ({
+          assignment: t.assignment,
           assignmentId: t.assignmentId,
           crewId: t.crewId,
           generationId: t.generationId,
@@ -578,7 +618,7 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
       if (!optins.get(worker.phoneNumber)?.optin) continue;
       // A removed worker holds no assignment row, but the link they are sent
       // is the same one an assigned worker gets, so it is keyed the same way.
-      const accessUuid = await resolveAccessToken(worker.workerId);
+      const accessUuid = await resolveAccessToken(worker.workerId, ctx.preview);
       if (!accessUuid) continue;
       resolved.set(worker.contactId, {
         kind: "removed",
@@ -590,24 +630,6 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
 
     recipientByContact.set(ctx, resolved);
     return recipients;
-  },
-
-  async getMessage(
-    medium: NotificationMedium,
-    recipient: NotifierRecipient,
-    ctx: EventNotifierEventContext,
-  ): Promise<NotifierMessageContent | null> {
-    if (medium !== "sms") return null;
-    const resolved = recipientByContact.get(ctx)?.get(recipient.contactId);
-    // Nothing resolved means this recipient did not come from the reads above;
-    // there is no honest thing to tell them.
-    if (!resolved) return null;
-    const link = workerScheduleUrl(resolved.accessUuid);
-    if (resolved.kind === "removed") {
-      const { sheet } = payloadOf(ctx);
-      return { body: `${removedSentence(sheet.ymd)} ${link}` };
-    }
-    return { body: `${SENTENCE} ${link}` };
   },
 
   /**
