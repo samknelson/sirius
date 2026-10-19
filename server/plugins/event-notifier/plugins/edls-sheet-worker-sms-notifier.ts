@@ -477,7 +477,7 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     variants: {
       removed: {
         defaultTemplates: () => ({
-          sms: { body: "You are no longer scheduled on the crew for {{edls.date}}.\n\nView your current schedule:\n{{edls.worker.schedule.url}}" },
+          sms: { body: "You are no longer scheduled on the crew for:\n\n=== {{edls.date}} ===\n\nView your current schedule:\n{{edls.worker.schedule.url}}" },
         }),
       },
     },

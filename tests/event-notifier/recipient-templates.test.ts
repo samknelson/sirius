@@ -73,13 +73,25 @@ describe("recipient-scoped notifier templates", () => {
     const data = { templates: { sms: { body: "Update {{edls.worker.schedule.url}}" }, removed_sms: { body: "Removal {{edls.worker.schedule.url}}" } } };
     expect(await message("a", data)).toBe("Update https://example.invalid/edls-sched/token-a");
     expect(await message("removed", data)).toBe("Removal https://example.invalid/edls-sched/token-removed");
+    const resetUpdate = { templates: { ...data.templates, sms: { body: "" } } };
+    expect(await message("a", resetUpdate)).toContain("Updated work assignment");
+    expect(await message("removed", resetUpdate)).toBe("Removal https://example.invalid/edls-sched/token-removed");
+    const resetRemoval = { templates: { ...data.templates, removed_sms: { body: "" } } };
+    expect(await message("a", resetRemoval)).toBe("Update https://example.invalid/edls-sched/token-a");
+    expect(await message("removed", resetRemoval)).toBe(await message("removed"));
     const reset = { templates: { sms: { body: "" }, removed_sms: { body: "  " } } };
     expect(await message("a", reset)).toContain("Updated work assignment");
     const removed = await message("removed", reset);
-    expect(removed).toContain("no longer scheduled");
-    expect(removed).toContain("June 1, 2099");
-    expect(removed).toContain("token-removed");
+    expect(removed).toBe(
+      "You are no longer scheduled on the crew for:\n\n=== Monday, June 1, 2099 ===\n\n" +
+      "View your current schedule:\nhttps://example.invalid/edls-sched/token-removed",
+    );
     expect(removed).not.toMatch(/accept|decline|covered assignments/i);
+    const legacyRemoval = "You are no longer scheduled on the crew for {{edls.date}}.\n\nView your current schedule:\n{{edls.worker.schedule.url}}";
+    expect(await message("removed", { templates: { removed_sms: { body: legacyRemoval } } })).toBe(
+      "You are no longer scheduled on the crew for Monday, June 1, 2099.\n\n" +
+      "View your current schedule:\nhttps://example.invalid/edls-sched/token-removed",
+    );
     expect(await prepare("missing")).toBeNull();
     expect(() => defaultTemplatesFor(plugin, {}, "unknown")).toThrow("Unknown notifier template variant");
   });
@@ -99,6 +111,11 @@ describe("recipient-scoped notifier templates", () => {
       historical: "=== SUNDAY, DEC 10, 1843 ===",
       mythological: "=== FRIDAY, MAR 2, 1184 ===",
     };
+    const dates: Record<string, string> = {
+      martian: "2031-03-14",
+      historical: "1843-12-10",
+      mythological: "1184-03-02",
+    };
     for (const persona of ["martian", "historical", "mythological"]) {
       for (const variant of [undefined, "removed"]) {
         const template = defaultTemplatesFor(plugin, {}, variant).sms!.body;
@@ -115,7 +132,25 @@ describe("recipient-scoped notifier templates", () => {
           expect(result.output).toContain("Job #: SAMPLE-204");
           expect(result.output).toContain("Checkin Location: Sample check-in desk\n\nAccept or decline:\n");
         }
-        else expect(result.output).not.toMatch(/accept|decline/i);
+        else {
+          const date = formatYmd(dates[persona], "weekday-long");
+          const url = `https://example.invalid/edls-sched/sample-${persona}`;
+          expect(result.output).toBe(
+            `You are no longer scheduled on the crew for:\n\n=== ${date} ===\n\nView your current schedule:\n${url}`,
+          );
+          expect(result.output).not.toMatch(/accept|decline/i);
+          // Exercise delivery composition with the same fictional context.
+          // No recipient lookup, credential issuance, or sender is involved.
+          const delivered = await composeFromTemplates(
+            plugin, "sms", { contactId: "fixture" },
+            [{ name: "edls", entity: { kind: "edls", row: {
+              date, worker: { schedule: { url } },
+            } } }],
+            defaultTemplatesFor(plugin, {}, "removed"), new Map(),
+          );
+          expect(delivered.blankRequired).toEqual([]);
+          expect(delivered.content?.body).toBe(result.output);
+        }
       }
     }
   });
