@@ -5,6 +5,20 @@ description: How to add a new rate/throttle cap by reusing the existing flood-pr
 
 # Reusing the flood framework for a new rate cap
 
+## Product rules for plugin configuration
+
+Flood events are to use the shared singleton plugin/configuration framework rather than another bespoke registry/configuration implementation. Catalog work is explicitly separate from this migration.
+
+**Why:** The user wants fewer custom registries and standardized code-defined behavior plus configuration.
+
+Disabled flood plugins must always allow the action.
+
+**Why:** The user explicitly stated: "disabled flood plugins should always allow the action."
+
+**How to apply:** Enforce disablement in the shared runtime entrypoints, not merely in admin visibility; bypass identifier callbacks and flood counting/recording for disabled plugins.
+
+## Existing rate-cap behavior
+
 When you need a "no more than N per window" cap on anything, reuse the existing
 flood framework rather than inventing new tables/counters.
 
