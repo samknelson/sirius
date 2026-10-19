@@ -55,7 +55,9 @@ type SmsAssignment = { ymd: string; sheetStatus: string } & Partial<WorkerAssign
 };
 
 export function renderWorkerAssignmentSms(assignment: SmsAssignment): string {
-  const date = formatYmd(assignment.ymd, "weekday-long");
+  // The leading line break separates this block from the template's intro.
+  // Keep spacing in the token value so delivery and Studio previews agree.
+  const date = `\n=== ${formatYmd(assignment.ymd, "full-weekday-short-month").toUpperCase()} ===\n`;
   if (assignment.sheetStatus === "draft" || assignment.sheetStatus === "request") {
     return `${date}\n${EDLS_REVIEW_NOTICE}`;
   }

@@ -3,6 +3,7 @@ import type { EventNotifierPlugin, EventNotifierEventContext } from "../../serve
 import { buildRecipientTemplateContext, composeFromTemplates, defaultTemplatesFor, resolveTemplates } from "../../server/plugins/event-notifier/token-templates";
 import { templatesSchemaBlock, stampNotifierTemplateIds, hideUnsupportedTemplateChannels } from "../../server/plugins/event-notifier/template-schema";
 import { renderWorkerAssignmentSms, EDLS_REVIEW_NOTICE } from "@shared/edls-worker-assignment";
+import { formatYmd } from "@shared/utils/date";
 
 vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
 vi.mock("../../server/storage", () => ({ storage: {} }));
@@ -93,6 +94,11 @@ describe("recipient-scoped notifier templates", () => {
   });
 
   it("offers coherent fictional previews without reading a worker or issuing an access link", async () => {
+    const headings: Record<string, string> = {
+      martian: "=== FRIDAY, MAR 14, 2031 ===",
+      historical: "=== SUNDAY, DEC 10, 1843 ===",
+      mythological: "=== FRIDAY, MAR 2, 1184 ===",
+    };
     for (const persona of ["martian", "historical", "mythological"]) {
       for (const variant of [undefined, "removed"]) {
         const template = defaultTemplatesFor(plugin, {}, variant).sms!.body;
@@ -105,6 +111,7 @@ describe("recipient-scoped notifier templates", () => {
         expect(result.output).not.toContain("token-a");
         expect(result.output).not.toMatch(/Response:|Rev\. #|Updated:|Revision unavailable|Update time unavailable|Awaiting your response/);
         if (!variant) {
+          expect(result.output).toContain(`:\n\n${headings[persona]}\n\nEvent:`);
           expect(result.output).toContain("Job #: SAMPLE-204");
           expect(result.output).toContain("Checkin Location: Sample check-in desk\n\nAccept or decline:\n");
         }
@@ -143,7 +150,7 @@ describe("worker-facing assignment SMS projection", () => {
   };
   it.each(["lock", "reserved"])("keeps ordered assignment fields and overrides without response or metadata for %s", sheetStatus => {
     const expectedLines = [
-      "Mon, June 1, 2099",
+      "", "=== MONDAY, JUN 1, 2099 ===", "",
       "Event: Exhibition", "Event Status: Confirmed", "Department: Operations", "Job #: JOB-7",
       "Facility: Arena", "Crew: Rigging", "Task: Setup", "Classification: RIG",
       "Start Time: 1:30 PM", "Checkin Location: North entrance",
@@ -172,10 +179,45 @@ describe("worker-facing assignment SMS projection", () => {
   });
   it.each(["draft", "request", "trash", "unexpected"])("never exposes unconfirmed details for %s", sheetStatus => {
     const text = renderWorkerAssignmentSms({ ...details, sheetStatus });
-    expect(text).toBe(`Mon, June 1, 2099\n${
+    expect(text).toBe(`\n=== MONDAY, JUN 1, 2099 ===\n\n${
       sheetStatus === "draft" || sheetStatus === "request"
         ? EDLS_REVIEW_NOTICE
         : "This assignment is not currently published. Please check your current schedule."
     }`);
+  });
+
+  it("keeps prominent dates separated in the composed default message with multiple assignments", async () => {
+    const assignments = [
+      renderWorkerAssignmentSms({ ...details, ymd: "2026-10-19" }),
+      renderWorkerAssignmentSms({ ...details, ymd: "2026-10-20", sheetStatus: "request" }),
+    ].join("\n");
+    const result = await composeFromTemplates(
+      edlsSheetWorkerSmsNotifier, "sms", { contactId: "fixture" },
+      [{
+        name: "edls", entity: { kind: "edls", row: {
+          employer: { name: "Sheet employer" },
+          worker: {
+            schedule: { url: "https://example.invalid/edls-sched/fixture" },
+            assignment: { render_sms: assignments },
+          },
+        } },
+      }],
+      defaultTemplatesFor(edlsSheetWorkerSmsNotifier, {}), new Map(),
+    );
+    expect(result.content?.body).toBe(
+      "Updated work assignment from Sheet employer:\n\n=== MONDAY, OCT 19, 2026 ===\n\n" +
+      "Event: Exhibition\nEvent Status: Confirmed\nDepartment: Operations\nJob #: JOB-7\n" +
+      "Facility: Arena\nCrew: Rigging\nTask: Setup\nClassification: RIG\n" +
+      "Start Time: 1:30 PM\nCheckin Location: North entrance\n\n" +
+      `=== TUESDAY, OCT 20, 2026 ===\n\n${EDLS_REVIEW_NOTICE}\n\n` +
+      "Accept or decline:\nhttps://example.invalid/edls-sched/fixture",
+    );
+  });
+
+  it("does not change existing date formats used outside the assignment render", () => {
+    expect(formatYmd("2026-10-19", "weekday-long")).toBe("Mon, October 19, 2026");
+    expect(formatYmd("2026-10-19", "weekday-short")).toBe("Mon, Oct 19, 2026");
+    expect(formatYmd("2026-10-19", "long")).toBe("October 19, 2026");
+    expect(formatYmd("2026-10-19", "short")).toBe("Oct 19, 2026");
   });
 });

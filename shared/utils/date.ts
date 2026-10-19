@@ -117,7 +117,7 @@ function getDayOfWeekFromYmd(year: number, month: number, day: number): number {
   return ((h + 6) % 7);
 }
 
-export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long' | 'weekday-short' = 'long'): string {
+export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long' | 'weekday-short' | 'full-weekday-short-month' = 'long'): string {
   if (!isValidYmd(ymd)) return ymd;
   
   const [year, month, day] = ymd.split('-').map(Number);
@@ -126,6 +126,7 @@ export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long'
   const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const weekdaysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
   const dayOfWeek = getDayOfWeekFromYmd(year, month, day);
   
@@ -136,6 +137,8 @@ export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long'
       return `${weekdaysShort[dayOfWeek]}, ${months[month - 1]} ${day}, ${year}`;
     case 'weekday-short':
       return `${weekdaysShort[dayOfWeek]}, ${monthsShort[month - 1]} ${day}, ${year}`;
+    case 'full-weekday-short-month':
+      return `${weekdays[dayOfWeek]}, ${monthsShort[month - 1]} ${day}, ${year}`;
     case 'long':
     default:
       return `${months[month - 1]} ${day}, ${year}`;

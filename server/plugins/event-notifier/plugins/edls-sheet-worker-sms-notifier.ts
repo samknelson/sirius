@@ -455,7 +455,7 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
           ["draft", "request", "lock", "reserved"].includes(a.sheetStatus),
         );
         const projected = await projectWorkerAssignments(visible);
-        const renderSms = projected.map(renderWorkerAssignmentSms).join("\n\n") ||
+        const renderSms = projected.map(renderWorkerAssignmentSms).join("\n") ||
           (resolved.kind === "assigned" ? renderWorkerAssignmentSms({ ymd: sheet.ymd, sheetStatus: sheet.status }) : "");
         return {
           kind: "edls",
