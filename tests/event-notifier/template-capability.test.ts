@@ -1,87 +1,113 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const state = vi.hoisted(() => ({
-  emailEnabled: true,
-  smsEnabled: true,
-  smsUnavailable: "unassigned",
-  fail: false,
-}));
-
-vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
-  getWcVendorOperationAvailability: vi.fn(async (operation: string) => {
-    if (state.fail) throw new Error("Storage unavailable");
-    return operation === "communications.email.send"
-      ? state.emailEnabled ? "available" : "unassigned"
-      : state.smsEnabled ? "available" : state.smsUnavailable;
-  }),
-}));
-
 import {
-  getSiteEnabledTemplateChannels,
-  getSiteTemplateChannelAvailability,
-  hideUndeliverableTemplateChannels,
+  hideUnsupportedTemplateChannels,
+  stampNotifierTemplateIds,
   templatesSchemaBlock,
 } from "../../server/plugins/event-notifier/template-schema";
+import { initializeEventNotifierPluginSystem } from "../../server/plugins/event-notifier";
+import { getPluginKind } from "../../server/plugins/_core/kinds";
+import type { EventNotifierManifestEntry } from "../../server/plugins/event-notifier/types";
+
+const configReads = vi.hoisted(() => vi.fn());
+vi.mock("../../server/storage", () => ({
+  storage: {
+    pluginConfigs: { getByKind: configReads },
+  },
+}));
 
 beforeEach(() => {
-  state.emailEnabled = true;
-  state.smsEnabled = true;
-  state.smsUnavailable = "unassigned";
-  state.fail = false;
+  configReads.mockReset();
+  configReads.mockImplementation(async (kind: string) => {
+    if (kind !== "event-notifier") throw new Error(`Unexpected provider lookup: ${kind}`);
+    return [];
+  });
 });
 
-describe("event notifier delivery capabilities", () => {
-  it("advertises configured SendGrid and Twilio delivery channels", async () => {
-    await expect(getSiteEnabledTemplateChannels()).resolves.toEqual(
-      new Set(["inapp", "email", "sms"]),
-    );
-  });
+// Authoring must not consult delivery routing, even to diagnose it.
+vi.mock("../../server/services/webclient/wc-vendor-context", () => {
+  throw new Error("Template authoring must not load the delivery-provider resolver");
+});
 
-  it("does not advertise delivery for local validation-only vendors", async () => {
-    state.emailEnabled = false;
-    state.smsEnabled = false;
+function schema() {
+  const result = {
+    type: "object",
+    properties: {
+      templates: templatesSchemaBlock({
+        variants: [{ id: "removed", label: "Removal", channels: ["sms"] }],
+      }),
+    },
+  };
+  stampNotifierTemplateIds(result, "fixture-notifier");
+  return result;
+}
 
-    await expect(getSiteEnabledTemplateChannels()).resolves.toEqual(
-      new Set(["inapp"]),
-    );
-  });
+function groupsOf(value: ReturnType<typeof hideUnsupportedTemplateChannels>) {
+  return ((value!.properties as Record<string, Record<string, unknown>>).templates
+    .properties as Record<string, Record<string, unknown>>);
+}
 
-  it.each([
-    ["unassigned", "no enabled delivery provider is assigned"],
-    ["ambiguous", "multiple enabled delivery providers are assigned"],
-    ["component-disabled", "require disabled components"],
-  ])("explains %s delivery without enabling editing or hiding unsupported-channel notices", async (status, message) => {
-    state.smsEnabled = false;
-    state.smsUnavailable = status;
-    const availability = await getSiteTemplateChannelAvailability();
-    expect(availability.enabled.has("sms")).toBe(false);
-    expect(availability.reasons.sms).toContain(message);
-    const schema = {
-      type: "object",
-      properties: {
-        templates: templatesSchemaBlock({
-          variants: [{ id: "removed", label: "Removal", channels: ["sms"] }],
-        }),
-      },
-    };
-    const original = structuredClone(schema);
-    const decorated = hideUndeliverableTemplateChannels(schema, ["sms"], availability.enabled, availability.reasons) as typeof schema;
-    const groups = decorated.properties.templates.properties as Record<string, Record<string, unknown>>;
-    for (const key of ["sms", "removed_sms"]) {
-      expect(groups[key]["x-token-hidden"]).toBe(true);
-      expect(groups[key]["x-token-unavailable-reason"]).toBe(availability.reasons.sms);
-      expect(groups[key].properties).toBeDefined(); // Keep stored overrides in the RJSF schema.
+describe("notifier template authoring eligibility", () => {
+  it("offers all supported media without loading delivery-provider resolution", () => {
+    const original = schema();
+    const decorated = hideUnsupportedTemplateChannels(original, ["email", "sms", "inapp"]);
+    expect(decorated).toBe(original);
+    for (const group of Object.values(groupsOf(decorated))) {
+      expect(group["x-token-hidden"]).toBeUndefined();
+      expect(group["x-token-unavailable-reason"]).toBeUndefined();
     }
-    expect(groups.email["x-token-unavailable-reason"]).toBeUndefined();
-    expect(groups.inapp["x-token-unavailable-reason"]).toBeUndefined();
-    expect(schema).toEqual(original);
   });
 
-  it("contains asynchronous capability failures and explains the failed check", async () => {
-    state.fail = true;
-    const availability = await getSiteTemplateChannelAvailability();
-    expect(availability.enabled).toEqual(new Set(["inapp"]));
-    expect(availability.reasons.sms).toContain("could not be checked");
-    expect(availability.reasons.email).toContain("could not be checked");
+  it("keeps SMS variants editable while hiding only unsupported media without removing their fields", () => {
+    const original = schema();
+    const snapshot = structuredClone(original);
+    const decorated = hideUnsupportedTemplateChannels(original, ["sms"]);
+    const groups = groupsOf(decorated);
+    for (const key of ["sms", "removed_sms"]) {
+      expect(groups[key]["x-token-hidden"]).toBeUndefined();
+      expect(groups[key]["x-token-plugin-id"]).toBe("fixture-notifier");
+    }
+    for (const key of ["email", "inapp"]) {
+      expect(groups[key]["x-token-hidden"]).toBe(true);
+      expect(groups[key].properties).toEqual(groupsOf(original)[key].properties);
+      expect(groups[key]["x-token-unavailable-reason"]).toBeUndefined();
+    }
+    expect(original).toEqual(snapshot);
+    expect(groups.removed_sms["x-token-variant"]).toBe("removed");
+  });
+
+  it("handles a notifier supporting none of the templated media without pruning stored groups", () => {
+    const groups = groupsOf(hideUnsupportedTemplateChannels(schema(), ["postal"]));
+    expect(Object.keys(groups)).toEqual(["email", "sms", "inapp", "removed_sms"]);
+    for (const group of Object.values(groups)) {
+      expect(group["x-token-hidden"]).toBe(true);
+      expect(group.properties).toBeDefined();
+    }
+  });
+
+  it("leaves schemas without template groups alone", () => {
+    expect(hideUnsupportedTemplateChannels(undefined, ["sms"])).toBeUndefined();
+    const ordinary = { type: "object", properties: { threshold: { type: "number" } } };
+    expect(hideUnsupportedTemplateChannels(ordinary, ["sms"])).toBe(ordinary);
+  });
+
+  it("serves the actual notifier manifest without consulting providers and retains its admin gate", async () => {
+    initializeEventNotifierPluginSystem();
+    const kind = getPluginKind("event-notifier")!;
+    expect(kind.requiredPolicy).toBe("admin");
+    const entries = await kind.decorateEntries!([
+      { id: "edls-sheet-worker-sms-notifier", name: "Worker" },
+      { id: "new-ip-sign-in", name: "Sign-in" },
+    ], {} as never) as EventNotifierManifestEntry[];
+    expect(configReads.mock.calls).toEqual([["event-notifier"]]);
+    const worker = entries.find(entry => entry.id === "edls-sheet-worker-sms-notifier")!;
+    const groups = groupsOf(worker.configSchema as Record<string, unknown>);
+    expect(groups.sms["x-token-hidden"]).toBeUndefined();
+    expect(groups.removed_sms["x-token-hidden"]).toBeUndefined();
+    expect(groups.email["x-token-hidden"]).toBe(true);
+    expect(groups.inapp["x-token-hidden"]).toBe(true);
+    const signIn = entries.find(entry => entry.id === "new-ip-sign-in")!;
+    for (const group of Object.values(groupsOf(signIn.configSchema as Record<string, unknown>))) {
+      expect(group["x-token-hidden"]).toBeUndefined();
+    }
   });
 });

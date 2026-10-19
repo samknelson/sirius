@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EventNotifierPlugin, EventNotifierEventContext } from "../../server/plugins/event-notifier/types";
 import { buildRecipientTemplateContext, composeFromTemplates, defaultTemplatesFor, resolveTemplates } from "../../server/plugins/event-notifier/token-templates";
-import { templatesSchemaBlock, stampNotifierTemplateIds, hideUndeliverableTemplateChannels } from "../../server/plugins/event-notifier/template-schema";
+import { templatesSchemaBlock, stampNotifierTemplateIds, hideUnsupportedTemplateChannels } from "../../server/plugins/event-notifier/template-schema";
 import { renderWorkerAssignmentSms, EDLS_REVIEW_NOTICE } from "@shared/edls-worker-assignment";
 
 vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
@@ -114,10 +114,12 @@ describe("recipient-scoped notifier templates", () => {
       variants: [{ id: "removed", label: "Removal", channels: ["sms"] }],
     }) } };
     expect(stampNotifierTemplateIds(schema, plugin.id)).toBe(4);
-    const hidden = hideUndeliverableTemplateChannels(schema, ["sms"], new Set())!;
+    const hidden = hideUnsupportedTemplateChannels(schema, ["sms"])!;
     const groups = ((hidden.properties as any).templates.properties);
-    expect(groups.sms["x-token-hidden"]).toBe(true);
-    expect(groups.removed_sms["x-token-hidden"]).toBe(true);
+    expect(groups.sms["x-token-hidden"]).toBeUndefined();
+    expect(groups.removed_sms["x-token-hidden"]).toBeUndefined();
+    expect(groups.email["x-token-hidden"]).toBe(true);
+    expect(groups.inapp["x-token-hidden"]).toBe(true);
     expect(groups.removed_sms["x-token-channel"]).toBe("sms");
     expect(groups.removed_sms["x-token-variant"]).toBe("removed");
     expect(groups.removed_sms.properties.body).toBeDefined();

@@ -5,6 +5,10 @@ description: Browser launch, isolated real-component fixtures, and stylesheet ha
 
 For Puppeteer verification in this workspace, use the pipe transport when browser launch waits indefinitely for a debugging endpoint on stdout.
 
+**Why:** Browser binaries available in the workspace could launch, but the default endpoint discovery timed out; `pipe: true` completed the same checks. This is a browser-launch issue, not an app readiness failure.
+
+**How to apply:** For isolated browser checks, prefer pipe transport over repeatedly changing browser binaries. Signed-in UI behavior can be exercised with synthetic API responses intercepted only in the test browser; never add a server authentication bypass or change saved component enablement for verification.
+
 The DevTools pipe is also usable directly if no browser automation package is installed.
 
 **Why:** This workspace can have Chromium on PATH without Puppeteer or a native Node WebSocket implementation. Direct pipe commands avoid adding dependencies just for a one-off check.
@@ -16,10 +20,6 @@ Process a standalone bundle's CSS with the existing PostCSS/Tailwind pipeline be
 **Why:** Esbuild bundles CSS but does not expand Tailwind directives; an otherwise working fixture appears entirely unstyled.
 
 **How to apply:** Reuse the project's existing style configuration, not hand-authored replacements.
-
-**Why:** Browser binaries available in the workspace could launch, but the default endpoint discovery timed out; `pipe: true` completed the same checks. This is a browser-launch issue, not an app readiness failure.
-
-**How to apply:** For isolated browser checks, prefer pipe transport over repeatedly changing browser binaries. Signed-in UI behavior can be exercised with synthetic API responses intercepted only in the test browser; never add a server authentication bypass or change saved component enablement for verification.
 
 Resolve the browser executable from PATH before searching the filesystem.
 

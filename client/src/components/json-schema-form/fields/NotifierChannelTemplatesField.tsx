@@ -9,7 +9,6 @@ import {
   type ChannelFieldSpec,
 } from "@/components/template-studio/NotifierTemplateStudio";
 import { TokenText } from "@/components/template-studio/TokenText";
-import { Link } from "wouter";
 
 /**
  * RJSF field for ONE medium of a notifier's message templates (email,
@@ -61,13 +60,11 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
     ? `/api/event-notifier/preview-seeds/${encodeURIComponent(pluginId)}`
     : "";
   const title = (schemaAny.title as string) || channel;
-  // Marked by the server when this notifier can't actually deliver on
-  // this channel (not in its supportedMedia, or the site has the channel
-  // off). Rendered as nothing — but the group stays declared in the
+  // Marked by the server only when this notifier doesn't support the
+  // channel, regardless of provider setup. The group stays declared in the
   // schema, so an existing stored override is preserved on save, not
   // wiped. Checked after the hooks below to keep the hook order stable.
   const hidden = schemaAny["x-token-hidden"] === true;
-  const unavailableReason = schemaAny["x-token-unavailable-reason"] as string | undefined;
   const rows = useMemo(() => readRows(schemaAny), [schemaAny]);
   const isDisabled = Boolean(disabled || readonly);
 
@@ -161,18 +158,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
     onChange(cleared, fieldPathId.path);
   };
 
-  if (hidden) {
-    if (!unavailableReason) return null; // Unsupported by this notifier, not a site setup issue.
-    return (
-      <div className="rounded-md border bg-muted/20 p-3 space-y-2" data-testid={`channel-unavailable-${templateKey}`}>
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-sm text-muted-foreground" role="status">{unavailableReason}</p>
-        <Link href="/admin/plugin-configs/wc-vendors" className="text-sm text-primary underline">
-          Configure delivery providers
-        </Link>
-      </div>
-    );
-  }
+  if (hidden) return null;
 
   return (
     <div

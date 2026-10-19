@@ -1,6 +1,6 @@
 ---
 name: Notifier hidden template channels
-description: How undeliverable notifier template medium cards are hidden without wiping stored overrides
+description: Provider-independent template authoring, supported-media filtering, and preservation of hidden overrides
 ---
 Never remove template channel groups from the served JSON Schema just to hide their editors.
 
@@ -10,6 +10,6 @@ Never remove template channel groups from the served JSON Schema just to hide th
 
 Treat template authoring and delivery configuration as separate concerns.
 
-**Why:** The user clarified that writing a template is not sending a message and questioned requiring configured delivery providers merely to edit text. Existing provider-gated editing must not be represented as an explicit user requirement.
+**Why:** The user explicitly wants to write and preview templates before configuring delivery providers or default senders. Authoring is not sending.
 
-**How to apply:** Distinguish a notifier's supported media from the site's ability to send them. Provider resolution belongs on actual delivery; do not infer authoring prerequisites from it. Keep component/access gates and independently addressable message variants.
+**How to apply:** Offer declared supported template media regardless of missing, ambiguous, disabled, or failing provider setup. Authoring metadata must not look up providers just to decide editor visibility. Provider resolution and its explicit failures belong on actual delivery. Keep component/access gates and independently addressable message variants.
