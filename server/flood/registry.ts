@@ -46,7 +46,7 @@ class FloodEventRegistry {
     }));
   }
 
-  updateConfig(name: string, threshold: number, windowSeconds: number): boolean {
+  updateConfig(name: string, threshold: numregisterFloodEventber, windowSeconds: number): boolean {
     const event = this.events.get(name);
     if (!event) return false;
     event.threshold = threshold;
