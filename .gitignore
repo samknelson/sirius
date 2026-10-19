@@ -1,5 +1,7 @@
 node_modules
 /generated-artifacts/
+/exports/
+/screenshots/
 dist
 .DS_Store
 .local/
