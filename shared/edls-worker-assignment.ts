@@ -66,8 +66,5 @@ export function renderWorkerAssignmentSms(assignment: SmsAssignment): string {
   return [
     date,
     ...workerAssignmentFields(details).map(({ label, value }) => `${label}: ${value}`),
-    `Response: ${details.accepted === true ? "Accepted" : details.accepted === false ? "Declined" : "Awaiting your response"}`,
-    assignment.revision ? `Rev. #${assignment.revision}` : "Revision unavailable",
-    assignment.updatedAt ? `Updated: ${assignment.updatedAt}` : "Update time unavailable",
   ].join("\n");
 }

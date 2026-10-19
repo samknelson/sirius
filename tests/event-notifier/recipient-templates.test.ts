@@ -103,7 +103,11 @@ describe("recipient-scoped notifier templates", () => {
         expect(result.emptyValues).toEqual([]);
         expect(result.output).toContain(`example.invalid/edls-sched/sample-${persona}`);
         expect(result.output).not.toContain("token-a");
-        if (!variant) expect(result.output).toContain("Job #: SAMPLE-204");
+        expect(result.output).not.toMatch(/Response:|Rev\. #|Updated:|Revision unavailable|Update time unavailable|Awaiting your response/);
+        if (!variant) {
+          expect(result.output).toContain("Job #: SAMPLE-204");
+          expect(result.output).toContain("Checkin Location: Sample check-in desk\n\nAccept or decline:\n");
+        }
         else expect(result.output).not.toMatch(/accept|decline/i);
       }
     }
@@ -137,17 +141,41 @@ describe("worker-facing assignment SMS projection", () => {
     accepted: false, data: { startTime: "13:30", private: "staff-only" },
     revision: 4, updatedAt: "2099-05-31T12:00:00.000Z",
   };
-  it("includes all displayed fields, override time, answer and real metadata, but not internal data", () => {
-    const text = renderWorkerAssignmentSms(details);
-    for (const field of ["Event: Exhibition", "Event Status: Confirmed", "Department: Operations", "Job #: JOB-7", "Facility: Arena", "Crew: Rigging", "Task: Setup", "Classification: RIG", "Start Time: 1:30 PM", "Checkin Location: North entrance", "Response: Declined", "Rev. #4", "Updated: 2099-05-31T12:00:00.000Z"]) expect(text).toContain(field);
-    expect(text).not.toContain("staff-only");
-    expect(renderWorkerAssignmentSms({ ...details, data: null, classification: { name: "Rigger", code: null }, revision: null, updatedAt: null })).toContain("Start Time: 7:00 AM");
-    expect(renderWorkerAssignmentSms({ ...details, revision: null, updatedAt: null })).toContain("Revision unavailable\nUpdate time unavailable");
+  it.each(["lock", "reserved"])("keeps ordered assignment fields and overrides without response or metadata for %s", sheetStatus => {
+    const expectedLines = [
+      "Mon, June 1, 2099",
+      "Event: Exhibition", "Event Status: Confirmed", "Department: Operations", "Job #: JOB-7",
+      "Facility: Arena", "Crew: Rigging", "Task: Setup", "Classification: RIG",
+      "Start Time: 1:30 PM", "Checkin Location: North entrance",
+    ];
+    for (const accepted of [true, false, null, undefined]) {
+      for (const metadata of [
+        { revision: 4, updatedAt: details.updatedAt },
+        { revision: null, updatedAt: null },
+        { revision: undefined, updatedAt: undefined },
+      ]) {
+        const text = renderWorkerAssignmentSms({ ...details, sheetStatus, accepted, ...metadata });
+        expect(text.split("\n")).toEqual(expectedLines);
+        expect(text).not.toMatch(/Response:|Accepted|Declined|Awaiting your response|Rev\. #|Updated:|Revision unavailable|Update time unavailable/);
+        expect(text).not.toContain(details.updatedAt);
+        expect(text).not.toContain("staff-only");
+      }
+    }
+    const withoutOverrides = renderWorkerAssignmentSms({
+      ...details, sheetStatus, data: null, classification: { name: "Rigger", code: null },
+      revision: null, updatedAt: null,
+    });
+    expect(withoutOverrides.split("\n")).toEqual(expectedLines.map(line =>
+      line === "Classification: RIG" ? "Classification: Rigger" :
+        line === "Start Time: 1:30 PM" ? "Start Time: 7:00 AM" : line,
+    ));
   });
   it.each(["draft", "request", "trash", "unexpected"])("never exposes unconfirmed details for %s", sheetStatus => {
     const text = renderWorkerAssignmentSms({ ...details, sheetStatus });
-    expect(text).toContain("June 1, 2099");
-    expect(text).not.toMatch(/JOB-7|Arena|Rigging|North entrance|RIG|1:30|Declined|Rev\. #4/);
-    if (sheetStatus === "draft" || sheetStatus === "request") expect(text).toContain(EDLS_REVIEW_NOTICE);
+    expect(text).toBe(`Mon, June 1, 2099\n${
+      sheetStatus === "draft" || sheetStatus === "request"
+        ? EDLS_REVIEW_NOTICE
+        : "This assignment is not currently published. Please check your current schedule."
+    }`);
   });
 });
