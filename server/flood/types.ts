@@ -4,18 +4,15 @@ export interface FloodContext {
   [key: string]: any;
 }
 
-export interface FloodEventDefinition {
-  name: string;
-  threshold: number;
-  windowSeconds: number;
-  getIdentifier: (context: FloodContext) => string;
-  resolveIdentifierName?: (identifier: string) => Promise<string | null>;
-}
-
-export interface FloodCheckResult {
+export type FloodCheckResult = {
   allowed: boolean;
+  skipped?: false;
   count: number;
   threshold: number;
   windowSeconds: number;
   identifier: string;
-}
+} | {
+  allowed: true;
+  skipped: true;
+  reason: "disabled" | "component-disabled";
+};

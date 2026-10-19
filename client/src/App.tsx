@@ -276,7 +276,6 @@ const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
 const PoliciesPage = lazy(() => import("@/pages/config/users/policies"));
 const SessionsPage = lazy(() => import("@/pages/sessions"));
 const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
-const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
@@ -2674,7 +2673,7 @@ function Router() {
       <Route path="/admin/users/flood-events/config">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <FloodEventsConfigPage />
+            <Redirect to="/admin/plugin-configs/flood" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

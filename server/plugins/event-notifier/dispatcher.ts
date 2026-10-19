@@ -5,7 +5,7 @@ import { isPluginComponentEnabledSync } from "../_core";
 import { eventNotifierRegistry } from "./registry";
 import { getEnabledConfigsForKind } from "../_core/plugin-config-cache";
 import { checkFlood, recordFloodEvent } from "../../flood/service";
-import { NOTIFICATION_FLOOD_EVENTS } from "../../flood/events";
+import { NOTIFICATION_FLOOD_EVENTS } from "../../flood/constants";
 import {
   type EventNotifierEventContext,
   type NotificationMedium,

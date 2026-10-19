@@ -10,7 +10,7 @@ import { checkFlood, recordFloodEvent } from "../../../flood/service";
 import {
   T631_ARRIVAL_IP_FLOOD_EVENT,
   T631_ARRIVAL_WORKER_FLOOD_EVENT,
-} from "../../../flood/events";
+} from "../../../flood/constants";
 
 const arrivalRequestSchema = z.object({
   worker_id: z.string().refine((value) => value.trim().length > 0),

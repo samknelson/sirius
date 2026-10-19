@@ -1,52 +1,22 @@
 ---
-name: Flood framework reuse for new rate caps
-description: How to add a new rate/throttle cap by reusing the existing flood-protection framework instead of building new infra.
+name: Flood protection product rules
+description: Why floods use shared singleton plugins, their disablement semantics, and the intended bucket boundaries.
 ---
 
-# Reusing the flood framework for a new rate cap
+Flood definitions belong in the shared singleton plugin/configuration framework, not a separate configuration registry. Per-kind catalog browsing is a separate future project.
 
-## Product rules for plugin configuration
+**Why:** The user wants fewer bespoke registries and one standard way to declare configurable, code-supplied behavior.
 
-Flood events are to use the shared singleton plugin/configuration framework rather than another bespoke registry/configuration implementation. Catalog work is explicitly separate from this migration.
+**How to apply:** New rate caps extend the existing flood framework and its shared configuration surfaces. Do not introduce a separate store, editor, or cache.
 
-**Why:** The user wants fewer custom registries and standardized code-defined behavior plus configuration.
+Disabled flood plugins always allow the action, without identifier callbacks, count reads, or recording. Component-off plugins behave the same way. Disabling does not erase prior counts.
 
-Disabled flood plugins must always allow the action.
+**Why:** The user explicitly requested that disabled plugins stop checking. Erasing counts would change re-enable behavior and destroy operational history.
 
-**Why:** The user explicitly stated: "disabled flood plugins should always allow the action."
+**How to apply:** Enforce this at the shared runtime boundary, not just in admin visibility. Admin-only configuration must never imply admin-only runtime protection on public endpoints.
 
-**How to apply:** Enforce disablement in the shared runtime entrypoints, not merely in admin visibility; bypass identifier callbacks and flood counting/recording for disabled plugins.
+Keep bucket identities stable across infrastructure changes: notification limits are independent per medium, recipient, and notifier plugin; local credential limits count failures rather than successful authentication.
 
-## Existing rate-cap behavior
+**Why:** Sharing these budgets unexpectedly can block unrelated recipients/users, while changing identifiers during a migration silently resets active protection.
 
-When you need a "no more than N per window" cap on anything, reuse the existing
-flood framework rather than inventing new tables/counters.
-
-**Rule:** register a `FloodEventDefinition` (name, threshold, windowSeconds,
-`getIdentifier(context)`, optional `resolveIdentifierName`). You get for free:
-- Admin tunability — every registered event auto-appears in the flood-config
-  admin UI and its threshold/window are overridable via a `flood_<name>`
-  variable, loaded at boot by `loadFloodConfigFromVariables()`.
-- Storage + cleanup — counts live in the existing `flood` table; an hourly cron
-  purges rows past `expiresAt`. So **no schema change and no migration** are
-  needed for a new cap.
-- Admin viewer name resolution via `resolveIdentifierName`.
-
-**Composite buckets:** `getIdentifier` returns ONE string, so encode a
-multi-dimension bucket by joining keys (e.g. `contactId|pluginId`). Put the
-dimension you want *separate thresholds* for into the event NAME (one event per
-value), and the dimensions that only need separate *counting buckets* into the
-identifier. (Notification flood caps: one event per medium — different tunable
-thresholds — with identifier `contactId|pluginId` for per-recipient/per-plugin
-isolation under a shared threshold.)
-
-**Enforcement pattern:** at the send/action site, call `checkFlood(name, ctx)`;
-if `allowed`, call `recordFloodEvent(name, ctx)` then proceed, else skip+log.
-`enforceFloodLimit` does check-then-record but THROWS a `FloodError` on block —
-avoid it where a throw would be miscaught as a generic failure; prefer the
-explicit check+record so you can skip cleanly.
-
-**Fail OPEN:** wrap the check so a check/record error still lets the action
-proceed — throttling infrastructure must never silently swallow legitimate
-sends. Also enforce only once the action is known to be deliverable, so no-op
-attempts don't consume budget.
+**How to apply:** Preserve action-site counting placement and fail-open behavior when changing the framework. Apply a new cap only once the action is actually eligible to proceed, unless its declaration intentionally counts every attempt.

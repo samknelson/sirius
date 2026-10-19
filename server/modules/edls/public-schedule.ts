@@ -5,7 +5,7 @@ import { requireComponent } from "../components";
 import { addDaysYmd, getTodayYmd } from "@shared/utils/date";
 import { isUuid } from "@shared/utils/uuid";
 import { checkFlood, recordFloodEvent } from "../../flood/service";
-import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
+import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/constants";
 import { logger } from "../../logger";
 import type { AssignmentForWorker } from "../../storage/edls/assignments";
 import { projectWorkerAssignments } from "../../services/edls-worker-assignment";
