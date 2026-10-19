@@ -40,6 +40,7 @@ export interface NotifierTemplateStudioProps {
   /** "email" | "sms" | "inapp" — the channel group being edited. */
   channel: string;
   templateKey?: string;
+  title?: string;
   /** Fields for this channel, derived from the server JSON Schema (templatesSchemaBlock).
    *  Drives which editors appear and in what order — single source of truth shared with
    *  the config form's channel-templates RJSF field. */
@@ -89,6 +90,7 @@ export function NotifierTemplateStudio({
   onOpenChange,
   channel,
   templateKey = channel,
+  title,
   schemaRows,
   defaultsUrl,
   seedsUrl,
@@ -191,7 +193,7 @@ export function NotifierTemplateStudio({
     <TokenStudio
       open={open}
       onOpenChange={onOpenChange}
-      title={CHANNEL_TITLES[channel] ?? `${channel} templates`}
+      title={title ?? CHANNEL_TITLES[channel] ?? `${channel} templates`}
       description="Edit the channel's tokenized templates with a live preview. Changes apply to the config form; save the config to persist them."
       channel={channel === "email" || channel === "sms" || channel === "inapp" ? channel : "generic"}
       // Every editor below shows "the override, or the notifier's

@@ -392,9 +392,9 @@ function requireOperation(
  * enabled config rows, their stored assignments, and plugin declarations; it
  * never resolves credentials or contacts a provider.
  */
-export async function hasWcVendorOperation(
+export async function getWcVendorOperationAvailability(
   operation: WcVendorOperationName,
-): Promise<boolean> {
+): Promise<"available" | "unassigned" | "component-disabled" | "ambiguous"> {
   const configs = (
     await storage.pluginConfigs.getByKind("wc-vendors")
   ).filter((config) => config.enabled);
@@ -402,7 +402,15 @@ export async function hasWcVendorOperation(
     hasDeclaredAssignedOperation(config, operation),
   );
   const candidates = await keepComponentEnabledConfigs(assigned);
-  return candidates.length === 1;
+  if (candidates.length === 1) return "available";
+  if (candidates.length > 1) return "ambiguous";
+  return assigned.length ? "component-disabled" : "unassigned";
+}
+
+export async function hasWcVendorOperation(
+  operation: WcVendorOperationName,
+): Promise<boolean> {
+  return (await getWcVendorOperationAvailability(operation)) === "available";
 }
 
 /**

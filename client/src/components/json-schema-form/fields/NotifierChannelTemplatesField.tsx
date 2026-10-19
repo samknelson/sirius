@@ -9,6 +9,7 @@ import {
   type ChannelFieldSpec,
 } from "@/components/template-studio/NotifierTemplateStudio";
 import { TokenText } from "@/components/template-studio/TokenText";
+import { Link } from "wouter";
 
 /**
  * RJSF field for ONE medium of a notifier's message templates (email,
@@ -66,6 +67,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
   // schema, so an existing stored override is preserved on save, not
   // wiped. Checked after the hooks below to keep the hook order stable.
   const hidden = schemaAny["x-token-hidden"] === true;
+  const unavailableReason = schemaAny["x-token-unavailable-reason"] as string | undefined;
   const rows = useMemo(() => readRows(schemaAny), [schemaAny]);
   const isDisabled = Boolean(disabled || readonly);
 
@@ -159,18 +161,29 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
     onChange(cleared, fieldPathId.path);
   };
 
-  if (hidden) return null;
+  if (hidden) {
+    if (!unavailableReason) return null; // Unsupported by this notifier, not a site setup issue.
+    return (
+      <div className="rounded-md border bg-muted/20 p-3 space-y-2" data-testid={`channel-unavailable-${templateKey}`}>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-sm text-muted-foreground" role="status">{unavailableReason}</p>
+        <Link href="/admin/plugin-configs/wc-vendors" className="text-sm text-primary underline">
+          Configure delivery providers
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div
       className="rounded-md border bg-muted/20"
-      data-testid={`channel-templates-${channel}`}
+      data-testid={`channel-templates-${templateKey}`}
     >
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
         <span className="text-sm font-medium">{title}</span>
         <span
           className="rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
-          data-testid={`badge-state-${channel}`}
+          data-testid={`badge-state-${templateKey}`}
         >
           {hasOverride ? "Customized" : "Default"}
         </span>
@@ -184,7 +197,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
             size="sm"
             disabled={!hasOverride}
             className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
-            data-testid={`button-revert-${channel}`}
+            data-testid={`button-revert-${templateKey}`}
             onClick={revert}
             title={
               hasOverride
@@ -202,7 +215,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
             variant="ghost"
             size="sm"
             className="h-6 gap-1 px-1.5 text-xs"
-            data-testid={`button-edit-${channel}`}
+            data-testid={`button-edit-${templateKey}`}
             onClick={() => setStudioOpen(true)}
           >
             <Pencil className="h-3 w-3" />
@@ -212,7 +225,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
         {wiringFault && !isDisabled && (
           <span
             className="max-w-[28rem] text-xs text-destructive"
-            data-testid={`editor-unavailable-${channel}`}
+            data-testid={`editor-unavailable-${templateKey}`}
           >
             Can't open the Template Studio. {wiringFault}
           </span>
@@ -225,7 +238,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
         {!wiringFault && defaultsError && (
           <span
             className="max-w-[28rem] text-xs text-destructive"
-            data-testid={`defaults-unavailable-${channel}`}
+            data-testid={`defaults-unavailable-${templateKey}`}
           >
             Couldn't load this notifier's default text, so rows below show
             only what's been customized.
@@ -241,7 +254,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
             <div
               key={r.key}
               className="flex items-baseline gap-3 px-3 py-1"
-              data-testid={`template-row-${channel}-${r.key}`}
+              data-testid={`template-row-${templateKey}-${r.key}`}
             >
               <span className="w-24 shrink-0 truncate text-[11px] uppercase tracking-wide text-muted-foreground">
                 {r.label}
@@ -251,12 +264,12 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
                   text={effective}
                   html={r.mode === "html"}
                   className="min-w-0 flex-1 truncate text-xs leading-6"
-                  data-testid={`template-summary-${channel}-${r.key}`}
+                  data-testid={`template-summary-${templateKey}-${r.key}`}
                 />
               ) : (
                 <span
                   className="min-w-0 flex-1 truncate text-xs italic leading-6 text-muted-foreground"
-                  data-testid={`template-summary-${channel}-${r.key}`}
+                  data-testid={`template-summary-${templateKey}-${r.key}`}
                 >
                   Not set
                 </span>
@@ -268,7 +281,8 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
 
       {canEdit && studioOpen && (
         <NotifierTemplateStudio
-        templateKey={templateKey}
+          templateKey={templateKey}
+          title={variant ? `${title} template` : undefined}
           open={studioOpen}
           onOpenChange={setStudioOpen}
           channel={channel}

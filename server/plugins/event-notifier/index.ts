@@ -40,12 +40,12 @@ function registerEventNotifierKind(): void {
     decorateEntries: async (entries) => {
       const { storage } = await import("../../storage");
       const {
-        getSiteEnabledTemplateChannels,
+        getSiteTemplateChannelAvailability,
         hideUndeliverableTemplateChannels,
       } = await import("./template-schema");
       // Which template channels the site can deliver on right now — used
       // below to hide medium cards a notifier will never send over.
-      const siteChannels = await getSiteEnabledTemplateChannels();
+      const siteChannels = await getSiteTemplateChannelAvailability();
       const configs =
         await storage.pluginConfigs.getByKind("event-notifier");
       const firstByPlugin = new Map<string, (typeof configs)[number]>();
@@ -72,7 +72,8 @@ function registerEventNotifierKind(): void {
           configSchema: hideUndeliverableTemplateChannels(
             impl?.configSchema as Record<string, unknown> | undefined,
             impl?.supportedMedia ?? [],
-            siteChannels,
+            siteChannels.enabled,
+            siteChannels.reasons,
           ) as import("./types").EventNotifierManifestEntry["configSchema"],
           uiSchema: impl?.uiSchema,
         };

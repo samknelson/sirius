@@ -30,27 +30,38 @@ export type TemplateChannel = "email" | "sms" | "inapp";
  * advertise a delivery channel in the editor.
  */
 export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChannel>> {
+  return (await getSiteTemplateChannelAvailability()).enabled;
+}
+
+/** Read-only routing diagnostics; never resolves credentials or calls a vendor. */
+export async function getSiteTemplateChannelAvailability(): Promise<{
+  enabled: Set<TemplateChannel>;
+  reasons: Partial<Record<TemplateChannel, string>>;
+}> {
   const enabled = new Set<TemplateChannel>(["inapp"]);
-  const providerSupports = async (category: "email" | "sms"): Promise<boolean> => {
+  const reasons: Partial<Record<TemplateChannel, string>> = {};
+  for (const channel of ["email", "sms"] as const) {
+    const label = channel === "sms" ? "SMS" : "Email";
+    const operation = channel === "sms" ? "communications.sms.send" : "communications.email.send";
     try {
-      const { hasWcVendorOperation } = await import(
+      const { getWcVendorOperationAvailability } = await import(
         "../../services/webclient/wc-vendor-context"
       );
-      return hasWcVendorOperation(
-        category === "email" ? "communications.email.send" : "communications.sms.send",
-      );
+      const availability = await getWcVendorOperationAvailability(operation);
+      if (availability === "available") {
+        enabled.add(channel);
+      } else if (availability === "ambiguous") {
+        reasons[channel] = `${label} templates are unavailable because multiple enabled delivery providers are assigned to ${operation}. Leave exactly one available provider assigned to this operation.`;
+      } else if (availability === "component-disabled") {
+        reasons[channel] = `${label} templates are unavailable because the assigned delivery providers require disabled components. Enable the required component or assign an available provider to ${operation}.`;
+      } else {
+        reasons[channel] = `${label} templates are unavailable because no enabled delivery provider is assigned to ${operation}. An enabled provider alone is not enough; assign its send operation in the provider configuration.`;
+      }
     } catch {
-      return false;
+      reasons[channel] = `${label} template availability could not be checked. Reload this page to try again.`;
     }
-  };
-
-  if (await providerSupports("email")) {
-    enabled.add("email");
   }
-  if (await providerSupports("sms")) {
-    enabled.add("sms");
-  }
-  return enabled;
+  return { enabled, reasons };
 }
 
 /**
@@ -62,8 +73,8 @@ export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChan
  * The group (and its fields) stays DECLARED in the schema on purpose:
  * RJSF strips any stored data whose field isn't in the schema, so
  * removing the group would silently wipe an existing override for a
- * hidden medium on the next save. The client field renders nothing for
- * hidden groups instead, which preserves the stored data untouched.
+ * hidden medium on the next save. Unsupported groups render nothing;
+ * supported but unavailable groups show a diagnostic instead of an editor.
  *
  * Returns the input schema unchanged (same reference) when nothing needs
  * hiding, so schemas without template blocks pay no cost.
@@ -72,6 +83,7 @@ export function hideUndeliverableTemplateChannels(
   configSchema: Record<string, unknown> | undefined,
   supportedMedia: readonly string[],
   siteEnabled: ReadonlySet<TemplateChannel>,
+  unavailableReasons: Partial<Record<TemplateChannel, string>> = {},
 ): Record<string, unknown> | undefined {
   if (!configSchema) return configSchema;
   const props = configSchema.properties as
@@ -97,7 +109,15 @@ export function hideUndeliverableTemplateChannels(
 
   const newGroups = { ...groups };
   for (const [key, group] of toHide) {
-    newGroups[key] = { ...group, "x-token-hidden": true };
+    const channel = group["x-token-channel"] as TemplateChannel;
+    newGroups[key] = {
+      ...group,
+      "x-token-hidden": true,
+      ...(supportedMedia.includes(channel) ? {
+        "x-token-unavailable-reason": unavailableReasons[channel] ??
+          `${channel === "sms" ? "SMS" : channel === "email" ? "Email" : "In-app"} templates are unavailable because this site does not have a single available delivery provider for this channel.`,
+      } : {}),
+    };
   }
   return {
     ...configSchema,

@@ -1,9 +1,21 @@
 ---
 name: Browser verification transport
-description: Puppeteer transport behavior in the Replit workspace during signed-in fixture checks.
+description: Browser launch, isolated real-component fixtures, and stylesheet handling for UI verification.
 ---
 
 For Puppeteer verification in this workspace, use the pipe transport when browser launch waits indefinitely for a debugging endpoint on stdout.
+
+The DevTools pipe is also usable directly if no browser automation package is installed.
+
+**Why:** This workspace can have Chromium on PATH without Puppeteer or a native Node WebSocket implementation. Direct pipe commands avoid adding dependencies just for a one-off check.
+
+**How to apply:** Use the browser's null-delimited JSON pipe protocol with child-process file descriptors 3 and 4. Return booleans, not DOM nodes, from readiness predicates. Bundle real components and use browser-only fixture data, never an application auth bypass.
+
+Process a standalone bundle's CSS with the existing PostCSS/Tailwind pipeline before using its screenshots for visual verification.
+
+**Why:** Esbuild bundles CSS but does not expand Tailwind directives; an otherwise working fixture appears entirely unstyled.
+
+**How to apply:** Reuse the project's existing style configuration, not hand-authored replacements.
 
 **Why:** Browser binaries available in the workspace could launch, but the default endpoint discovery timed out; `pipe: true` completed the same checks. This is a browser-launch issue, not an app readiness failure.
 
