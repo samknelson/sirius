@@ -20,3 +20,9 @@ Keep bucket identities stable across infrastructure changes: notification limits
 **Why:** Sharing these budgets unexpectedly can block unrelated recipients/users, while changing identifiers during a migration silently resets active protection.
 
 **How to apply:** Preserve action-site counting placement and fail-open behavior when changing the framework. Apply a new cap only once the action is actually eligible to proceed, unless its declaration intentionally counts every attempt.
+
+Vendor-request rate limits are best-effort operational controls, not hard quota or spending guarantees.
+
+**Why:** The user explicitly accepted best-effort enforcement and excluded concurrency guarantees for this feature.
+
+**How to apply:** Do not promise exact caps under simultaneous dispatches or add locking/reservation infrastructure without a new requirement.
