@@ -2,6 +2,7 @@ import { eventBus, EventType, HoursSavedPayload, PaymentSavedPayload, WmbSavedPa
 import { executeChargePlugins } from "./executor";
 import { TriggerType } from "./types";
 import { logger } from "../../../logger";
+import { runOutsideTransaction } from "../../../storage/transaction-context";
 
 async function handleHoursSaved(payload: HoursSavedPayload): Promise<void> {
   try {
@@ -129,6 +130,9 @@ async function handleTrustElectionSavedForCobra(
         transactionCount: result.totalTransactions.length,
       });
     }
+    // Even a no-charge election edit/cancellation needs a lifecycle review.
+    const { reconcileCobraWorkerStatuses } = await import("../../../services/bao-cobra-lifecycle");
+    await reconcileCobraWorkerStatuses(payload.workerId);
   } catch (error) {
     logger.error("Failed to run COBRA billing for saved election", {
       service: "charge-plugin-listener",
@@ -149,7 +153,7 @@ export function registerCobraElectionChargeListener(): void {
     description:
       "Immediately bills (or reverses) COBRA premiums for a worker when a COBRA election is created, updated, or deleted, instead of waiting for the nightly COBRA billing cron.",
     event: EventType.TRUST_ELECTION_SAVED,
-    handler: handleTrustElectionSavedForCobra,
+    handler: (payload) => runOutsideTransaction(() => handleTrustElectionSavedForCobra(payload)),
   });
 
   logger.info("COBRA election charge listener registered", {

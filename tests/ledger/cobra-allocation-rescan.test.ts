@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { computeCobraPaymentState } from "../../shared/schema/sitespecific/bao/cobra";
+import { decideCobraLifecycle } from "../../shared/schema/sitespecific/bao/cobra-lifecycle";
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (payload: any) => Promise<void>>(),
@@ -79,10 +79,14 @@ describe("COBRA allocation rescan and independent case grace", () => {
   });
 
   it("keeps grace as a case payment state, not proof of monthly eligibility", () => {
-    expect(computeCobraPaymentState("100.00", "2026-04-15", "2026-05-15")).toBe("grace");
-    expect(computeCobraPaymentState("100.00", "2026-06-15", "2026-05-15")).toBe("grace");
-    // The rolling monthly grace window is deliberately unchanged here.
-    expect(computeCobraPaymentState("100.00", "2026-06-30", "2026-05-15")).toBe("grace");
-    expect(computeCobraPaymentState("0.00", "2026-06-30", "2026-05-15")).toBe("paid");
+    const input = {
+      electedYmd: "2026-04-01", effectiveYmd: "2026-04-01",
+      initialDeadlineYmd: "2026-05-16", maxPeriodYmd: "2027-10-01",
+      todayYmd: "2026-04-15", currentClosed: false,
+      months: [{ ym: "2026-04", caseChargeCents: 10000, paymentCents: 0 }],
+    };
+    expect(decideCobraLifecycle(input).paymentStatus).toBe("grace");
+    expect(decideCobraLifecycle({ ...input, todayYmd: "2026-06-15" }).paymentStatus).toBe("delinquent");
+    expect(decideCobraLifecycle({ ...input, todayYmd: "2026-07-01" }).paymentStatus).toBe("delinquent");
   });
 });

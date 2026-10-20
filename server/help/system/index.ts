@@ -8,6 +8,7 @@ import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefa
 import { workerCommsComplianceHelp } from "./worker-comms-compliance";
 import { workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp } from "./online-checkout";
 import { workerPaymentMethodsHelp } from "./worker-payment-methods";
+import { baoCobraHelp } from "./bao-cobra";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -37,6 +38,7 @@ const entries: SystemHelpEntry[] = [
   emailMessageDefaultsHelp,
   postalMessageDefaultsHelp,
   composeMessageDefaultsHelp,
+  baoCobraHelp,
 ];
 
 function toHelp(entry: SystemHelpEntry): HelpWithSource {

@@ -43,6 +43,7 @@ import { initWorkerBanNotifications } from "./services/worker-ban-notifications"
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import { initWmbAutoRescan } from "./services/wmb-auto-rescan";
 import { initBaoCobraAutoCase } from "./services/bao-cobra-auto-case";
+import { initBaoCobraLifecycle } from "./services/bao-cobra-lifecycle";
 import { initBaoDpAutoRescan } from "./services/bao-dp-auto-rescan";
 import { initDcGrantReconciliation } from "./services/sitespecific/bao/dc-grant";
 import "@shared/access-policies/loader";
@@ -494,6 +495,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
 
   // Initialize automatic COBRA case creation/closing (BAO component)
   initBaoCobraAutoCase();
+  initBaoCobraLifecycle();
   logger.info("BAO COBRA auto-case initialized", { source: "startup" });
 
   // Initialize DP one-month-ahead rescans on DP payments / election changes

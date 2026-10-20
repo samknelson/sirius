@@ -155,3 +155,4 @@
 - [Editor menus inside dialogs](editor-menus-inside-dialogs.md) — Escape can close the outer Radix dialog even when React handles it in an inner menu; prevent dialog dismissal while that menu is open.
 - [Isolated renderer cancellation](isolated-renderer-cancellation.md) — timeout must stop CPU work and await exit; native conversion and inherited worker CLI flags can defeat isolation assumptions.
 - [Browser callback compiler boundary](browser-callback-transpiler-boundary.md) — Puppeteer callbacks can capture compiler helpers under tsx that Vitest omits; verify both real runtime transforms.
+- [COBRA initial obligation](cobra-initial-obligation.md) — initial payment covers every month from coverage start through election month; later premiums are separate.

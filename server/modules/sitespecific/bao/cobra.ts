@@ -15,10 +15,10 @@ import {
 } from "../../../../shared/schema/sitespecific/bao/schema";
 import { computeCobraDeadlines } from "../../../../shared/schema/sitespecific/bao/cobra";
 import {
-  computeCobraCasePaymentState,
-  resolveCobraAccountId,
-  todayYmdLocal,
+  getCobraPaymentDiagnostics,
 } from "./cobra-payment-state";
+import { z } from "zod";
+import { reconcileCobraCaseStatus, scanCobraCaseStatuses } from "../../../services/bao-cobra-lifecycle";
 import {
   BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
   baoCobraTriggerConfigSchema,
@@ -313,9 +313,6 @@ export function registerBaoCobraRoutes(
         );
         const todayYmd = new Date().toISOString().slice(0, 10);
         const ratesTableExists = await ratesStorage.tableExists();
-        const hasElectedCase = activeCases.some((c) => c.electionMadeYmd);
-        const cobraAccountId = hasElectedCase ? await resolveCobraAccountId() : null;
-        const paymentTodayYmd = todayYmdLocal();
 
         const results = [];
         for (const theCase of activeCases) {
@@ -400,19 +397,16 @@ export function registerBaoCobraRoutes(
 
           // Payment state + outstanding balance only apply once coverage has
           // been elected (billing starts at election).
-          let payment = null;
-          if (theCase.electionMadeYmd && cobraAccountId) {
-            const computed = await computeCobraCasePaymentState(
-              theCase,
-              paymentTodayYmd,
-              cobraAccountId,
-            );
-            if (computed) {
-              payment = { state: computed.state, balance: computed.balance };
-            }
-          }
+          const diagnostics = await getCobraPaymentDiagnostics(theCase);
+          // Both views display persisted case payment state. A live financial
+          // calculation explains blockers/balance, but never impersonates a
+          // persisted enrollment transition.
+          const payment = diagnostics.balance !== null &&
+            ["paid", "grace", "delinquent"].includes(theCase.paymentStatus ?? "")
+            ? { state: theCase.paymentStatus, balance: diagnostics.balance } : null;
 
-          results.push({ case: theCase, asOfYmd, coverage, totalsByTier, dependents, payment });
+          results.push({ case: theCase, asOfYmd, coverage, totalsByTier, dependents, payment,
+            paymentBlockers: diagnostics.blockers });
         }
 
         res.json({ cases: results });
@@ -425,6 +419,40 @@ export function registerBaoCobraRoutes(
 
   // -------------------------------------------------------------------------
   // Cases
+  app.post(
+    "/api/sitespecific/bao/cobra/status-reconcile",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (req, res) => {
+      try {
+        const input = z.object({
+          mode: z.enum(["test", "live"]).default("test"),
+          caseIds: z.array(z.string().uuid()).min(1).max(100).optional(),
+        }).strict().parse(req.body ?? {});
+        // Broad previews are read-only. Applying requires explicit case IDs,
+        // and re-evaluates under lock rather than trusting an old preview.
+        if (input.mode === "live" && !input.caseIds) {
+          return res.status(400).json({ message: "Applying reconciliation requires explicit caseIds after reviewing a dry run" });
+        }
+        if (!input.caseIds) return res.json(await scanCobraCaseStatuses("test", 500));
+        const results = [];
+        for (const id of input.caseIds) {
+          try {
+            results.push(await reconcileCobraCaseStatus(id, { mode: input.mode }));
+          } catch (error) {
+            results.push({ caseId: id, applied: false, changes: {},
+              blockers: [error instanceof Error ? error.message : String(error)] });
+          }
+        }
+        res.json({ results, truncated: false });
+      } catch (error: any) {
+        if (error.name === "ZodError") return res.status(400).json({ message: "Invalid reconciliation request", errors: error.errors });
+        console.error("COBRA status reconciliation failed:", error);
+        res.status(500).json({ message: "COBRA status reconciliation failed" });
+      }
+    },
+  );
   // -------------------------------------------------------------------------
 
   /**

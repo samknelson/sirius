@@ -122,6 +122,7 @@ export interface LedgerEntryFilter {
 }
 
 export interface LedgerEntryStorage {
+  getCobraLifecycleEvidence(workerId: string, accountId: string, caseId: string): Promise<import("@shared/schema/sitespecific/bao/cobra-lifecycle").CobraMonthEvidence[]>;
   /** Zero-sum statement credit attribution, atomic and keyed to the immutable attempt. */
   applyCheckoutCreditTransfers(attemptId: string, eaId: string, transfers: CheckoutCreditTransfer[]): Promise<void>;
   getAll(): Promise<Ledger[]>;
@@ -1125,6 +1126,44 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         caseChargeCents: row.has_base_charge ? Number(row.case_charge_cents) : 0,
         hasAllocation: row.has_allocation === true,
       };
+    },
+
+    async getCobraLifecycleEvidence(workerId, accountId, caseId) {
+      const result = await getClient().execute(sqlRaw`
+        SELECT to_char(l.statement_ymd, 'YYYY-MM') AS ym,
+          SUM(CASE WHEN l.charge_plugin = 'sitespecific-bao-cobra'
+                    AND l.reference_type IN ('cobra_case', 'cobra_case_adjustment')
+                    AND l.reference_id = ${caseId}
+                   THEN l.amount * 100 ELSE 0 END)::bigint AS charge_cents,
+          BOOL_OR(l.charge_plugin = 'sitespecific-bao-cobra'
+                  AND l.reference_type = 'cobra_case'
+                  AND l.reference_id = ${caseId} AND l.amount > 0) AS has_base,
+          BOOL_OR(l.amount > 0 AND NOT COALESCE((
+            l.charge_plugin = 'sitespecific-bao-cobra'
+            AND l.reference_type IN ('cobra_case', 'cobra_case_adjustment')
+            AND l.reference_id IS NOT DISTINCT FROM ${caseId}
+          ), false)) AS has_other_obligation,
+          SUM(CASE WHEN l.charge_plugin = 'payment-simple-allocation'
+                    AND l.reference_type = 'payment' AND l.amount < 0
+                    AND NULLIF(l.data->>'allocationId', '') IS NOT NULL
+                    AND p.status = 'cleared' AND pt.direction = 'credit'
+                   THEN -l.amount * 100 ELSE 0 END)::bigint AS payment_cents
+        FROM ledger_ea ea JOIN ledger l ON l.ea_id = ea.id
+        LEFT JOIN ledger_payments p ON l.reference_type = 'payment' AND p.id = l.reference_id
+        LEFT JOIN options_ledger_payment_type pt ON pt.id = p.payment_type
+        WHERE ea.entity_type = 'worker' AND ea.entity_id = ${workerId}
+          AND ea.account_id = ${accountId} AND l.statement_ymd IS NOT NULL
+        GROUP BY to_char(l.statement_ymd, 'YYYY-MM')
+        ORDER BY ym
+      `);
+      return (result.rows as unknown as Array<{
+        ym: string; charge_cents: string; has_base: boolean; payment_cents: string; has_other_obligation: boolean;
+      }>).map((row) => ({
+        ym: row.ym,
+        caseChargeCents: row.has_base ? Number(row.charge_cents) : 0,
+        paymentCents: Number(row.payment_cents),
+        hasOtherObligation: row.has_other_obligation === true,
+      }));
     },
 
     async getOutstandingStatementMonths(

@@ -47,6 +47,8 @@ import {
   type BaoCobraTriggerConfig,
 } from "../../shared/schema/sitespecific/bao/cobra-triggers";
 import { eligibilityPluginRegistry } from "../plugins/trust/eligibility/registry";
+import { reconcileCobraCaseStatus } from "./bao-cobra-lifecycle";
+import { onAfterCommit, runOutsideTransaction } from "../storage/transaction-context";
 
 const SERVICE_NAME = "bao-cobra-auto-case";
 const COMPONENT_ID = "sitespecific.bao";
@@ -81,13 +83,15 @@ interface StatusPair {
   closedStatusId: string | null;
 }
 
-/** First non-closed status = default open; first closed status = auto-close target. */
+/** Named lifecycle statuses must be unique; never select an arbitrary option. */
 async function resolveStatuses(): Promise<StatusPair> {
-  const statuses: Array<{ id: string; closed: boolean }> = await unifiedOptions.list(
+  const statuses: Array<{ id: string; name: string; closed: boolean }> = await unifiedOptions.list(
     "bao-cobra-status",
   );
-  const openStatusId = statuses.find((s) => !s.closed)?.id ?? null;
-  const closedStatusId = statuses.find((s) => s.closed)?.id ?? null;
+  const open = statuses.filter((s) => !s.closed && s.name.trim().toLowerCase() === "new");
+  const closed = statuses.filter((s) => s.closed && s.name.trim().toLowerCase() === "closed");
+  const openStatusId = open.length === 1 ? open[0].id : null;
+  const closedStatusId = closed.length === 1 ? closed[0].id : null;
   return { openStatusId, closedStatusId };
 }
 
@@ -524,34 +528,13 @@ async function handleWmbSaved(payload: WmbSavedPayload): Promise<void> {
     if (!(await storage.baoCobraCases.hasActiveMedicalOrDentalBenefits(payload.workerId))) {
       return;
     }
-    const { closedStatusId } = await resolveStatuses();
-    if (!closedStatusId) {
-      logger.warn("No closed COBRA status configured; cannot auto-close case", {
-        service: SERVICE_NAME,
-      });
-      return;
-    }
     for (const openCase of openCases) {
-      await storage.baoCobraCases.updateEnforcingInvariants(
-        openCase.id,
-        {
-          statusId: closedStatusId,
-          data: {
-            ...((openCase.data as Record<string, unknown> | null) ?? {}),
-            autoClosed: {
-              reason: "active_benefits_restored",
-              wmbId: payload.wmbId,
-              at: new Date().toISOString(),
-            },
-          },
-        },
-        openCase.coveredPersonWorkerId,
-        true,
-      );
-      logger.info("Auto-closed un-elected COBRA case (benefits restored)", {
+      const result = await runOutsideTransaction(() =>
+        reconcileCobraCaseStatus(openCase.id, { mode: "live" }));
+      if (result.blockers.length) logger.error("COBRA benefits-restored closure blocked", {
         service: SERVICE_NAME,
         caseId: openCase.id,
-        coveredPersonWorkerId: payload.workerId,
+        blockers: result.blockers,
       });
     }
   } catch (err) {
@@ -592,7 +575,16 @@ export function initBaoCobraAutoCase(): void {
       description:
         "Closes active un-elected COBRA cases when the person regains active medical/dental benefits.",
       event: EventType.WMB_SAVED,
-      handler: handleWmbSaved,
+      handler: async (payload) => {
+        // WMB_SAVED is emitted inside createWorkerBenefit's transaction so
+        // charge listeners can participate atomically. This reconciliation
+        // uses a fresh connection: wait for commit before querying benefits,
+        // and do nothing if that benefit write rolls back.
+        if (payload.isDeleted || !componentActive()) return;
+        onAfterCommit(() => {
+          void runOutsideTransaction(() => handleWmbSaved(payload));
+        });
+      },
     }),
   );
   logger.info("BAO COBRA auto-case initialized", { service: SERVICE_NAME });

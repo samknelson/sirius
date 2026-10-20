@@ -47,6 +47,7 @@ type CobraDependents = {
 };
 
 type CobraCaseView = {
+  paymentBlockers?: string[];
   case: BaoCobraCaseWithDetails;
   asOfYmd: string;
   coverage: CobraCoverage[];
@@ -260,7 +261,7 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
                   {PAYMENT_STATE_LABELS[view.payment.state]}
                 </Badge>
               ) : (
-                c.paymentStatus && (
+                c.paymentStatus && !view.paymentBlockers?.length && (
                   <Badge variant="outline" data-testid={`status-cobra-payment-${c.id}`}>
                     {c.paymentStatus}
                   </Badge>
@@ -271,6 +272,11 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
           <CardDescription>
             Continuation coverage details for this COBRA case.
           </CardDescription>
+          {!!view.paymentBlockers?.length && (
+            <p role="status" className="text-sm text-destructive" data-testid={`cobra-payment-blockers-${c.id}`}>
+              Payment status cannot be verified: {view.paymentBlockers.join("; ")}. Contact staff for review.
+            </p>
+          )}
           {electable && (
             <div className="pt-2">
               <WizardLauncher

@@ -56,7 +56,7 @@ vi.mock("../../server/storage", () => ({
 }));
 vi.mock("../../server/storage/unified-options", () => ({
   createUnifiedOptionsStorage: () => ({
-    list: async () => [{ id: "open", closed: false }],
+    list: async () => [{ id: "open", name: "New", closed: false }],
   }),
 }));
 vi.mock("../../server/services/component-cache", () => ({

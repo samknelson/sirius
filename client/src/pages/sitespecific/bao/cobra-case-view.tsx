@@ -5,6 +5,7 @@ import {
   useBaoCobraCaseLayout,
 } from "@/components/layouts/BaoCobraCaseLayout";
 import { cobraSourceLabel } from "@/components/sitespecific/bao/CobraCaseForm";
+import { CobraStatusReconciliation } from "@/components/sitespecific/bao/CobraStatusReconciliation";
 
 function formatYmd(value: string | null | undefined): string {
   if (!value) return "—";
@@ -30,6 +31,7 @@ function CaseDetails() {
 
   return (
     <div className="space-y-6">
+      <CobraStatusReconciliation key={c.id} caseId={c.id} />
       <Card>
         <CardHeader>
           <CardTitle>Case</CardTitle>

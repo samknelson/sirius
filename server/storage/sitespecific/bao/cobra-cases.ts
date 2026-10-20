@@ -30,6 +30,9 @@ export interface BaoCobraCaseFilters {
 }
 
 export interface BaoCobraCasesStorage {
+  /** Must be called inside runInTransaction; serializes with every UPDATE. */
+  getForUpdate(id: string): Promise<BaoCobraCase | undefined>;
+  listLifecycleCandidates(afterId?: string, limit?: number): Promise<BaoCobraCase[]>;
   search(filters: BaoCobraCaseFilters): Promise<BaoCobraCaseWithDetails[]>;
   get(id: string): Promise<BaoCobraCaseWithDetails | undefined>;
   getRaw(id: string): Promise<BaoCobraCase | undefined>;
@@ -228,6 +231,23 @@ async function assertInvariants(
 
 export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
   return {
+    async getForUpdate(id) {
+      const [row] = await getClient().select().from(cases).where(eq(cases.id, id)).for("update");
+      return row;
+    },
+
+    async listLifecycleCandidates(afterId, limit = 100) {
+      if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      // LEFT join includes broken/missing status configuration for diagnostics.
+      const rows = await getClient().select({ theCase: cases }).from(cases)
+        .leftJoin(optionsBaoCobraStatus, eq(optionsBaoCobraStatus.id, cases.statusId))
+        .where(and(
+          sql`(${optionsBaoCobraStatus.closed} IS DISTINCT FROM true)`,
+          afterId ? sql`${cases.id} > ${afterId}` : undefined,
+        ))
+        .orderBy(cases.id).limit(Math.min(Math.max(limit, 1), 500));
+      return rows.map((r) => r.theCase);
+    },
     async tableExists(): Promise<boolean> {
       return tableExistsUtil(tableName);
     },

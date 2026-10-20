@@ -443,14 +443,15 @@ async function submitReview(
 
   // Resolve the Pending First Payment status by name.
   const statuses = await unifiedOptions.list("bao-cobra-status");
-  const pendingStatus = (statuses as Array<{ id: string; name: string }>).find(
-    (s) => s.name === PENDING_FIRST_PAYMENT_STATUS,
+  const pendingStatuses = (statuses as Array<{ id: string; name: string; closed?: boolean }>).filter(
+    (s) => s.name.trim().toLowerCase() === PENDING_FIRST_PAYMENT_STATUS.toLowerCase() && !s.closed,
   );
-  if (!pendingStatus) {
+  if (pendingStatuses.length !== 1) {
     throw new Error(
-      `COBRA status "${PENDING_FIRST_PAYMENT_STATUS}" is not configured`,
+      `COBRA status "${PENDING_FIRST_PAYMENT_STATUS}" is missing or ambiguous`,
     );
   }
+  const pendingStatus = pendingStatuses[0];
 
   // Resolve the dedicated COBRA employer/policy at post time (never the
   // worker's real employer) — drafts created before this rule may carry a
@@ -467,6 +468,18 @@ async function submitReview(
   // create rolls back the case update — the case can never be marked
   // elected without a matching trust election.
   const election = await runInTransaction(async () => {
+    // Serialize with staff closure and other election posts. The validation
+    // above is only a preview; it cannot authorize a stale write.
+    const lockedCase = await ctx.storage.baoCobraCases.getForUpdate(theCase.id);
+    if (!lockedCase || lockedCase.electionMadeYmd) throw new Error("This case no longer permits an election");
+    const lockedStatus = await unifiedOptions.get("bao-cobra-status", lockedCase.statusId);
+    if (!lockedStatus || lockedStatus.closed) throw new Error("This COBRA case is closed and can no longer be elected");
+    if (lockedCase.cobraEffectiveYmd !== theCase.cobraEffectiveYmd ||
+        lockedCase.lastDayToElectYmd !== theCase.lastDayToElectYmd ||
+        lockedCase.medicalBenefitLostId !== theCase.medicalBenefitLostId ||
+        lockedCase.dentalBenefitLostId !== theCase.dentalBenefitLostId) {
+      throw new Error("This COBRA case changed; review the election again");
+    }
     await ctx.storage.baoCobraCases.updateEnforcingInvariants(
       theCase.id,
       {
