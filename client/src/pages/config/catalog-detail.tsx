@@ -1,7 +1,6 @@
 import { Link, useParams } from "wouter";
-import { ArrowLeft, BookOpen, ChevronRight } from "lucide-react";
+import { ArrowLeft, BookOpen } from "lucide-react";
 import type { ResolvedCatalog, ResolvedCatalogEntry } from "@shared/catalog";
-import { PLUGIN_KINDS_CATALOG } from "@shared/catalog-ids";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +38,7 @@ function DetailTable({ payload, testId }: { payload: Record<string, unknown>; te
   );
 }
 
-function EntryCard({ entry, browseDefinition }: { entry: ResolvedCatalogEntry; browseDefinition: boolean }) {
+function EntryCard({ entry }: { entry: ResolvedCatalogEntry }) {
   return (
     <Card data-testid={`card-entry-${entry.id}`}>
       <CardHeader>
@@ -57,16 +56,6 @@ function EntryCard({ entry, browseDefinition }: { entry: ResolvedCatalogEntry; b
             <Badge variant="outline" className="shrink-0" data-testid={`component-${entry.id}`}>
               {entry.component}
             </Badge>
-          )}
-          {browseDefinition && (
-            <Link
-              href={`/config/catalogs/plugin-kinds/${encodeURIComponent(entry.id)}`}
-              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline"
-              data-testid={`link-definition-${entry.id}`}
-            >
-              Browse definition
-              <ChevronRight className="h-4 w-4" />
-            </Link>
           )}
         </div>
       </CardHeader>
@@ -162,11 +151,7 @@ export default function CatalogDetailConfigPage() {
           ) : (
             <div className="space-y-4">
               {catalog.entries.map((entry) => (
-                <EntryCard
-                  key={entry.id}
-                  entry={entry}
-                  browseDefinition={catalog.id === PLUGIN_KINDS_CATALOG}
-                />
+                <EntryCard key={entry.id} entry={entry} />
               ))}
             </div>
           )}

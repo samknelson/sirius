@@ -457,23 +457,12 @@ export default function GenericPluginConfigsPage({
   return (
     <div className="space-y-6">
       {!embedded && (
-        <div className="flex flex-wrap items-center gap-1">
-          <Link href="/admin/plugin-configs">
-            <Button variant="ghost" size="sm" className="-ml-2" data-testid="button-back-to-plugin-configs">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Plugin Configs
-            </Button>
-          </Link>
-          {kindSummary && (
-            <Link
-              href={`/config/catalogs/plugin-kinds/${encodeURIComponent(kind)}`}
-              className="inline-flex items-center rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              data-testid="link-browse-plugin-definition"
-            >
-              Browse definition
-            </Link>
-          )}
-        </div>
+        <Link href="/admin/plugin-configs">
+          <Button variant="ghost" size="sm" className="-ml-2" data-testid="button-back-to-plugin-configs">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Plugin Configs
+          </Button>
+        </Link>
       )}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         {!embedded ? (

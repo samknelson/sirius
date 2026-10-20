@@ -36,6 +36,21 @@ catalog on every read, assert that companion registrations do not point at an
 unknown kind, and let each consumer filter on projected capabilities such as
 `configurable`.
 
+## Plugin catalogs are ordinary, independent catalogs
+
+Every registered plugin kind belongs in the ordinary Catalogs index as a flat,
+independent catalog. Do not introduce nested Plugin Kinds browsing, a special
+renderer, a plugin-only response shape, or a plugin-specific catalog endpoint.
+Keep the Plugin Kinds catalog's existing configuration/navigation consumers.
+
+**Why:** The owner explicitly rejected bespoke plugin browsing: catalogs are the
+stable generic interface for inspecting registries, not just a navigation wrapper
+around specialized registry pages.
+
+**How to apply:** Derive declarations from authoritative kind registrations at
+the end of startup. Use the normal admin catalog audience; plugin policies are
+descriptive metadata here, not an additional catalog authorization layer.
+
 ## Entries derive on read, always
 
 The declaration holds an `entries()` **function**, called on every read, and

@@ -3,28 +3,43 @@ import type { BasePluginMetadata } from "./types";
 
 /**
  * Copy only JSON descriptions. Never call toJSON or serialize executable
- * objects from a registration; callbacks remain in the plugin framework.
+ * objects from a registration; callbacks and class instances (e.g. a token's
+ * Drizzle table) remain in the plugin framework.
  */
-function describe(value: unknown): CatalogValue | undefined {
+function describe(value: unknown, ancestors = new Set<object>()): CatalogValue | undefined {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new Error("Non-finite plugin catalog attribute");
     return value;
   }
-  if (Array.isArray(value)) {
-    return value.map((item) => describe(item) ?? null);
-  }
-  if (typeof value === "object") {
+  if (typeof value === "object" && value !== null) {
+    if (ancestors.has(value)) throw new Error("Circular plugin catalog attribute");
     const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error("Plugin catalog attributes must be plain JSON objects");
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+      return undefined;
     }
-    return Object.fromEntries(
-      Object.entries(value).flatMap(([key, item]) => {
-        const description = describe(item);
-        return description === undefined ? [] : [[key, description]];
-      }),
-    );
+    ancestors.add(value);
+    try {
+      // Reading descriptors, rather than values, also avoids executing getters.
+      const properties = Object.getOwnPropertyDescriptors(value);
+      if (Array.isArray(value)) {
+        return Array.from({ length: value.length }, (_, index) => {
+          const property = properties[index];
+          return property && "value" in property
+            ? describe(property.value, ancestors) ?? null
+            : null;
+        });
+      }
+      return Object.fromEntries(
+        Object.entries(properties).flatMap(([key, property]) => {
+          if (!property.enumerable || !("value" in property)) return [];
+          const description = describe(property.value, ancestors);
+          return description === undefined ? [] : [[key, description]];
+        }),
+      );
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (typeof value === "bigint") throw new Error("Non-JSON plugin catalog attribute");
   return undefined;
