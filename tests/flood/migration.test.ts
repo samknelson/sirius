@@ -13,6 +13,7 @@ vi.mock("../../server/storage/system/plugin-configs", () => ({
   SingletonViolationError: state.SingletonError,
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
+  runOutsideTransaction: (fn: () => unknown) => fn(),
   runInTransaction: async (fn: () => Promise<unknown>) => {
     state.transactions++;
     const configs = structuredClone(state.configs);
@@ -36,6 +37,7 @@ vi.mock("../../server/storage", () => ({ storage: {
     },
   },
   pluginConfigs: {
+    upsertSubsidiary: async (_kind: string, row: { id: string }) => row,
     getByKindAndPlugin: async (_kind: string, id: string) => state.configs.has(id) ? [state.configs.get(id)] : [],
     create: async (row: any) => {
       if (state.race) {
@@ -69,7 +71,7 @@ it.each([false, true])("imports legacy settings once (JSON string=%s), ahead of 
   await bootstrapSingletonPluginConfigs();
   expect(state.configs.get("local-login")).toMatchObject({ enabled: true, data: limits });
   expect(state.variables.size).toBe(0);
-  expect(state.configs.size).toBe(floodPluginRegistry.listIds().length);
+  expect(state.configs.size).toBe(floodPluginRegistry.list().filter(p => p.singleton).length);
   await migrateLegacyFloodConfigs();
   await bootstrapSingletonPluginConfigs();
   expect(state.configs.get("local-login").data).toEqual(limits);

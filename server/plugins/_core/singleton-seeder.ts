@@ -1,125 +1,71 @@
-// NOTE: storage (and its transaction-context / plugin-configs helpers) are
-// imported lazily inside `bootstrapSingletonPluginConfigs` rather than at module
-// top level. This module is re-exported by the `_core` barrel, and some
-// consumers of that barrel (e.g. the wizard registry, reached via
-// `server/storage/wizards.ts`) sit inside the storage boot chain. A top-level
-// `import ... from "../../storage"` here therefore closes a
-// storage→_core→storage cycle that leaves classes undefined at init time in the
-// esbuild production bundle. These symbols are only used at seed time (inside
-// the async function), so the lazy import is behavior-neutral.
 import { logger } from "../../logger";
 import { withFrameworkWrite } from "../../middleware/request-context";
 import { listPluginKinds, getPluginKind } from "./kinds";
 import { getPluginConfigAdapter } from "./config-adapter";
+import type { PluginConfig } from "@shared/schema";
 
 /**
- * Boot-time seeder for singleton plugin configs.
- *
- * Replaces the bespoke `bootstrapCronJobs()` with a generic pass over every
- * registered plugin kind. For each kind whose adapter implements
- * `seedDefault`, every plugin marked `metadata.singleton === true` that has no
- * `plugin_configs` row yet gets its single row created from the plugin's
- * defaults (split into base + subsidiary rows via the adapter's `toRows`, then
- * inserted in one transaction). Plugins that already have a row are skipped, so
- * this is safe to run on every boot and never overwrites operator edits.
- *
- * Runs AFTER the data migrations (which backfill pre-existing rows), so in
- * practice it only creates rows for singleton plugins that never had a legacy
- * config (e.g. a newly added cron job).
+ * Lazy storage imports keep the storage → _core barrel boot chain cycle-safe.
+ * Also used by runtime singleton defaults that now need a persisted identity.
  */
-export async function bootstrapSingletonPluginConfigs(): Promise<void> {
-  logger.info("Bootstrapping singleton plugin configs", {
-    service: "singleton-seeder",
-  });
-
-  // Lazy imports (see the module-level note): pulling storage in here rather
-  // than at module top level breaks the storage↔_core init cycle.
+export async function ensureSingletonPluginConfig(
+  kind: string, pluginId: string,
+): Promise<{ config: PluginConfig; created: boolean } | null> {
+  const registration = getPluginKind(kind);
+  const adapter = getPluginConfigAdapter(kind);
+  const plugin = registration?.registry.get(pluginId);
+  if (!registration || !adapter?.seedDefault || !plugin ||
+      !registration.registry.getMetadata(plugin).singleton) {
+    throw new Error(`Not a seedable singleton: ${kind}/${pluginId}`);
+  }
   const { storage } = await import("../../storage");
-  const { runInTransaction } = await import("../../storage/transaction-context");
-  const { SingletonViolationError } = await import(
-    "../../storage/system/plugin-configs"
-  );
+  const { runInTransaction, runOutsideTransaction } = await import("../../storage/transaction-context");
+  const { SingletonViolationError } = await import("../../storage/system/plugin-configs");
+  return runOutsideTransaction(async () => {
+    const existing = await storage.pluginConfigs.getByKindAndPlugin(kind, pluginId);
+    if (existing.length) return { config: existing[0], created: false };
+    const flat = adapter.seedDefault!(plugin);
+    if (!flat) return null;
+    const { base, subsidiary } = adapter.toRows(flat);
+    base.siriusId = (flat as { siriusId?: string | null }).siriusId ?? null;
+    try {
+      const config = await withFrameworkWrite(() => runInTransaction(async () => {
+        const row = await storage.pluginConfigs.create(base as any);
+        if (subsidiary) await storage.pluginConfigs.upsertSubsidiary(kind, { id: row.id, ...subsidiary });
+        return row;
+      }));
+      return { config, created: true };
+    } catch (error) {
+      // A competing boot may have won. Read its row OUTSIDE the aborted tx.
+      if (!(error instanceof SingletonViolationError)) throw error;
+      const winner = await storage.pluginConfigs.getByKindAndPlugin(kind, pluginId);
+      if (!winner.length) throw error;
+      return { config: winner[0], created: false };
+    }
+  });
+}
 
-  let created = 0;
-  let skipped = 0;
-  let errors = 0;
-
+export async function bootstrapSingletonPluginConfigs(): Promise<void> {
+  logger.info("Bootstrapping singleton plugin configs", { service: "singleton-seeder" });
+  let created = 0, skipped = 0, errors = 0;
   for (const kind of listPluginKinds()) {
     const registration = getPluginKind(kind);
     const adapter = getPluginConfigAdapter(kind);
     if (!registration || !adapter?.seedDefault) continue;
-
     for (const plugin of registration.registry.list()) {
       const meta = registration.registry.getMetadata(plugin);
       if (!meta.singleton) continue;
-
       try {
-        const existing = await storage.pluginConfigs.getByKindAndPlugin(kind, meta.id);
-        if (existing.length > 0) {
-          skipped++;
-          continue;
-        }
-
-        const flat = adapter.seedDefault(plugin);
-        if (!flat) {
-          skipped++;
-          continue;
-        }
-
-        const { base, subsidiary } = adapter.toRows(flat);
-        // `siriusId` is a shared base dimension threaded by the generic routes;
-        // mirror that here so seeded rows match route-created rows.
-        base.siriusId = (flat as { siriusId?: string | null }).siriusId ?? null;
-
-        // Seeding a row a plugin needs to exist is the framework's own doing,
-        // not an administrator's: the configuration gets its provenance stamp
-        // (with no person) and no audit entry, so a restart that seeds a newly
-        // added cron job does not read as somebody having created it.
-        await withFrameworkWrite(() =>
-          runInTransaction(async () => {
-            // The storage layer reads singleton-ness from the plugin manifest
-            // (this plugin is `meta.singleton`), so the create call no longer
-            // needs an explicit flag.
-            const row = await storage.pluginConfigs.create(base as any);
-            if (subsidiary) {
-              await storage.pluginConfigs.upsertSubsidiary(kind, {
-                id: row.id,
-                ...subsidiary,
-              });
-            }
-          }),
-        );
-
-        logger.info(`Seeded singleton plugin config: ${meta.id}`, {
-          service: "singleton-seeder",
-          kind,
-          pluginId: meta.id,
-        });
-        created++;
+        if ((await ensureSingletonPluginConfig(kind, meta.id))?.created) created++;
+        else skipped++;
       } catch (error) {
-        // A concurrent boot (autoscale) may have seeded the same singleton
-        // between our pre-check and insert; the partial unique index turns the
-        // loser's insert into a SingletonViolationError. That is the expected
-        // outcome, not a failure — count it as skipped.
-        if (error instanceof SingletonViolationError) {
-          skipped++;
-          continue;
-        }
+        errors++;
         logger.error(`Failed to seed singleton plugin config: ${meta.id}`, {
-          service: "singleton-seeder",
-          kind,
-          pluginId: meta.id,
+          service: "singleton-seeder", kind, pluginId: meta.id,
           error: error instanceof Error ? error.message : String(error),
         });
-        errors++;
       }
     }
   }
-
-  logger.info("Singleton plugin config bootstrap completed", {
-    service: "singleton-seeder",
-    created,
-    skipped,
-    errors,
-  });
+  logger.info("Singleton plugin config bootstrap completed", { service: "singleton-seeder", created, skipped, errors });
 }

@@ -1,5 +1,5 @@
 import { assertExternalServiceAllowed, isMaintenanceModeError } from "../maintenance-flag";
-import { notRecordableReason } from "./refusals";
+import { notRecordableReason, isWcRateLimitError } from "./refusals";
 
 export { notRecordableReason };
 import { logger } from "../../logger";
@@ -36,6 +36,8 @@ export interface WcTransportRequestOptions<TValue> {
    * this absent and are counted in the legacy/unattributed bucket.
    */
   configurationId?: string;
+  /** Canonical resolved vendor TYPE, not its connection/configuration id. */
+  vendorId?: string;
   /**
    * Make the call. Invoked only when the wrapper has decided the vendor
    * should be asked, and must declare whether the vendor answered.
@@ -290,12 +292,29 @@ async function wcTransportRequest<TValue>(
     };
   }
 
+  if (options.vendorId) {
+    const { enforceConfiguredFloodLimits, FloodError } = await import("../../flood/service");
+    const { WcRateLimitError } = await import("./refusals");
+    try {
+      await enforceConfiguredFloodLimits({ vendorId: options.vendorId, operation: options.requestType });
+    } catch (error) {
+      if (error instanceof FloodError) throw new WcRateLimitError(
+        options.vendorId, options.requestType, error.pluginConfigurationId,
+        error.threshold, error.windowSeconds,
+      );
+      logger.warn("Vendor flood protection unavailable; allowing dispatch", {
+        service: "webclient", vendorId: options.vendorId, operation: options.requestType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   let answer: WcAnswer<TValue>;
   try {
     answer = await options.fetch();
   } catch (error) {
     // A refusal is not a vendor failure and must not become a hold.
-    if (isMaintenanceModeError(error)) throw error;
+    if (isMaintenanceModeError(error) || isWcRateLimitError(error)) throw error;
     answer = { answered: false, error: errorMessage(error) };
   }
 

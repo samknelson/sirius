@@ -13,6 +13,7 @@ import {
   type PluginConfigWcVendors,
   type PluginConfigEventNotifier,
   type PluginConfigCron,
+  type PluginConfigFlood,
 } from "@shared/schema";
 import { eq, and, type SQL } from "drizzle-orm";
 // Import the cycle-safe `_core` submodule directly (NOT the `_core/index.ts`
@@ -30,6 +31,7 @@ import {
   createWcVendorsSubsidiaryStorage,
   createEventNotifierSubsidiaryStorage,
   createCronSubsidiaryStorage,
+  createFloodSubsidiaryStorage,
   createTrustProviderEdiSubsidiaryStorage,
   type SubsidiaryStorage,
 } from "./plugin-configs-subsidiary";
@@ -109,6 +111,7 @@ export type PluginConfigSubsidiary =
   | PluginConfigWcVendors
   | PluginConfigEventNotifier
   | PluginConfigCron
+  | PluginConfigFlood
   | null;
 
 /**
@@ -261,6 +264,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "wc-vendors": createWcVendorsSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     cron: createCronSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    flood: createFloodSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "trust-provider-edi": createTrustProviderEdiSubsidiaryStorage() as SubsidiaryStorage<any, any>,
   };
 

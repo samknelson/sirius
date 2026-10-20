@@ -13,6 +13,13 @@ vi.mock("../../server/storage/configuration-revisions", () => ({
 vi.mock("../../server/storage/system/plugin-configs", () => ({
   SingletonViolationError: class SingletonViolationError extends Error {},
 }));
+vi.mock("../../server/plugins/_core/singleton-seeder", () => ({
+  ensureSingletonPluginConfig: async (_kind: string, id: string) => ({
+    config: { id: `config-${id}`, pluginId: id, enabled: true,
+      data: id === "local-login" ? { threshold: 10, windowSeconds: 900 } : { threshold: 20, windowSeconds: 3600 } },
+    created: false,
+  }),
+}));
 vi.mock("../../server/modules/components", () => ({ isComponentEnabled: mocks.component }));
 vi.mock("../../server/services/component-cache", () => ({
   isComponentEnabledSync: () => true,
@@ -38,7 +45,7 @@ beforeEach(() => {
   invalidatePluginConfigCache("flood");
 });
 const config = (enabled: boolean, data = { threshold: 2, windowSeconds: 60 }) =>
-  [{ config: { pluginId: "local-login", enabled, data } }];
+  [{ config: { id: "config-local-login", pluginId: "local-login", enabled, data } }];
 
 describe("singleton flood plugins", () => {
   it("registers every legacy identity with singleton metadata, gates and defaults", async () => {
@@ -46,13 +53,15 @@ describe("singleton flood plugins", () => {
       "bookmark", "edls-schedule-answer", "local-login", "local-password-change",
       "notification-email", "notification-inapp", "notification-postal", "notification-sms",
       "quicksearch", "t631-arrival-ip", "t631-arrival-worker",
+      "webclient-vendor-operation",
     ]);
     for (const plugin of floodPluginRegistry.list()) {
-      expect(isSingletonPluginType("flood", plugin.id)).toBe(true);
+      expect(isSingletonPluginType("flood", plugin.id)).toBe(plugin.singleton);
       expect(plugin.description).not.toBe("");
       const entry = floodPluginRegistry.toManifestEntry(plugin);
-      expect(entry.configSchema.properties.threshold.default).toBe(plugin.defaults.threshold);
+      expect((entry.configSchema.properties?.threshold as { default: number }).default).toBe(plugin.defaults.threshold);
       const seeded = getPluginConfigAdapter("flood")!.seedDefault!(plugin);
+      if (!plugin.singleton) { expect(seeded).toBeNull(); continue; }
       expect(seeded.enabled).toBe(true);
       expect(seeded.data).toEqual(plugin.defaults);
     }
@@ -102,7 +111,7 @@ describe("singleton flood plugins", () => {
     const result = await checkFlood("local-login", { email: "fixture", ip: "127.0.0.1" });
     expect(result).toMatchObject({ allowed: true, threshold: 10, windowSeconds: 900, identifier: "fixture|127.0.0.1" });
     await recordFloodEvent("notification-sms", { contactId: "c", pluginId: "p" });
-    expect(mocks.record).toHaveBeenCalledWith("notification-sms", "c|p", expect.any(Date));
+    expect(mocks.record).toHaveBeenCalledWith("config-notification-sms", "notification-sms", "c|p", expect.any(Date));
     expect(floodPluginRegistry.get("bookmark")!.defaults).toEqual({ threshold: 1000, windowSeconds: 360 });
     expect(floodPluginRegistry.get("quicksearch")!.getIdentifier({ ip: "ip" })).toBe("ip");
   });
@@ -121,7 +130,7 @@ describe("singleton flood plugins", () => {
     invalidatePluginConfigCache("flood");
     await enforceFloodLimit("local-login", { email: "e", ip: "i" });
     expect(mocks.record).toHaveBeenCalledTimes(1);
-    expect(mocks.record).toHaveBeenLastCalledWith("local-login", "e|i", expect.any(Date));
+    expect(mocks.record).toHaveBeenLastCalledWith("config-local-login", "local-login", "e|i", expect.any(Date));
   });
 
   it("keeps unknown ids, malformed active settings and read failures explicit", async () => {
@@ -137,9 +146,9 @@ describe("singleton flood plugins", () => {
     mocks.search.mockResolvedValue(config(false));
     mocks.component.mockResolvedValue(false);
     const names = await resolveFloodIdentifierNames([
-      { event: "local-login", identifier: "not-an-email" },
-      { event: "edls-schedule-answer", identifier: "s|ip" },
-      { event: "retired", identifier: "raw" },
+      { event: "local-login", identifier: "not-an-email", pluginConfigurationId: "config-local-login" },
+      { event: "edls-schedule-answer", identifier: "s|ip", pluginConfigurationId: "config-edls" },
+      { event: "retired", identifier: "raw", pluginConfigurationId: "retired-config" },
     ]);
     expect(names.size).toBe(0);
     expect(mocks.count).not.toHaveBeenCalled();

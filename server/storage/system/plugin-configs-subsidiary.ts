@@ -28,6 +28,7 @@ import {
   type PluginConfigTrustProviderEdi,
   type InsertPluginConfigTrustProviderEdi,
 } from "@shared/schema";
+import { pluginConfigsFlood, type PluginConfigFlood, type InsertPluginConfigFlood } from "@shared/schema";
 import { eq, isNull, arrayContains, arrayOverlaps, sql, type SQL } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
@@ -55,6 +56,24 @@ export interface SubsidiaryStorage<TRow, TInsert> {
   upsert(row: TInsert): Promise<TRow>;
   /** Translate generic search params into WHERE conditions for this table. */
   buildConditions(params: SubsidiarySearchParams): SQL[];
+}
+
+/** An ID-only subsidiary anchors typed foreign keys without moving JSON settings. */
+export function createFloodSubsidiaryStorage(): SubsidiaryStorage<PluginConfigFlood, InsertPluginConfigFlood> {
+  return {
+    table: pluginConfigsFlood,
+    async get(id) {
+      const [row] = await getClient().select().from(pluginConfigsFlood).where(eq(pluginConfigsFlood.id, id));
+      return row;
+    },
+    async upsert(row) {
+      // A no-op update returns the extant row as well as newly inserted rows.
+      const [result] = await getClient().insert(pluginConfigsFlood).values({ id: row.id })
+        .onConflictDoUpdate({ target: pluginConfigsFlood.id, set: { id: row.id } }).returning();
+      return result;
+    },
+    buildConditions() { return []; },
+  };
 }
 
 /** Superset of every subsidiary's filterable columns (all optional). */

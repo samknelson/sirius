@@ -12,7 +12,7 @@ export function registerFloodEventRoutes(app: Express, _requireAuth: AuthMiddlew
       const events = await storage.flood.listFloodEvents(req.query.event as string | undefined);
       const names = await resolveFloodIdentifierNames(events);
       res.json(events.map(event => ({
-        ...event, identifierName: names.get(`${event.event}:${event.identifier}`) || null,
+        ...event, identifierName: names.get(`${event.pluginConfigurationId}:${event.identifier}`) || null,
       })));
     } catch (error) {
       console.error("Error fetching flood events:", error);

@@ -1,5 +1,6 @@
 import { storage } from "../../../storage";
 import { isMaintenanceModeError } from "../../maintenance-flag";
+import { isWcRateLimitError } from "../../webclient/refusals";
 import { geocodeWithGoogle } from "../../google-geocode";
 import { 
   ParseAddressRequest, 
@@ -143,7 +144,7 @@ class AddressValidationService {
         // A maintenance refusal is not a Google outage. Falling back here
         // would report a successful local validation and hide the fact that
         // the configured validator never ran.
-        if (isMaintenanceModeError(error)) throw error;
+        if (isMaintenanceModeError(error) || isWcRateLimitError(error)) throw error;
         console.error("Google validation failed:", error);
         if (config.fallback.useLocalOnGoogleFailure) {
           console.log("Falling back to local validation");
@@ -341,7 +342,7 @@ class AddressValidationService {
       // A refusal is not a failed validation. Wrapping it here would strip the
       // type the routes use to answer 503, and turn "we would not ask" into
       // "Google says no".
-      if (isMaintenanceModeError(error)) throw error;
+      if (isMaintenanceModeError(error) || isWcRateLimitError(error)) throw error;
       throw new Error(`Google validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -360,7 +361,7 @@ class AddressValidationService {
           validation = parseResult.validation;
         } catch (error) {
           // Same as validateAddress: never fall back past a refusal.
-          if (isMaintenanceModeError(error)) throw error;
+          if (isMaintenanceModeError(error) || isWcRateLimitError(error)) throw error;
           console.error("Google parsing failed:", error);
           if (config.fallback.useLocalOnGoogleFailure) {
             console.log("Falling back to local parsing");
@@ -400,7 +401,7 @@ class AddressValidationService {
         };
       }
     } catch (error) {
-      if (isMaintenanceModeError(error)) throw error;
+      if (isMaintenanceModeError(error) || isWcRateLimitError(error)) throw error;
       console.error("Address parsing error:", error);
       return {
         success: false,
@@ -887,7 +888,7 @@ class AddressValidationService {
       };
 
     } catch (error) {
-      if (isMaintenanceModeError(error)) throw error;
+      if (isMaintenanceModeError(error) || isWcRateLimitError(error)) throw error;
       console.error("Geocoding error:", error);
       return {
         success: false,

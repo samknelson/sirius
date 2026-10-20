@@ -8,7 +8,8 @@ export const floodPluginRegistry = new PluginRegistry({
     id: plugin.id, name: plugin.name, description: plugin.description,
     singleton: plugin.singleton, requiredComponent: plugin.requiredComponent,
     defaults: plugin.defaults,
-    configSchema: floodConfigSchema(plugin),
+    configSchema: plugin.configSchema?.() ?? floodConfigSchema(plugin),
+    uiSchema: plugin.uiSchema?.(),
   }),
 });
 

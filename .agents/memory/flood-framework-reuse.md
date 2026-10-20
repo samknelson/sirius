@@ -26,3 +26,9 @@ Vendor-request rate limits are best-effort operational controls, not hard quota 
 **Why:** The user explicitly accepted best-effort enforcement and excluded concurrency guarantees for this feature.
 
 **How to apply:** Do not promise exact caps under simultaneous dispatches or add locking/reservation infrastructure without a new requirement.
+
+Vendor-operation rules share their budget across a deployment's connections of the selected vendor type.
+
+**Why:** The accepted scope is a deployment-wide vendor/operation cap, not per-connection limits; adding another connection must not silently multiply the budget.
+
+**How to apply:** Do not partition a rule's budget by vendor connection, user, or recipient without a new requirement.

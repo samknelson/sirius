@@ -18,10 +18,12 @@ export function initializeFloodPluginSystem(): void {
     description: "Rate limits for actions, authentication attempts and notifications.",
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.name.localeCompare(b.name),
-    validateConfig: async (_plugin, data) => {
+    validateConfig: async (plugin, data) => {
       const result = floodSettingsSchema.safeParse(data);
-      return result.success ? { valid: true } :
-        { valid: false, errors: result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`) };
+      if (!result.success) return {
+        valid: false, errors: result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`),
+      };
+      return plugin.validateConfig ? plugin.validateConfig(data) : { valid: true };
     },
   });
   registerPluginConfigAdapter({
@@ -29,15 +31,17 @@ export function initializeFloodPluginSystem(): void {
     configSchema: z.object({
       ...baseConfigSchemaShape,
       enabled: z.boolean().optional().default(true),
-      data: floodSettingsSchema,
+      // Preserve plugin-specific fields; per-plugin validation runs after toRows.
+      data: floodSettingsSchema.passthrough(),
     }),
     searchParamsSchema: z.object(baseSearchSchemaShape),
     toRows: input => ({ base: {
       pluginKind: "flood", pluginId: input.pluginId, name: input.name,
       enabled: input.enabled, ordering: input.ordering, siriusId: input.siriusId, data: input.data,
-    } }),
+    }, subsidiary: {} }),
     seedDefault: plugin => {
       const p = plugin as FloodPlugin;
+      if (!p.singleton) return null;
       return { pluginId: p.id, name: p.name, enabled: true, ordering: 0, data: { ...p.defaults } };
     },
   });
@@ -51,3 +55,4 @@ import "./plugins/local-password-change";
 import "./plugins/edls-schedule-answer";
 import "./plugins/t631-arrival";
 import "./plugins/notifications";
+import "./plugins/webclient-vendor-operation";

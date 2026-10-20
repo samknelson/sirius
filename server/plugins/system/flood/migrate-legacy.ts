@@ -12,7 +12,7 @@ export async function migrateLegacyFloodConfigs(): Promise<void> {
   for (const variable of legacy) {
     const id = variable.name.slice("flood_".length);
     const plugin = floodPluginRegistry.get(id);
-    if (!plugin) {
+    if (!plugin || !plugin.singleton) {
       logger.warn("Unregistered legacy flood variable retained", { service: "flood-migration", name: variable.name });
       continue;
     }
@@ -39,10 +39,11 @@ export async function migrateLegacyFloodConfigs(): Promise<void> {
           }
           const existing = await storage.pluginConfigs.getByKindAndPlugin("flood", id);
           if (existing.length === 0) {
-            await storage.pluginConfigs.create({
+            const row = await storage.pluginConfigs.create({
               pluginKind: "flood", pluginId: id, name: plugin.name,
               enabled: true, ordering: 0, data: parsed.data,
             });
+            await storage.pluginConfigs.upsertSubsidiary("flood", { id: row.id });
           }
           // Same transaction: failed insert/delete rolls back BOTH halves.
           await storage.variables.delete(source.id);

@@ -11,9 +11,9 @@ For Puppeteer verification in this workspace, use the pipe transport when browse
 
 The DevTools pipe is also usable directly if no browser automation package is installed.
 
-**Why:** This workspace can have Chromium on PATH without Puppeteer or a native Node WebSocket implementation. Direct pipe commands avoid adding dependencies just for a one-off check.
+**Why:** This workspace can have Chromium on PATH without Puppeteer or a native Node WebSocket implementation. Direct pipe commands avoid adding dependencies just for a one-off check. Serializing a React-owned DOM node by value can fail with “Object reference chain is too long.”
 
-**How to apply:** Use the browser's null-delimited JSON pipe protocol with child-process file descriptors 3 and 4. Return booleans, not DOM nodes, from readiness predicates. Bundle real components and use browser-only fixture data, never an application auth bypass.
+**How to apply:** Use the browser's null-delimited JSON pipe protocol with child-process file descriptors 3 and 4. Return booleans or plain data, never DOM nodes, from evaluations (including open/close checks). Bundle real components and use browser-only fixture data, never an application auth bypass.
 
 Process a standalone bundle's CSS with the existing PostCSS/Tailwind pipeline before using its screenshots for visual verification.
 

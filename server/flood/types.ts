@@ -11,6 +11,7 @@ export type FloodCheckResult = {
   threshold: number;
   windowSeconds: number;
   identifier: string;
+  pluginConfigurationId: string;
 } | {
   allowed: true;
   skipped: true;

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { BasePluginMetadata } from "../../_core/types";
 import type { FloodContext } from "../../../flood/types";
+import type { JsonSchema } from "@shared/json-schema-form";
+import type { PluginValidationResult } from "../../_core/kinds";
 
 export const floodSettingsSchema = z.object({
   threshold: z.number().int().positive(),
@@ -9,10 +11,15 @@ export const floodSettingsSchema = z.object({
 export type FloodSettings = z.infer<typeof floodSettingsSchema>;
 
 export interface FloodPlugin extends BasePluginMetadata {
-  singleton: true;
+  singleton: boolean;
   defaults: Readonly<FloodSettings>;
-  getIdentifier(context: FloodContext): string;
+  getIdentifier(context: FloodContext, data?: unknown): string;
   resolveIdentifierName?(identifier: string): Promise<string | null>;
+  configSchema?(): JsonSchema;
+  uiSchema?(): Record<string, unknown>;
+  validateConfig?(data: unknown): Promise<PluginValidationResult>;
+  /** Instance-based plugins opt into matching; singleton callers keep their explicit seam. */
+  matches?(data: unknown, context: FloodContext): boolean;
 }
 
 export function floodConfigSchema(plugin: FloodPlugin) {

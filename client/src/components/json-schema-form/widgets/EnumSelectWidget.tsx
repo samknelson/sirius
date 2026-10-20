@@ -68,7 +68,7 @@ export function EnumSelectWidget(props: WidgetProps) {
     className,
   } = props;
 
-  const { enumOptions, enumDisabled, emptyValue: optEmptyValue } = options as {
+  const { enumOptions: declaredOptions, enumDisabled, emptyValue: optEmptyValue } = options as {
     enumOptions?: Array<{ value: unknown; label: string }>;
     enumDisabled?: unknown[];
     emptyValue?: unknown;
@@ -83,12 +83,20 @@ export function EnumSelectWidget(props: WidgetProps) {
     return <RjsfShadcnSelectWidget {...props} />;
   }
 
+  // Retired/de-scoped stored values must remain visible and replaceable.
+  // Do not offer them as a new selection, and allow explicitly clearing them.
+  const unavailable = value !== undefined && value !== null && value !== "" &&
+    !declaredOptions?.some(option => Object.is(option.value, value));
+  const enumOptions = unavailable
+    ? [...(declaredOptions ?? []), { value, label: `Unavailable: ${String(value)}` }]
+    : declaredOptions;
   const optionValueFormat = getOptionValueFormat(options);
   const items =
     enumOptions?.map(({ value: rawValue, label }, index) => ({
       encoded: enumOptionValueEncoder(rawValue, index, optionValueFormat),
       label,
-      disabled: Array.isArray(enumDisabled) && enumDisabled.includes(rawValue),
+      disabled: (Array.isArray(enumDisabled) && enumDisabled.includes(rawValue)) ||
+        (unavailable && Object.is(rawValue, value)),
     })) ?? [];
 
   const selectedEncoded = enumOptionSelectedValue(
@@ -171,7 +179,7 @@ export function EnumSelectWidget(props: WidgetProps) {
           <SelectValue placeholder={placeholder || "Select..."} />
         </SelectTrigger>
         <SelectContent>
-          {!required && (
+          {(!required || unavailable || enumDisabled?.includes(value)) && (
             <SelectItem value={NONE_SENTINEL}>
               {(placeholder as string | undefined) || "None"}
             </SelectItem>

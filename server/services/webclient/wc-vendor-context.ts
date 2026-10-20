@@ -22,7 +22,7 @@ import {
   isMaintenanceModeError,
 } from "../maintenance-flag";
 import { wcCacheStorage } from "../../storage/wc-cache";
-import { notRecordableReason } from "./refusals";
+import { notRecordableReason, isWcRateLimitError } from "./refusals";
 import type {
   WcTransportRequestOptions,
   WcVendorRequestOptions,
@@ -530,7 +530,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
         fetchedAt: new Date(),
       };
     } catch (thrown) {
-      if (isMaintenanceModeError(thrown)) throw thrown;
+      if (isMaintenanceModeError(thrown) || isWcRateLimitError(thrown)) throw thrown;
       return {
         source: "network",
         outcome: "failure",
@@ -551,6 +551,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
     service: resolved.plugin.service,
     requestType: name,
     configurationId: resolved.config.id,
+    vendorId: resolved.plugin.id,
     args: { configId: resolved.config.id, args },
     mode: options.mode,
     fetch: async (): Promise<WcAnswer<WcVendorOperationResult<N>>> => {
@@ -571,7 +572,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
         return { answered: true, value: answer as WcVendorOperationResult<N> };
       } catch (thrown) {
         // A refusal is the framework's own answer, not the vendor's.
-        if (isMaintenanceModeError(thrown)) throw thrown;
+        if (isMaintenanceModeError(thrown) || isWcRateLimitError(thrown)) throw thrown;
         providerFailed = true;
         providerError = thrown;
         return { answered: false, error: errorMessage(thrown) };
