@@ -9,6 +9,18 @@ import { workerCommsComplianceHelp } from "./worker-comms-compliance";
 import { workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp } from "./online-checkout";
 import { workerPaymentMethodsHelp } from "./worker-payment-methods";
 import { baoCobraHelp } from "./bao-cobra";
+import { benefitsWorkflowHelp } from "./benefits-workflows";
+import { financeUploadHelp } from "./finance-uploads";
+import { messagingConfigurationHelp } from "./messaging-configuration";
+import { workerRecordHelp } from "./worker-records";
+import { organizationRecordHelp } from "./organization-records";
+import { conditionalDomainHelp } from "./conditional-domains";
+import { importsPensionReportsHelp } from "./imports-pension-reports";
+import { baoConfigurationHelp } from "./bao-configuration";
+import { administrationHelp } from "./administration";
+import { integrationsAppearanceHelp } from "./integrations-appearance";
+import { additionalPluginKindHelp } from "./additional-plugin-kinds";
+import { reportTypeHelp } from "./report-types";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -39,6 +51,18 @@ const entries: SystemHelpEntry[] = [
   postalMessageDefaultsHelp,
   composeMessageDefaultsHelp,
   baoCobraHelp,
+  ...benefitsWorkflowHelp,
+  ...financeUploadHelp,
+  ...messagingConfigurationHelp,
+  ...workerRecordHelp,
+  ...organizationRecordHelp,
+  ...conditionalDomainHelp,
+  ...importsPensionReportsHelp,
+  ...baoConfigurationHelp,
+  ...administrationHelp,
+  ...integrationsAppearanceHelp,
+  ...additionalPluginKindHelp,
+  ...reportTypeHelp,
 ];
 
 function toHelp(entry: SystemHelpEntry): HelpWithSource {

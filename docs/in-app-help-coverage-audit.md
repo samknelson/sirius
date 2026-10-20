@@ -1,5 +1,9 @@
 # In-app help coverage audit
 
+Current completion inventory: [Authenticated help backfill coverage](in-app-help-backfill-coverage.md)
+accounts for all 47 originally missing families, separates payment ownership,
+and records source checks separately from protected-browser verification.
+
 Subsequent delivery evidence: [Online checkout and saved-method help (F08/F09)](in-app-help-online-payments.md)
 records registered entries, path boundaries, verification results, and signed-in
 access limitations as of 2026-10-19. The original findings and counts below remain
