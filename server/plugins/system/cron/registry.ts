@@ -15,6 +15,8 @@ export const cronPluginRegistry = new PluginRegistry<CronPlugin, CronManifestEnt
   getMetadata: (p) => p.metadata,
   toManifestEntry: (p) => ({
     ...p.metadata,
+    defaultSchedule: p.defaultSchedule,
+    defaultEnabled: p.defaultEnabled,
     configSchema: p.configSchema,
     uiSchema: p.uiSchema,
   }),

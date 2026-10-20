@@ -7,6 +7,7 @@ export const floodPluginRegistry = new PluginRegistry({
   toManifestEntry: (plugin: FloodPlugin) => ({
     id: plugin.id, name: plugin.name, description: plugin.description,
     singleton: plugin.singleton, requiredComponent: plugin.requiredComponent,
+    defaults: plugin.defaults,
     configSchema: floodConfigSchema(plugin),
   }),
 });

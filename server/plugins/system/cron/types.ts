@@ -73,6 +73,8 @@ export interface CronPlugin {
  * render each job's type-specific config (mirrors event-notifier).
  */
 export interface CronManifestEntry extends BasePluginMetadata {
+  defaultSchedule: string;
+  defaultEnabled: boolean;
   configSchema?: JsonSchema;
   uiSchema?: UiSchema;
 }

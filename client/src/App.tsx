@@ -146,6 +146,7 @@ const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"))
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
 const CatalogsConfigPage = lazy(() => import("@/pages/config/catalogs"));
 const CatalogDetailConfigPage = lazy(() => import("@/pages/config/catalog-detail"));
+const PluginKindDefinitionPage = lazy(() => import("@/pages/config/plugin-kind-definition"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
 const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
@@ -2735,6 +2736,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <CatalogsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/catalogs/plugin-kinds/:kind">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <PluginKindDefinitionPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
