@@ -1,5 +1,10 @@
 # In-app help coverage audit
 
+Subsequent delivery evidence: [Online checkout and saved-method help (F08/F09)](in-app-help-online-payments.md)
+records registered entries, path boundaries, verification results, and signed-in
+access limitations as of 2026-10-19. The original findings and counts below remain
+the historical audit snapshot.
+
 Audit date: 2026-10-14. Scope: checked-out shipped Sirius source and the workspace development database, not production or other organizations' databases.
 
 ## Executive summary

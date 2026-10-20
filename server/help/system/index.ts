@@ -6,6 +6,8 @@ import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
 import { adminUserPermissionsHelp } from "./admin-user-permissions";
 import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefaultsHelp } from "./message-defaults";
 import { workerCommsComplianceHelp } from "./worker-comms-compliance";
+import { workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp } from "./online-checkout";
+import { workerPaymentMethodsHelp } from "./worker-payment-methods";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -24,6 +26,10 @@ export interface SystemHelpEntry {
 export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
+  workerPaymentChooserHelp,
+  onlineCheckoutHelp,
+  onlinePaymentReceiptHelp,
+  workerPaymentMethodsHelp,
   workerCommsComplianceHelp,
   trustProvidersHelp,
   workerBenefitsSummaryHelp,
