@@ -56,3 +56,17 @@ mtime_ms = 1792936182541
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/8cd3b8c0-d450-44a1-a86d-7dc26296004e/ab2dcb92-6808-4b8b-8e98-c953ccddef17"
 storage_version_token = "1792936190574216"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "8PLCRClmXWniHJEFTpqBN"
+uri = "file://generated-artifacts/mpdf-php82-revised-v4.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v4 full archive"
+description = "Retains all previous fixes and initializes the DIV layout buffer as an empty array to fix count(null) in Close(). All 133 PHP files pass syntax checks; isolated Close() and prior CSS checks pass."
+logical_id = "cf60ac4d-904e-437d-a352-6d8f739c9924"
+content_hash = "sha256:ba57b21223d95b7135624589627d99b52ffcf97f90e497c24b74c261c742b20d"
+size = 12737683
+mtime_ms = 1792936402833
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/cf60ac4d-904e-437d-a352-6d8f739c9924/b34ba14e-a1cd-40bc-b9cf-427820818f90"
+storage_version_token = "1792936410279514"
+content_type = "application/octet-stream"
