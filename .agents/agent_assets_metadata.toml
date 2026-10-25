@@ -28,3 +28,17 @@ mtime_ms = 1792933576846
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/dd53119d-d33a-4dec-8ccd-c9d2874d75e1/e85515aa-db9f-4c9f-af15-bee70f23ff5c"
 storage_version_token = "1792935624871143"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "dXlcEUux3Eu8zkbp4yLU9"
+uri = "file://generated-artifacts/mpdf-php82-revised-v2.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v2 full archive"
+description = "Retains all previous fixes and fixes border-style parsing when the array is null or unset. All 133 PHP files linted from the rebuilt archive; targeted null/unset border-style checks passed."
+logical_id = "6e5af842-9f94-41c7-939e-3871aabf2adc"
+content_hash = "sha256:e20667c9203e2722f0aff2751547e2527dd250cca23963f49c5b1bfa42f6b762"
+size = 12737559
+mtime_ms = 1792935849661
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/6e5af842-9f94-41c7-939e-3871aabf2adc/7010e01d-200e-433a-be03-20d31f9d085b"
+storage_version_token = "1792935854538853"
+content_type = "application/octet-stream"
