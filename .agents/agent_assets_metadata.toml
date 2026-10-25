@@ -1,3 +1,16 @@
 uploads = []
 generated = []
-outputs = []
+
+[[outputs]]
+id = "XKPao1RRXmF8k4DmMrgX_"
+uri = "file://generated-artifacts/mpdf-php82.tgz"
+type = "unspecified"
+title = "mPDF — PHP 8.2 syntax fixes"
+description = "Patched archive with 205 curly-brace offset replacements and one invalid break changed to return. All 133 PHP files pass PHP 8.2.29 syntax lint. Folder structure and other files preserved."
+logical_id = "13728f5a-da9e-408a-b61a-7a23be304f68"
+content_hash = "sha256:06f83174736a1683657e869d9ac5fa3c56bb74798307746618b7830daac9cd2e"
+size = 12736916
+mtime_ms = 1792932731354
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/13728f5a-da9e-408a-b61a-7a23be304f68/6e8f6624-e051-4ea6-af12-2a49c54295cf"
+storage_version_token = "1792932745901416"
+content_type = "application/octet-stream"
