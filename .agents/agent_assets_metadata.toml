@@ -42,3 +42,17 @@ mtime_ms = 1792935849661
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/6e5af842-9f94-41c7-939e-3871aabf2adc/7010e01d-200e-433a-be03-20d31f9d085b"
 storage_version_token = "1792935854538853"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Uw8UYgTDiP3oxWenzQN5W"
+uri = "file://generated-artifacts/mpdf-php82-revised-v3.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v3 full archive"
+description = "Retains all previous fixes and normalizes empty HTML attributes in MergeCSS to prevent string-offset TypeErrors. All 133 PHP files pass syntax checks; focused CSS merge and border parsing checks pass."
+logical_id = "8cd3b8c0-d450-44a1-a86d-7dc26296004e"
+content_hash = "sha256:8141d94271438968f85a9ff141531c62fe26c48cbc721d2d3778945e32e4ffbb"
+size = 12737681
+mtime_ms = 1792936182541
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/8cd3b8c0-d450-44a1-a86d-7dc26296004e/ab2dcb92-6808-4b8b-8e98-c953ccddef17"
+storage_version_token = "1792936190574216"
+content_type = "application/octet-stream"
