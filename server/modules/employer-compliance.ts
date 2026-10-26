@@ -6,6 +6,10 @@ import { createBulkParticipantStorage } from "../storage/bulk/participants";
 import { insertBulkMessageSchema } from "@shared/schema/bulk/schema";
 import { complianceScopeSchema } from "@shared/employer-compliance";
 import { loadComplianceReport, validateComplianceReferences, complianceLetterValues } from "../services/employer-compliance";
+import { runInTransaction } from "../storage/transaction-context";
+import { enqueueBulkRecipients } from "./bulk/enqueue-recipients";
+import { applyEnqueueTemplates, resolveEnqueueTemplates, BulkEnqueueError } from "../services/bulk-enqueue-templates";
+import { extendComplianceSnapshot } from "../services/compliance-enqueue-snapshot";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -137,9 +141,13 @@ export function registerEmployerComplianceRoutes(
     requireComponent("ledger"),
     requireAccess("staff"),
     requireAccess("bulk.edit"),
+    requireComponent("bulk"),
     async (req, res) => {
       try {
-        const { name, medium, employerIds, contactTypeIds, reportScope } = req.body ?? {};
+        const { name, medium, employerIds, contactTypeIds, reportScope, bulkMessageId, templateIds } = req.body ?? {};
+        if (bulkMessageId !== undefined && (typeof bulkMessageId !== "string" || !bulkMessageId.trim())) {
+          return res.status(400).json({ message: "bulkMessageId must be a non-empty string" });
+        }
 
         const parsedScope = complianceScopeSchema.safeParse(reportScope);
         if (!parsedScope.success) {
@@ -154,7 +162,7 @@ export function registerEmployerComplianceRoutes(
           medium,
           status: "draft",
         });
-        if (!parsed.success) {
+        if (bulkMessageId === undefined && !parsed.success) {
           return res
             .status(400)
             .json({ message: "Validation failed", errors: parsed.error.issues });
@@ -206,57 +214,56 @@ export function registerEmployerComplianceRoutes(
 
         const { wizardPluginRegistry } = await import("../plugins/wizards/registry");
         const accounts = await Promise.all(parsedScope.data.ledgerAccountIds.map(id => storage.ledger.accounts.get(id)));
-        const bulk = await storage.bulkMessages.create({
-          ...parsed.data,
-          data: {
-            complianceReport: {
+        const snapshot = {
               scope: parsedScope.data,
               runAt,
               wizardName: wizardPluginRegistry.get(parsedScope.data.wizardType)!.name,
               accountName: accounts.map(account => account!.name).join(", "),
               employerByContact,
-              valuesByEmployer: Object.fromEntries(selectedRows.map(row => [
+              valuesByEmployer: Object.fromEntries(report.rows.map(row => [
                 row.employerId, complianceLetterValues(row.employerName, row.months, report.monthPeriods),
               ])),
-            },
-          },
-        });
-        const participantStorage = createBulkParticipantStorage();
-        const mediums = parsed.data.medium;
-
-        const tasks: Array<Promise<{ ok: boolean; reason?: string }>> = [];
-        for (const contactId of contactIds) {
-          for (const m of mediums) {
-            tasks.push(
-              participantStorage
-                .create({ messageId: bulk.id, contactId, medium: m })
-                .then(() => ({ ok: true }))
-                .catch((err) => ({
-                  ok: false,
-                  reason: err instanceof Error ? err.message : "unknown",
-                })),
-            );
+        };
+        const { bulk, participantsCreated, participantsSkipped } = await runInTransaction(async () => {
+          const existing = bulkMessageId ? await storage.bulkMessages.getByIdForUpdate(bulkMessageId) : undefined;
+          if (bulkMessageId && !existing) throw new BulkEnqueueError("Bulk message not found", 404);
+          if (existing && (existing.status !== "draft" || await storage.bulkParticipants.hasNonPendingForMessage(existing.id))) {
+            throw new BulkEnqueueError("Choose a draft whose delivery has not started", 409);
           }
-        }
-        const results = await Promise.all(tasks);
-        const participantsCreated = results.filter((r) => r.ok).length;
-        const expected = contactIds.length * mediums.length;
-        const failures = results.filter((r) => !r.ok);
-        const uniqueViolations = failures.filter(
-          (r) => r.reason && /unique|duplicate/i.test(r.reason),
-        ).length;
-        const realFailures = failures.length - uniqueViolations;
+          const data = (existing?.data ?? {}) as Record<string, unknown>;
+          const complianceReport = extendComplianceSnapshot(data.complianceReport, snapshot, employerIdList);
+          if (existing) {
+            const recipients = await storage.bulkParticipants.getByMessageId(existing.id);
+            if (recipients.some(recipient => !complianceReport.employerByContact[recipient.contactId])) {
+              throw new BulkEnqueueError("This message has recipients without employer report context. Choose another draft or create a new one.", 409);
+            }
+          }
+          const templates = await resolveEnqueueTemplates(storage, templateIds, existing?.medium ?? (parsed.success ? parsed.data.medium : []));
+          const bulk = existing
+            ? await storage.bulkMessages.update(existing.id, { data: { ...data, complianceReport } })
+            : await storage.bulkMessages.create({
+                ...insertBulkMessageSchema.parse({ name, medium, status: "draft" }),
+                data: { complianceReport },
+              });
+          if (!bulk) throw new BulkEnqueueError("Bulk message no longer exists", 404);
+          await applyEnqueueTemplates(storage, bulk, templates);
+          const counts = await enqueueBulkRecipients(createBulkParticipantStorage(), bulk, contactIds);
+          return { bulk, ...counts };
+        });
+        const expected = contactIds.length * bulk.medium.length;
 
         res.status(201).json({
           bulkMessageId: bulk.id,
           participantsCreated,
           participantsExpected: expected,
-          participantFailures: realFailures,
+          participantFailures: 0,
+          participantsSkipped,
           contactCount: contactIds.length,
           employerCount: employerIdList.length,
           employersWithoutContacts,
         });
       } catch (error) {
+        if (error instanceof BulkEnqueueError) return res.status(error.status).json({ message: error.message });
         const message =
           error instanceof Error ? error.message : "Failed to queue bulk message";
         res.status(500).json({ message });

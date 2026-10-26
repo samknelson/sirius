@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -20,19 +20,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { BulkTemplateSelector, type BulkTemplateIds } from "@/components/bulk/bulk-template-selector";
 import { ExistingMessageChooserContent, type ExistingBulkMessageOption } from "@/components/bulk/existing-message-chooser-content";
 import { ChevronDown, Loader2, MailPlus, ListChecks, Send } from "lucide-react";
 import type { ComplianceView } from "@shared/worker-comms-compliance";
@@ -93,10 +90,12 @@ export function ListBulkAction({
     inapp: false,
     postal: false,
   });
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingMediums, setPendingMediums] = useState<Medium[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [templateIds, setTemplateIds] = useState<BulkTemplateIds>({});
+  const [largeDraftConfirmed, setLargeDraftConfirmed] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [chosenBulkMessageId, setChosenBulkMessageId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -112,17 +111,33 @@ export function ListBulkAction({
     staleTime: 30000,
   });
 
-  const createMutation = useMutation<{ bulkMessage: { id: string }; participantsCreated: number; recipientsResolved: number; recipientsMissing: number }, Error, Medium[]>({
-    mutationFn: async (medium) => {
+  const chosenExistingMessage = existingMessagesQuery.data?.find((message) => message.id === chosenBulkMessageId);
+  const existingMedia = (chosenExistingMessage?.medium ?? []).filter(
+    (medium): medium is Medium => MEDIUM_OPTIONS.some((option) => option.value === medium),
+  );
+  const editableExisting = chosenExistingMessage?.status === "draft";
+  const hasExistingTemplates = Object.keys(templateIds).length > 0;
+
+  useEffect(() => {
+    setTemplateIds((previous) => Object.fromEntries(
+      Object.entries(previous).filter(([medium]) => selectedMedia[medium as Medium]),
+    ) as BulkTemplateIds);
+  }, [selectedMedia]);
+
+  const createMutation = useMutation<{ bulkMessage: { id: string }; participantsCreated: number; recipientsResolved: number; recipientsMissing: number }, Error, { medium: Medium[]; templateIds: BulkTemplateIds }>({
+    mutationFn: async ({ medium, templateIds: chosenTemplates }) => {
       return apiRequest("POST", "/api/bulk-messages/from-recipients", {
         contactIds: selectedContactIds,
         sourceLabel,
         reportSelection,
         medium,
+        ...(Object.keys(chosenTemplates).length ? { templateIds: chosenTemplates } : {}),
       });
     },
     onSuccess: (result) => {
-      setConfirmOpen(false);
+      setCreateOpen(false);
+      setLargeDraftConfirmed(false);
+      setTemplateIds({});
       toast({
         title: "Bulk message draft created",
         description: `${result.recipientsResolved} recipient${result.recipientsResolved === 1 ? "" : "s"} attached${result.recipientsMissing ? `, ${result.recipientsMissing} skipped` : ""}.`,
@@ -138,16 +153,18 @@ export function ListBulkAction({
     },
   });
 
-  const addToExistingMutation = useMutation<AddRecipientsResult, Error, string>({
-    mutationFn: (bulkMessageId) => apiRequest("POST", "/api/bulk-messages/from-recipients", {
+  const addToExistingMutation = useMutation<AddRecipientsResult, Error, { bulkMessageId: string; templateIds: BulkTemplateIds }>({
+    mutationFn: ({ bulkMessageId, templateIds: chosenTemplates }) => apiRequest("POST", "/api/bulk-messages/from-recipients", {
       contactIds: selectedContactIds,
       bulkMessageId,
       reportSelection,
+      ...(Object.keys(chosenTemplates).length ? { templateIds: chosenTemplates } : {}),
     }),
     onSuccess: async (result) => {
       const targetId = result.bulkMessage.id;
       setChooserOpen(false);
       setChosenBulkMessageId(null);
+      setTemplateIds({});
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", targetId] }),
         queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", targetId, "participants"] }),
@@ -190,12 +207,10 @@ export function ListBulkAction({
 
   const handleMessageClick = () => {
     if (messageDisabled) return;
-    if (requiresConfirmation) {
-      setPendingMediums(chosenMedia);
-      setConfirmOpen(true);
-      return;
-    }
-    createMutation.mutate(chosenMedia);
+    setLargeDraftConfirmed(false);
+    setTemplateIds({});
+    setMenuOpen(false);
+    window.setTimeout(() => setCreateOpen(true), 0);
   };
 
   const messageItem = (
@@ -222,7 +237,9 @@ export function ListBulkAction({
         e.preventDefault();
         if (noSelection || addToExistingMutation.isPending) return;
         setChosenBulkMessageId(null);
-        setChooserOpen(true);
+        setTemplateIds({});
+        setMenuOpen(false);
+        window.setTimeout(() => setChooserOpen(true), 0);
       }}
       data-testid={`${testIdPrefix}-existing-message`}
     >
@@ -255,12 +272,12 @@ export function ListBulkAction({
           Select all {totalMatching.toLocaleString()} matching
         </Button>
       )}
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="default"
             size="sm"
-            disabled={createMutation.isPending}
+          disabled={createMutation.isPending || addToExistingMutation.isPending}
             data-testid={`${testIdPrefix}-trigger`}
           >
             Bulk Action
@@ -304,7 +321,10 @@ export function ListBulkAction({
         onOpenChange={(open) => {
           if (!addToExistingMutation.isPending) {
             setChooserOpen(open);
-            if (!open) setChosenBulkMessageId(null);
+            if (!open) {
+              setChosenBulkMessageId(null);
+              setTemplateIds({});
+            }
           }
         }}
       >
@@ -318,62 +338,94 @@ export function ListBulkAction({
             selectedBulkMessageId={chosenBulkMessageId}
             isPending={addToExistingMutation.isPending}
             testIdPrefix={testIdPrefix}
-            onSelect={setChosenBulkMessageId}
+            onSelect={(id) => {
+              setChosenBulkMessageId(id);
+              setTemplateIds({});
+            }}
             onRetry={() => existingMessagesQuery.refetch()}
             onCancel={() => setChooserOpen(false)}
             onSubmit={() => {
               if (!selectedContactIds.length || !chosenBulkMessageId || addToExistingMutation.isPending) return;
-              addToExistingMutation.mutate(chosenBulkMessageId);
+              addToExistingMutation.mutate({
+                bulkMessageId: chosenBulkMessageId,
+                templateIds: editableExisting ? templateIds : {},
+              });
             }}
-          />
+          >
+            {chosenExistingMessage && editableExisting && (
+              <div className="space-y-3">
+                <BulkTemplateSelector
+                  media={existingMedia}
+                  value={templateIds}
+                  onChange={setTemplateIds}
+                  disabled={addToExistingMutation.isPending}
+                  testIdPrefix={testIdPrefix}
+                />
+                {hasExistingTemplates && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      Applying a template replaces authored fields on this draft for all of its recipients. Other message and delivery settings remain unchanged.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )}
+          </ExistingMessageChooserContent>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={confirmOpen} onOpenChange={(open) => { if (!createMutation.isPending) setConfirmOpen(open); }}>
-        <AlertDialogContent data-testid={`${testIdPrefix}-confirm-dialog`}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Create bulk message draft?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <div data-testid={`${testIdPrefix}-confirm-summary`}>
-                  You're about to create a draft with{" "}
-                  <span className="font-semibold text-foreground">
-                    {selectionCount.toLocaleString()} recipient{selectionCount === 1 ? "" : "s"}
-                  </span>
-                  {" "}from{" "}
-                  <span className="font-semibold text-foreground" data-testid={`${testIdPrefix}-confirm-source`}>
-                    {sourceLabel}
-                  </span>
-                  .
-                </div>
-                <div data-testid={`${testIdPrefix}-confirm-mediums`}>
-                  Channels: <span className="font-semibold text-foreground">{pendingMediums.join(", ")}</span>
-                </div>
-                <div className="text-xs">
-                  Drafts of this size can be slow to delete. Confirm to continue.
-                </div>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={createMutation.isPending} data-testid={`${testIdPrefix}-confirm-cancel`}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        if (!createMutation.isPending) {
+          setCreateOpen(open);
+          if (!open) {
+            setTemplateIds({});
+            setLargeDraftConfirmed(false);
+          }
+        }
+      }}>
+        <DialogContent className="max-w-2xl" data-testid={`${testIdPrefix}-create-dialog`}>
+          <DialogHeader>
+            <DialogTitle>Create bulk message draft</DialogTitle>
+            <DialogDescription>
+              Create a draft for {selectionCount.toLocaleString()} selected recipient{selectionCount === 1 ? "" : "s"} from {sourceLabel}. Choose wording separately for each channel.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+            <div className="flex flex-wrap gap-2">
+              {chosenMedia.map((medium) => <span key={medium} className="rounded border bg-muted/40 px-2 py-1 text-xs capitalize">{medium}</span>)}
+            </div>
+            <BulkTemplateSelector
+              media={chosenMedia}
+              value={templateIds}
+              onChange={setTemplateIds}
               disabled={createMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                createMutation.mutate(pendingMediums);
-              }}
-              data-testid={`${testIdPrefix}-confirm-create`}
+              testIdPrefix={testIdPrefix}
+            />
+            {requiresConfirmation && (
+              <Alert variant="destructive">
+                <AlertDescription className="space-y-3">
+                  <p>This draft includes {selectionCount.toLocaleString()} recipients. Drafts of this size can be slow to delete.</p>
+                  <label className="flex items-start gap-2 text-sm text-foreground">
+                    <Checkbox checked={largeDraftConfirmed} onCheckedChange={(checked) => setLargeDraftConfirmed(Boolean(checked))} disabled={createMutation.isPending} />
+                    <span>I reviewed the recipient count and want to create this draft.</span>
+                  </label>
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={createMutation.isPending}>Cancel</Button>
+            <Button
+              type="button"
+              onClick={() => createMutation.mutate({ medium: chosenMedia, templateIds })}
+              disabled={createMutation.isPending || (requiresConfirmation && !largeDraftConfirmed)}
+              data-testid={`${testIdPrefix}-create-submit`}
             >
-              {createMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
+              {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailPlus className="mr-2 h-4 w-4" />}
               Create draft
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

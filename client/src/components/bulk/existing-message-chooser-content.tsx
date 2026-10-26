@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,6 +11,15 @@ export interface ExistingBulkMessageOption {
   status: string;
   medium: string[];
   data: { offline?: boolean };
+  deliveryStarted?: boolean;
+}
+
+export function getEditableNotStartedBulkMessages(
+  messages: ExistingBulkMessageOption[],
+): ExistingBulkMessageOption[] {
+  return messages.filter(
+    (message) => message.status === "draft" && message.deliveryStarted !== true,
+  );
 }
 
 export interface ExistingMessageChooserContentProps {
@@ -25,6 +35,7 @@ export interface ExistingMessageChooserContentProps {
   onRetry: () => void;
   onCancel: () => void;
   onSubmit: () => void;
+  children?: ReactNode;
 }
 
 export function ExistingMessageChooserContent({
@@ -40,6 +51,7 @@ export function ExistingMessageChooserContent({
   onRetry,
   onCancel,
   onSubmit,
+  children,
 }: ExistingMessageChooserContentProps) {
   const hasSelection = selectedContactCount > 0;
   const canSubmit = hasSelection && !isLoading && !isError && !isPending &&
@@ -51,7 +63,7 @@ export function ExistingMessageChooserContent({
         <DialogTitle>Add recipients to an existing message</DialogTitle>
         <DialogDescription>
           Choose a message for {selectedContactCount.toLocaleString()} selected recipient{selectedContactCount === 1 ? "" : "s"}.
-          Only recipients are added; content and delivery settings stay unchanged.
+          Existing content and delivery settings stay unchanged unless you select templates for an editable draft.
           Queued messages follow their existing delivery schedule.
         </DialogDescription>
       </DialogHeader>
@@ -120,6 +132,7 @@ export function ExistingMessageChooserContent({
           </div>
         </ScrollArea>
       )}
+      {children}
       <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
           Cancel

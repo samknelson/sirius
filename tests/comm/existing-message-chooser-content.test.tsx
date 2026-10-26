@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Dialog } from "../../client/src/components/ui/dialog";
 import {
   ExistingMessageChooserContent,
+  getEditableNotStartedBulkMessages,
   type ExistingMessageChooserContentProps,
 } from "../../client/src/components/bulk/existing-message-chooser-content";
 
@@ -45,6 +46,15 @@ function buttonAttributes(markup: string, label: string) {
 }
 
 describe("ExistingMessageChooserContent", () => {
+  it("filters employer targets to drafts that have not started delivery", () => {
+    const eligible = getEditableNotStartedBulkMessages([
+      sampleMessage,
+      { ...sampleMessage, id: "queued", status: "queued" },
+      { ...sampleMessage, id: "started", deliveryStarted: true },
+    ]);
+    expect(eligible.map((message) => message.id)).toEqual(["message-17"]);
+  });
+
   it("renders loading placeholders and a disabled submit while loading", () => {
     const markup = renderContent({ isLoading: true });
     expect(markup).toContain('role="status"');

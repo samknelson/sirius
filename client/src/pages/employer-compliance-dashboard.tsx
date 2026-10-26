@@ -33,6 +33,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { BulkTemplateSelector, type BulkTemplateIds } from "@/components/bulk/bulk-template-selector";
+import {
+  getEditableNotStartedBulkMessages,
+  type ExistingBulkMessageOption,
+} from "@/components/bulk/existing-message-chooser-content";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Popover,
   PopoverContent,
@@ -201,6 +207,9 @@ export default function EmployerComplianceDashboard() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkName, setBulkName] = useState("");
   const [bulkMedia, setBulkMedia] = useState<Array<"sms" | "email" | "inapp" | "postal">>(["email"]);
+  const [bulkTarget, setBulkTarget] = useState<"new" | "existing">("new");
+  const [bulkMessageId, setBulkMessageId] = useState<string | null>(null);
+  const [bulkTemplateIds, setBulkTemplateIds] = useState<BulkTemplateIds>({});
 
   const [isExporting, setIsExporting] = useState(false);
 
@@ -231,6 +240,20 @@ export default function EmployerComplianceDashboard() {
     queryKey: ["/api/companies"],
     enabled: companyEnabled,
   });
+
+  const bulkMessagesQuery = useQuery<ExistingBulkMessageOption[]>({
+    queryKey: ["/api/bulk-messages"],
+    queryFn: () => apiRequest("GET", "/api/bulk-messages"),
+    enabled: bulkOpen,
+    staleTime: 30000,
+  });
+  const eligibleExistingMessages = getEditableNotStartedBulkMessages(bulkMessagesQuery.data ?? []);
+  const selectedBulkMessage = eligibleExistingMessages.find((message) => message.id === bulkMessageId);
+  const selectedBulkMedia = bulkTarget === "existing"
+    ? (selectedBulkMessage?.medium ?? []).filter((medium): medium is "sms" | "email" | "inapp" | "postal" =>
+      MEDIA_OPTIONS.some((option) => option.value === medium))
+    : bulkMedia;
+  const canApplyTemplates = bulkTarget === "new" || selectedBulkMessage?.status === "draft";
 
   const dashboardEnabled = Boolean(wizardType);
   const { data, isLoading, error, refetch } = useQuery<DashboardResponse>({
@@ -391,12 +414,13 @@ export default function EmployerComplianceDashboard() {
   const queueBulkMutation = useMutation({
     mutationFn: async () => {
       if (!data) throw new Error("Run the compliance report before queueing a letter");
+      const targetIsExisting = bulkTarget === "existing";
       return await apiRequest("POST", "/api/employer-compliance/queue-bulk", {
-        name: bulkName,
-        medium: bulkMedia,
+        ...(!targetIsExisting ? { name: bulkName, medium: bulkMedia } : { bulkMessageId }),
         employerIds: Array.from(selectedEmployerIds),
         contactTypeIds: selectedContactTypeIds,
         reportScope: data.scope,
+        ...(Object.keys(bulkTemplateIds).length ? { templateIds: bulkTemplateIds } : {}),
       });
     },
     onSuccess: (resp: any) => {
@@ -405,24 +429,28 @@ export default function EmployerComplianceDashboard() {
         : 0;
       const failed = Number(resp.participantFailures ?? 0);
       const warn = missing > 0 || failed > 0;
+      const skipped = Number(resp.participantsSkipped ?? 0);
+      const resolvedSummary = bulkTarget === "existing"
+        ? `Added ${Number(resp.participantsCreated ?? 0)} of ${Number(resp.participantsExpected ?? resp.participantsCreated ?? 0)} recipient/channel entries from ${resp.contactCount} contacts across ${resp.employerCount} employers.`
+        : `Resolved ${resp.contactCount} contact${resp.contactCount === 1 ? "" : "s"} across ${resp.employerCount} employer${resp.employerCount === 1 ? "" : "s"}.`;
       toast({
-        title: "Bulk message draft created",
+        title: bulkTarget === "existing" ? "Recipients added to message" : "Bulk message draft created",
         description:
-          `Resolved ${resp.contactCount} contact${
-            resp.contactCount === 1 ? "" : "s"
-          } across ${resp.employerCount} employer${
-            resp.employerCount === 1 ? "" : "s"
-          }.` +
+          resolvedSummary +
           (missing > 0
             ? ` ${missing} employer${missing === 1 ? " has" : "s have"} no matching contacts.`
             : "") +
           (failed > 0
             ? ` ${failed} participant write${failed === 1 ? "" : "s"} failed — review the draft.`
-            : ""),
+            : "") +
+          (skipped > 0 ? ` ${skipped} participant${skipped === 1 ? " was" : "s were"} already enrolled.` : ""),
         variant: warn ? "destructive" : undefined,
       });
       setBulkOpen(false);
       setBulkName("");
+      setBulkTarget("new");
+      setBulkMessageId(null);
+      setBulkTemplateIds({});
       setSelectedEmployerIds(new Set());
       if (resp.bulkMessageId) {
         setLocation(`/bulk/${resp.bulkMessageId}`);
@@ -793,11 +821,14 @@ export default function EmployerComplianceDashboard() {
                   });
                   return;
                 }
-                if (!bulkName) {
+                if (bulkTarget === "new" && !bulkName) {
                   setBulkName(
                     `Compliance follow-up ${format(new Date(), "yyyy-MM-dd")}`,
                   );
                 }
+                setBulkTarget("new");
+                setBulkMessageId(null);
+                setBulkTemplateIds({});
                 setBulkOpen(true);
               }}
               data-testid="button-queue-bulk"
@@ -951,21 +982,95 @@ export default function EmployerComplianceDashboard() {
         </CardContent>
       </Card>
 
-      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={bulkOpen} onOpenChange={(open) => {
+        if (!queueBulkMutation.isPending) {
+          setBulkOpen(open);
+          if (!open) {
+            setBulkTarget("new");
+            setBulkMessageId(null);
+            setBulkTemplateIds({});
+          }
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Queue Bulk Message Draft</DialogTitle>
+            <DialogTitle>Queue bulk message</DialogTitle>
             <DialogDescription>
-              Create a draft bulk message with contacts resolved from the selected employers.
+              Resolve contacts from {selectedEmployerIds.size} selected employers and add them to a new or existing message.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+            <div className="space-y-2">
+              <Label htmlFor="bulk-target">Message</Label>
+              <Select
+                value={bulkTarget}
+                onValueChange={(value) => {
+                  setBulkTarget(value as "new" | "existing");
+                  setBulkMessageId(null);
+                  setBulkTemplateIds({});
+                }}
+                disabled={queueBulkMutation.isPending}
+              >
+                <SelectTrigger id="bulk-target" data-testid="select-bulk-target"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">Create a new draft</SelectItem>
+                  <SelectItem value="existing">Add to an existing message</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {bulkTarget === "existing" ? (
+              <div className="space-y-2">
+                <Label htmlFor="bulk-existing-message">Existing message</Label>
+                {bulkMessagesQuery.isLoading ? (
+                  <div role="status" aria-label="Loading messages" className="space-y-2">
+                    <div className="h-10 animate-pulse rounded-md border bg-muted/60" />
+                    <div className="h-10 animate-pulse rounded-md border bg-muted/60" />
+                  </div>
+                ) : bulkMessagesQuery.isError ? (
+                  <Alert variant="destructive"><AlertDescription className="flex items-center justify-between gap-3">
+                    <span>Messages couldn’t be loaded. Try again.</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void bulkMessagesQuery.refetch()} disabled={bulkMessagesQuery.isFetching}>Retry</Button>
+                  </AlertDescription></Alert>
+                ) : eligibleExistingMessages.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    No editable, not-yet-started drafts are available. Create a new draft instead.
+                  </div>
+                ) : (
+                  <Select
+                    value={bulkMessageId ?? ""}
+                    onValueChange={(id) => {
+                      setBulkMessageId(id);
+                      setBulkTemplateIds({});
+                    }}
+                    disabled={queueBulkMutation.isPending}
+                  >
+                    <SelectTrigger id="bulk-existing-message" data-testid="select-existing-bulk-message">
+                      <SelectValue placeholder="Choose a message" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eligibleExistingMessages.map((message) => (
+                        <SelectItem key={message.id} value={message.id}>
+                          {message.name} · {message.status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {selectedBulkMessage && (
+                  <p className="text-xs text-muted-foreground">
+                    Channels on this message: {selectedBulkMedia.length ? selectedBulkMedia.join(", ") : "none"}.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+              <div>
               <Label htmlFor="bulk-name" className="mb-1 block">Draft name</Label>
               <Input
                 id="bulk-name"
                 value={bulkName}
                 onChange={(e) => setBulkName(e.target.value)}
+                disabled={queueBulkMutation.isPending}
                 data-testid="input-bulk-name"
               />
             </div>
@@ -976,7 +1081,15 @@ export default function EmployerComplianceDashboard() {
                   <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                     <Checkbox
                       checked={bulkMedia.includes(opt.value)}
-                      onCheckedChange={(c) => toggleMedium(opt.value, Boolean(c))}
+                      disabled={queueBulkMutation.isPending}
+                      onCheckedChange={(c) => {
+                        toggleMedium(opt.value, Boolean(c));
+                        setBulkTemplateIds((previous) => {
+                          const next = { ...previous };
+                          if (!c) delete next[opt.value];
+                          return next;
+                        });
+                      }}
                       data-testid={`checkbox-medium-${opt.value}`}
                     />
                     <span className="text-sm">{opt.label}</span>
@@ -984,6 +1097,31 @@ export default function EmployerComplianceDashboard() {
                 ))}
               </div>
             </div>
+              </>
+            )}
+            {canApplyTemplates && selectedBulkMedia.length > 0 && (
+              <>
+                <BulkTemplateSelector
+                  media={selectedBulkMedia}
+                  value={bulkTemplateIds}
+                  onChange={setBulkTemplateIds}
+                  disabled={queueBulkMutation.isPending}
+                  testIdPrefix="employer-compliance"
+                />
+                {bulkTarget === "existing" && Object.keys(bulkTemplateIds).length > 0 && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      Applying templates replaces authored fields on this draft for all of its recipients. Other message and delivery settings remain unchanged.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </>
+            )}
+            {bulkTarget === "existing" && selectedBulkMessage && !canApplyTemplates && (
+              <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                Templates can only be applied to editable drafts. Adding recipients to this message will leave its content unchanged.
+              </p>
+            )}
             <div>
               <Label className="mb-2 block">Contact Types</Label>
               {contactTypes.length === 0 ? (
@@ -997,6 +1135,7 @@ export default function EmployerComplianceDashboard() {
                       <Checkbox
                         checked={selectedContactTypeIds.includes(ct.id)}
                         onCheckedChange={(c) => toggleContactType(ct.id, Boolean(c))}
+                        disabled={queueBulkMutation.isPending}
                         data-testid={`checkbox-contact-type-${ct.id}`}
                       />
                       <span className="text-sm">{ct.displayName ?? ct.name}</span>
@@ -1010,25 +1149,25 @@ export default function EmployerComplianceDashboard() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary">{selectedEmployerIds.size} employers</Badge>
-              {bulkMedia.length > 0 && (
-                <Badge variant="secondary">{bulkMedia.length} channels</Badge>
+              {selectedBulkMedia.length > 0 && (
+                <Badge variant="secondary">{selectedBulkMedia.length} channels</Badge>
               )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={queueBulkMutation.isPending}>Cancel</Button>
             <Button
               onClick={() => queueBulkMutation.mutate()}
               disabled={
                 queueBulkMutation.isPending ||
-                bulkName.trim() === "" ||
-                bulkMedia.length === 0 ||
+                (bulkTarget === "new" && (bulkName.trim() === "" || bulkMedia.length === 0)) ||
+                (bulkTarget === "existing" && (!bulkMessageId || selectedBulkMedia.length === 0 || bulkMessagesQuery.isError)) ||
                 selectedEmployerIds.size === 0
               }
               data-testid="button-confirm-queue-bulk"
             >
               {queueBulkMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Draft
+              {bulkTarget === "existing" ? "Add recipients" : "Create Draft"}
             </Button>
           </DialogFooter>
         </DialogContent>

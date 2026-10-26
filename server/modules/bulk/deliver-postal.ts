@@ -15,11 +15,8 @@ import { mediumField, tokenCleanerFor } from "../../delivery/shape";
 import { selectActivePostalAddress } from "./postal-address";
 import type { BulkMessagesPostal } from "../../../shared/schema/bulk/schema";
 
-// By key, never by position — see `deliver-email.ts`. Bulk postal
-// authors only the description: the printed content of the letter comes
-// from the vendor's template, so the medium's optional letter body is
-// deliberately not offered here and never rendered.
 const DESCRIPTION_SPEC = mediumField("postal", "description");
+const BODY_SPEC = mediumField("postal", "body");
 
 export async function resolvePostalAddress(storage: IStorage, contactId: string): Promise<PostalAddress | null> {
   const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
@@ -100,13 +97,18 @@ export async function deliverPostal(
         : entry.defaultValue;
   }
   const mergedVariables = { ...tokenMerge, ...baseMerge };
+  const body = (postalContent.data as { body?: unknown } | null)?.body;
+  const renderedBody = typeof body === "string" && body.trim() && !offlineExport
+    ? (await renderTokens(body, ctx, {
+        strictUnknown: true, clean: tokenCleanerFor(BODY_SPEC) ?? undefined,
+      })).output : undefined;
   const result: SendPostalResult = await sendPostal({
     contactId,
     toAddress: addr,
     fromAddress,
     description: renderedDescription,
-    file: postalContent.fileUrl || undefined,
-    templateId: postalContent.templateId || undefined,
+    file: renderedBody || postalContent.fileUrl || undefined,
+    templateId: renderedBody ? undefined : postalContent.templateId || undefined,
     mergeVariables: mergedVariables,
     mailType: postalContent.mailType === "usps_standard" ? "usps_standard" : "usps_first_class",
     color: postalContent.color || undefined,

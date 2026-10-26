@@ -50,6 +50,7 @@ const SMS_FIELDS: StudioField[] = [
 
 const POSTAL_FIELDS: StudioField[] = [
   { key: "description", label: "Description", mode: "multiline" },
+  { key: "body", label: "Letter body", mode: "html" },
 ];
 
 const INAPP_FIELDS: StudioField[] = [
@@ -262,6 +263,7 @@ function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
 function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({
     description: "",
+    body: "",
     templateId: "",
     color: false,
     doubleSided: false,
@@ -272,6 +274,7 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
     if (record) {
       setForm({
         description: (record.description as string) || "",
+        body: ((record.data as Record<string, unknown> | undefined)?.body as string) || "",
         templateId: (record.templateId as string) || "",
         color: (record.color as boolean) || false,
         doubleSided: (record.doubleSided as boolean) || false,
@@ -285,7 +288,8 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
       <TemplateCard
         testId="card-postal-template"
         fields={POSTAL_FIELDS}
-        values={{ description: form.description }}
+        values={{ description: form.description, body: form.body }}
+        footnote="Offline postal downloads an address CSV; it does not print this letter content."
         action={
           <TokenStudioButton
             label="Edit in Template Studio"
@@ -296,8 +300,8 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
             seedsUrl={seedsUrl}
             fields={POSTAL_FIELDS}
-            values={{ description: form.description }}
-            onValueChange={(_key, value) => setForm((p) => ({ ...p, description: value }))}
+            values={{ description: form.description, body: form.body }}
+            onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
           />
         }
       />
@@ -330,7 +334,18 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
         </div>
       </div>
       <SaveButton
-        onClick={() => onSave({ ...form })}
+        onClick={() => onSave({
+          description: form.description,
+          templateId: form.templateId,
+          color: form.color,
+          doubleSided: form.doubleSided,
+          mailType: form.mailType,
+          fileUrl: record?.fileUrl,
+          data: {
+            ...((record?.data as Record<string, unknown> | undefined) ?? {}),
+            body: form.body,
+          },
+        })}
         isPending={isPending}
         label="Save Postal Content"
         testId="button-save-postal-message"

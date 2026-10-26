@@ -10,6 +10,7 @@ import {
 import { runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { enqueueBulkRecipients } from "./enqueue-recipients";
+import { applyEnqueueTemplates, resolveEnqueueTemplates, BulkEnqueueError } from "../../services/bulk-enqueue-templates";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
@@ -166,6 +167,14 @@ export function registerBulkMessageRoutes(
       const finalName = requestedName ?? autoName;
 
       const uniqueIds = Array.from(new Set(contactIds as string[]));
+      if (body.templateIds && Object.keys(body.templateIds).length) {
+        const { getEffectiveUser } = await import("../masquerade");
+        const { checkAccess } = await import("../../services/access-policy-evaluator");
+        const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
+        if (!dbUser || !(await checkAccess("staff", dbUser)).granted) {
+          return res.status(403).json({ message: "Staff access is required to use letter templates" });
+        }
+      }
       if ("reportSelection" in body) {
         const { getEffectiveUser } = await import("../masquerade");
         const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
@@ -185,8 +194,14 @@ export function registerBulkMessageRoutes(
 
       if (typeof existingMessageId === 'string') {
         const result = await runInTransaction(async () => {
-          const bulkMessage = await storage.bulkMessages.getById(existingMessageId);
+          const bulkMessage = await storage.bulkMessages.getByIdForUpdate(existingMessageId);
           if (!bulkMessage) return undefined;
+          const report = (bulkMessage.data as { complianceReport?: { employerByContact?: Record<string, string> } } | null)?.complianceReport;
+          if (report && uniqueIds.some(id => !report.employerByContact?.[id])) {
+            throw new BulkEnqueueError("Add new employer-report recipients from the Employer Compliance report so their letters have the correct context.", 409);
+          }
+          const templates = await resolveEnqueueTemplates(storage, body.templateIds, bulkMessage.medium);
+          await applyEnqueueTemplates(storage, bulkMessage, templates);
           const counts = await enqueueBulkRecipients(rawParticipantStorage, bulkMessage, uniqueIds);
           return { bulkMessage, ...counts };
         });
@@ -209,7 +224,9 @@ export function registerBulkMessageRoutes(
       }
 
       const { created, participantsCreated } = await runInTransaction(async () => {
+        const templates = await resolveEnqueueTemplates(storage, body.templateIds, parsed.data.medium);
         const draft = await storage.bulkMessages.create(parsed.data);
+        await applyEnqueueTemplates(storage, draft, templates);
         let count = 0;
         // Iterate the original deduped order so participant insert order matches
         // the recipient order the caller supplied.
@@ -234,6 +251,7 @@ export function registerBulkMessageRoutes(
         recipientsMissing: missingCount,
       });
     } catch (error: unknown) {
+      if (error instanceof BulkEnqueueError) return res.status(error.status).json({ message: error.message });
       if (error instanceof WorkerCommsError) return res.status(error.status).json({ message: error.message });
       const message = error instanceof Error ? error.message : "Failed to enqueue bulk message recipients";
       return res.status(500).json({ message });
@@ -851,6 +869,9 @@ export function registerBulkMessageRoutes(
       if (inapp) templates.push(inapp.title || "", inapp.body || "", inapp.linkLabel || "");
       const postal = await storage.bulkMessagesPostal.getByBulkId(bulk.id);
       if (postal) templates.push(postal.description || "");
+      if (postal && typeof (postal.data as { body?: unknown } | null)?.body === "string") {
+        templates.push((postal.data as { body: string }).body);
+      }
 
       // Only cover expressions that parse + validate against the roots
       // bulk's context declares — the same list the editor offered;
