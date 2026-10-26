@@ -1,22 +1,16 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { 
   Mail, 
   Send, 
   Loader2, 
-  AlertCircle,
-  Settings,
-  CheckCircle,
-  XCircle
+  AlertCircle
 } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -27,21 +21,7 @@ import {
   refuseUnrenderedTokens,
 } from "./ComposeTemplateStudio";
 import type { ComposeTemplateTarget } from "@shared/comm-compose";
-
-interface EmailOptinResponse {
-  exists: boolean;
-  optin: boolean;
-  allowlist: boolean;
-  record: {
-    id: string;
-    email: string;
-    optin: boolean;
-    optinUser: string | null;
-    optinDate: string | null;
-    optinIp: string | null;
-    allowlist: boolean;
-  } | null;
-}
+import EmailOptinSettings from "@/components/comm/EmailOptinSettings";
 
 interface CommEmailProps {
   contactId: string;
@@ -59,49 +39,10 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess, compos
   // surfaces author. The plain-text alternative part is derived from it
   // at send, never written here.
   const [bodyHtml, setBodyHtml] = useState("");
-  const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
   const [tagIds, setTagIds] = useState<string[]>([]);
+  const [emailIsOptedIn, setEmailIsOptedIn] = useState<boolean | null>(null);
   
   const hasEmail = !!email && email.trim().length > 0;
-
-  const { data: emailOptinData, isLoading: isLoadingOptin } = useQuery<EmailOptinResponse>({
-    queryKey: ["/api/email-optin", email],
-    queryFn: async () => {
-      if (!email) return null;
-      const response = await fetch(`/api/email-optin/${encodeURIComponent(email)}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch email opt-in status`);
-      }
-      return response.json();
-    },
-    enabled: hasEmail,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-  });
-
-  const updateEmailOptinMutation = useMutation({
-    mutationFn: async ({ emailAddress, optin, allowlist }: { emailAddress: string; optin?: boolean; allowlist?: boolean }) => {
-      return await apiRequest("PUT", `/api/email-optin/${encodeURIComponent(emailAddress)}`, { optin, allowlist });
-    },
-    onSuccess: () => {
-      if (email) {
-        queryClient.invalidateQueries({ queryKey: ["/api/email-optin", email] });
-      }
-      toast({
-        title: "Email Opt-in Updated",
-        description: "The email opt-in status has been updated successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update email opt-in status",
-        variant: "destructive",
-      });
-    },
-  });
 
   const sendEmailMutation = useMutation({
     mutationFn: async (data: { email: string; name?: string; subject: string; bodyHtml: string; tagIds?: string[]; sendOffline?: boolean }) => {
@@ -148,103 +89,6 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess, compos
     subject.trim().length > 0 && 
     bodyHtml.trim().length > 0;
 
-  const optinModal = hasEmail && (
-    <Dialog open={isOptinDialogOpen} onOpenChange={setIsOptinDialogOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Email Opt-in Settings
-          </DialogTitle>
-          <DialogDescription>
-            Manage opt-in and allowlist settings for this email address.
-          </DialogDescription>
-        </DialogHeader>
-        
-        {isLoadingOptin ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2 text-muted-foreground">Loading opt-in status...</span>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">Email Address</Label>
-              <p className="font-medium">{email}</p>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="email-optin" className="text-base font-medium">Opted In</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Allow sending emails to this address
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {emailOptinData?.optin ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Switch
-                    id="email-optin"
-                    checked={emailOptinData?.optin ?? false}
-                    onCheckedChange={(checked) => {
-                      if (email) {
-                        updateEmailOptinMutation.mutate({ emailAddress: email, optin: checked });
-                      }
-                    }}
-                    disabled={updateEmailOptinMutation.isPending}
-                    data-testid="switch-email-optin"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="email-allowlist" className="text-base font-medium">Allowlisted</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Allow sending in dev/test modes
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {emailOptinData?.allowlist ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Switch
-                    id="email-allowlist"
-                    checked={emailOptinData?.allowlist ?? false}
-                    onCheckedChange={(checked) => {
-                      if (email) {
-                        updateEmailOptinMutation.mutate({ emailAddress: email, allowlist: checked });
-                      }
-                    }}
-                    disabled={updateEmailOptinMutation.isPending}
-                    data-testid="switch-email-allowlist"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {emailOptinData?.record?.optinDate && (
-              <>
-                <Separator />
-                <div className="text-sm text-muted-foreground">
-                  <p>Opted in on: {new Date(emailOptinData.record.optinDate).toLocaleString()}</p>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
   if (!hasEmail) {
     return (
       <Card>
@@ -272,7 +116,6 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess, compos
 
   return (
     <>
-      {optinModal}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2">
           <div>
@@ -284,18 +127,13 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess, compos
               Send an email to this contact
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsOptinDialogOpen(true)}
-            data-testid="button-email-optin-settings"
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Opt-in Settings
-          </Button>
+          <EmailOptinSettings
+            email={email}
+            onStatusChange={(status) => setEmailIsOptedIn(status?.optin ?? null)}
+          />
         </CardHeader>
         <CardContent className="space-y-4">
-          {!emailOptinData?.optin && (
+          {emailIsOptedIn === false && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Email Not Opted In</AlertTitle>

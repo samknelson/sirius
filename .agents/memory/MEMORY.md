@@ -1,5 +1,6 @@
 - [Worker Comms Compliance purpose](worker-comms-compliance-purpose.md) — tagged-comm distribution tracking over multi-select worker populations, with new/existing bulk-message handoff.
 - [Bulk enqueue choices](bulk-enqueue-modal-choices.md) — all enqueue modals offer new/existing messages and optional templates; preserve a compliance message's captured report.
+- [Email consent placement](email-consent-placement.md) — manage saved-address opt-in from contact/worker Email tabs as well as Email Comms, with existing staff permissions.
 - [In-app env overrides](env-overrides-framework.md) — env wins unless "released" (empty/`__UNSET__`); NO denylist, ALL registered vars overridable (owner decision, don't re-block); one ENV_{NAME} row per override.
 - [Entity metadata eligibility](entity-metadata-eligibility.md) — record history is for directly maintained records; central policy rejects process families at writes, reads, registry, and cleanup.
 - [PUBLIC_URL single base-URL source](public-url-registry.md) — Replit domain vars are UNREGISTERED; all public-origin reads go through PUBLIC_URL (transform holds the fallback chain); external callbacks use getPublicBaseUrl.

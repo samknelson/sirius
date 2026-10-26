@@ -4,28 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Contact } from "@shared/schema";
-import { Loader2, Save, Mail, Settings, CheckCircle, XCircle } from "lucide-react";
-
-interface EmailOptinResponse {
-  exists: boolean;
-  optin: boolean;
-  allowlist: boolean;
-  record: {
-    id: string;
-    email: string;
-    optin: boolean;
-    optinUser: string | null;
-    optinDate: string | null;
-    optinIp: string | null;
-    allowlist: boolean;
-  } | null;
-}
+import { Loader2, Save, Mail } from "lucide-react";
+import EmailOptinSettings from "@/components/comm/EmailOptinSettings";
 
 interface EmailManagementProps {
   contactId: string;
@@ -38,7 +21,6 @@ export default function EmailManagement({ contactId, workerId, canEdit = true }:
   const queryClient = useQueryClient();
   const [editedEmail, setEditedEmail] = useState<string>("");
   const [isEditing, setIsEditing] = useState(false);
-  const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
 
   // Fetch contact information
   const { data: contact, isLoading } = useQuery<Contact>({
@@ -54,47 +36,6 @@ export default function EmailManagement({ contactId, workerId, canEdit = true }:
   });
 
   const hasEmail = !!contact?.email && contact.email.trim().length > 0;
-
-  // Fetch email opt-in status
-  const { data: emailOptinData, isLoading: isLoadingOptin } = useQuery<EmailOptinResponse>({
-    queryKey: ["/api/email-optin", contact?.email],
-    queryFn: async () => {
-      if (!contact?.email) return null;
-      const response = await fetch(`/api/email-optin/${encodeURIComponent(contact.email)}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch email opt-in status`);
-      }
-      return response.json();
-    },
-    enabled: hasEmail,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-  });
-
-  // Update email opt-in mutation
-  const updateEmailOptinMutation = useMutation({
-    mutationFn: async ({ emailAddress, optin, allowlist }: { emailAddress: string; optin?: boolean; allowlist?: boolean }) => {
-      return apiRequest("PUT", `/api/email-optin/${encodeURIComponent(emailAddress)}`, { optin, allowlist });
-    },
-    onSuccess: () => {
-      if (contact?.email) {
-        queryClient.invalidateQueries({ queryKey: ["/api/email-optin", contact.email] });
-      }
-      toast({
-        title: "Email Opt-in Updated",
-        description: "The email opt-in status has been updated successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update email opt-in status",
-        variant: "destructive",
-      });
-    },
-  });
 
   // Update email mutation
   const updateEmailMutation = useMutation({
@@ -168,123 +109,15 @@ export default function EmailManagement({ contactId, workerId, canEdit = true }:
     );
   }
 
-  const optinModal = hasEmail && (
-    <Dialog open={isOptinDialogOpen} onOpenChange={setIsOptinDialogOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Email Opt-in Settings
-          </DialogTitle>
-          <DialogDescription>
-            Manage opt-in and allowlist settings for this email address.
-          </DialogDescription>
-        </DialogHeader>
-        
-        {isLoadingOptin ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2 text-muted-foreground">Loading opt-in status...</span>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">Email Address</Label>
-              <p className="font-medium">{contact?.email}</p>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="email-optin" className="text-base font-medium">Opted In</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Allow sending emails to this address
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {emailOptinData?.optin ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Switch
-                    id="email-optin"
-                    checked={emailOptinData?.optin ?? false}
-                    onCheckedChange={(checked) => {
-                      if (contact?.email) {
-                        updateEmailOptinMutation.mutate({ emailAddress: contact.email, optin: checked });
-                      }
-                    }}
-                    disabled={updateEmailOptinMutation.isPending}
-                    data-testid="switch-email-optin"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="email-allowlist" className="text-base font-medium">Allowlisted</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Allow sending in dev/test modes
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {emailOptinData?.allowlist ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Switch
-                    id="email-allowlist"
-                    checked={emailOptinData?.allowlist ?? false}
-                    onCheckedChange={(checked) => {
-                      if (contact?.email) {
-                        updateEmailOptinMutation.mutate({ emailAddress: contact.email, allowlist: checked });
-                      }
-                    }}
-                    disabled={updateEmailOptinMutation.isPending}
-                    data-testid="switch-email-allowlist"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {emailOptinData?.record?.optinDate && (
-              <>
-                <Separator />
-                <div className="text-sm text-muted-foreground">
-                  <p>Opted in on: {new Date(emailOptinData.record.optinDate).toLocaleString()}</p>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
   return (
     <>
-      {optinModal}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2">
           <div>
             <CardTitle>Email Address</CardTitle>
             <CardDescription>Manage contact email address</CardDescription>
           </div>
-          {hasEmail && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsOptinDialogOpen(true)}
-              data-testid="button-email-optin-settings"
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              Opt-in Settings
-            </Button>
-          )}
+          {hasEmail && <EmailOptinSettings email={contact?.email} />}
         </CardHeader>
         <CardContent className="space-y-6">
           {!isEditing ? (

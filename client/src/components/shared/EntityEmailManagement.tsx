@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, Mail } from "lucide-react";
+import EmailOptinSettings from "@/components/comm/EmailOptinSettings";
 
 export interface EntityEmailManagementConfig {
   entityId: string;
@@ -96,9 +97,12 @@ export default function EntityEmailManagement({ config }: EntityEmailManagementP
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{cardTitle}</CardTitle>
-        <CardDescription>{cardDescription}</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="min-w-0">
+          <CardTitle>{cardTitle}</CardTitle>
+          <CardDescription>{cardDescription}</CardDescription>
+        </div>
+        {!!currentEmail?.trim() && <EmailOptinSettings email={currentEmail} />}
       </CardHeader>
       <CardContent className="space-y-6">
         {!isEditing ? (
