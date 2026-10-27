@@ -5,7 +5,7 @@ import type { AuthProvider, SamlProviderConfig, AuthenticatedUser } from "../typ
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
-import { maybeProvisionUser, reconcileMappedRoles } from "../provisioning";
+import { maybeProvisionUser, reconcileMappedRoles, type RoleReconciliationDiagnostics } from "../provisioning";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import { isComponentEnabledSync } from "../../services/component-cache";
 
@@ -48,6 +48,7 @@ function captureSamlDebugLog(
     externalId?: string;
     errorCategory?: string;
     errorMessage?: string;
+    roleReconciliation?: RoleReconciliationDiagnostics;
   } = {}
 ): void {
   try {
@@ -80,6 +81,9 @@ function captureSamlDebugLog(
           ? String(options.matchedUserId)
           : undefined,
       externalId: options.externalId,
+      // One capture contains both the original assertion and the explanation
+      // of how its attributes affected roles; no duplicate raw payload log.
+      roleReconciliation: options.roleReconciliation,
       // Error context (only populated for saml_error outcome)
       errorCategory: options.errorCategory,
       errorMessage: options.errorMessage,
@@ -183,7 +187,7 @@ type AccessDenialReason =
   | "no_provisioned_account";
 
 type CheckUserAccessResult =
-  | { allowed: true; user: any }
+  | { allowed: true; user: any; roleReconciliation: RoleReconciliationDiagnostics }
   | { allowed: false; reason: AccessDenialReason; email?: string; externalId?: string };
 
 /**
@@ -272,9 +276,9 @@ async function checkUserAccess(profile: SamlProfile): Promise<CheckUserAccessRes
     await storage.users.updateUserLastLogin(user.id);
     logLoginEvent(updatedUser, externalId, false);
 
-    await reconcileSamlRoles(updatedUser ?? user, identity, profile);
+    const roleReconciliation = await reconcileSamlRoles(updatedUser ?? user, identity, profile);
 
-    return { allowed: true, user: updatedUser };
+    return { allowed: true, user: updatedUser, roleReconciliation };
   }
 
   if (!email) {
@@ -299,8 +303,8 @@ async function checkUserAccess(profile: SamlProfile): Promise<CheckUserAccessRes
 
     await storage.users.updateUserLastLogin(provisioned.user.id);
     logLoginEvent(provisioned.user, externalId, true);
-    await reconcileSamlRoles(provisioned.user, provisioned.identity, profile);
-    return { allowed: true, user: provisioned.user };
+    const roleReconciliation = await reconcileSamlRoles(provisioned.user, provisioned.identity, profile);
+    return { allowed: true, user: provisioned.user, roleReconciliation };
   }
 
   if (!user.isActive) {
@@ -328,9 +332,9 @@ async function checkUserAccess(profile: SamlProfile): Promise<CheckUserAccessRes
   await storage.users.updateUserLastLogin(user.id);
   logLoginEvent(linkedUser, externalId, true);
 
-  await reconcileSamlRoles(linkedUser ?? user, newIdentity, profile);
+  const roleReconciliation = await reconcileSamlRoles(linkedUser ?? user, newIdentity, profile);
 
-  return { allowed: true, user: linkedUser };
+  return { allowed: true, user: linkedUser, roleReconciliation };
 }
 
 /**
@@ -342,16 +346,22 @@ async function reconcileSamlRoles(
   user: { id: string } & Record<string, any>,
   identity: { id: string; metadata: unknown },
   profile: SamlProfile,
-): Promise<void> {
+): Promise<RoleReconciliationDiagnostics> {
   try {
     const attributes: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(profile)) {
       if (typeof value === "function") continue;
       attributes[key] = value;
     }
-    await reconcileMappedRoles("saml", user as any, identity as any, attributes);
+    return await reconcileMappedRoles("saml", user as any, identity as any, attributes);
   } catch (error) {
     logger.error("SAML role reconciliation failed", { userId: user.id, error });
+    const err = error instanceof Error ? error : new Error(String(error));
+    return {
+      outcome: "error",
+      identityId: identity.id,
+      error: { name: err.name, message: err.message, stack: err.stack },
+    };
   }
 }
 
@@ -543,6 +553,7 @@ class SamlAuthProvider implements AuthProvider {
               matchedEmail: email,
               matchedUserId: result.user?.id,
               externalId,
+              roleReconciliation: result.roleReconciliation,
             });
 
             const sessionUser: AuthenticatedUser = {
