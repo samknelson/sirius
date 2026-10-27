@@ -10,7 +10,7 @@ import {
 } from "./kinds";
 
 /** Derive a human-readable label from a kind id. */
-function prettifyKind(kind: string): string {
+export function prettifyKind(kind: string): string {
   return kind
     .split("-")
     .filter(Boolean)

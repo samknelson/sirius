@@ -62,7 +62,7 @@ BEGIN
     'variables', 'plugin_configs', 'plugin_configs_charge',
     'plugin_configs_dashboard', 'plugin_configs_quicksearch',
     'plugin_configs_wc_vendors', 'plugin_configs_event_notifier',
-    'plugin_configs_cron', 'plugin_configs_dispatch',
+    'plugin_configs_cron', 'plugin_configs_flood', 'plugin_configs_dispatch',
     'plugin_configs_benefit_eligibility', 'plugin_configs_trust_provider_edi'
   ] LOOP
     -- Optional component tables may not exist yet. Component schema creation

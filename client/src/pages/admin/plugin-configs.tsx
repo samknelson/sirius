@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useSearch } from "wouter";
 import { useQuery, useQueries, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
@@ -201,6 +201,8 @@ export default function GenericPluginConfigsPage({
   const [dialogPlugin, setDialogPlugin] = useState<ManifestEntry | null>(null);
   const [dialogConfig, setDialogConfig] = useState<PluginConfigRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const requestedConfigId = new URLSearchParams(useSearch()).get("configId");
+  const openedConfigLink = useRef<string | null>(null);
 
   // Active filter values keyed by field name (plus the universal "pluginId").
   // Empty string means "no filter on this field".
@@ -261,7 +263,7 @@ export default function GenericPluginConfigsPage({
     ([name, value]) => value && !(name in lockedFilters),
   );
 
-  const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<PluginConfigRow[]>({
+  const { data: configs = [], isLoading: isLoadingConfigs, isFetching: isFetchingConfigs } = useQuery<PluginConfigRow[]>({
     // With no filters we hit the plain list endpoint so the unfiltered view
     // matches the legacy behavior exactly — including any base rows without a
     // subsidiary, which the relational search join would otherwise omit. Only
@@ -282,6 +284,22 @@ export default function GenericPluginConfigsPage({
     // page doesn't flash the full-page loading spinner on every selection.
     placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    const key = `${kind}:${requestedConfigId}`;
+    if (!requestedConfigId || openedConfigLink.current === key ||
+        isLoadingConfigs || isFetchingConfigs || !plugins.length) return;
+    openedConfigLink.current = key;
+    const config = configs.find(row => row.id === requestedConfigId);
+    const plugin = config && plugins.find(p => p.id === config.pluginId);
+    if (!config || !plugin) {
+      toast({ title: "Configuration unavailable", description: "This configuration is missing or not available here.", variant: "destructive" });
+      return;
+    }
+    setDialogPlugin(plugin);
+    setDialogConfig(config);
+    setDialogOpen(true);
+  }, [kind, requestedConfigId, configs, plugins, isLoadingConfigs, isFetchingConfigs, toast]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => apiRequest("DELETE", `${pluginConfigsUrl(kind)}/${id}`),

@@ -9,7 +9,7 @@ import { checkFlood, recordFloodEvent } from "../../flood/service";
 import {
   LOCAL_LOGIN_FLOOD_EVENT,
   LOCAL_PASSWORD_CHANGE_FLOOD_EVENT,
-} from "../../flood/events";
+} from "../../flood/constants";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { getDbUserFromSession } from "../helpers";
 

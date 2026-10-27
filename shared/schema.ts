@@ -2459,6 +2459,12 @@ export type PluginConfigEventNotifier = typeof pluginConfigsEventNotifier.$infer
 // one row — created by the adapter's `toRows` on write and by the boot-time
 // singleton seeder for built-in jobs — so the generic inner-joined search keeps
 // returning them.
+export const pluginConfigsFlood = pgTable("plugin_configs_flood", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: "cascade" }),
+});
+export type PluginConfigFlood = typeof pluginConfigsFlood.$inferSelect;
+export type InsertPluginConfigFlood = typeof pluginConfigsFlood.$inferInsert;
+
 export const pluginConfigsCron = pgTable("plugin_configs_cron", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
   schedule: varchar("schedule").notNull(),
@@ -2998,12 +3004,16 @@ export type CommTagLink = typeof commTags.$inferSelect;
 // Flood control table for rate limiting
 export const flood = pgTable("flood", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pluginConfigurationId: varchar("plugin_configuration_id").notNull()
+    .references(() => pluginConfigsFlood.id, { onDelete: "cascade" }),
   event: varchar("event").notNull(),
   identifier: varchar("identifier").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 }, (table) => ({
   eventIdentifierIdx: index("flood_event_identifier_idx").on(table.event, table.identifier),
+  configurationWindowIdx: index("flood_config_identifier_created_idx")
+    .on(table.pluginConfigurationId, table.identifier, table.createdAt),
   expiresAtIdx: index("flood_expires_at_idx").on(table.expiresAt),
 }));
 

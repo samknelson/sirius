@@ -39,6 +39,8 @@ export interface NotifierTemplateStudioProps {
   onOpenChange: (open: boolean) => void;
   /** "email" | "sms" | "inapp" — the channel group being edited. */
   channel: string;
+  templateKey?: string;
+  title?: string;
   /** Fields for this channel, derived from the server JSON Schema (templatesSchemaBlock).
    *  Drives which editors appear and in what order — single source of truth shared with
    *  the config form's channel-templates RJSF field. */
@@ -87,6 +89,8 @@ export function NotifierTemplateStudio({
   open,
   onOpenChange,
   channel,
+  templateKey = channel,
+  title,
   schemaRows,
   defaultsUrl,
   seedsUrl,
@@ -112,7 +116,7 @@ export function NotifierTemplateStudio({
     (configData.templates as Record<string, Record<string, unknown>> | undefined) ?? {};
   /** The stored override for a field ("" when the default applies). */
   const overrideOf = (key: string): string => {
-    const v = templates[channel]?.[key];
+    const v = templates[templateKey]?.[key];
     return typeof v === "string" ? v : "";
   };
 
@@ -136,7 +140,7 @@ export function NotifierTemplateStudio({
             : undefined,
       }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schemaRows, defaults, JSON.stringify(templates[channel] ?? {})]);
+  }, [schemaRows, defaults, JSON.stringify(templates[templateKey] ?? {})]);
 
   // Editors show the literal, editable effective text: the stored override
   // when one exists, otherwise the resolved default. `edited` tracks the
@@ -159,7 +163,7 @@ export function NotifierTemplateStudio({
     setEdited((prev) => ({ ...prev, [key]: value }));
     const normalized =
       value === (defaults[key] ?? "") || value.trim() === "" ? "" : value;
-    updateConfigData(`templates.${channel}.${key}`, normalized);
+    updateConfigData(`templates.${templateKey}.${key}`, normalized);
   };
 
   // The effective template delivery would use, for EVERY field of the
@@ -189,7 +193,7 @@ export function NotifierTemplateStudio({
     <TokenStudio
       open={open}
       onOpenChange={onOpenChange}
-      title={CHANNEL_TITLES[channel] ?? `${channel} templates`}
+      title={title ?? CHANNEL_TITLES[channel] ?? `${channel} templates`}
       description="Edit the channel's tokenized templates with a live preview. Changes apply to the config form; save the config to persist them."
       channel={channel === "email" || channel === "sms" || channel === "inapp" ? channel : "generic"}
       // Every editor below shows "the override, or the notifier's

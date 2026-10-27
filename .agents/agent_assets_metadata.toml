@@ -2,7 +2,85 @@ uploads = []
 generated = []
 
 [[outputs]]
-id = "VzSJuf7rPOFZRNff6EQEn"
-uri = "file://exports/wizard-plugin-framework-spike.pdf"
-type = "pdf"
-title = "Wizard plugin framework spike — plan"
+id = "XKPao1RRXmF8k4DmMrgX_"
+uri = "file://generated-artifacts/mpdf-php82.tgz"
+type = "unspecified"
+title = "mPDF — PHP 8.2 syntax fixes"
+description = "Patched archive with 205 curly-brace offset replacements and one invalid break changed to return. All 133 PHP files pass PHP 8.2.29 syntax lint. Folder structure and other files preserved."
+logical_id = "13728f5a-da9e-408a-b61a-7a23be304f68"
+content_hash = "sha256:06f83174736a1683657e869d9ac5fa3c56bb74798307746618b7830daac9cd2e"
+size = 12736916
+mtime_ms = 1792932731354
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/13728f5a-da9e-408a-b61a-7a23be304f68/6e8f6624-e051-4ea6-af12-2a49c54295cf"
+storage_version_token = "1792932745901416"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "tj48jG4UgKuO0_sHQvoRQ"
+uri = "file://generated-artifacts/mpdf-php82-revised.tgz"
+type = "unspecified"
+title = "mPDF — revised PHP 8.2 archive"
+description = "Full archive with PHP 8 constructor initialization fixes and numeric CSS size conversion fixes. Rechecked the reported border parsing case under PHP 8.2."
+logical_id = "dd53119d-d33a-4dec-8ccd-c9d2874d75e1"
+content_hash = "sha256:efa276f4bd1036d5417eb3d6b6add67cb7759c389df2c899b4f138a6aa72efb7"
+size = 12737419
+mtime_ms = 1792933576846
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/dd53119d-d33a-4dec-8ccd-c9d2874d75e1/e85515aa-db9f-4c9f-af15-bee70f23ff5c"
+storage_version_token = "1792935624871143"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "dXlcEUux3Eu8zkbp4yLU9"
+uri = "file://generated-artifacts/mpdf-php82-revised-v2.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v2 full archive"
+description = "Retains all previous fixes and fixes border-style parsing when the array is null or unset. All 133 PHP files linted from the rebuilt archive; targeted null/unset border-style checks passed."
+logical_id = "6e5af842-9f94-41c7-939e-3871aabf2adc"
+content_hash = "sha256:e20667c9203e2722f0aff2751547e2527dd250cca23963f49c5b1bfa42f6b762"
+size = 12737559
+mtime_ms = 1792935849661
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/6e5af842-9f94-41c7-939e-3871aabf2adc/7010e01d-200e-433a-be03-20d31f9d085b"
+storage_version_token = "1792935854538853"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Uw8UYgTDiP3oxWenzQN5W"
+uri = "file://generated-artifacts/mpdf-php82-revised-v3.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v3 full archive"
+description = "Retains all previous fixes and normalizes empty HTML attributes in MergeCSS to prevent string-offset TypeErrors. All 133 PHP files pass syntax checks; focused CSS merge and border parsing checks pass."
+logical_id = "8cd3b8c0-d450-44a1-a86d-7dc26296004e"
+content_hash = "sha256:8141d94271438968f85a9ff141531c62fe26c48cbc721d2d3778945e32e4ffbb"
+size = 12737681
+mtime_ms = 1792936182541
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/8cd3b8c0-d450-44a1-a86d-7dc26296004e/ab2dcb92-6808-4b8b-8e98-c953ccddef17"
+storage_version_token = "1792936190574216"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "8PLCRClmXWniHJEFTpqBN"
+uri = "file://generated-artifacts/mpdf-php82-revised-v4.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v4 full archive"
+description = "Retains all previous fixes and initializes the DIV layout buffer as an empty array to fix count(null) in Close(). All 133 PHP files pass syntax checks; isolated Close() and prior CSS checks pass."
+logical_id = "cf60ac4d-904e-437d-a352-6d8f739c9924"
+content_hash = "sha256:ba57b21223d95b7135624589627d99b52ffcf97f90e497c24b74c261c742b20d"
+size = 12737683
+mtime_ms = 1792936402833
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/cf60ac4d-904e-437d-a352-6d8f739c9924/b34ba14e-a1cd-40bc-b9cf-427820818f90"
+storage_version_token = "1792936410279514"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "PY8H78KB-kF62p7FSjGHo"
+uri = "file://generated-artifacts/mpdf-php82-revised-v5.tgz"
+type = "unspecified"
+title = "mPDF PHP 8.2 — revised v5 full archive"
+description = "Replaces all three removed each() calls with foreach loops and retains all previous fixes. All 133 PHP files pass syntax checks; targeted image, form-object, dictionary, Close(), and CSS checks pass."
+logical_id = "2c1df709-aa9f-4ebe-94a4-f57b3b8b623a"
+content_hash = "sha256:88da9256ac0050592aa38a3f40fa4297fdfca594b766f4174963d47cad1ba79a"
+size = 12737647
+mtime_ms = 1792936540442
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/2c1df709-aa9f-4ebe-94a4-f57b3b8b623a/017fa237-e990-4e3f-818f-ae9e49f0f339"
+storage_version_token = "1792936548698016"
+content_type = "application/octet-stream"

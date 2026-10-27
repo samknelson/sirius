@@ -31,7 +31,8 @@ import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
 import "./plugins/wc-vendors";
 import "./plugins/trust/eligibility";
 
-import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
+import { initializeFloodPluginSystem } from "./plugins/system/flood";
+import { migrateLegacyFloodConfigs } from "./plugins/system/flood/migrate-legacy";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import {
   reconcileDashboardPluginSystem,
@@ -58,6 +59,7 @@ import {
   isComponentEnabledSync,
 } from "./services/component-cache";
 import { runOrDeferStartupOperation } from "./services/startup-deferrals";
+import { registerPluginCatalogs } from "./plugins/_core/catalogs";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -546,15 +548,12 @@ export async function bootstrapApp(
   logger.info("Token plugins registered", { source: "startup" });
 
   // Register flood events
-  registerFloodEvents();
-  logger.info("Flood events registered", { source: "startup" });
-
-  // Load custom flood configurations from variables
-  await loadFloodConfigFromVariables();
-  logger.info("Flood configs loaded from variables", { source: "startup" });
+  initializeFloodPluginSystem();
+  logger.info("Flood plugins registered", { source: "startup" });
 
   // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
   await runOrDeferStartupOperation("singleton-plugin-config-bootstrap", async () => {
+    await migrateLegacyFloodConfigs();
     await bootstrapSingletonPluginConfigs();
   });
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
@@ -605,6 +604,7 @@ export async function bootstrapApp(
   // Startup is over, so the set of declared catalogs is final. Anything
   // registering after this point is a module that failed to load in the
   // startup sequence, not a late arrival to accommodate.
+  registerPluginCatalogs();
   closeCatalogRegistration();
   logger.info("Catalog registration closed", { source: "startup" });
 

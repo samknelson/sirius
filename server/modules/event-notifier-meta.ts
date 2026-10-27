@@ -115,7 +115,12 @@ export function registerEventNotifierMetaRoutes(
         if (!loaded.ok) {
           return res.status(loaded.status).json({ message: loaded.message });
         }
-        res.json(loaded.plugin.tokenTemplates.defaultTemplates(loaded.configData));
+        const { defaultTemplatesFor } = await import("../plugins/event-notifier/token-templates");
+        const variant = typeof req.query.variant === "string" ? req.query.variant : undefined;
+        if (variant && !loaded.plugin.tokenTemplates.variants?.[variant]) {
+          return res.status(400).json({ message: "Unknown notifier template variant" });
+        }
+        res.json(defaultTemplatesFor(loaded.plugin, loaded.configData, variant));
       } catch (error: any) {
         res.status(500).json({
           message: error.message || "Failed to load the notifier's default templates",

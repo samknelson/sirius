@@ -4,7 +4,7 @@ import { QUICKSEARCH_MIN_QUERY_LENGTH } from "@shared/quicksearch";
 import { getEffectiveUser } from "../masquerade";
 import { runQuicksearch, userHasQuicksearch } from "../../plugins/quicksearch";
 import { checkFlood, recordFloodEvent } from "../../flood/service";
-import { QUICKSEARCH_FLOOD_EVENT } from "../../flood/events";
+import { QUICKSEARCH_FLOOD_EVENT } from "../../flood/constants";
 import { logger } from "../../logger";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

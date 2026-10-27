@@ -23,6 +23,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { EdlsSheet } from "@shared/schema";
 import type { SnapshotWithProvenance } from "../../server/storage/system/snapshots";
 import type { SnapshotNode } from "@shared/snapshots";
+import { buildRecipientTemplateContext, composeFromTemplates, resolveTemplates } from "../../server/plugins/event-notifier/token-templates";
+
+vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
+vi.mock("../../server/storage/system/entity-metadata", () => ({
+  entityMetadataStorage: { getMany: async () => new Map() },
+}));
 
 const SHEET_ID = "sheet-1";
 const YMD = "2099-06-01";
@@ -106,6 +112,8 @@ interface Scenario {
 }
 
 let scenario: Scenario;
+let issuedLookups = 0;
+let previewLookups = 0;
 
 vi.mock("../../server/storage", () => ({
   storage: {
@@ -128,6 +136,7 @@ vi.mock("../../server/storage", () => ({
       },
     },
     edlsAssignments: {
+      setCommId: vi.fn(async () => true),
       async getBySheetId() {
         return scenario.roster.map((workerId) => ({
           id: `assignment-${workerId}`,
@@ -137,17 +146,30 @@ vi.mock("../../server/storage", () => ({
       async getSmsTargetsBySheetId() {
         return scenario.smsTargets.map((workerId) => ({
           assignmentId: `assignment-${workerId}`,
+          crewId: "crew-1",
+          generationId: `generation-${workerId}`,
           workerId,
           contactId: contactOf(workerId),
           phoneNumber: phoneOf(workerId),
           data: null,
+          assignment: {
+            assignmentId: `assignment-${workerId}`, generationId: `generation-${workerId}`,
+            crewId: "crew-1", sheetId: SHEET_ID, sheetStatus: "lock", ymd: YMD,
+            sheetTitle: "JOB-204", crewTitle: `Crew ${workerId}`, startTime: "08:00",
+            location: "Check-in desk", data: null, accepted: null,
+          },
         }));
       },
     },
     workerAat: {
+      async getByWorker(workerId: string) {
+        previewLookups++;
+        return scenario.tokenless?.includes(workerId) ? undefined : { accessUuid: tokenOf(workerId) };
+      },
       // Get-or-create in the real thing; here it simply answers with the
       // worker's stable token, unless the scenario says it cannot be issued.
       async ensureAccessUuid(workerId: string) {
+        issuedLookups++;
         if (scenario.tokenless?.includes(workerId)) {
           throw new Error(`no token for ${workerId}`);
         }
@@ -202,6 +224,61 @@ function sheetSavedAt(changed: Date): EdlsSheet {
   return { id: SHEET_ID, ymd: YMD, status: "lock", changed } as unknown as EdlsSheet;
 }
 
+it("replays preview recipients read-only and never issues a missing access credential", async () => {
+  scenario = { snapshots: [], roster: [ASSIGNED, REMOVED], smsTargets: [ASSIGNED, REMOVED], tokenless: [REMOVED] };
+  const beforeIssued = issuedLookups;
+  const beforePreview = previewLookups;
+  const recipients = await edlsSheetWorkerSmsNotifier.getRecipients!({
+    event: edlsSheetWorkerSmsNotifier.subscribedEvents[0],
+    preview: true,
+    payload: { sheetId: SHEET_ID, sheet: sheetSavedAt(CHANGED) },
+  }, { statuses: ["lock"] });
+  expect(recipients.map(r => r.contactId)).toEqual([contactOf(ASSIGNED)]);
+  expect(issuedLookups).toBe(beforeIssued);
+  expect(previewLookups - beforePreview).toBe(2);
+});
+
+it("summarizes and receipts every covered generation in one worker message, not unrelated work", async () => {
+  scenario = { snapshots: [], roster: [ASSIGNED], smsTargets: [ASSIGNED] };
+  const { storage } = await import("../../server/storage");
+  const [first] = await storage.edlsAssignments.getSmsTargetsBySheetId(SHEET_ID);
+  const second = {
+    ...first, assignmentId: "second-assignment", crewId: "second-crew", generationId: "second-generation",
+    data: { startTime: "13:30" },
+    assignment: {
+      ...first.assignment, assignmentId: "second-assignment", crewId: "second-crew",
+      generationId: "second-generation", crewTitle: "Second crew", data: { startTime: "13:30" },
+    },
+  };
+  const read = vi.spyOn(storage.edlsAssignments, "getSmsTargetsBySheetId").mockResolvedValueOnce([first, second]);
+  const write = vi.mocked(storage.edlsAssignments.setCommId);
+  write.mockClear();
+  try {
+    const ctx = {
+      event: edlsSheetWorkerSmsNotifier.subscribedEvents[0],
+      payload: { sheetId: SHEET_ID, sheet: sheetSavedAt(CHANGED) },
+    };
+    const recipients = await edlsSheetWorkerSmsNotifier.getRecipients!(ctx, { statuses: ["lock"] });
+    expect(recipients).toHaveLength(1);
+    const prepared = await buildRecipientTemplateContext(edlsSheetWorkerSmsNotifier, ctx, recipients[0], {}, {
+      seeds: [], templates: resolveTemplates(edlsSheetWorkerSmsNotifier, {}), cache: new Map(),
+    });
+    const result = await composeFromTemplates(
+      edlsSheetWorkerSmsNotifier, "sms", recipients[0], prepared!.seeds, prepared!.templates, prepared!.cache,
+    );
+    expect(result.content!.body).toContain(`Crew: Crew ${ASSIGNED}`);
+    expect(result.content!.body).toContain("Crew: Second crew");
+    expect(result.content!.body).toContain("Start Time: 1:30 PM");
+    expect(result.content!.body).not.toContain(`Crew ${REMOVED}`);
+    await edlsSheetWorkerSmsNotifier.onCommCreated!("sms", recipients[0], { id: "test-comm" } as never, ctx, {});
+    expect(write.mock.calls).toEqual([first, second].map(target => [
+      target.assignmentId, "test-comm", target.data, target.crewId, target.generationId,
+    ]));
+  } finally {
+    read.mockRestore();
+  }
+});
+
 async function recipientsFor(s: Scenario) {
   scenario = s;
   const sheet = s.sheet ?? sheetSavedAt(CHANGED);
@@ -213,8 +290,13 @@ async function recipientsFor(s: Scenario) {
   });
   const messages = new Map<string, string>();
   for (const recipient of recipients) {
-    const content = await edlsSheetWorkerSmsNotifier.getMessage!("sms", recipient, context);
-    messages.set(recipient.contactId, content?.body ?? "");
+    const prepared = await buildRecipientTemplateContext(edlsSheetWorkerSmsNotifier, context, recipient, {}, {
+      seeds: [], templates: resolveTemplates(edlsSheetWorkerSmsNotifier, {}), cache: new Map(),
+    });
+    const composed = prepared && await composeFromTemplates(
+      edlsSheetWorkerSmsNotifier, "sms", recipient, prepared.seeds, prepared.templates, prepared.cache,
+    );
+    messages.set(recipient.contactId, composed?.content?.body ?? "");
   }
   return { contactIds: recipients.map((r) => r.contactId), messages };
 }
@@ -254,7 +336,7 @@ describe("EDLS worker SMS notifier — workers taken off the sheet", () => {
       messages.get(contactOf(REMOVED)),
       "link carries the worker's access token, not a row that is gone",
     ).toContain(`/edls-sched/${tokenOf(REMOVED)}`);
-    expect(messages.get(contactOf(ASSIGNED))).toContain("posted or updated");
+    expect(messages.get(contactOf(ASSIGNED))).toContain("Updated work assignment");
     expect(messages.get(contactOf(ASSIGNED))).toContain(`/edls-sched/${tokenOf(ASSIGNED)}`);
     // The worker's own id is unrotatable and appears in staff URLs and
     // exports, so a link carrying it would hand out perpetual read access.
@@ -423,7 +505,7 @@ describe("EDLS worker SMS notifier — workers taken off the sheet", () => {
     });
     expect(contactIds).toEqual([contactOf(ASSIGNED), contactOf(REMOVED)]);
     expect(messages.get(contactOf(REMOVED)), "the normal message, not a removal notice").toContain(
-      "posted or updated",
+      "Updated work assignment",
     );
   });
 

@@ -78,9 +78,9 @@ import {
 import {
   T631_ARRIVAL_IP_FLOOD_EVENT,
   T631_ARRIVAL_WORKER_FLOOD_EVENT,
-  t631ArrivalIpFloodEvent,
-  t631ArrivalWorkerFloodEvent,
-} from "../../server/flood/events";
+} from "../../server/flood/constants";
+import "../../server/plugins/system/flood/plugins/t631-arrival";
+import { floodPluginRegistry } from "../../server/plugins/system/flood/registry";
 
 type Middleware = (
   req: any,
@@ -174,15 +174,15 @@ async function post(body: unknown, ip = "203.0.113.10") {
 
 describe("public T631 arrival route", () => {
   it("defines independent five-per-minute worker and IP flood budgets", () => {
+    const t631ArrivalWorkerFloodEvent = floodPluginRegistry.get(T631_ARRIVAL_WORKER_FLOOD_EVENT)!;
+    const t631ArrivalIpFloodEvent = floodPluginRegistry.get(T631_ARRIVAL_IP_FLOOD_EVENT)!;
     expect(t631ArrivalWorkerFloodEvent).toMatchObject({
-      name: T631_ARRIVAL_WORKER_FLOOD_EVENT,
-      threshold: 5,
-      windowSeconds: 60,
+      id: T631_ARRIVAL_WORKER_FLOOD_EVENT,
+      defaults: { threshold: 5, windowSeconds: 60 },
     });
     expect(t631ArrivalIpFloodEvent).toMatchObject({
-      name: T631_ARRIVAL_IP_FLOOD_EVENT,
-      threshold: 5,
-      windowSeconds: 60,
+      id: T631_ARRIVAL_IP_FLOOD_EVENT,
+      defaults: { threshold: 5, windowSeconds: 60 },
     });
     expect(
       t631ArrivalWorkerFloodEvent.getIdentifier({

@@ -39,13 +39,7 @@ function registerEventNotifierKind(): void {
     // (ordering, id) — matching client-injection / dashboard.
     decorateEntries: async (entries) => {
       const { storage } = await import("../../storage");
-      const {
-        getSiteEnabledTemplateChannels,
-        hideUndeliverableTemplateChannels,
-      } = await import("./template-schema");
-      // Which template channels the site can deliver on right now — used
-      // below to hide medium cards a notifier will never send over.
-      const siteChannels = await getSiteEnabledTemplateChannels();
+      const { hideUnsupportedTemplateChannels } = await import("./template-schema");
       const configs =
         await storage.pluginConfigs.getByKind("event-notifier");
       const firstByPlugin = new Map<string, (typeof configs)[number]>();
@@ -65,14 +59,11 @@ function registerEventNotifierKind(): void {
         return {
           ...entry,
           enabled: row ? row.enabled : false,
-          // Serve a schema where template channel groups this notifier
-          // can't deliver to (not in its supportedMedia, or the site has
-          // the channel off) are marked hidden. The groups stay declared
-          // so RJSF preserves any stored override for a hidden medium.
-          configSchema: hideUndeliverableTemplateChannels(
+          // Authoring depends on the notifier's supported media, not provider
+          // setup. Keep unsupported groups declared so saved overrides survive.
+          configSchema: hideUnsupportedTemplateChannels(
             impl?.configSchema as Record<string, unknown> | undefined,
             impl?.supportedMedia ?? [],
-            siteChannels,
           ) as import("./types").EventNotifierManifestEntry["configSchema"],
           uiSchema: impl?.uiSchema,
         };

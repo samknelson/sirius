@@ -24,54 +24,22 @@ type TemplateMode = "line" | "multiline" | "html";
 export type TemplateChannel = "email" | "sms" | "inapp";
 
 /**
- * The template channels the SITE can actually deliver on right now.
- * In-app is always available; email/SMS depend on a configured provider
- * with the matching delivery operation. Validation-only local plugins do not
- * advertise a delivery channel in the editor.
- */
-export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChannel>> {
-  const enabled = new Set<TemplateChannel>(["inapp"]);
-  const providerSupports = async (category: "email" | "sms"): Promise<boolean> => {
-    try {
-      const { hasWcVendorOperation } = await import(
-        "../../services/webclient/wc-vendor-context"
-      );
-      return hasWcVendorOperation(
-        category === "email" ? "communications.email.send" : "communications.sms.send",
-      );
-    } catch {
-      return false;
-    }
-  };
-
-  if (await providerSupports("email")) {
-    enabled.add("email");
-  }
-  if (await providerSupports("sms")) {
-    enabled.add("sms");
-  }
-  return enabled;
-}
-
-/**
  * Return a copy of a notifier's `configSchema` in which every template
- * channel group the notifier cannot actually deliver to — because the
- * plugin doesn't declare the medium in `supportedMedia`, or the site has
- * the channel switched off — carries `x-token-hidden: true`.
+ * channel group not declared in the plugin's `supportedMedia` carries
+ * `x-token-hidden: true`. Site delivery configuration is irrelevant to
+ * writing or previewing templates; it is checked when actually sending.
  *
  * The group (and its fields) stays DECLARED in the schema on purpose:
  * RJSF strips any stored data whose field isn't in the schema, so
  * removing the group would silently wipe an existing override for a
- * hidden medium on the next save. The client field renders nothing for
- * hidden groups instead, which preserves the stored data untouched.
+ * hidden medium on the next save. Unsupported groups render nothing.
  *
  * Returns the input schema unchanged (same reference) when nothing needs
  * hiding, so schemas without template blocks pay no cost.
  */
-export function hideUndeliverableTemplateChannels(
+export function hideUnsupportedTemplateChannels(
   configSchema: Record<string, unknown> | undefined,
   supportedMedia: readonly string[],
-  siteEnabled: ReadonlySet<TemplateChannel>,
 ): Record<string, unknown> | undefined {
   if (!configSchema) return configSchema;
   const props = configSchema.properties as
@@ -83,21 +51,20 @@ export function hideUndeliverableTemplateChannels(
     | undefined;
   if (!groups) return configSchema;
 
-  const deliverable = (channel: string): boolean =>
-    supportedMedia.includes(channel) &&
-    siteEnabled.has(channel as TemplateChannel);
-
   const toHide = Object.entries(groups).filter(
     ([, group]) =>
       group["x-widget"] === "notifier-channel-templates" &&
       typeof group["x-token-channel"] === "string" &&
-      !deliverable(group["x-token-channel"] as string),
+      !supportedMedia.includes(group["x-token-channel"] as string),
   );
   if (toHide.length === 0) return configSchema;
 
   const newGroups = { ...groups };
   for (const [key, group] of toHide) {
-    newGroups[key] = { ...group, "x-token-hidden": true };
+    newGroups[key] = {
+      ...group,
+      "x-token-hidden": true,
+    };
   }
   return {
     ...configSchema,
@@ -189,7 +156,7 @@ function channelGroup(
  * block's description so authors see a couple of relevant tokens.
  */
 export function templatesSchemaBlock(
-  opts?: { exampleTokens?: string[] },
+  opts?: { exampleTokens?: string[]; variants?: Array<{ id: string; label: string; channels: TemplateChannel[] }> },
 ): Record<string, unknown> {
   const examples = opts?.exampleTokens ?? [];
   const block: Record<string, unknown> = {
@@ -227,6 +194,16 @@ export function templatesSchemaBlock(
       ),
     },
   };
+  const groups = block.properties as Record<string, Record<string, unknown>>;
+  for (const variant of opts?.variants ?? []) {
+    for (const channel of variant.channels) {
+      groups[`${variant.id}_${channel}`] = {
+        ...groups[channel],
+        title: `${variant.label} — ${groups[channel].title}`,
+        "x-token-variant": variant.id,
+      };
+    }
+  }
   if (examples.length > 0) {
     block.description = `Leave a field untouched to keep the notifier's default. Example tokens: ${examples.join(
       " ",
