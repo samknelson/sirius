@@ -205,7 +205,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/auth/user - Get current user from database
-  app.get("/api/auth/user", requireAuth, async (req, res) => {
+  app.get("/api/auth/user", (_req, res, next) => {
+    res.set("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    next();
+  }, requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       const session = req.session as any;

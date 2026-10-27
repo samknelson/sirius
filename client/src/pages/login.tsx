@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import AuthCheckError from '@/components/auth/AuthCheckError';
+import { hasRecentSamlAttempt, markSamlAttempt } from '@/lib/saml-attempt';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -204,7 +206,7 @@ function ClerkNotProvisionedMessage() {
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authReady, authError } = useAuth();
 
   const { data: providersData, isError: providersError } = useQuery<ProvidersResponse>({
     queryKey: ['/api/auth/providers'],
@@ -288,6 +290,7 @@ export default function LoginPage() {
             <Button
               key={provider.type}
               onClick={() => {
+                if (provider.type === 'saml') markSamlAttempt();
                 // The generic login route dispatches to the default
                 // provider; non-default providers are selected explicitly.
                 window.location.href = provider.isDefault
@@ -310,7 +313,7 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
-    if (isAuthenticated && !isLoading) {
+    if (isAuthenticated && authReady) {
       const redirectTo = sessionStorage.getItem('redirectAfterLogin');
       if (redirectTo) {
         sessionStorage.removeItem('redirectAfterLogin');
@@ -319,9 +322,10 @@ export default function LoginPage() {
         setLocation('/dashboard');
       }
     }
-  }, [isAuthenticated, isLoading, setLocation]);
+  }, [isAuthenticated, authReady, setLocation]);
 
-  if (isLoading) {
+  if (authError) return <AuthCheckError />;
+  if (isLoading || !authReady) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center space-x-2">
@@ -335,6 +339,14 @@ export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
       <Card className="w-full max-w-md">
+        {hasRecentSamlAttempt() && !isAuthenticated && (
+          <p role="alert" className="m-6 mb-0 text-sm text-destructive">
+            Your single sign-on attempt did not establish a signed-in session here.
+            Please try the sign-in button again. If this continues, ask an administrator
+            to check the SAML roundtrip entries in System Logs. A missing callback
+            entry means this server did not observe the return; it does not identify why.
+          </p>
+        )}
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">
             <div className="p-3 bg-primary/10 rounded-full">

@@ -24,6 +24,7 @@ import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
+import { observeSamlCallback } from "./auth/saml-roundtrip";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -100,6 +101,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
     installWebServiceMaintenanceGate(app);
   }
 
+  app.use(observeSamlCallback);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
