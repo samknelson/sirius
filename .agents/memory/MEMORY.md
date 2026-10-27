@@ -155,3 +155,4 @@
 - [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
 - [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.
 - [Primary repository intent](primary-repository-intent.md) — user identifies grievance as origin; older project documentation names a different destination, so verify rather than silently reverting.
+- [Okta app-launch URLs](saml-app-launch-urls.md) — a /home URL alone does not diagnose broken SAML; the user’s working UAT uses this pattern too.
