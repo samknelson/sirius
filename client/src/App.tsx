@@ -11,7 +11,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import {
@@ -37,17 +37,7 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const RecordGoPage = lazy(() => import("@/pages/record-go"));
-function RecordGoResolverRoute() {
-  const navigationStarted = useRef(false);
-
-  useEffect(() => {
-    if (navigationStarted.current) return;
-    navigationStarted.current = true;
-    window.location.assign(window.location.href);
-  }, []);
-
-  return <PageLoader />;
-}
+const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
