@@ -26,6 +26,8 @@ a Freeman-specific exception or environment-specific code.
 **Why:** the owner explicitly rejected baking a Freeman exception into code
 after the deployment's intended endpoint resolved to private addresses.
 
-**How to apply:** design private-network permissions within the shared vendor
-destination policy. The exact configuration format and default behavior still
-need agreement; do not treat a suggested format as an approved implementation.
+**How to apply:** the owner approved an explicit per-plugin private-address
+opt-in within the existing deployment policy, retaining public-only behavior
+for old entries and no individual IP/subnet lists. Continue blocking loopback,
+link-local and cloud metadata endpoints; permitting private networks is not
+permission for every non-public address.
