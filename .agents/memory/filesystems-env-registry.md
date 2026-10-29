@@ -11,3 +11,11 @@ description: Conventions for the multi-filesystem file storage layer (FILESYSTEM
 - Ordering invariants: create = write object first, insert row second; delete = delete row first, object second (failures leave sweepable orphan objects, never dangling rows).
 - Local provider jail: lexical `path.resolve` prefix check is NOT enough — must also `lstat` (reject symlinks) + `realpath` containment against the realpath'd base, and skip symlinks during list walks, or symlinks under base_path escape the jail.
 - Public serving: one guarded no-auth route `/public-files/:fsId/*` — 404 unless fs is configured AND public AND a live `files` row matches (fsId, storagePath); local streams from disk, replit/s3 redirect to a short signed URL.
+
+## Approved-root hardening direction
+
+The owner selected an approved-root allowlist, alongside sensitive-system-root restrictions, for local filesystem hardening. This is not permission to reintroduce an environment-variable override denylist.
+
+**Why:** containment within an administrator-selected root does not protect secrets when the selected root itself is sensitive.
+
+**How to apply:** keep local path policy separate from configuration precedence. A policy intended to constrain in-app administrators must be locked by the deployment's real environment value; an administrator-editable list alone is not that boundary. Treat this as an agreed planning direction, not evidence that enforcement has already shipped.
