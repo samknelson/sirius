@@ -18,4 +18,4 @@ The owner explicitly rejected adding an approved-root allowlist or another envir
 
 **Why:** containment within an administrator-selected root does not protect secrets when the selected root itself is sensitive; adding another configurable list duplicates the existing deployment-level configuration mechanism.
 
-**How to apply:** implement sensitive-path restrictions in code, including physical aliases, independently of which configuration source supplied a root. Keep the existing deployment-supplied FILESYSTEMS value as the configuration lock. Treat this as an agreed planning direction, not evidence that enforcement has already shipped.
+**How to apply:** keep sensitive-path restrictions fixed in code, including physical aliases, independently of which configuration source supplied a root. Keep the existing deployment-supplied FILESYSTEMS value as the configuration lock. This is defense in depth, not a promise to classify secrets in other administrator-selected directories.

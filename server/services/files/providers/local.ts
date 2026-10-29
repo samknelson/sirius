@@ -1,5 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
+import { assertLocalPathAllowed } from "../local-path-policy";
 import {
   DestinationExistsError,
   DirectoryNotEmptyError,
@@ -25,17 +26,20 @@ export class LocalFileSystemProvider implements FileSystemProvider {
   readonly supportsDirectories = true;
   readonly supportsRename = true;
   private readonly basePath: string;
-  private realBasePromise: Promise<string> | null = null;
 
   constructor(
     readonly fileSystemId: string,
     settings: { base_path: string },
   ) {
+    assertLocalPathAllowed(settings.base_path);
     this.basePath = path.resolve(settings.base_path);
   }
 
   /** Lexical jail: resolve a storage path inside base_path or throw. */
   resolveSafe(storagePath: string): string {
+    // Recheck on every operation: an allowed base can be replaced by a symlink
+    // after construction. Configuration validation is not the enforcement boundary.
+    assertLocalPathAllowed(this.basePath);
     if (storagePath.includes("\0")) {
       throw new FilePathTraversalError(storagePath);
     }
@@ -44,22 +48,13 @@ export class LocalFileSystemProvider implements FileSystemProvider {
     if (resolved !== this.basePath && !resolved.startsWith(this.basePath + path.sep)) {
       throw new FilePathTraversalError(storagePath);
     }
+    assertLocalPathAllowed(resolved);
     return resolved;
   }
 
   /** The physical (symlink-resolved) base directory. */
   private async realBase(): Promise<string> {
-    if (!this.realBasePromise) {
-      this.realBasePromise = (async () => {
-        try {
-          return await fs.realpath(this.basePath);
-        } catch (error: any) {
-          if (error?.code === "ENOENT") return this.basePath; // not created yet
-          throw error;
-        }
-      })();
-    }
-    return this.realBasePromise;
+    return assertLocalPathAllowed(this.basePath);
   }
 
   private async isWithinRealBase(realTarget: string): Promise<boolean> {
@@ -78,6 +73,7 @@ export class LocalFileSystemProvider implements FileSystemProvider {
       throw new FilePathTraversalError(storagePath);
     }
     const real = await fs.realpath(abs);
+    assertLocalPathAllowed(real);
     if (!(await this.isWithinRealBase(real))) {
       throw new FilePathTraversalError(storagePath);
     }
@@ -96,21 +92,9 @@ export class LocalFileSystemProvider implements FileSystemProvider {
       if (error instanceof FilePathTraversalError) throw error;
       if (error?.code !== "ENOENT") throw error;
     }
-    let dir = path.dirname(abs);
-    for (;;) {
-      try {
-        const real = await fs.realpath(dir);
-        if (!(await this.isWithinRealBase(real))) {
-          throw new FilePathTraversalError(storagePath);
-        }
-        return;
-      } catch (error: any) {
-        if (error instanceof FilePathTraversalError) throw error;
-        if (error?.code !== "ENOENT") throw error;
-        const parent = path.dirname(dir);
-        if (parent === dir) return; // filesystem root — realBase handles the rest
-        dir = parent;
-      }
+    const real = assertLocalPathAllowed(abs);
+    if (!(await this.isWithinRealBase(real))) {
+      throw new FilePathTraversalError(storagePath);
     }
   }
 
@@ -191,6 +175,8 @@ export class LocalFileSystemProvider implements FileSystemProvider {
    * point outside the jail.
    */
   async list(opts?: FileListOptions): Promise<FileListPage> {
+    this.resolveSafe(".");
+    if (opts?.prefix) this.resolveSafe(opts.prefix);
     if (opts?.delimiter) {
       return this.listLevel(opts);
     }
@@ -202,6 +188,10 @@ export class LocalFileSystemProvider implements FileSystemProvider {
     const walk = async (dir: string): Promise<boolean> => {
       let names: string[];
       try {
+        this.resolveSafe(path.relative(this.basePath, dir));
+        if (!(await this.isWithinRealBase(await fs.realpath(dir)))) {
+          throw new FilePathTraversalError(dir);
+        }
         names = (await fs.readdir(dir)).sort();
       } catch (error: any) {
         if (error?.code === "ENOENT") return false;
@@ -216,6 +206,7 @@ export class LocalFileSystemProvider implements FileSystemProvider {
         const rel = path.relative(this.basePath, abs).split(path.sep).join("/");
         const s = await fs.lstat(abs);
         if (s.isSymbolicLink()) continue; // never follow symlinks out of the jail
+        await this.assertRealContained(abs, rel);
         if (s.isDirectory()) {
           // Prune subtrees that cannot contain matching paths.
           if (prefix && !rel.startsWith(prefix) && !prefix.startsWith(rel + "/")) continue;
@@ -251,6 +242,9 @@ export class LocalFileSystemProvider implements FileSystemProvider {
     let names: string[];
     try {
       if (dir) await this.assertRealContained(abs, dir);
+      else if (!(await this.isWithinRealBase(await fs.realpath(abs)))) {
+        throw new FilePathTraversalError(dir);
+      }
       names = (await fs.readdir(abs)).sort();
     } catch (error: any) {
       if (error instanceof FilePathTraversalError) throw error;
@@ -268,6 +262,7 @@ export class LocalFileSystemProvider implements FileSystemProvider {
       const rel = dir ? `${dir}/${name}` : name;
       const s = await fs.lstat(childAbs);
       if (s.isSymbolicLink()) continue; // never follow symlinks out of the jail
+      await this.assertRealContained(childAbs, rel);
       if (s.isDirectory()) {
         directories.push(rel);
       } else if (s.isFile()) {
@@ -286,6 +281,7 @@ export class LocalFileSystemProvider implements FileSystemProvider {
     try {
       await this.assertWriteContained(abs, dir);
       await fs.mkdir(abs, { recursive: true });
+      await this.assertRealContained(abs, dir);
     } catch (error: any) {
       if (error instanceof FilePathTraversalError) throw error;
       throw new FileSystemOperationError(
@@ -366,7 +362,8 @@ export class LocalFileSystemProvider implements FileSystemProvider {
     );
   }
 
-  async getSignedUrl(): Promise<string | null> {
+  async getSignedUrl(storagePath = "."): Promise<string | null> {
+    this.resolveSafe(storagePath);
     // Local files have no provider-side URL; public local filesystems are
     // served through the guarded /public-files Express route instead.
     return null;

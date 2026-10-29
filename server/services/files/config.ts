@@ -5,6 +5,7 @@ import {
   registerEnvironmentVariable,
 } from "../../config/env-registry";
 import type { FileSystemAccess, FileSystemProviderKind } from "./base";
+import { assertLocalPathAllowed } from "./local-path-policy";
 
 const SERVICE = "filesystems";
 
@@ -174,6 +175,17 @@ export function parseFileSystemsEnv(
       throw new Error(
         `FILESYSTEMS: filesystem "${id}" has invalid ${entry.provider} provider settings — ${detail}`,
       );
+    }
+
+    if (entry.provider === "local") {
+      try {
+        assertLocalPathAllowed(settingsResult.data.base_path);
+      } catch (error) {
+        throw new Error(
+          `FILESYSTEMS: filesystem "${id}" has invalid local provider settings — base_path: ` +
+            (error instanceof Error ? error.message : String(error)),
+        );
+      }
     }
 
     configs.set(id, {
