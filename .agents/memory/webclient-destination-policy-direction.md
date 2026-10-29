@@ -19,3 +19,13 @@ convert a security refusal into a successful, cacheable answer.
 rethrow after the handler, before the framework records counts or cache state.
 An unadapted browser/SDK must refuse active policies rather than claim to enforce
 an allowlist on only its initial URL.
+
+Private-network support must be a generic policy available to any vendor, not
+a Freeman-specific exception or environment-specific code.
+
+**Why:** the owner explicitly rejected baking a Freeman exception into code
+after the deployment's intended endpoint resolved to private addresses.
+
+**How to apply:** design private-network permissions within the shared vendor
+destination policy. The exact configuration format and default behavior still
+need agreement; do not treat a suggested format as an approved implementation.
