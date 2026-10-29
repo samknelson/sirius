@@ -49,6 +49,19 @@ host is trusted to receive the operation's credentials and data.
 
 ## Configuration lock and timing
 
+Administrators can inspect **Destination policy** in the Webclient Vendors
+configuration editor and each configuration's plugin information popover.
+This read-only view shows the stable plugin ID, normalized effective patterns,
+whether a map entry replaces defaults (including deny-all), and whether the
+whole map is locked by the deployment or supplied by an in-app override.
+It also distinguishes guarded HTTP, unsupported active-policy SDK/browser
+transports, unguarded SDK/browser transports, and local-only vendors.
+An invalid policy is shown as a refusal, not as unrestricted access.
+The view uses the invocation resolver, does not resolve vendor credentials,
+and applies to every connection of that plugin, including disabled configurations.
+It is a snapshot of the answering process, not a connection test or proof of
+simultaneous policy adoption across processes.
+
 Use the existing environment registry. An actual nonempty deployment value wins
 over in-app overrides and locks the **whole map**. Set `{}` in the deployment
 environment to lock the manifest defaults without additional restrictions.

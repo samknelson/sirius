@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertVendorDestinationTransport, describeVendorDestinationPolicy,
   hostMatches, normalizeHostPattern, resolveVendorAllowedHosts,
 } from "../../server/services/webclient/endpoint-policy";
 import {
@@ -12,6 +13,92 @@ const known = (id: string) => ["freeman", "optional", "disabled"].includes(id);
 const required = { requiresAllowlist: true, defaultAllowedHosts: ["*.freeman.com"] };
 
 describe("vendor destination policy", () => {
+  it.each([
+    { raw: "{}", declaration: required, selection: "manifest", status: "restricted" },
+    { raw: '{"freeman":["API.OTHER.COM."]}', declaration: required, selection: "replacement", status: "restricted" },
+    { raw: '{"freeman":[]}', declaration: required, selection: "replacement", status: "deny-all" },
+    { raw: "{}", declaration: undefined, selection: "none", status: "unrestricted" },
+    { raw: '{"disabled":[]}', declaration: required, selection: "manifest", status: "restricted" },
+  ])("describes exactly the runtime policy: $selection / $status ($raw)", ({ raw, declaration, selection, status }) => {
+    vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", raw);
+    try {
+      const view = describeVendorDestinationPolicy({
+        id: "freeman", service: "Freeman", httpTransport: "webclient",
+        endpointPolicy: declaration,
+      }, known);
+      expect(view).toMatchObject({
+        pluginId: "freeman", selection, status, transport: "guarded-http",
+        effectivePatterns: resolveVendorAllowedHosts("freeman", declaration, known) ?? null,
+        configurationSource: "environment", deploymentLocked: true,
+        requiresAllowlist: declaration?.requiresAllowlist === true,
+      });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it.each(["{", '{"typo-with-secret-canary":[]}', '{"optional":["https://user:secret-canary@host"]}'])(
+    "reports invalid policy without relaying malformed contents: %s", (raw) => {
+      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", raw);
+      try {
+        const view = describeVendorDestinationPolicy({ id: "freeman", endpointPolicy: required }, known);
+        expect(view).toMatchObject({ status: "invalid", selection: "invalid", effectivePatterns: null });
+        expect(JSON.stringify(view)).not.toContain("secret-canary");
+        expect(() => resolveVendorAllowedHosts("freeman", required, known)).toThrow(WcEndpointPolicyError);
+      } finally { vi.unstubAllEnvs(); }
+    },
+  );
+
+  it("reports a missing required policy as invalid, not unrestricted", () => {
+    vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", "{}");
+    try {
+      expect(describeVendorDestinationPolicy({
+        id: "freeman", endpointPolicy: { requiresAllowlist: true },
+      }, known)).toMatchObject({ status: "invalid", effectivePatterns: null });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it.each(["", "__UNSET__"])("shows whole-map deployment lock and released in-app precedence: %s", (released) => {
+    setEnvironmentVariableOverrideSource(() => '{"freeman":[]}');
+    try {
+      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", "{}");
+      const plugin = { id: "freeman", endpointPolicy: required };
+      expect(describeVendorDestinationPolicy(plugin, known)).toMatchObject({
+        selection: "manifest", deploymentLocked: true, configurationSource: "environment",
+      });
+      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", released);
+      expect(describeVendorDestinationPolicy(plugin, known)).toMatchObject({
+        selection: "replacement", status: "deny-all",
+        deploymentLocked: false, configurationSource: "override",
+        effectivePatterns: resolveVendorAllowedHosts("freeman", required, known),
+      });
+      setEnvironmentVariableOverrideSource(null);
+      expect(describeVendorDestinationPolicy(plugin, known)).toMatchObject({
+        selection: "manifest", deploymentLocked: false, configurationSource: null,
+      });
+    } finally {
+      setEnvironmentVariableOverrideSource(null);
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(["{}", '{"optional":[]}', '{"optional":["api.example.com"]}'])(
+    "reports unadapted browser/SDK support using the invocation guard: %s", (raw) => {
+      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", raw);
+      try {
+        const plugin = { id: "optional", service: "Browser" };
+        const view = describeVendorDestinationPolicy(plugin, known);
+        const allowed = resolveVendorAllowedHosts(plugin.id, undefined, known);
+        if (view.transport === "unsupported") {
+          expect(() => assertVendorDestinationTransport(plugin.id, true, undefined, allowed))
+            .toThrow(WcEndpointPolicyError);
+        } else {
+          expect(view.transport).toBe("unguarded");
+          expect(() => assertVendorDestinationTransport(plugin.id, true, undefined, allowed)).not.toThrow();
+        }
+        expect(describeVendorDestinationPolicy({ id: "optional" }, known).transport).toBe("local");
+      } finally { vi.unstubAllEnvs(); }
+    },
+  );
+
   it("uses defaults, replacements, explicit empty lists and optional policies", () => {
     expect(resolveVendorAllowedHosts("freeman", required, known, "{}")).toEqual(["*.freeman.com"]);
     expect(resolveVendorAllowedHosts("freeman", required, known, '{"freeman":["api.other.com"]}')).toEqual(["api.other.com"]);

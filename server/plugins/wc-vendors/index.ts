@@ -7,6 +7,7 @@ import {
 } from "../_core";
 import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
+import { describeVendorDestinationPolicy } from "../../services/webclient/endpoint-policy";
 import type { RegisteredWcVendorPlugin } from "./types";
 import type {
   PluginConfigEnvelopeField,
@@ -69,6 +70,17 @@ export function registerWcVendorPluginKind(): void {
     // kind. Do not reintroduce a gate here or in the generic config router.
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Decoration happens only after the generic manifest route's kind and
+    // per-plugin gates. Do not put deployment settings in public catalogs.
+    decorateEntries: (entries) => entries.map((entry) => {
+      const plugin = wcVendorRegistry.get(entry.id)!;
+      return {
+        ...entry,
+        effectiveDestinationPolicy: describeVendorDestinationPolicy(
+          plugin, (id) => wcVendorRegistry.has(id),
+        ),
+      };
+    }),
     // Delegate provider-specific config validation (e.g. Stripe's `pk_`
     // publishable-key prefix) to the plugin. The generic create/update path
     // already enforces required per-plugin fields from `configFields`; this

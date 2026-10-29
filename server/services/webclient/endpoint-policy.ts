@@ -1,6 +1,7 @@
 import { domainToASCII } from "node:url";
-import { getEnvironmentVariable } from "../../config/env-registry";
+import { getEnvironmentVariable, listEnvironmentVariables } from "../../config/env-registry";
 import { WcEndpointPolicyError } from "./refusals";
+import type { WcVendorDestinationPolicyView } from "@shared/webclient-destination-policy";
 
 export interface WcEndpointPolicy {
   requiresAllowlist: boolean;
@@ -49,6 +50,19 @@ export function resolveVendorAllowedHosts(
   isKnownPlugin: (id: string) => boolean,
   raw = getEnvironmentVariable("WEBCLIENT_VENDOR_ALLOWED_HOSTS"),
 ): AllowedVendorHosts {
+  return resolveVendorPolicy(pluginId, declaration, isKnownPlugin, raw).patterns;
+}
+
+/** One parser/selector for both invocation and the administrator's view. */
+function resolveVendorPolicy(
+  pluginId: string,
+  declaration: WcEndpointPolicy | undefined,
+  isKnownPlugin: (id: string) => boolean,
+  raw: string | undefined,
+): {
+  patterns: AllowedVendorHosts;
+  selection: "replacement" | "manifest" | "none";
+} {
   let override: string[] | undefined;
   if (raw !== undefined) {
     let parsed: unknown;
@@ -74,5 +88,70 @@ export function resolveVendorAllowedHosts(
   if (declaration?.requiresAllowlist && effective === undefined) {
     return invalid(pluginId, "this vendor requires a destination allowlist but none is configured");
   }
-  return effective;
+  return {
+    patterns: effective,
+    selection: override !== undefined ? "replacement"
+      : declaration?.defaultAllowedHosts !== undefined ? "manifest" : "none",
+  };
+}
+
+/** Shared by invocation and presentation; not a second enforcement decision. */
+export function assertVendorDestinationTransport(
+  pluginId: string,
+  external: boolean,
+  httpTransport: "webclient" | undefined,
+  allowed: AllowedVendorHosts,
+): void {
+  if (external && allowed !== undefined && httpTransport !== "webclient") {
+    throw new WcEndpointPolicyError(pluginId,
+      "this SDK/browser transport cannot enforce an active destination allowlist; operation is unsupported");
+  }
+}
+
+export function describeVendorDestinationPolicy(
+  plugin: {
+    id: string;
+    endpointPolicy?: WcEndpointPolicy;
+    service?: string;
+    httpTransport?: "webclient";
+  },
+  isKnownPlugin: (id: string) => boolean,
+): WcVendorDestinationPolicyView {
+  const raw = getEnvironmentVariable("WEBCLIENT_VENDOR_ALLOWED_HOSTS");
+  const source = listEnvironmentVariables().find(
+    (variable) => variable.name === "WEBCLIENT_VENDOR_ALLOWED_HOSTS",
+  )?.source ?? null;
+  const base = {
+    pluginId: plugin.id,
+    requiresAllowlist: plugin.endpointPolicy?.requiresAllowlist === true,
+    configurationSource: source,
+    deploymentLocked: source === "environment",
+  };
+  const transport = !plugin.service ? "local"
+    : plugin.httpTransport === "webclient" ? "guarded-http" : "unguarded";
+  let policy: ReturnType<typeof resolveVendorPolicy>;
+  try {
+    policy = resolveVendorPolicy(plugin.id, plugin.endpointPolicy, isKnownPlugin, raw);
+  } catch (error) {
+    if (!(error instanceof WcEndpointPolicyError)) throw error;
+    // Never relay raw malformed map contents or exception text to the UI.
+    return { ...base, selection: "invalid", status: "invalid",
+      effectivePatterns: null, transport };
+  }
+  let effectiveTransport: WcVendorDestinationPolicyView["transport"] = transport;
+  try {
+    assertVendorDestinationTransport(plugin.id, Boolean(plugin.service),
+      plugin.httpTransport, policy.patterns);
+  } catch (error) {
+    if (!(error instanceof WcEndpointPolicyError)) throw error;
+    effectiveTransport = "unsupported";
+  }
+  return {
+    ...base,
+    selection: policy.selection,
+    status: policy.patterns === undefined ? "unrestricted"
+      : policy.patterns.length === 0 ? "deny-all" : "restricted",
+    effectivePatterns: policy.patterns ?? null,
+    transport: effectiveTransport,
+  };
 }

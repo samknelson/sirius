@@ -543,6 +543,7 @@ export interface WcVendorPlugin extends BasePluginMetadata {
 }
 
 export interface WcVendorManifestEntry {
+  effectiveDestinationPolicy?: import("@shared/webclient-destination-policy").WcVendorDestinationPolicyView;
   endpointPolicy?: WcEndpointPolicy;
   id: string;
   name: string;

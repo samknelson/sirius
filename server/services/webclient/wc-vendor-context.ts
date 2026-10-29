@@ -22,8 +22,8 @@ import {
   isMaintenanceModeError,
 } from "../maintenance-flag";
 import { wcCacheStorage } from "../../storage/wc-cache";
-import { notRecordableReason, isWcRateLimitError, isWcEndpointPolicyError, WcEndpointPolicyError } from "./refusals";
-import { resolveVendorAllowedHosts } from "./endpoint-policy";
+import { notRecordableReason, isWcRateLimitError, isWcEndpointPolicyError } from "./refusals";
+import { assertVendorDestinationTransport, resolveVendorAllowedHosts } from "./endpoint-policy";
 import { createVendorHttp } from "./vendor-http";
 import { logger } from "../../logger";
 import type {
@@ -513,11 +513,8 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
     try {
       const allowed = resolveVendorAllowedHosts(resolved.plugin.id,
         resolved.plugin.endpointPolicy, (id) => wcVendorRegistry.has(id));
-      if (resolved.plugin.service && allowed !== undefined &&
-          resolved.plugin.httpTransport !== "webclient") {
-        throw new WcEndpointPolicyError(resolved.plugin.id,
-          "this SDK/browser transport cannot enforce an active destination allowlist; operation is unsupported");
-      }
+      assertVendorDestinationTransport(resolved.plugin.id, Boolean(resolved.plugin.service),
+        resolved.plugin.httpTransport, allowed);
       try {
         return await handler(resolved.context, args as never);
       } finally {
