@@ -1,0 +1,152 @@
+modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
+[agent]
+expertMode = true
+integrations = ["javascript_object_storage:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["npm", "run", "start"]
+build = ["npm", "run", "build"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "lint"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "typecheck"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "migrations"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "lint"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx scripts/dev/lint.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "typecheck"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run check"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "migrations"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx scripts/check-migrations.ts --base=origin/main"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "Freeman Dev"
+mode = "sequential"
+author = 45808420
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git checkout freeman-dev"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git merge -m \"Merge from main\" main"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git push freeman freeman-dev"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git checkout main"
+
+[userenv]
+
+[userenv.development]
+DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-aba3a71d-ab53-4acd-ad4f-ebe387b687ca"
+PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-aba3a71d-ab53-4acd-ad4f-ebe387b687ca/public"
+PRIVATE_OBJECT_DIR = "/replit-objstore-aba3a71d-ab53-4acd-ad4f-ebe387b687ca/.private"
+FILESYSTEMS = "{\"legacy\":{\"name\":\"Legacy\",\"access\":\"private\",\"provider\":\"replit\",\"provider_settings\":{\"bucket_id_secret\":\"DEFAULT_OBJECT_STORAGE_BUCKET_ID\"},\"description\":\"Replit object storage bucket carried over from before multi-filesystem support; holds previously uploaded files.\"},\"public\":{\"name\":\"Public\",\"access\":\"public\",\"provider\":\"local\",\"provider_settings\":{\"base_path\":\"/home/runner/workspace/.data/files/public\"},\"description\":\"Local disk filesystem for publicly accessible files (dev workspace .data/files/public).\"},\"private\":{\"name\":\"Private\",\"access\":\"private\",\"provider\":\"local\",\"provider_settings\":{\"base_path\":\"/home/runner/workspace/.data/files/private\"},\"description\":\"Local disk filesystem for private files (dev workspace .data/files/private).\"}}"
+
+[userenv.shared]
+SAML_ENTRY_POINT = "https://benefits11.okta.com/app/exk20arfmjn9nuFpI1d8/sso/saml"
+SAML_ISSUER = "https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev"
+SAML_CERT = "MIIDpDCCAoygAwIBAgIGAZu81QyfMA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEUMBIGA1UECwwLU1NPUHJvdmlkZXIxEzARBgNVBAMMCmJlbmVmaXRzMTExHDAaBgkqhkiG9w0BCQEWDWluZm9Ab2t0YS5jb20wHhcNMjYwMTE0MTQwNjE3WhcNMzYwMTE0MTQwNzE3WjCBkjELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xDTALBgNVBAoMBE9rdGExFDASBgNVBAsMC1NTT1Byb3ZpZGVyMRMwEQYDVQQDDApiZW5lZml0czExMRwwGgYJKoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlTZT+xKG3F4GLxJnGu6pbVU6MfFXWJOWv+rpyUxVvdv/ZiXtrFPgcu/wzv0mJScJDouUP9Sn9fM0VkJDOgcYk7KIN6cQHEeA9PfZlotPlqOX3Iudf4SSZKAYcfxVHY1ekbB4I0Mtvz0hjPHdZ5F/KvVeeaqrs5EcTRM5XNnudmvaZo4lqpRbYOijEUGycQlNGsll/V6CbHlS5IG20cZs5nc9xcVWGU7lhqWbsbnXj/XlFrJXMnUGieOpLmQQC4KZWu1wzhK44ln9jC9sCNfCtT0NeTjf/9q9oBCI+yT7AZSwAFZpbmnPTsNNlw94NmWKsUn5qC3JvbgMS5KFIXdWMwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQCNeTwqwB+o/9LNNWZ/GJ2WWG+k6gzN1o013hdfUv+KdIpHCMZOkNvpHDBkksKrlLrK0JmnHhzWV9XfU8ntkmRmBYjWxyD8KR8e3jVOGtQkxF89wqcM5J3TzXUyfVwH5+udElQ/DGewntclTgWtgZiftW1G0ul+etlQyfUQqNC9v7nOT/rJZZchaH3viT6X4VorcNxOVXE0WWT79PsOv01O2F0TODW5CS5uf7vCmNyyoirZOl5ybw2GksOzcxOU1Ns+rCH7QFDh6b4HkPeQp1qboVK5vq9h4hDn+kuNZ44ImHk+NmWI0KD5QmfOs21Vdu5D1ap8DXJdke1Wbt5kVXS/"
+AUTH_PROVIDER = "replit,saml"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 4200
+
+[[ports]]
+localPort = 5091
+externalPort = 5000
+
+[[ports]]
+localPort = 5092
+externalPort = 5173
+
+[[ports]]
+localPort = 5701
+externalPort = 3001
+
+[[ports]]
+localPort = 5702
+externalPort = 3002
+
+[[ports]]
+localPort = 5703
+externalPort = 3003
+
+[[ports]]
+localPort = 5704
+externalPort = 3000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-aba3a71d-ab53-4acd-ad4f-ebe387b687ca"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 180000
