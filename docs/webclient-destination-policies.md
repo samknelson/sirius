@@ -19,15 +19,32 @@ Set **WEBCLIENT_VENDOR_ALLOWED_HOSTS** to a JSON object to replace selected
 vendors' defaults or constrain any other vendor. Example raw value:
 
 ```json
-{"sitespecific-freeman-authorization":["auth.freeman.com"],"sitespecific-freeman-edls-migrate":["legacy.freeman.com"],"sitespecific-t631":["*.teamsters631.com"],"sendgrid":["api.sendgrid.com"],"stripe":["api.stripe.com"],"twilio":["api.twilio.com","lookups.twilio.com"],"lob":[]}
+{
+  "sitespecific-freeman-authorization": {
+    "allowedHosts": ["*.freeman.com"],
+    "allowPrivateAddresses": true
+  },
+  "sitespecific-freeman-edls-migrate": {
+    "allowedHosts": ["legacy.freeman.com"]
+  },
+  "sitespecific-t631": {
+    "allowedHosts": ["*.teamsters631.com"]
+  },
+  "lob": { "allowedHosts": [] }
+}
 ```
 
 The hostnames above illustrate the format, not discovered production endpoints.
 Use the actual service hostnames for your deployment.
 
 - Missing map entry: use that plugin's defaults.
-- Present array: **replace**, never merge with, its defaults.
-- Empty array: no external destinations permitted for that vendor.
+- Present object: `allowedHosts` is required and **replaces**, never merges with,
+  its defaults. `allowPrivateAddresses` is optional and defaults to `false`.
+- Empty `allowedHosts` array: no external destinations permitted for that vendor,
+  even with private access enabled.
+- Only these two object fields are accepted. Legacy array-valued entries are
+  rejected, not converted. This is an intentional breaking format change:
+  operators must update their existing deployment values manually.
 - Required allowlist without defaults or an override: refuse external calls.
 - Optional plugin without defaults or an override: no hostname restriction.
   The guarded HTTP path still enforces the baseline network checks below.
@@ -56,6 +73,8 @@ whether a map entry replaces defaults (including deny-all), and whether the
 whole map is locked by the deployment or supplied by an in-app override.
 It also distinguishes guarded HTTP, unsupported active-policy SDK/browser
 transports, unguarded SDK/browser transports, and local-only vendors.
+It shows the effective public-only or public/private network permission from
+the same resolver used by enforcement; invalid policies have no effective mode.
 An invalid policy is shown as a refusal, not as unrestricted access.
 The view uses the invocation resolver, does not resolve vendor credentials,
 and applies to every connection of that plugin, including disabled configurations.
@@ -81,10 +100,19 @@ An already-running request is not retroactively cancelled.
 The guarded capability accepts HTTPS on port 443 only, rejects URL userinfo and
 custom Host headers, refuses redirects without following their Location, and
 checks the HTTPS socket's own DNS resolution. Every returned address must be
-public; validation and address selection happen in the same handoff, so a
+permitted by the effective policy; validation and address selection happen in the same handoff, so a
 second, unvalidated resolution cannot connect elsewhere. TLS certificate
-verification and hostname/SNI handling remain enabled. Non-public IP literals,
-including alternate numeric IPv4 spellings and mapped IPv6, are also refused.
+verification and hostname/SNI handling remain enabled. Public-only is the default.
+With explicit `allowPrivateAddresses: true`, ordinary RFC1918 IPv4
+(10/8, 172.16/12, 192.168/16) and IPv6 unique-local (fc00::/7) are permitted.
+Every DNS answer must pass; mixed public/private sets pass only under that opt-in.
+Loopback, unspecified, link-local, multicast, reserved/special-use and IPv4-mapped
+IPv6 remain forbidden, as do metadata/infrastructure endpoints (including
+169.254.169.254, 100.100.100.200, fd00:ec2::254, fd20:ce::254 and 168.63.129.16).
+Literal IP URLs undergo the same address check as DNS answers.
+The opt-in is per plugin, never per connection or global, and never relaxes host
+matching. It trusts the allowed hostnames to identify internal services; a
+compromised hostname/DNS entry can reach other ordinary private services.
 Requests have a maximum 30-second timeout and a 32 MiB response-body limit.
 
 Guarded vendors: Freeman authorization, Freeman EDLS migration, Teamsters631,
@@ -93,7 +121,7 @@ Stripe uses its SDK's custom fetch transport; Twilio uses a webclient HTTP
 adapter; SendGrid uses the same mail API through the guarded capability.
 
 **BTU card-check browser scraping is not adapted to guarded browser egress.**
-When an allowlist is active for `sitespecific-btu-cardcheck` (including `[]`),
+When an allowlist is active for `sitespecific-btu-cardcheck` (including an object with `allowedHosts: []`),
 webclient refuses the operation before launching or invoking the browser.
 It does not pretend that checking the initial page also secures page redirects,
 scripts, subresources, and attachment requests. Without a policy it retains
@@ -112,7 +140,8 @@ falling back to another authentication method.
 Review existing endpoints before rollout: HTTP, private/internal addresses,
 nonstandard ports, redirects, and hosts outside the manifest defaults will now
 be refused on guarded paths. Use the final HTTPS endpoint instead of a redirect.
-An allowlist cannot exempt a destination from baseline network checks.
+The private-address flag exempts only ordinary private addresses, not the other
+baseline checks. It does not make an unsupported SDK/browser transport supported.
 No existing vendor configuration, deployment setting, or database record is
 automatically rewritten.
 
@@ -132,13 +161,11 @@ failed`, with a recognized DNS error code where available; native error text
 is never relayed. No URL paths, query strings, credentials or response bodies
 are included. This uses the socket's actual lookup, not a preflight lookup.
 
-For the reported `dev.api.freeman.com` refusal, the affected deployment's DNS
-answers have **not** been observed. Replit's deployment metadata reports no
-deployment accessible for this project; that does not establish the status of
-an externally hosted deployment. A workspace lookup is not production evidence.
-The code does not establish whether production returned a mixed answer set,
-an intentional private endpoint, or whether the deployed image contains an
-older address-classification bug.
+The affected deployment reported private answers for `dev.api.freeman.com`.
+The wildcard `*.freeman.com` already matches this nested subdomain; the refusal
+was the public-only address check, not hostname matching. If the deployment
+intends that internal destination, use the explicit private opt-in shown above.
+A workspace lookup is not production evidence.
 
 Run this DNS-only diagnostic **inside the affected running application
 container/process environment** (same network and resolver, not this workspace
@@ -181,10 +208,11 @@ the request-time socket refusal is the authoritative evidence for that attempt.
 
 - All-public answers should pass the address guard; this does not prove TLS,
   authorization or vendor API health.
-- A mixed public/private set remains refused even if the first answer is public.
-- If production intentionally uses private addresses, leave it blocked. The
-  owner must separately authorize and scope a private-endpoint policy decision;
-  adding a hostname allowlist entry does not authorize private network access.
+- A mixed public/private set remains refused without explicit private opt-in,
+  even if the first answer is public.
+- If production intentionally uses private addresses, explicitly authorize them
+  for that plugin using an object with matching `allowedHosts` and
+  `allowPrivateAddresses: true`. Adding only a hostname does not authorize it.
 - Do not hardcode an observed IP, disable the resolver guard, or infer that the
   connection is restored without a successful check in the affected deployment.
 

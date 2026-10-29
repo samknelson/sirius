@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { request as httpsRequest } from "node:https";
-import { hostMatches, type AllowedVendorHosts } from "./endpoint-policy";
+import { hostMatches, type VendorDestinationPolicy } from "./endpoint-policy";
 import { WcEndpointPolicyError } from "./refusals";
 
 export interface WcVendorHttp {
@@ -38,13 +38,25 @@ const v4Rules = addressRules(blockedV4, "ipv4");
 const v6Rules = addressRules(blockedV6, "ipv6");
 const mappedV6 = new BlockList();
 mappedV6.addSubnet("::ffff:0:0", 96, "ipv6");
+const privateV6 = new BlockList();
+privateV6.addSubnet("fc00::", 7, "ipv6");
+// AWS/GCP metadata IPv6 and Azure WireServer: never exempt infrastructure endpoints.
+const metadataV6 = new BlockList();
+metadataV6.addAddress("fd00:ec2::254", "ipv6");
+metadataV6.addAddress("fd20:ce::254", "ipv6");
 
-function vendorAddressRejection(address: string): string | undefined {
+function vendorAddressRejection(address: string, allowPrivateAddresses = false): string | undefined {
   const family = isIP(address);
-  if (family === 4) return v4Rules.find(({ block }) => block.check(address, "ipv4"))?.reason;
+  if (family === 4) {
+    if (address === "168.63.129.16") return "cloud infrastructure/metadata";
+    return v4Rules.find(({ block, reason }) =>
+      block.check(address, "ipv4") && !(allowPrivateAddresses && reason.startsWith("private ")))?.reason;
+  }
   if (family !== 6) return "invalid IP address";
   // Never check ordinary IPv4 against this list: Node maps it into this subnet.
   if (mappedV6.check(address, "ipv6")) return "IPv4-mapped IPv6";
+  if (metadataV6.check(address, "ipv6")) return "cloud metadata";
+  if (allowPrivateAddresses && privateV6.check(address, "ipv6")) return undefined;
   if (!globalV6.check(address, "ipv6")) return "outside global IPv6 unicast (2000::/3)";
   return v6Rules.find(({ block }) => block.check(address, "ipv6"))?.reason;
 }
@@ -54,7 +66,7 @@ export function isPublicVendorAddress(address: string): boolean {
 }
 
 export function validateVendorUrl(
-  pluginId: string, input: string | URL, allowed: AllowedVendorHosts,
+  pluginId: string, input: string | URL, policy: VendorDestinationPolicy,
 ): URL {
   const refuse = (reason: string): never => { throw new WcEndpointPolicyError(pluginId, reason); };
   let url: URL;
@@ -64,11 +76,11 @@ export function validateVendorUrl(
   }
   if (url.username || url.password) return refuse("URL userinfo is not permitted");
   const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
-  if (allowed !== undefined && !hostMatches(host, allowed)) {
+  if (policy.allowedHosts !== undefined && !hostMatches(host, policy.allowedHosts)) {
     return refuse(`host '${host}' is not allowed`);
   }
-  if (isIP(host) && !isPublicVendorAddress(host)) {
-    return refuse(`host '${host}' is not a public address`);
+  if (isIP(host) && vendorAddressRejection(host, policy.allowPrivateAddresses)) {
+    return refuse(`host '${host}' is not a permitted address`);
   }
   return url;
 }
@@ -79,13 +91,14 @@ export function publicVendorLookup(
   pluginId: string,
   resolve: (host: string) => Promise<readonly { address: string; family: number }[]> =
     (host) => dnsLookup(host, { all: true, verbatim: true }),
+  allowPrivateAddresses = false,
 ): LookupFunction {
   return (host, options, callback) => {
     void resolve(host).then((addresses) => {
       let rejected = 0;
       const details: string[] = [];
       for (const { address } of addresses) {
-        const reason = vendorAddressRejection(address);
+        const reason = vendorAddressRejection(address, allowPrivateAddresses);
         if (reason === undefined) continue;
         rejected++;
         // Log only valid IP literals, never arbitrary resolver/error content.
@@ -96,7 +109,7 @@ export function publicVendorLookup(
         const summary = addresses.length
           ? `rejected ${rejected}/${addresses.length} answers [${details.join("; ")}]${rejected > details.length ? `; ${rejected - details.length} more rejected answers omitted` : ""}`
           : "no address answers";
-        callback(new WcEndpointPolicyError(pluginId, `host '${host}' did not resolve exclusively to public addresses: ${summary}`), "", 4);
+        callback(new WcEndpointPolicyError(pluginId, `host '${host}' did not resolve exclusively to ${allowPrivateAddresses ? "permitted public/private" : "public"} addresses: ${summary}`), "", 4);
         return;
       }
       if (options.all) callback(null, [...addresses]);
@@ -117,7 +130,7 @@ export function publicVendorLookup(
  * catch-all turns a thrown error into an apparent successful result. */
 export function createVendorHttp(
   pluginId: string,
-  allowedHosts: () => AllowedVendorHosts,
+  destinationPolicy: () => VendorDestinationPolicy,
 ): WcVendorHttp & { throwIfRefused(): void } {
   let refusal: WcEndpointPolicyError | undefined;
   const remember = (error: WcEndpointPolicyError): never => {
@@ -128,7 +141,8 @@ export function createVendorHttp(
     throwIfRefused() { if (refusal) throw refusal; },
     async fetch(input, init = {}) {
       try {
-        const url = validateVendorUrl(pluginId, input, allowedHosts());
+        const policy = destinationPolicy();
+        const url = validateVendorUrl(pluginId, input, policy);
         // No caller-controlled Host header, agent, lookup, proxy, TLS settings,
         // dispatcher or redirect handling may override the checked destination.
         const headers = new Headers(init.headers);
@@ -150,7 +164,7 @@ export function createVendorHttp(
             method,
             headers: Object.fromEntries(headers),
             agent: false,
-            lookup: publicVendorLookup(pluginId),
+            lookup: publicVendorLookup(pluginId, undefined, policy.allowPrivateAddresses),
             rejectUnauthorized: true,
             signal,
           }, (res) => {

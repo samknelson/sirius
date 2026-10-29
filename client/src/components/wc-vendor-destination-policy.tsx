@@ -48,7 +48,7 @@ export function WcVendorDestinationPolicy({
 
   const transportDescription = {
     "guarded-http":
-      "Guarded HTTP: HTTPS and port 443 are required, public-network checks apply, and redirects are not followed. Unrestricted policy here does not mean arbitrary network access.",
+      `Guarded HTTP: HTTPS and port 443 are required, ${policy.allowPrivateAddresses === true ? "public and ordinary private addresses are permitted" : "public-network checks apply"}, and redirects are not followed. Metadata, loopback and link-local destinations remain blocked. Unrestricted policy here does not mean arbitrary network access.`,
     unsupported:
       "Unsupported transport: the SDK or browser cannot enforce the active policy. Calls are refused before the browser is launched.",
     unguarded:
@@ -71,6 +71,9 @@ export function WcVendorDestinationPolicy({
         <dd>{policy.requiresAllowlist ? "Yes" : "No"}</dd>
         <dt className="text-muted-foreground">Selection</dt>
         <dd>{selectionLabel}</dd>
+        <dt className="text-muted-foreground">Network access</dt>
+        <dd>{policy.allowPrivateAddresses === null ? "Unavailable (invalid policy)"
+          : policy.allowPrivateAddresses ? "Public and private addresses" : "Public addresses only"}</dd>
         <dt className="text-muted-foreground">Configuration source</dt>
         <dd>
           {policy.configurationSource === null
