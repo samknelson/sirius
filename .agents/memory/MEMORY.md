@@ -157,4 +157,5 @@
 - [Primary repository intent](primary-repository-intent.md) — user identifies grievance as origin; older project documentation names a different destination, so verify rather than silently reverting.
 - [Okta app-launch URLs](saml-app-launch-urls.md) — a /home URL alone does not diagnose broken SAML; the user’s working UAT uses this pattern too.
 - [Node runtime target](node-runtime-target.md) — user chose Node 24 LTS for the upgrade from 20; keep development, CI, and production aligned rather than following the newest major.
+- [Vendor destination policy](webclient-destination-policy-direction.md) — manifest defaults and deployment overrides; enforce within existing webclient, not a parallel framework.
 - [Shared Vite upgrade ownership](vite-shared-upgrade-ownership.md) — ws path filtering rejects other listeners' sockets; verify HMR through the proxy, not a localhost screenshot.
