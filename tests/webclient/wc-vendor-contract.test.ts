@@ -219,7 +219,7 @@ describe("the wc-vendor plugin contract", () => {
       id: "cached-config", pluginKind: "wc-vendors", pluginId: fixture.id,
       enabled: true, data: {},
     });
-    setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", () => '{"cached-contract-fixture":[]}');
+    setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", () => '{"cached-contract-fixture":{"allowedHosts":[]}}');
     try {
       await expect(wcRequest({
         vendor: { configId: "cached-config" }, operation: "tests.cache.answer",

@@ -253,7 +253,7 @@ describe("the contract a caller writes against", () => {
   it("refuses an unadapted transport exactly when the administrator view says unsupported", async () => {
     const plugin = getWcVendorPlugin(TEST_PLUGIN_ID)!;
     for (const hosts of [[], ["api.example.com"]]) {
-      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", JSON.stringify({ [TEST_PLUGIN_ID]: hosts }));
+      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", JSON.stringify({ [TEST_PLUGIN_ID]: { allowedHosts: hosts } }));
       try {
         expect(describeVendorDestinationPolicy(plugin, (id) => wcVendorRegistry.has(id)))
           .toMatchObject({ transport: "unsupported", effectivePatterns: hosts });

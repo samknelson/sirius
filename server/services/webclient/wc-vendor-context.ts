@@ -23,7 +23,7 @@ import {
 } from "../maintenance-flag";
 import { wcCacheStorage } from "../../storage/wc-cache";
 import { notRecordableReason, isWcRateLimitError, isWcEndpointPolicyError } from "./refusals";
-import { assertVendorDestinationTransport, resolveVendorAllowedHosts } from "./endpoint-policy";
+import { assertVendorDestinationTransport, resolveVendorDestinationPolicy } from "./endpoint-policy";
 import { createVendorHttp } from "./vendor-http";
 import { logger } from "../../logger";
 import type {
@@ -159,7 +159,7 @@ async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendo
   }
 
   const data = (config.data ?? {}) as Record<string, unknown>;
-  const http = createVendorHttp(plugin.id, () => resolveVendorAllowedHosts(
+  const http = createVendorHttp(plugin.id, () => resolveVendorDestinationPolicy(
     plugin.id, plugin.endpointPolicy, (id) => wcVendorRegistry.has(id),
   ));
   const requirement = plugin.credential.secretName;
@@ -511,7 +511,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
   }
   const run = async () => {
     try {
-      const allowed = resolveVendorAllowedHosts(resolved.plugin.id,
+      const allowed = resolveVendorDestinationPolicy(resolved.plugin.id,
         resolved.plugin.endpointPolicy, (id) => wcVendorRegistry.has(id));
       assertVendorDestinationTransport(resolved.plugin.id, Boolean(resolved.plugin.service),
         resolved.plugin.httpTransport, allowed);

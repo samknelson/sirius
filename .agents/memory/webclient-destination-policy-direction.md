@@ -19,3 +19,26 @@ convert a security refusal into a successful, cacheable answer.
 rethrow after the handler, before the framework records counts or cache state.
 An unadapted browser/SDK must refuse active policies rather than claim to enforce
 an allowlist on only its initial URL.
+
+Private-network support must be a generic policy available to any vendor, not
+a Freeman-specific exception or environment-specific code.
+
+**Why:** the owner explicitly rejected baking a Freeman exception into code
+after the deployment's intended endpoint resolved to private addresses.
+
+**How to apply:** the owner approved an explicit per-plugin private-address
+opt-in within the existing deployment policy, defaulting to public-only with
+no individual IP/subnet lists. Continue blocking loopback,
+link-local and cloud metadata endpoints; permitting private networks is not
+permission for every non-public address.
+
+Use object-valued policy entries only; do not retain legacy array support or
+add a migration/conversion path. The private-address flag is optional and
+defaults to false.
+
+**Why:** the owner explicitly chose a breaking format change and will update
+all existing deployments manually.
+
+**How to apply:** reject legacy entry arrays clearly and update examples and
+test fixtures to the new format. Omitted plugin entries and manifest defaults
+remain valid; an empty hosts array inside a policy object still means deny-all.

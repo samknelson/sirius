@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   assertVendorDestinationTransport, describeVendorDestinationPolicy,
-  hostMatches, normalizeHostPattern, resolveVendorAllowedHosts,
+  hostMatches, normalizeHostPattern, resolveVendorDestinationPolicy,
 } from "../../server/services/webclient/endpoint-policy";
 import {
   createVendorHttp, isPublicVendorAddress, publicVendorLookup, validateVendorUrl,
@@ -11,14 +11,45 @@ import { WcEndpointPolicyError } from "../../server/services/webclient/refusals"
 
 const known = (id: string) => ["freeman", "optional", "disabled"].includes(id);
 const required = { requiresAllowlist: true, defaultAllowedHosts: ["*.freeman.com"] };
+const resolveVendorAllowedHosts = (...args: Parameters<typeof resolveVendorDestinationPolicy>) =>
+  resolveVendorDestinationPolicy(...args).allowedHosts;
+const policy = (allowedHosts: readonly string[] | undefined, allowPrivateAddresses = false) =>
+  ({ allowedHosts, allowPrivateAddresses });
 
 describe("vendor destination policy", () => {
   it.each([
+    [], ["api.example.com"], null, {}, { allowPrivateAddresses: true },
+    { allowedHosts: "api.example.com" }, { allowedHosts: [], allowPrivateAddresses: "true" },
+    { allowedHosts: [], allowPrivateAddresses: null },
+    { allowedHosts: [], unexpected: true }, { allowedHosts: [null] },
+    { allowedHosts: ["https://user:secret-canary@host"] },
+  ])("rejects invalid object-only entries: %j", (entry) => {
+    expect(() => resolveVendorDestinationPolicy("freeman", required, known,
+      JSON.stringify({ optional: entry }))).toThrow(WcEndpointPolicyError);
+  });
+
+  it.each([undefined, false, true])("shares the effective private flag with presentation: %s", (flag) => {
+    const raw = JSON.stringify({ freeman: { allowedHosts: ["*.freeman.com"], allowPrivateAddresses: flag } });
+    vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", raw);
+    try {
+      expect(resolveVendorDestinationPolicy("freeman", required, known)).toMatchObject({
+        allowedHosts: ["*.freeman.com"], allowPrivateAddresses: flag === true,
+      });
+      expect(describeVendorDestinationPolicy({
+        id: "freeman", service: "Freeman", httpTransport: "webclient", endpointPolicy: required,
+      }, known)).toMatchObject({ allowPrivateAddresses: flag === true, transport: "guarded-http" });
+      expect(resolveVendorDestinationPolicy("optional", undefined, known)).toMatchObject({
+        allowedHosts: undefined, allowPrivateAddresses: false,
+      });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it.each([
     { raw: "{}", declaration: required, selection: "manifest", status: "restricted" },
-    { raw: '{"freeman":["API.OTHER.COM."]}', declaration: required, selection: "replacement", status: "restricted" },
-    { raw: '{"freeman":[]}', declaration: required, selection: "replacement", status: "deny-all" },
+    { raw: '{"freeman":{"allowedHosts":["API.OTHER.COM."]}}', declaration: required, selection: "replacement", status: "restricted" },
+    { raw: '{"freeman":{"allowedHosts":[]}}', declaration: required, selection: "replacement", status: "deny-all" },
     { raw: "{}", declaration: undefined, selection: "none", status: "unrestricted" },
-    { raw: '{"disabled":[]}', declaration: required, selection: "manifest", status: "restricted" },
+    { raw: '{"disabled":{"allowedHosts":[]}}', declaration: required, selection: "manifest", status: "restricted" },
   ])("describes exactly the runtime policy: $selection / $status ($raw)", ({ raw, declaration, selection, status }) => {
     vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", raw);
     try {
@@ -31,6 +62,7 @@ describe("vendor destination policy", () => {
         effectivePatterns: resolveVendorAllowedHosts("freeman", declaration, known) ?? null,
         configurationSource: "environment", deploymentLocked: true,
         requiresAllowlist: declaration?.requiresAllowlist === true,
+        allowPrivateAddresses: false,
       });
     } finally { vi.unstubAllEnvs(); }
   });
@@ -57,7 +89,7 @@ describe("vendor destination policy", () => {
   });
 
   it.each(["", "__UNSET__"])("shows whole-map deployment lock and released in-app precedence: %s", (released) => {
-    setEnvironmentVariableOverrideSource(() => '{"freeman":[]}');
+    setEnvironmentVariableOverrideSource(() => '{"freeman":{"allowedHosts":[]}}');
     try {
       vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", "{}");
       const plugin = { id: "freeman", endpointPolicy: required };
@@ -80,13 +112,13 @@ describe("vendor destination policy", () => {
     }
   });
 
-  it.each(["{}", '{"optional":[]}', '{"optional":["api.example.com"]}'])(
+  it.each(["{}", '{"optional":{"allowedHosts":[]}}', '{"optional":{"allowedHosts":["api.example.com"],"allowPrivateAddresses":true}}'])(
     "reports unadapted browser/SDK support using the invocation guard: %s", (raw) => {
       vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", raw);
       try {
         const plugin = { id: "optional", service: "Browser" };
         const view = describeVendorDestinationPolicy(plugin, known);
-        const allowed = resolveVendorAllowedHosts(plugin.id, undefined, known);
+        const allowed = resolveVendorDestinationPolicy(plugin.id, undefined, known);
         if (view.transport === "unsupported") {
           expect(() => assertVendorDestinationTransport(plugin.id, true, undefined, allowed))
             .toThrow(WcEndpointPolicyError);
@@ -101,12 +133,12 @@ describe("vendor destination policy", () => {
 
   it("uses defaults, replacements, explicit empty lists and optional policies", () => {
     expect(resolveVendorAllowedHosts("freeman", required, known, "{}")).toEqual(["*.freeman.com"]);
-    expect(resolveVendorAllowedHosts("freeman", required, known, '{"freeman":["api.other.com"]}')).toEqual(["api.other.com"]);
-    expect(resolveVendorAllowedHosts("freeman", required, known, '{"freeman":[]}')).toEqual([]);
+    expect(resolveVendorAllowedHosts("freeman", required, known, '{"freeman":{"allowedHosts":["api.other.com"]}}')).toEqual(["api.other.com"]);
+    expect(resolveVendorAllowedHosts("freeman", required, known, '{"freeman":{"allowedHosts":[]}}')).toEqual([]);
     expect(resolveVendorAllowedHosts("optional", undefined, known, "{}")).toBeUndefined();
-    expect(resolveVendorAllowedHosts("optional", undefined, known, '{"optional":["api.other.com"]}')).toEqual(["api.other.com"]);
+    expect(resolveVendorAllowedHosts("optional", undefined, known, '{"optional":{"allowedHosts":["api.other.com"]}}')).toEqual(["api.other.com"]);
     expect(() => resolveVendorAllowedHosts("freeman", { requiresAllowlist: true }, known, "{}")).toThrow(WcEndpointPolicyError);
-    expect(resolveVendorAllowedHosts("freeman", required, known, '{"disabled":[]}')).toEqual(["*.freeman.com"]);
+    expect(resolveVendorAllowedHosts("freeman", required, known, '{"disabled":{"allowedHosts":[]}}')).toEqual(["*.freeman.com"]);
   });
 
   it.each(["null", "[]", "{", '{"typo":[]}', '{"freeman":null}', '{"optional":["https://evil.com"]}'])(
@@ -132,13 +164,13 @@ describe("vendor destination policy", () => {
   );
 
   it("retains the registry's deployment-before-override precedence", () => {
-    vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", '{"freeman":["deployment.freeman.com"]}');
-    setEnvironmentVariableOverrideSource(() => '{"freeman":["api.freeman.com"]}');
+    vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", '{"freeman":{"allowedHosts":["deployment.freeman.com"]}}');
+    setEnvironmentVariableOverrideSource(() => '{"freeman":{"allowedHosts":["api.freeman.com"]}}');
     try {
       expect(resolveVendorAllowedHosts("freeman", required, known)).toEqual(["deployment.freeman.com"]);
       vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", "");
       expect(resolveVendorAllowedHosts("freeman", required, known)).toEqual(["api.freeman.com"]);
-      setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", () => '{"freeman":[]}');
+      setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", () => '{"freeman":{"allowedHosts":[]}}');
       expect(resolveVendorAllowedHosts("freeman", required, known)).toEqual([]);
     } finally {
       setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", null);
@@ -149,6 +181,48 @@ describe("vendor destination policy", () => {
 });
 
 describe("socket destination safety", () => {
+  it.each(["10.248.12.15", "172.16.1.2", "192.168.1.2", "fc00::1", "fd12:3456::1"])(
+    "allows ordinary private DNS answers only with opt-in: %s", async (address) => {
+      for (const enabled of [false, true]) {
+        const answers = [{ address: "8.8.8.8", family: 4 },
+          { address, family: address.includes(":") ? 6 : 4 }];
+        const lookup = publicVendorLookup("optional", async () => answers, enabled);
+        await new Promise<void>((resolve) => lookup("api.example.com", { all: true }, (error, checked) => {
+          expect(Boolean(error)).toBe(!enabled);
+          if (enabled) expect(checked).toEqual(answers);
+          resolve();
+        }));
+      }
+    },
+  );
+  it.each(["0.0.0.0", "127.0.0.1", "100.100.100.200", "169.254.169.254",
+    "168.63.129.16", "192.0.2.1", "198.18.0.1", "224.0.0.1", "255.255.255.255",
+    "::", "::1", "::ffff:10.1.2.3", "::ffff:8.8.8.8", "fe80::1",
+    "ff02::1", "64:ff9b::a00:1", "2002:a00:1::", "2001:db8::1", "fd00:ec2::254", "fd20:ce::254"])(
+    "private opt-in never permits special destinations: %s", async (address) => {
+      const lookup = publicVendorLookup("optional", async () => [
+        { address: "10.248.12.15", family: 4 },
+        { address, family: address.includes(":") ? 6 : 4 },
+      ], true);
+      await new Promise<void>((resolve) => lookup("api.example.com", {}, (error) => {
+        expect(error).toBeInstanceOf(WcEndpointPolicyError);
+        expect(error?.message).toContain("rejected 1/2");
+        resolve();
+      }));
+    },
+  );
+  it("retains hostname and deny-all restrictions with private access", () => {
+    for (const hosts of [[], ["other.example.com"]]) {
+      expect(() => validateVendorUrl("optional", "https://api.example.com", policy(hosts, true)))
+        .toThrow(WcEndpointPolicyError);
+    }
+    expect(validateVendorUrl("optional", "https://10.1.2.3", policy(["10.1.2.3"], true)).hostname)
+      .toBe("10.1.2.3");
+    expect(() => validateVendorUrl("optional", "https://10.1.2.3", policy(["10.1.2.3"])))
+      .toThrow(WcEndpointPolicyError);
+    expect(() => validateVendorUrl("optional", "https://[fd00:ec2::254]", policy(undefined, true)))
+      .toThrow(WcEndpointPolicyError);
+  });
   it.each(["8.8.8.8", "99.86.101.78", "1.1.1.1", "2606:4700:4700::1111"])(
     "permits a public address: %s", (address) => expect(isPublicVendorAddress(address)).toBe(true),
   );
@@ -161,15 +235,15 @@ describe("socket destination safety", () => {
   it.each(["http://api.freeman.com", "https://api.freeman.com:8443", "https://user:secret@api.freeman.com",
     "https://api.freeman.com.evil.com", "https://127.1", "https://2130706433", "https://[::1]"])(
     "refuses unsafe URLs without disclosing credentials: %s", (input) => {
-      expect(() => validateVendorUrl("freeman", input, ["*.freeman.com"])).toThrow(WcEndpointPolicyError);
-      try { validateVendorUrl("freeman", input, ["*.freeman.com"]); } catch (error) {
+      expect(() => validateVendorUrl("freeman", input, policy(["*.freeman.com"]))).toThrow(WcEndpointPolicyError);
+      try { validateVendorUrl("freeman", input, policy(["*.freeman.com"])); } catch (error) {
         expect(String(error)).not.toContain("secret");
       }
     },
   );
   it("blocks an empty list even for a public URL", () => {
-    expect(() => validateVendorUrl("optional", "https://example.com", [])).toThrow(WcEndpointPolicyError);
-    expect(validateVendorUrl("optional", "https://example.com", undefined).hostname).toBe("example.com");
+    expect(() => validateVendorUrl("optional", "https://example.com", policy([]))).toThrow(WcEndpointPolicyError);
+    expect(validateVendorUrl("optional", "https://example.com", policy(undefined)).hostname).toBe("example.com");
   });
   it("checks every DNS answer and hands only checked results to the socket", async () => {
     const publicAnswers = [
@@ -265,7 +339,7 @@ describe("socket destination safety", () => {
   });
   it("remembers refusals even when a plugin catches the error; rereads live policies", async () => {
     let hosts = ["api.freeman.com"];
-    const http = createVendorHttp("freeman", () => hosts);
+    const http = createVendorHttp("freeman", () => policy(hosts));
     hosts = [];
     await expect(http.fetch("https://api.freeman.com/private?token=canary")).rejects.toThrow(WcEndpointPolicyError);
     expect(() => http.throwIfRefused()).toThrow(WcEndpointPolicyError);
