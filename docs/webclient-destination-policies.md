@@ -121,3 +121,80 @@ domain is trustworthy. It does not alter unrelated outbound clients. Keep
 credentials out of URLs and preserve existing response redaction. Vendor
 responses remain available under their established contracts only after the
 destination has passed the checks.
+
+## Diagnosing DNS refusals in the affected deployment
+
+The socket resolver refuses the **entire** answer set if any answer is
+prohibited. Its error now includes rejected IPs and classification reasons
+(at most eight, with rejected/total counts and an omission count). An empty
+answer set is reported separately. A resolver failure says `DNS resolution
+failed`, with a recognized DNS error code where available; native error text
+is never relayed. No URL paths, query strings, credentials or response bodies
+are included. This uses the socket's actual lookup, not a preflight lookup.
+
+For the reported `dev.api.freeman.com` refusal, the affected deployment's DNS
+answers have **not** been observed. Replit's deployment metadata reports no
+deployment accessible for this project; that does not establish the status of
+an externally hosted deployment. A workspace lookup is not production evidence.
+The code does not establish whether production returned a mixed answer set,
+an intentional private endpoint, or whether the deployed image contains an
+older address-classification bug.
+
+Run this DNS-only diagnostic **inside the affected running application
+container/process environment** (same network and resolver, not this workspace
+or a local laptop). It makes no API request and needs no vendor credentials:
+
+```sh
+node --input-type=module <<'JS'
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+const host = "dev.api.freeman.com";
+const timeout = setTimeout(() => {
+  console.log(JSON.stringify({ host, error: "DNS lookup timed out" }));
+  process.exit(1);
+}, 10000);
+try {
+  const answers = await lookup(host, { all: true, verbatim: true });
+  console.log(JSON.stringify({
+    observedAt: new Date().toISOString(), host, total: answers.length,
+    answers: answers.slice(0, 32).map(({ address, family }) => ({
+      address: isIP(address) ? address.split("%", 1)[0].slice(0, 64) : "[invalid address]",
+      family: family === 4 || family === 6 ? family : "invalid",
+    })),
+    omitted: Math.max(0, answers.length - 32),
+  }));
+} catch (error) {
+  const safeCodes = ["ENOTFOUND", "ENODATA", "EAI_AGAIN", "EAI_FAIL", "ETIMEOUT", "ESERVFAIL", "ECONNREFUSED"];
+  console.log(JSON.stringify({
+    host, error: "DNS resolution failed",
+    code: safeCodes.includes(error?.code) ? error.code : "unclassified",
+  }));
+  process.exitCode = 1;
+} finally { clearTimeout(timeout); }
+JS
+```
+
+Return only that output and the DNS refusal's bounded details, plus which
+running deployment/image was tested. Do not send credentials or complete vendor
+request/response logs. DNS can change between this diagnostic and a request;
+the request-time socket refusal is the authoritative evidence for that attempt.
+
+- All-public answers should pass the address guard; this does not prove TLS,
+  authorization or vendor API health.
+- A mixed public/private set remains refused even if the first answer is public.
+- If production intentionally uses private addresses, leave it blocked. The
+  owner must separately authorize and scope a private-endpoint policy decision;
+  adding a hostname allowlist entry does not authorize private network access.
+- Do not hardcode an observed IP, disable the resolver guard, or infer that the
+  connection is restored without a successful check in the affected deployment.
+
+## Offline production-format Twilio regression
+
+Run `npx vitest run tests/webclient/twilio-native-esm.test.ts` to compile just
+the regression and adapter under `/tmp` using `--packages=external` and native
+Node ESM. It exercises the installed SDK's account-list connection-check call,
+message response mapping, SDK errors, headers and diagnostic response contract.
+HTTP responses are fake and real sockets are forbidden. This catches the
+response-module default-import constructor failure that development loaders
+mask. It does not send SMS or use real credentials. Do **not** use the package
+build command for this check: that command includes database push.

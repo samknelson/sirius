@@ -156,3 +156,4 @@
 - [Node runtime target](node-runtime-target.md) — user chose Node 24 LTS for the upgrade from 20; keep development, CI, and production aligned rather than following the newest major.
 - [Vendor destination policy](webclient-destination-policy-direction.md) — manifest defaults and deployment overrides; enforce within existing webclient, not a parallel framework.
 - [Shared Vite upgrade ownership](vite-shared-upgrade-ownership.md) — ws path filtering rejects other listeners' sockets; verify HMR through the proxy, not a localhost screenshot.
+- [Native ESM vendor verification](native-esm-vendor-verification.md) — development/test interop can hide CommonJS export shapes; verify production-format adapters with fake HTTP and the installed SDK.

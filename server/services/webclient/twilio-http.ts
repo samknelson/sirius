@@ -1,5 +1,5 @@
 import RequestClient from "twilio/lib/base/RequestClient.js";
-import TwilioResponse from "twilio/lib/http/response.js";
+import type TwilioResponse from "twilio/lib/http/response.js";
 import type { WcVendorHttp } from "./vendor-http";
 
 /** Keep the SDK's API mapping, but never its independent Axios transport. */
@@ -41,9 +41,14 @@ export class WcTwilioHttpClient extends RequestClient {
     const text = await response.text();
     let value: unknown = text;
     try { value = JSON.parse(text); } catch { /* Some SDK endpoints return text. */ }
-    const answer = new TwilioResponse<TData>(
-      response.status, value as TData, Object.fromEntries(response.headers),
-    );
+    // The SDK accepts this structural contract. Its response module's CJS
+    // default export is not a constructor under native ESM (unlike tsx).
+    const answer: TwilioResponse<TData> = {
+      statusCode: response.status,
+      body: value as TData,
+      headers: Object.fromEntries(response.headers),
+      toString() { return "HTTP " + this.statusCode + " " + this.body; },
+    };
     this.lastResponse = answer;
     return answer;
   }

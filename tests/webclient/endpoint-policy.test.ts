@@ -172,10 +172,19 @@ describe("socket destination safety", () => {
     expect(validateVendorUrl("optional", "https://example.com", undefined).hostname).toBe("example.com");
   });
   it("checks every DNS answer and hands only checked results to the socket", async () => {
-    const lookup = publicVendorLookup("freeman", async () => [{ address: "8.8.8.8", family: 4 }]);
+    const publicAnswers = [
+      { address: "8.8.8.8", family: 4 }, { address: "2606:4700:4700::1111", family: 6 },
+    ];
+    const lookup = publicVendorLookup("freeman", async () => publicAnswers);
     await new Promise<void>((resolve, reject) => lookup("api.freeman.com", { all: true }, (error, answers) => {
       if (error) return reject(error);
-      expect(answers).toEqual([{ address: "8.8.8.8", family: 4 }]);
+      expect(answers).toEqual(publicAnswers);
+      resolve();
+    }));
+    await new Promise<void>((resolve, reject) => lookup("api.freeman.com", {}, (error, address, family) => {
+      if (error) return reject(error);
+      expect(address).toBe("8.8.8.8");
+      expect(family).toBe(4);
       resolve();
     }));
     const mixed = publicVendorLookup("freeman", async () => [
@@ -183,6 +192,63 @@ describe("socket destination safety", () => {
     ]);
     await new Promise<void>((resolve) => mixed("api.freeman.com", {}, (error) => {
       expect(error).toBeInstanceOf(WcEndpointPolicyError);
+      expect(error?.message).toContain("rejected 1/2 answers [127.0.0.1: loopback (127.0.0.0/8)]");
+      resolve();
+    }));
+  });
+  it.each([
+    ["10.1.2.3", "private (10.0.0.0/8)"],
+    ["169.254.169.254", "link-local/metadata"],
+    ["::ffff:8.8.8.8", "IPv4-mapped IPv6"],
+    ["fc00::1", "outside global IPv6 unicast"],
+    ["2001:db8::1", "documentation"],
+  ])("identifies the rejected DNS address and reason: %s", async (address, reason) => {
+    const lookup = publicVendorLookup("freeman", async () => [{ address, family: address.includes(":") ? 6 : 4 }]);
+    await new Promise<void>((resolve) => lookup("dev.api.freeman.com", {}, (error) => {
+      expect(error?.message).toContain(address);
+      expect(error?.message).toContain(reason);
+      resolve();
+    }));
+  });
+  it("does not include an IPv6 scope identifier in diagnostics", async () => {
+    const lookup = publicVendorLookup("freeman", async () => [{ address: "fe80::1%secret-canary", family: 6 }]);
+    await new Promise<void>((resolve) => lookup("dev.api.freeman.com", {}, (error) => {
+      expect(error?.message).toContain("fe80::1: outside global IPv6 unicast");
+      expect(error?.message).not.toContain("canary");
+      resolve();
+    }));
+  });
+  it("bounds DNS details and never relays invalid answers or native error messages", async () => {
+    const lookup = publicVendorLookup("freeman", async () => [
+      { address: "secret-canary\nhttps://user:token@host", family: 4 },
+      ...Array.from({ length: 40 }, () => ({ address: "127.0.0.1", family: 4 })),
+    ]);
+    await new Promise<void>((resolve) => lookup("dev.api.freeman.com", {}, (error) => {
+      expect(error?.message).toContain("rejected 41/41 answers");
+      expect(error?.message).toContain("[invalid address]: invalid IP address");
+      expect(error?.message).toContain("33 more rejected answers omitted");
+      expect(error?.message).not.toContain("canary");
+      expect(error!.message.length).toBeLessThan(1000);
+      resolve();
+    }));
+    for (const code of ["ENOTFOUND", "EAI_AGAIN", "secret-canary"]) {
+      const failed = publicVendorLookup("freeman", async () => {
+        throw Object.assign(new Error("https://user:secret-canary@host"), { code });
+      });
+      await new Promise<void>((resolve) => failed("dev.api.freeman.com", {}, (error) => {
+        expect(error?.message).toContain("DNS resolution failed");
+        expect(error?.message).not.toContain("canary");
+        expect(error?.message).not.toContain("rejected");
+        if (code !== "secret-canary") expect(error?.message).toContain(code);
+        resolve();
+      }));
+    }
+  });
+  it("distinguishes no DNS answers from a resolver failure", async () => {
+    const lookup = publicVendorLookup("freeman", async () => []);
+    await new Promise<void>((resolve) => lookup("dev.api.freeman.com", {}, (error) => {
+      expect(error?.message).toContain("no address answers");
+      expect(error?.message).not.toContain("DNS resolution failed");
       resolve();
     }));
   });

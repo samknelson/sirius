@@ -81,8 +81,11 @@ describe("webclient HTTP socket handoff", () => {
   it("rejects private DNS results in the socket resolver", async () => {
     fixture.lookup.mockResolvedValue([{ address: "169.254.169.254", family: 4 }]);
     const http = createVendorHttp("test", () => ["api.example.com"]);
-    await expect(http.fetch("https://api.example.com")).rejects.toBeInstanceOf(WcEndpointPolicyError);
+    await expect(http.fetch("https://api.example.com/private?token=canary"))
+      .rejects.toThrow("169.254.169.254: link-local/metadata");
     expect(() => http.throwIfRefused()).toThrow(WcEndpointPolicyError);
+    expect(() => http.throwIfRefused()).toThrow("rejected 1/1 answers");
+    try { http.throwIfRefused(); } catch (error) { expect(String(error)).not.toContain("canary"); }
   });
   it("fails safely for an invalid upstream status instead of throwing out of the stream callback", async () => {
     fixture.status = 999;
