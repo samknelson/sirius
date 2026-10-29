@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { ClerkProvider, useClerk } from "@clerk/clerk-react";
+import { ClerkProvider, useClerk } from "@clerk/react";
 import { registerClerkSignOut } from "@/contexts/AuthContext";
 import { installTimeZoneRedirection } from "@/lib/display-timezone";
 import { initializeT631ArrivalRequest } from "@/lib/t631-arrival-request";

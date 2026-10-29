@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react';
-import { SignIn, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
+import { SignIn, Show, useClerk } from '@clerk/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -250,7 +250,7 @@ export default function LoginPage() {
       key: 'clerk',
       node: (
         <>
-          <SignedOut>
+          <Show when="signed-out">
             <SignIn
               routing="hash"
               appearance={{
@@ -273,10 +273,10 @@ export default function LoginPage() {
                 Register as a Worker
               </Button>
             </div>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <ClerkNotProvisionedMessage />
-          </SignedIn>
+          </Show>
         </>
       ),
     });
