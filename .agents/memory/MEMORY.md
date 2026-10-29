@@ -9,7 +9,7 @@
 - [Component gating on generic param routes](component-gating-generic-routes.md) — generic :type/:kind/:pluginId/:typeName routes must gate component-owned data at BOTH kind and per-plugin/type level, on every verb (list filter ≠ enough).
 - [Event-notifier per-config filtering & link media](event-notifier-per-config-filter.md) — gate per-config in `shouldDispatch(ctx,configData)`; getRecipients/getMessage now also get configData; email/sms need absolute URLs, in-app relative linkUrl.
 - [T631 employer status visibility](t631-employer-status-visibility.md) — employer-facing surfaces (incl. notifications) must enforce EMPLOYER_VISIBLE_STATUSES at save time AND runtime, or they leak hidden interview statuses.
-- [Flood framework reuse for new caps](flood-framework-reuse.md) — new rate caps register a flood event (auto-tunable via flood_<name> var, auto-cleaned by cron, no migration); compose the multi-key bucket in getIdentifier; enforce with checkFlood+recordFloodEvent and fail OPEN.
+- [Flood protection rules](flood-framework-reuse.md) — shared singleton plugins; disabled/component-off always allow without counting; preserve bucket identities, failure-only placement, and fail-open behavior.
 - [Ambient request context for cross-cutting event behavior](request-context-ambient-flags.md) — carry per-request behavior flags (e.g. suppressNotifications) in the request-context ALS + check in the ONE consuming layer, not the event bus; onAfterCommit events still see the flag.
 - [Retiring a created_at that is also a tie-break](provenance-retirement-tiebreak-columns.md) — a unique constraint decides whether the tie-break can fire; with no constraint the column is business data (provenance is best-effort/deferred, never an ordering key for behaviour).
 - [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read; strip it at the storage boundary, type omit alone won't stop the runtime leak.
@@ -44,6 +44,7 @@
 - [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists); COBRA = employer siriusId "COBRA".
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
+- [Worker badge ownership](worker-badge-ownership.md) — awards derive from system activity; only denorm plugins maintain awarded rows, never manual UX assignment.
 - [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
 - [Inbound maintenance refusal ordering](inbound-maintenance-gate.md) — an always-on refusal goes at the FRONT of middleware assembly (body parsers 400/413 first, auth writes a last-used stamp); router registration must assert it.
 - [Maintenance-mode write lock + vendor refusal](maintenance-mode-write-lock.md) — read-only per pool checkout AND one guard refusing every outbound vendor call off the same import-free flag; allowInMaintenanceMode unlocks the DB only.
@@ -56,7 +57,7 @@
 - [Template preview contexts](template-preview-subjects.md) — context is raw root JSON or an entity ref; entity refs gated per token KIND (fail closed, same id checked+loaded); persona keys belong to the kind owning the leaf.
 - [Derived registry cache versioning](derived-registry-cache-versioning.md) — caches over listEnabledSync must key on registry version + component-cache revision, else validation accepts what delivery renders as unknown.
 - [Per-plugin envelope narrowing](plugin-config-envelope-per-plugin-narrowing.md) — narrow kind-level config fields per plugin via the adapter hook served by /configs/meta; lock (don't hide) unavailable choices, keep selected ones clearable.
-- [Notifier hidden template channels](notifier-hidden-template-channels.md) — hide undeliverable medium cards via x-token-hidden marker on a schema clone; never prune the group or RJSF wipes stored overrides.
+- [Notifier template eligibility](notifier-hidden-template-channels.md) — authoring ≠ delivery availability; keep schema groups to preserve stored overrides, even when an editor is hidden.
 - [Real-record preview gating](preview-record-gating.md) — kind declares record-scoped policy OR route gate; no declaration = not previewable; container-built studio context only OFFERS seeds, render re-gates every named id.
 - [Notifier token root truthfulness](notifier-token-root-truthfulness.md) — root name must BE the entity kind; advertised-but-unbuilt fields validate + preview fine and deliver blank; renames need a parsed-chain rewrite of stored templates.
 - [Shared HTML utils](shared-html-utils.md) — escape/sanitize/HTML→text live in ONE library split by dep weight (boot path imports the escape leaf, never the barrel); DOMPurify drops rel=noopener.
@@ -74,7 +75,8 @@
 - [Self-restart needs a supervisor](self-restart-supervision.md) — exit non-zero (75); a restart policy is unreadable from inside, so supervision is yes/no/unknown; prove a restart via a boot identity, not a 200.
 - [Branch-scoped CI/deploy dirs](branch-scoped-ci-files.md) — .github/deploy are per-branch, never on main; task agents silently delete them; gitignore can't untrack, `git add` no-ops; use `git checkout <branch> -- paths` / `git rm --cached`.
 - [Deploy env var sources](deploy-env-var-sources.md) — ECS container env comes ONLY from GitHub `APP_*` vars/secrets; the repo `deploy/env.<env>.json` source is referenced as if it works but is unbuilt (silent no-op).
-- [Per-recipient notifier messages](notifier-per-recipient-message.md) — token roots build once per event, so a per-recipient link means composing in getMessage (carry it on a ctx-keyed WeakMap); pre-filter SMS opt-in or every opted-out person gets a failed comm row.
+- [Per-recipient notifier messages](notifier-per-recipient-message.md) — recipient roots/variants need isolated caches and resolved send identities; preview never mints links; pre-filter SMS opt-in.
+- [EDLS worker message ownership](edls-worker-message-ownership.md) — user chose separate Template Studio messages for updates and removals; removals link to the schedule without an accept/decline prompt.
 - [Notifier comm writeback](notifier-comm-writeback.md) — senders own comm creation; onCommCreated is the only way a plugin learns its message id; fires on failures too; order single-link writes by sent-time, not write order.
 - Dialog/modal gotchas — [scroll lock vs portaled dropdowns](dialog-scroll-lock-portal-wheel.md) (stop wheel/touchmove on the list, not `<Popover modal>`) + [seeding runs in the render phase](modal-render-phase-seeding.md) (useModalSeed; an effect on `open` lands too late).
 - [Plugin config public addressing](plugin-config-public-addressing.md) — config ids are per-database, so a public URL needs a manifest-declared alias; resolve id-then-alias, refuse ambiguity at call time in the ONE shared refusal.
@@ -84,7 +86,7 @@
 - [Credential redaction in logs](audit-log-credential-redaction.md) — bearer-like values leak via TWO paths (storage before/after payload AND the API responsePreview key allowlist); log identifiers + hasX booleans, prove with a canary scan.
 - [Batch-grain logging & lost chronology](logging-batch-grain-and-lost-chronology.md) — whole-set replace: `metadataEntityId: () => undefined` (NOT mode 'none', it kills the host touch); no-provenance rows reorder by a business key; redact before-state too.
 - [Storage logging hook name conventions](storage-logging-hook-name-conventions.md) — before/after state is synthesized ONLY for create*/update*/delete* names; setX/clearX/upsert get undefined beforeState, so create-vs-update descriptions silently lie.
-- [Component migration/push parity](component-migration-push-parity.md) — the enable-path push leaves FKs UNNAMED (`<t>_<c>_fkey`) while keeping declared unique names; a creation migration must match, proven by snapshot-drop-migrate-compare.
+- [Component migration/push parity](component-migration-push-parity.md) — test fresh, enabled, retained-disabled, and missing-state upgrades; enable-path FKs use Postgres names.
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Vendor put on a shared framework by its registrar](framework-wrapping-at-registration.md) — strip the runnable half into a private map at registration (lint the accessor's importers); the lexical per-file lint goes blind, so check "only handlers reach the vendor" BACKWARDS.
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
@@ -105,6 +107,8 @@
 - [Theme colour vars hold whole colours](theme-color-var-convention.md) — `var(--chart-1)`, never `hsl(var(--chart-1))`; nested colour is dropped at computed-value time with zero warnings (invisible chart line).
 - [Counting served work](counting-served-work.md) — usage counters: flag at the handler boundary (never infer from status), count on `close` / log on `finish`, write outside the caller's tx.
 - [Cross-process boot serialization](cross-process-boot-serialization.md) — two services boot one image against one DB: bring-up is exclusive (session advisory lock), every other boot write must be atomic/23505-retry/xact-lock, every wait bounded.
+- [Component state coherency](component-commit-coherency.md) — commits, not just flag differences, invalidate owned configs; the Components status page reads storage independently.
+- [Configuration coherency boundaries](configuration-coherency-boundaries.md) — scoped participation, ambient-free reads, truthful reload/restart semantics and eventual (not acknowledged) remote convergence.
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
 - [Picker widgets inside repeatable rows](rjsf-array-item-widget-inference.md) — vendor widget inference skips array `items`; a picker in a rules list needs an explicit `uiSchema` or it renders as a text box.
 - [Alerting once from a repeating scan](repeating-scan-alert-once.md) — exactly-once is the send-once key (config+day+what+threshold), checked BEFORE the flood budget; events themselves repeat freely.
@@ -143,3 +147,14 @@
 - [Credentials in SPA entry URLs](spa-entry-url-credentials.md) — remove before app bootstrap, set initial no-referrer policy, dispatch once, and never retain in query caches or page state.
 - [Permission-dependent public response caching](permission-dependent-public-response-caching.md) — viewer-specific enrichment needs private/no-store + Vary: Cookie and a viewer-scoped browser query key.
 - [Retained assignment generations](retained-assignment-generations.md) — a durable assignment ID can represent successive fillings, even in the same crew; stale actions need the filling's generation.
+- [Node BlockList IPv4 mapping](node-blocklist-ipv4-mapping.md) — an IPv6 `::ffff:0:0/96` block also rejects ordinary IPv4 addresses in Node; don't combine it with a public-IPv4 allow check.
+- [Local WS test in split roles](local-ws-test-split-roles.md) — api-user must reach its own dispatcher for admin tests, but ordinary /api/ws traffic must remain api-ws-owned.
+- [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.
+- [Session-history boundaries](session-history-anonymous-scope.md) — user-associated capture only, no storage audit/metadata, opt-in retention; first observed values silently establish baselines.
+- [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
+- [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
+- [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.
+- [Primary repository intent](primary-repository-intent.md) — user identifies grievance as origin; older project documentation names a different destination, so verify rather than silently reverting.
+- [Okta app-launch URLs](saml-app-launch-urls.md) — a /home URL alone does not diagnose broken SAML; the user’s working UAT uses this pattern too.
+- [Node runtime target](node-runtime-target.md) — user chose Node 24 LTS for the upgrade from 20; keep development, CI, and production aligned rather than following the newest major.
+- [Shared Vite upgrade ownership](vite-shared-upgrade-ownership.md) — ws path filtering rejects other listeners' sockets; verify HMR through the proxy, not a localhost screenshot.

@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { setEnvironmentVariableOverrideSource } from "../config/env-registry";
+import { readConfigurationSnapshot } from "../storage/configuration-revisions";
 
 /**
  * DB-backed environment-variable overrides (Task #1080, redesigned per
@@ -36,6 +37,10 @@ export function isEnvOverrideVariableName(rowName: string): boolean {
 }
 
 let cache = new Map<string, string>();
+let generation = 0;
+
+/** Keep the last confirmed map usable; only prevent older loads publishing. */
+export function invalidateEnvOverrideSnapshot(): void { generation++; }
 
 /**
  * Read ONE override row before the cache exists, tolerating a database that
@@ -64,7 +69,8 @@ export async function peekEnvOverride(name: string): Promise<string | undefined>
 
 /** Reload the cache from all ENV_* rows in the variables table. */
 export async function refreshEnvOverrides(): Promise<void> {
-  const rows = await storage.variables.getByNamePrefix(ENV_OVERRIDE_PREFIX);
+  const current = ++generation;
+  const rows = await readConfigurationSnapshot(() => storage.variables.getByNamePrefix(ENV_OVERRIDE_PREFIX));
   const next = new Map<string, string>();
   for (const row of rows) {
     if (!isEnvOverrideVariableName(row.name)) continue;
@@ -72,7 +78,7 @@ export async function refreshEnvOverrides(): Promise<void> {
       next.set(row.name.slice(ENV_OVERRIDE_PREFIX.length), row.value);
     }
   }
-  cache = next;
+  if (current === generation) cache = next;
 }
 
 /** Current override map (env names → values). For the admin endpoints only. */

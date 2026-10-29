@@ -35,7 +35,9 @@ function ensureLoaded(): Map<string, FileSystemConfig> {
  * configured in the environment, instead of silent runtime 500s later.
  */
 export function initFileSystems(dbReferencedIds: string[] = []): void {
-  configs = parseFileSystemsEnv();
+  // Validate the entire candidate before changing the active snapshot or cache.
+  const candidate = parseFileSystemsEnv();
+  configs = candidate;
   providers.clear();
   const missing = dbReferencedIds.filter((id) => !configs!.has(id));
   if (missing.length > 0) {

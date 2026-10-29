@@ -2,6 +2,7 @@ import {
   createAsyncStorageValidator,
   type ValidationError
 } from '../utils/validation';
+import { isDeepStrictEqual } from "node:util";
 import { 
   edlsAssignments,
   edlsCrews,
@@ -132,6 +133,7 @@ export interface WorkerAssignmentDetails {
 }
 
 export interface AssignmentForWorkerFilters {
+  sheetId?: string;
   /** Strictly-after date bound (ymd > afterYmd), e.g. "next assignment after this sheet". */
   afterYmd?: string;
   startYmd?: string;
@@ -215,6 +217,8 @@ export interface OutOfPopulationAssignmentRow {
  * numbers the send layer would pick.
  */
 export interface SheetAssignmentSmsTarget {
+  /** Worker-facing details for the same generation and data snapshot as this target. */
+  assignment: AssignmentForWorker;
   assignmentId: string;
   crewId: string;
   generationId: string;
@@ -575,7 +579,20 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ORDER BY ea.id ASC
       `);
 
-      return result.rows as unknown as SheetAssignmentSmsTarget[];
+      const targets = result.rows as unknown as Omit<SheetAssignmentSmsTarget, "assignment">[];
+      const schedules = await this.getAssignmentsForWorkerIds(
+        [...new Set(targets.map(target => target.workerId))],
+        { sheetId, sheetStatuses: ["draft", "request", "lock", "reserved", "trash"] },
+      );
+      return targets.flatMap(target => {
+        const assignment = schedules.get(target.workerId)?.find(row =>
+          row.assignmentId === target.assignmentId &&
+          row.crewId === target.crewId && row.generationId === target.generationId &&
+          isDeepStrictEqual(row.data, target.data),
+        );
+        // A concurrent refill/edit must not be described or receipted as the old target.
+        return assignment ? [{ ...target, assignment }] : [];
+      });
     },
 
     async get(id: string): Promise<EdlsAssignment | undefined> {
@@ -957,6 +974,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           ? inArray(edlsSheets.status, filters.sheetStatuses)
           : ne(edlsSheets.status, 'trash'),
       ];
+      if (filters?.sheetId) conditions.push(eq(edlsSheets.id, filters.sheetId));
       if (filters?.afterYmd) conditions.push(gt(edlsSheets.ymd, filters.afterYmd));
       if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
       if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
@@ -995,6 +1013,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           showStatusName: optionsEdlsShowStatus.name,
           taskId: optionsEdlsTasks.id,
           taskName: optionsEdlsTasks.name,
+          classificationName: optionsClassifications.name,
+          classificationCode: optionsClassifications.code,
           jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
           jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
         })
@@ -1007,6 +1027,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
         .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
         .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
+        .leftJoin(optionsClassifications, eq(optionsClassifications.id, sql<string>`${edlsAssignments.data}->>'classificationId'`))
         .$dynamic();
 
       const rows = await (withJobGroups
@@ -1042,6 +1063,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
           showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
           task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+          classification: r.classificationName ? { name: r.classificationName, code: r.classificationCode } : null,
           accepted: r.accepted,
           data: (r.assignmentData as Record<string, unknown> | null) ?? null,
         };

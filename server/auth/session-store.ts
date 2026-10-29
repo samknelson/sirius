@@ -130,7 +130,12 @@ export class StorageSessionStore extends session.Store {
           delete (sess as any).sessionIdleReadOnlyCheck;
           return;
         }
-        if (!this.isAuthenticated(sess)) return;
+        if (!this.isAuthenticated(sess)) {
+          // Observe a persisted anonymous session's IP without renewing its
+          // expiry or creating a row for an uninitialized session.
+          await getStorage().sessions.touchSession(sid, this.getExpireTime(sess), { ipOnly: true });
+          return;
+        }
         await this.applyAuthenticatedActivity(sid, sess, settings, true);
       })
       .then(() => callback?.())

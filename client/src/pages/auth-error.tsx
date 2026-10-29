@@ -9,6 +9,12 @@ import { AlertCircle } from "lucide-react";
  * without this route those redirects fell through to the 404 page.
  */
 const ERROR_MESSAGES: Record<string, string> = {
+  saml_response_missing:
+    "The sign-in callback arrived without a SAML response. Please retry. If this continues, ask an administrator to check the identity provider's HTTP-POST callback configuration.",
+  saml_session_missing:
+    "The sign-in session could not be restored after returning from your identity provider. Please retry from this site's sign-in page, or contact an administrator.",
+  saml_handoff_failed:
+    "The sign-in handoff could not be completed. Please retry, or give the reference below to an administrator.",
   saml_failed:
     "Sign-in with your identity provider failed. The sign-in response could not be verified.",
   saml_callback_failed:

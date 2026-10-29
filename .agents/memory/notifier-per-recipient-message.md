@@ -1,23 +1,29 @@
 ---
 name: Per-recipient content in an event notifier
-description: Why a per-recipient link can't come from token templates, and how to carry per-recipient data from getRecipients to getMessage.
+description: Recipient-scoped token roots must use isolated caches and the same resolved identities as recipients and receipts.
 ---
 
-An event-notifier whose message differs PER RECIPIENT (a link keyed by that
-recipient's own row) cannot use the token-template path: the dispatcher builds
-each declared record root ONCE per config-dispatch, before the recipient loop,
-and shares them across every recipient and medium. Such a notifier composes in
-`getMessage` and its wording is therefore fixed in code.
+Use recipient-scoped roots for token values that differ per recipient. Event
+roots may share a render cache; recipient roots and message variants must not.
+Keep the recipient's resolved context distinct even when one event contacts
+several workers, and never use a recipient's home employer when the message
+means the employer of the triggering work.
 
 Resolve the per-recipient value ONCE, where the recipient list is resolved, and
-hand it to message composition — do not re-derive it per message.
+hand it to template composition — do not re-derive identity or bearer links
+inside token evaluation. A missing required recipient context skips that
+recipient rather than substituting another record.
 
 **Why:** re-deriving costs a query per recipient and can answer differently
 than the recipient list did (ordering, concurrent edits), so two recipients can
-end up with each other's link.
+end up with each other's link. Render the same assignment generations and
+values that the send's receipt guards cover, not an unrelated schedule digest.
 
 **How to apply:** any notifier where the message body is a function of the
-recipient, not only of the event.
+recipient, not only of the event. Studio event replay must be read-only:
+it may read existing credentials but must never issue or rotate them. A
+send-scoped context without a safely addressable preview record uses explicitly
+fictional examples rather than guessing a real worker.
 
 ## Pre-filter SMS recipients on opt-in
 

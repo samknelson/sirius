@@ -4,9 +4,10 @@ import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
-import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
+import { initAccessControl, registerEntityLoader, clearAccessCache } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { initializeSessionHistoryListener } from "./services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
@@ -17,10 +18,13 @@ import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
+import { onComponentCacheChange } from "./services/component-cache";
+import { refreshComponentStateForApi } from "./middleware/component-state";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
+import { observeSamlCallback } from "./auth/saml-roundtrip";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -28,7 +32,8 @@ import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
 import "./plugins/wc-vendors";
 import "./plugins/trust/eligibility";
 
-import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
+import { initializeFloodPluginSystem } from "./plugins/system/flood";
+import { migrateLegacyFloodConfigs } from "./plugins/system/flood/migrate-legacy";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import {
   reconcileDashboardPluginSystem,
@@ -55,6 +60,7 @@ import {
   isComponentEnabledSync,
 } from "./services/component-cache";
 import { runOrDeferStartupOperation } from "./services/startup-deferrals";
+import { registerPluginCatalogs } from "./plugins/_core/catalogs";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -91,10 +97,11 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
   // body must not be answered "your request is bad" when the real answer is
   // "the site is down". Scoped to the web service mount; the site itself stays
   // browsable during maintenance.
-  if (roles.has("api-ws")) {
+  if (roles.has("api-ws") || roles.has("api-user")) {
     installWebServiceMaintenanceGate(app);
   }
 
+  app.use(observeSamlCallback);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
@@ -130,7 +137,9 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
         // IP) so the endpoint remains observable without persisting its body.
         const isWcManualRun =
           /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
-        if (capturedJsonResponse && !isWcManualRun) {
+        // Oneoff preflight responses carry a single-use confirmation credential.
+        // Neither that credential nor plugin-produced run data belongs in logs.
+        if (capturedJsonResponse && !isWcManualRun && !path.startsWith("/api/oneoff/")) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {
@@ -275,6 +284,7 @@ export async function bootstrapApp(
   // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
   // without writing anything. See `server/services/bringup.ts`.
   await runSchemaBringUp();
+  initializeSessionHistoryListener(storage.sessionHistory);
 
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that
@@ -349,6 +359,10 @@ export async function bootstrapApp(
 
   // Register permissions from enabled components
   syncComponentPermissions();
+  onComponentCacheChange(() => {
+    clearAccessCache();
+    syncComponentPermissions();
+  });
   logger.info("Component permissions synced", { source: "startup" });
 
   // Initialize dispatch eligibility plugin system
@@ -445,10 +459,11 @@ export async function bootstrapApp(
   // config writes matter. The cache is generic (per-kind) and lazy; this only
   // registers its single PLUGIN_CONFIG_SAVED listener.
   {
-    const { initializePluginConfigCache } = await import(
+    const { initializePluginConfigCache, invalidateAllPluginConfigCaches } = await import(
       "./plugins/_core/plugin-config-cache"
     );
     initializePluginConfigCache();
+    onComponentCacheChange(invalidateAllPluginConfigCaches);
   }
   logger.info("Plugin-config cache initialized", { source: "startup" });
 
@@ -495,6 +510,16 @@ export async function bootstrapApp(
   initializeCronPluginSystem();
   logger.info("Cron plugins registered", { source: "startup" });
 
+  // Oneoff registrations are available before singleton config seeding. Only
+  // stale, heartbeat-less executions are marked interrupted; nothing resumes.
+  const { initializeOneoffPluginSystem } = await import("./plugins/system/oneoff");
+  initializeOneoffPluginSystem();
+  const { interruptStaleOneoffRuns } = await import("./services/oneoff-runner");
+  await runOrDeferStartupOperation("oneoff-stale-run-reconciliation", async () => {
+    await interruptStaleOneoffRuns();
+  });
+  logger.info("Oneoff plugins registered", { source: "startup" });
+
   // Register denorm plugins (kind + adapter + self-registering plugin imports)
   initializeDenormPluginSystem();
   logger.info("Denorm plugins registered", { source: "startup" });
@@ -525,15 +550,12 @@ export async function bootstrapApp(
   logger.info("Token plugins registered", { source: "startup" });
 
   // Register flood events
-  registerFloodEvents();
-  logger.info("Flood events registered", { source: "startup" });
-
-  // Load custom flood configurations from variables
-  await loadFloodConfigFromVariables();
-  logger.info("Flood configs loaded from variables", { source: "startup" });
+  initializeFloodPluginSystem();
+  logger.info("Flood plugins registered", { source: "startup" });
 
   // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
   await runOrDeferStartupOperation("singleton-plugin-config-bootstrap", async () => {
+    await migrateLegacyFloodConfigs();
     await bootstrapSingletonPluginConfigs();
   });
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
@@ -551,6 +573,10 @@ export async function bootstrapApp(
       }
     });
   }
+
+  // Refresh before auth/authorization and sync-only plugin gates on either API role.
+  // A stale process must not accept/refuse traffic using an old component selection.
+  app.use("/api", refreshComponentStateForApi);
 
   // Browser sessions and the application API belong to api-user. Web-service
   // credentials use their own authentication middleware and do not need this.
@@ -570,18 +596,23 @@ export async function bootstrapApp(
     const { registerRoutes } = await import("./routes");
     await registerRoutes(app, server);
   }
-  if (roles.has("api-ws")) {
+  // api-user also needs the dispatcher for its local-only admin test. The
+  // ownership guard lets only loopback requests with this process's private
+  // test token reach it when api-ws is not an assigned traffic role.
+  if (roles.has("api-ws") || roles.has("api-user")) {
     registerWebServiceDispatcher(app);
   }
 
   // Startup is over, so the set of declared catalogs is final. Anything
   // registering after this point is a module that failed to load in the
   // startup sequence, not a late arrival to accommodate.
+  registerPluginCatalogs();
   closeCatalogRegistration();
   logger.info("Catalog registration closed", { source: "startup" });
 
   // User API owns browser socket sessions and application background work.
   // api-ws-only containers never initialize either singleton.
+  cronScheduler.setOwnership(roles.has("api-user"));
   if (roles.has("api-user")) {
     const { getSession } = await import("./auth");
     const sessionMiddleware = getSession();
@@ -593,6 +624,10 @@ export async function bootstrapApp(
       logger.info("Cron scheduler started", { source: "startup" });
     });
   }
+
+  // One infrastructure watcher in every backend role, independent of plugin cron.
+  const { initializeConfigurationCoherency } = await import("./services/configuration-cache-registry");
+  await initializeConfigurationCoherency(roles.has("api-user"));
 
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, ShieldCheck, AlertCircle, ArrowLeft, UserPlus, CheckCircle2, Eye, EyeOff } from "lucide-react";
-import { SignUp, useUser } from "@clerk/clerk-react";
+import { SignUp, useUser } from "@clerk/react";
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -304,7 +304,7 @@ function RegisterPageInner() {
 
             <div className="flex justify-center">
               <SignUp
-                routing="virtual"
+                routing="hash"
                 fallbackRedirectUrl="/register"
                 signInUrl="/login"
                 appearance={{

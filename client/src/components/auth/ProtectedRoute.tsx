@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import AuthCheckError from './AuthCheckError';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertCircle, Shield } from 'lucide-react';
 import { Redirect, useLocation } from 'wouter';
@@ -50,7 +51,7 @@ class PolicyCheckError extends Error {
 }
 
 export default function ProtectedRoute({ children, permission, policy, component, componentAll, componentAny, entityId, tabId, entityType }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, authReady, hasPermission, hasComponent } = useAuth();
+  const { isAuthenticated, isLoading, authReady, authError, hasPermission, hasComponent } = useAuth();
   const [location] = useLocation();
 
   // Resolve access requirements from tab registry if tabId is provided
@@ -165,6 +166,7 @@ export default function ProtectedRoute({ children, permission, policy, component
     staleTime: 5 * 60 * 1000,
   });
 
+  if (authError) return <AuthCheckError />;
   // Show loading state while auth is not ready
   if (!authReady || isLoading) {
     return (

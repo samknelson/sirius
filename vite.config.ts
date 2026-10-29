@@ -36,12 +36,13 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: false,
-    ...(process.env.REPL_ID && {
-      hmr: {
+    hmr: {
+      path: "/__vite_hmr",
+      ...(process.env.REPL_ID && {
         clientPort: 443,
-        protocol: "wss",
-      },
-    }),
+        protocol: "wss" as const,
+      }),
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],

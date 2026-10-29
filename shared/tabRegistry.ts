@@ -117,6 +117,8 @@ export type TabEntityType =
    * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
    */
   | 'wc'
+  /** Denorm operations: a single admin page, not an entity record. */
+  | 'denorm'
   /**
    * The record history admin page. A single admin page, not a row, so the
    * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
@@ -166,6 +168,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
       { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/workers/{id}/dashboard', permission: 'staff' },
       { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
+      { id: 'badges', label: 'Badges', hrefTemplate: '/workers/{id}/badges', policyId: 'worker.view', component: 'worker.badges' },
       { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
       { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
@@ -491,7 +494,7 @@ export const edlsSheetTabTree: HierarchicalTab[] = [
   ] },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
-  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.assign', component: 'edls' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls', children: [
     { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
     { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
@@ -684,6 +687,7 @@ export const userTabTree: HierarchicalTab[] = [
   },
   { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/users/{id}/dashboard', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
+  { id: 'session_history', label: 'Session History', hrefTemplate: '/users/{id}/session_history', permission: 'admin', component: 'system.session_history' },
 ];
 
 /**
@@ -795,6 +799,13 @@ export const wcTabTree: HierarchicalTab[] = [
   { id: 'wc-info', label: 'Info', hrefTemplate: '/admin/wc/info', permission: 'admin' },
 ];
 
+export const DENORM_ADMIN_ENTITY_ID = 'admin';
+
+export const denormTabTree: HierarchicalTab[] = [
+  { id: 'denorm-status', label: 'Status', hrefTemplate: '/admin/denorm', permission: 'admin' },
+  { id: 'denorm-relationships', label: 'Relationships', hrefTemplate: '/admin/denorm/relationships', permission: 'admin' },
+];
+
 /**
  * Record history across the whole system: browsing what has been recorded, and
  * filling it in for records that predate the bookkeeping.
@@ -861,6 +872,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   options: optionsTabTree,
   ws: wsTabTree,
   wc: wcTabTree,
+  denorm: denormTabTree,
   record_metadata: recordMetadataTabTree,
   user_roles: userRolesTabTree,
 };

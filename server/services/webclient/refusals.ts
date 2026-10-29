@@ -21,3 +21,20 @@ export function notRecordableReason(service: string, operation: string): string 
     `(the database is not accepting writes), and this operation must not happen unrecorded.`
   );
 }
+
+/** A local refusal: never a vendor answer/failure, cache hold, or counted call. */
+export class WcRateLimitError extends Error {
+  readonly code = "WC_RATE_LIMITED";
+  readonly statusCode = 429;
+  constructor(
+    public vendorId: string, public operation: string,
+    public pluginConfigurationId: string | undefined,
+    public threshold: number, public windowSeconds: number,
+  ) {
+    super(`${vendorId} was not asked to ${operation}: a configured rate limit of ${threshold} attempts per ${windowSeconds} seconds was exceeded.`);
+    this.name = "WcRateLimitError";
+  }
+}
+export function isWcRateLimitError(error: unknown): error is WcRateLimitError {
+  return error instanceof WcRateLimitError;
+}

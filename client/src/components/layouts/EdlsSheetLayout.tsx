@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EdlsSheet } from "@shared/schema";
+import { formatEdlsSheetLabel } from "@shared/utils/edls-sheet-label";
 import { useEdlsSheetTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
@@ -13,14 +14,6 @@ import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
-}
-
-function sheetHeading(sheet: EdlsSheet): string {
-  // ymd is a date-only string; rearrange its parts without timezone conversion.
-  const [year, month, day] = sheet.ymd.split("-");
-  const title = sheet.title.trim();
-  const number = /^#?\s*(\d+)$/.exec(title);
-  return `${day}-${month}-${year} - ${number ? `#${number[1]}` : title}`;
 }
 
 interface EdlsSheetLayoutContextValue {
@@ -63,7 +56,7 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
   const activeRoot = useMemo(() => getActiveRoot(activeTab), [activeTab, getActiveRoot]);
   const subTabs = activeRoot?.children;
 
-  const heading = sheet ? sheetHeading(sheet) : undefined;
+  const heading = sheet ? formatEdlsSheetLabel(sheet) : undefined;
   usePageTitle(heading);
 
   const isLoading = sheetLoading;

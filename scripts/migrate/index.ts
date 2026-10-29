@@ -120,6 +120,8 @@ import "./core/1115_merge_wc_stats_on_configuration_delete";
 import "./core/1116_rename_btu_cardcheck_vendor";
 import "./core/1117_wc_cache_configuration";
 import "./core/1118_add_ws_clients_data";
+import "./core/1119_unify_job_runs";
+import "./core/1120_oneoff_run_state";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -185,7 +187,11 @@ import "./components/edls/007_index_assignments_by_worker_date";
 import "./components/edls/008_retain_assignments_on_crew_delete";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/worker.aat/001_create_worker_aat";
+import "./components/worker.badges/001_create_worker_badges";
 import "./components/bulk/001_drop_email_body_text";
+import "./components/system.session_history/001_create_session_history";
+import "./components/system.session_history/002_add_device_id";
+import "./components/system.session_history/003_require_user_id";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts
@@ -193,6 +199,8 @@ import "./components/bulk/001_drop_email_body_text";
 // reserved for baselining (>= 1000). They are idempotent on re-run. See
 // `replit.md` → "Baselining a deployment" for the full procedure.
 //
+import "./core/1121_configuration_revisions";
+import "./core/1122_flood_configuration_identity";
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
 import "./baseline/sirius-dev-20260704";

@@ -94,49 +94,51 @@ export async function backfillAllDenorm(
     // sweep — the remaining plugins still get their chance this run.
     try {
       const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", pluginId);
-      const config = configs[0];
-      if (!config) {
+      if (!configs.length) {
         perPlugin.push({ pluginId, enqueued: 0, deleted: 0, skipped: "no-config" });
         continue;
       }
-      if (config.enabled === false) {
+      const enabledConfigs = configs.filter(config => config.enabled !== false);
+      if (!enabledConfigs.length) {
         perPlugin.push({ pluginId, enqueued: 0, deleted: 0, skipped: "config-disabled" });
         continue;
       }
-
       let enqueued = 0;
-      if (plugin.backfill) {
-        const staleIds = await plugin.backfill(config.id, limit);
-        if (staleIds.length > 0) {
-          if (mode === "live") {
-            enqueued = await storage.denorm.insertStaleBatch(
-              staleIds.map((entityId) => ({
-                entityId,
-                entityType: plugin.entityType,
-                configId: config.id,
-              })),
-            );
-          } else {
-            enqueued = staleIds.length;
-          }
-        }
-      }
-
       let deleted = 0;
-      if (plugin.findWidows) {
-        const widowIds = await plugin.findWidows(config.id, limit);
-        if (widowIds.length > 0) {
-          if (mode === "live") {
-            deleted = await storage.denorm.deleteByEntityIdsForConfig(config.id, widowIds);
-          } else {
-            deleted = widowIds.length;
+      const errors: string[] = [];
+      for (const config of enabledConfigs) {
+        try {
+          if (plugin.backfill && enqueued < limit) {
+            const staleIds = await plugin.backfill(config.id, limit - enqueued, config);
+            if (staleIds.length > 0) {
+              enqueued += mode === "live"
+                ? await storage.denorm.insertStaleBatch(staleIds.map(entityId => ({
+                    entityId, entityType: plugin.entityType, configId: config.id,
+                  })))
+                : staleIds.length;
+            }
           }
+          if (plugin.findWidows && deleted < limit) {
+            const widowIds = await plugin.findWidows(config.id, limit - deleted, config);
+            if (widowIds.length > 0) {
+              deleted += mode === "live"
+                ? await storage.denorm.deleteByEntityIdsForConfig(config.id, widowIds)
+                : widowIds.length;
+            }
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          errors.push(`${config.id}: ${message}`);
+          logger.error("Denorm backfill failed for configuration", {
+            service: "denorm-backfill", pluginId, configId: config.id, error: message,
+          });
         }
       }
-
       totalEnqueued += enqueued;
       totalDeleted += deleted;
-      perPlugin.push({ pluginId, enqueued, deleted });
+      perPlugin.push({ pluginId, enqueued, deleted,
+        ...(errors.length ? { skipped: "error" as const, error: errors.join("; ") } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Denorm backfill failed for plugin ${pluginId}`, {

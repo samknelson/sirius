@@ -32,36 +32,40 @@ export function registerRecordGoRoutes(
   requireAuth: AuthMiddleware,
   authorizeRecord?: AuthorizeRecord,
 ): void {
-  app.get("/go/:id", requireAuth, async (req, res) => {
-    const resolution = await resolveRecordGoIdentifier(req.params.id);
-    if (resolution.kind === "resolved") {
+  // /go may be served by a separate static process. The SPA resolves through
+  // /api so split deployments reach the user API, not the static fallback.
+  app.get(["/go/:id", "/api/go/:id"], requireAuth, async (req, res, next) => {
+    const isApi = req.path.startsWith("/api/");
+    res.set("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    const sendError = (title: string, message: string) => {
+      if (isApi) return res.status(404).json({ title, message });
+      return sendGoError(res, 404, title, message);
+    };
+
+    try {
+      const resolution = await resolveRecordGoIdentifier(req.params.id);
       if (
-        !authorizeRecord ||
-        !recordGoAccessRequirement(resolution.metadata.contextId) ||
-        !(await authorizeRecord(req, resolution))
+        resolution.kind === "resolved" &&
+        authorizeRecord &&
+        recordGoAccessRequirement(resolution.metadata.contextId) &&
+        await authorizeRecord(req, resolution)
       ) {
-        return sendGoError(
-          res,
-          404,
-          "Record not found",
-          "That identifier is not a known record id, metadata id, or record sequence.",
+        if (isApi) return res.json({ href: resolution.href });
+        return res.redirect(302, resolution.href);
+      }
+      if (resolution.kind === "not_found" && resolution.reason === "no_page") {
+        return sendError(
+          "This record has no page",
+          "The identifier matched a record, but that record type is only available through another screen.",
         );
       }
-      return res.redirect(302, resolution.href);
-    }
-    if (resolution.reason === "no_page") {
-      return sendGoError(
-        res,
-        404,
-        "This record has no page",
-        "The identifier matched a record, but that record type is only available through another screen.",
+      return sendError(
+        "Record not found",
+        "That identifier is not a known record id, metadata id, or record sequence.",
       );
+    } catch (error) {
+      next(error);
     }
-    return sendGoError(
-      res,
-      404,
-      "Record not found",
-      "That identifier is not a known record id, metadata id, or record sequence.",
-    );
   });
 }

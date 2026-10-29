@@ -71,6 +71,7 @@ export const configSections: NavSection[] = [
       { path: "/config/components", label: "Components", icon: Package, testId: "nav-config-components", permission: "admin" },
       { path: "/config/catalogs", label: "Catalogs", icon: BookOpen, testId: "nav-config-catalogs", permission: "admin" },
       { path: "/admin/denorm", label: "Denorm", icon: RefreshCw, testId: "nav-config-denorm", permission: "admin" },
+      { path: "/admin/oneoff", label: "One-off Jobs", icon: Zap, testId: "nav-config-oneoff", permission: "admin" },
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/file-browser", label: "File Browser", icon: FolderOpen, testId: "nav-config-file-browser", permission: "admin" },
       { path: "/config/entity-files", label: "Entity Files", icon: FolderOpen, testId: "nav-config-entity-files", permission: "admin" },

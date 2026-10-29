@@ -1,5 +1,6 @@
 import { edlsSheets } from "../../../../shared/schema/edls/schema";
 import { registerTokenPlugin } from "../registry";
+import "./edls-worker";
 
 /**
  * Token descriptor for the EDLS sheet entity kind, used by the

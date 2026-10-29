@@ -4,6 +4,7 @@ import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-quer
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import AuthCheckError from "@/components/auth/AuthCheckError";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
@@ -11,7 +12,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import {
@@ -37,17 +38,7 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const RecordGoPage = lazy(() => import("@/pages/record-go"));
-function RecordGoResolverRoute() {
-  const navigationStarted = useRef(false);
-
-  useEffect(() => {
-    if (navigationStarted.current) return;
-    navigationStarted.current = true;
-    window.location.assign(window.location.href);
-  }, []);
-
-  return <PageLoader />;
-}
+const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
@@ -96,6 +87,7 @@ const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerBadges = lazy(() => import("@/pages/workers/badges"));
 const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
 const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
@@ -245,6 +237,7 @@ const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-dele
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
 const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
+const UserSessionHistory = lazy(() => import("@/pages/admin/user-session-history"));
 
 const UserDashboardPage = lazy(() => import("@/pages/admin/user-dashboard"));
 const UserEmail = lazy(() => import("@/pages/admin/user-email"));
@@ -274,7 +267,6 @@ const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
 const PoliciesPage = lazy(() => import("@/pages/config/users/policies"));
 const SessionsPage = lazy(() => import("@/pages/sessions"));
 const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
-const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
@@ -373,7 +365,9 @@ const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-i
 const FileBrowserPage = lazy(() => import("@/pages/admin/file-browser"));
 const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-detail"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
+const DenormRelationshipsPage = lazy(() => import("@/pages/admin/denorm").then(m => ({ default: m.DenormRelationshipsPage })));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
+const OneoffAdminPage = lazy(() => import("@/pages/admin/oneoff"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const WcStatusPage = lazy(() => import("@/pages/admin/wc-status"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
@@ -536,7 +530,7 @@ function T631ArrivalRoute() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authReady, authError } = useAuth();
   const [location, setLocation] = useLocation();
 
   // Check if bootstrap is needed - only for unauthenticated users
@@ -546,13 +540,13 @@ function Router() {
   }>({
     queryKey: ["/api/bootstrap/needed"],
     retry: false,
-    enabled: !isAuthenticated && !isLoading,
+    enabled: !isAuthenticated && authReady,
   });
 
   // Redirect to bootstrap page if needed (only for unauthenticated users)
   useEffect(() => {
     // Skip redirect logic for authenticated users - they don't need bootstrap
-    if (isAuthenticated) return;
+    if (isAuthenticated || !authReady || location === "/auth-error") return;
     
     if (!isBootstrapLoading && bootstrapData) {
       if (bootstrapData.needed && location !== "/bootstrap") {
@@ -561,10 +555,13 @@ function Router() {
         setLocation("/login");
       }
     }
-  }, [bootstrapData, isBootstrapLoading, location, setLocation, isAuthenticated]);
+  }, [bootstrapData, isBootstrapLoading, location, setLocation, isAuthenticated, authReady]);
 
   // Show loading while checking auth or bootstrap status (for unauthenticated users only)
-  const showLoading = isLoading || (!isAuthenticated && isBootstrapLoading);
+  // Server error explanations must remain reachable even if session reads fail.
+  if (authError && location !== "/auth-error") return <AuthCheckError />;
+  const showLoading = location !== "/auth-error" &&
+    (isLoading || !authReady || (!isAuthenticated && isBootstrapLoading));
   if (showLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
@@ -964,6 +961,14 @@ function Router() {
         <ProtectedRoute tabId="bans" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBans />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/badges">
+        <ProtectedRoute tabId="badges" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBadges />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2662,7 +2667,7 @@ function Router() {
       <Route path="/admin/users/flood-events/config">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <FloodEventsConfigPage />
+            <Redirect to="/admin/plugin-configs/flood" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3808,6 +3813,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/admin/denorm/relationships">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormRelationshipsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/oneoff">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OneoffAdminPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/denorm/:plugin_config_id">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -4063,6 +4088,14 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="user">
           <AuthenticatedLayout>
             <UserLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/session_history">
+        <ProtectedRoute tabId="session_history" entityType="user">
+          <AuthenticatedLayout>
+            <UserSessionHistory />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

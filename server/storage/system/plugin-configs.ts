@@ -13,6 +13,7 @@ import {
   type PluginConfigWcVendors,
   type PluginConfigEventNotifier,
   type PluginConfigCron,
+  type PluginConfigFlood,
 } from "@shared/schema";
 import { eq, and, type SQL } from "drizzle-orm";
 // Import the cycle-safe `_core` submodule directly (NOT the `_core/index.ts`
@@ -20,6 +21,7 @@ import { eq, and, type SQL } from "drizzle-orm";
 import { isSingletonPluginType } from "../../plugins/_core/kinds";
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
+import { notifyLocalConfigurationCommit } from "../../services/configuration-cache-registry";
 import {
   createChargeSubsidiaryStorage,
   createBenefitEligibilitySubsidiaryStorage,
@@ -29,6 +31,7 @@ import {
   createWcVendorsSubsidiaryStorage,
   createEventNotifierSubsidiaryStorage,
   createCronSubsidiaryStorage,
+  createFloodSubsidiaryStorage,
   createTrustProviderEdiSubsidiaryStorage,
   type SubsidiaryStorage,
 } from "./plugin-configs-subsidiary";
@@ -80,6 +83,7 @@ function emitConfigSaved(
   operation: "create" | "update" | "delete",
 ): void {
   onAfterCommit(() => {
+    notifyLocalConfigurationCommit();
     eventBus
       .emit(EventType.PLUGIN_CONFIG_SAVED, { kind, id, operation })
       .catch((err) => {
@@ -107,6 +111,7 @@ export type PluginConfigSubsidiary =
   | PluginConfigWcVendors
   | PluginConfigEventNotifier
   | PluginConfigCron
+  | PluginConfigFlood
   | null;
 
 /**
@@ -259,6 +264,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "wc-vendors": createWcVendorsSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     cron: createCronSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    flood: createFloodSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "trust-provider-edi": createTrustProviderEdiSubsidiaryStorage() as SubsidiaryStorage<any, any>,
   };
 

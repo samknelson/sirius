@@ -12,7 +12,8 @@ import {
   workers,
 } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
-import { formatYmd, getTodayYmd } from "@shared/utils/date";
+import { getTodayYmd } from "@shared/utils/date";
+import { formatEdlsSheetLabel } from "@shared/utils/edls-sheet-label";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import { isComponentEnabledSync } from "../../../services/component-cache";
 import { registerQuicksearchPlugin } from "../registry";
@@ -286,14 +287,14 @@ export const edlsSheetQuicksearchPlugin: QuicksearchPlugin = {
         idTypeName: r.idTypeName ?? null,
       };
 
-      const subtitleParts: string[] = [formatYmd(row.ymd, "short")];
+      const subtitleParts: string[] = [];
       if (row.departmentName) subtitleParts.push(row.departmentName);
       if (row.jobGroupName) subtitleParts.push(row.jobGroupName);
       if (row.facilityName) subtitleParts.push(row.facilityName);
 
       return {
         id: row.id,
-        title: row.title,
+        title: formatEdlsSheetLabel(row),
         subtitle: subtitleParts.join(" · "),
         badges: [STATUS_LABELS[row.status] ?? row.status],
         matchedOn: describeMatch(row),

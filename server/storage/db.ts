@@ -367,6 +367,18 @@ async function applySessionTimeZone(client: any): Promise<void> {
  * same borrower afterward, preserving transaction and release ownership.
  */
 const rawPoolConnect = poolInstance.connect.bind(poolInstance);
+const checkoutInitializers = new Set<(client: pg.PoolClient) => Promise<void>>();
+
+/** Session controls must settle before a client is delivered to its borrower. */
+export function registerPoolCheckoutInitializer(initializer: (client: pg.PoolClient) => Promise<void>): void {
+  checkoutInitializers.add(initializer);
+}
+
+async function initializeCheckout(client: pg.PoolClient): Promise<void> {
+  await applySessionTimeZone(client);
+  for (const initializer of checkoutInitializers) await initializer(client);
+}
+
 (poolInstance as any).connect = (callback?: (...args: any[]) => void) => {
   if (callback) {
     return rawPoolConnect((error: Error | undefined, client: any, release: any) => {
@@ -374,12 +386,16 @@ const rawPoolConnect = poolInstance.connect.bind(poolInstance);
         callback(error, client, release);
         return;
       }
-      void applySessionTimeZone(client).then(() => callback(undefined, client, release));
+      void initializeCheckout(client).then(
+        () => callback(undefined, client, release),
+        error => { release(error); callback(error); },
+      );
     });
   }
 
   return rawPoolConnect().then(async (client: any) => {
-    await applySessionTimeZone(client);
+    try { await initializeCheckout(client as pg.PoolClient); }
+    catch (error) { client.release(true); throw error; }
     return client;
   });
 };

@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const getByKindAndPlugin = vi.fn();
+const getByKind = vi.fn();
 const getConfig = vi.fn();
 const getPlugin = vi.fn();
 const getEnvironmentVariable = vi.fn();
@@ -22,6 +23,7 @@ const componentEnabled = vi.fn();
 vi.mock("../../server/storage", () => ({
   storage: {
     pluginConfigs: {
+      getByKind: (kind: string) => getByKind(kind),
       get: (id: string) => getConfig(id),
       getByKindAndPlugin: (kind: string, pluginId: string) =>
         getByKindAndPlugin(kind, pluginId),
@@ -62,6 +64,8 @@ const {
   describeWcVendor,
   WcVendorNoDefaultError,
   WcVendorAmbiguousDefaultError,
+  getWcVendorOperationAvailability,
+  hasWcVendorOperation,
 } = await import("../../server/services/webclient/wc-vendor-context");
 
 /** Ask for the vendor's default connection the way a caller that never chose one does. */
@@ -87,6 +91,7 @@ function listing(configs: ReturnType<typeof config>[]) {
 
 beforeEach(() => {
   getByKindAndPlugin.mockReset();
+  getByKind.mockReset();
   getConfig.mockReset();
   getPlugin.mockReset();
   getEnvironmentVariable.mockReset();
@@ -98,6 +103,30 @@ beforeEach(() => {
     name: "Teamsters 631",
     credential: { secretName: "required" },
     operations: {},
+  });
+});
+
+describe("read-only delivery operation availability", () => {
+  it("requires one enabled, declared, assigned, component-available provider without reading credentials", async () => {
+    getPlugin.mockReturnValue({ operations: { "communications.sms.send": {} } });
+    const assigned = (id: string, enabled = true) => ({
+      ...config(id, enabled),
+      data: { operations: ["communications.sms.send"] },
+    });
+    getByKind.mockResolvedValue([config("unassigned", true), assigned("disabled", false)]);
+    await expect(getWcVendorOperationAvailability("communications.sms.send")).resolves.toBe("unassigned");
+    getByKind.mockResolvedValue([assigned("a")]);
+    await expect(hasWcVendorOperation("communications.sms.send")).resolves.toBe(true);
+    componentEnabled.mockResolvedValue(false);
+    await expect(getWcVendorOperationAvailability("communications.sms.send")).resolves.toBe("component-disabled");
+    componentEnabled.mockResolvedValue(true);
+    getByKind.mockResolvedValue([assigned("a"), assigned("b")]);
+    await expect(getWcVendorOperationAvailability("communications.sms.send")).resolves.toBe("ambiguous");
+    await expect(hasWcVendorOperation("communications.sms.send")).resolves.toBe(false);
+    getPlugin.mockReturnValue({ operations: {} });
+    await expect(getWcVendorOperationAvailability("communications.sms.send")).resolves.toBe("unassigned");
+    expect(getEnvironmentVariable).not.toHaveBeenCalled();
+    expect(getConfig).not.toHaveBeenCalled();
   });
 });
 

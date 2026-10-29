@@ -32,6 +32,8 @@ import type { Flood } from "@shared/schema";
 
 interface FloodEventWithName extends Flood {
   identifierName?: string | null;
+  pluginConfigurationId: string;
+  configurationName?: string | null;
 }
 
 export default function FloodEventsPage() {
@@ -187,7 +189,7 @@ export default function FloodEventsPage() {
                 Events
               </TabsTrigger>
               <TabsTrigger value="config" asChild>
-                <Link href="/admin/users/flood-events/config" data-testid="tab-flood-config">
+                <Link href="/admin/plugin-configs/flood" data-testid="tab-flood-config">
                   Configuration
                 </Link>
               </TabsTrigger>
@@ -205,6 +207,7 @@ export default function FloodEventsPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Event Type</TableHead>
+                  <TableHead>Configuration</TableHead>
                   <TableHead>Identifier</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Expires</TableHead>
@@ -219,6 +222,11 @@ export default function FloodEventsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{event.event}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/admin/plugin-configs/flood?configId=${encodeURIComponent(event.pluginConfigurationId)}`}>
+                        <a className="text-primary hover:underline">{event.configurationName || event.pluginConfigurationId}</a>
+                      </Link>
                     </TableCell>
                     <TableCell>
                       {event.identifierName ? (

@@ -15,6 +15,8 @@ export const cronPluginRegistry = new PluginRegistry<CronPlugin, CronManifestEnt
   getMetadata: (p) => p.metadata,
   toManifestEntry: (p) => ({
     ...p.metadata,
+    defaultSchedule: p.defaultSchedule,
+    defaultEnabled: p.defaultEnabled,
     configSchema: p.configSchema,
     uiSchema: p.uiSchema,
   }),
@@ -36,7 +38,7 @@ export function getCronPlugin(id: string): CronPlugin | undefined {
  * Execute a registered cron plugin and emit the standard success/failure log
  * lines (service `cron-<id>`), preserving the logging contract the legacy
  * `CronJobRegistry.execute` provided. The scheduler owns run-record bookkeeping
- * (`cron_job_runs`); this helper only runs the plugin and logs its result.
+ * (`job_runs`); this helper only runs the plugin and logs its result.
  */
 export async function executeCronPlugin(
   id: string,

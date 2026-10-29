@@ -4,6 +4,20 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Run & Operate
 
+-   **Runtime:** Node **24.22.1** (LTS), npm **11.19.1** (bundled).
+    `.node-version` and `package.json` record the exact supported versions.
+    Use Replit's standard Node 24 module. The owner selected its supplied
+    patch rather than custom provisioning solely to obtain 24.22.2.
+    The existing `stable-25_05` channel is unchanged.
+    Reload the environment after changes; `node -v` and
+    `npm -v` must report those versions before installing with `npm ci`.
+    Docker pins both Bookworm stages to the same Node patch; Freeman CI
+    pins are maintained separately on their owning branches, using local
+    Git worktrees without switching this workspace away from `main`.
+    Source changes
+    alone do not upgrade a deployed service: its image must be rebuilt
+    and deployed separately.
+
 -   **Starting the project runs the app, and nothing else.** No check runs
     alongside it.
 
@@ -106,6 +120,16 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     from it
 -   **Generated frontend output**: `dist/public/` is build output and must not
     be edited or used as a source location
+-   **Disposable output**: browser-verification bundles, screenshots, and
+    exported task/report copies belong outside the repository in uniquely
+    allocated project-specific OS temporary directories (for example,
+    `mkdtemp(path.join(tmpdir(), "sirius-verification-"))`). Report the retained
+    output path, including on failure. Temporary storage is not durable
+    archival storage. Do not recreate root `generated-artifacts/`, `exports/`,
+    or `screenshots/`.
+-   **Maintained documentation and assets**: deliberately retained documentation
+    belongs in `docs/`; application assets belong in the source locations
+    above. These are maintained inputs, not disposable output.
 -   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
 -   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
 -   **Plugin Framework**: shared base `server/plugins/_core/` (kind
@@ -361,6 +385,10 @@ The rest of `scripts/` is split by who runs it and when:
     signed-document sanitize audit. Run via
     `npx tsx scripts/tools/<name>.ts`.
 -   `scripts/oneoffs/` — one-time-use scripts, as above.
+
+These directories hold executable source, not its generated output. Keep
+reusable one-off script entrypoints in `scripts/oneoffs/`, but write their
+disposable results to unique OS temporary directories as described above.
 
 ## A regression test must earn its place
 

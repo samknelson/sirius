@@ -1,4 +1,4 @@
-import { PluginRegistry } from "../_core";
+import { PluginRegistry } from "../_core/registry";
 import {
   registerUncachedWcVendorRequest,
   type WcVendorRequestArgs,

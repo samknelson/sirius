@@ -785,9 +785,12 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
   },
   "server/modules/webservices/test-request-http.ts": {
     executeWsTestHttp:
-      "An admin-entered test destination cannot be a registered vendor operation. The " +
-      "transport pins vetted public DNS addresses, refuses redirects and private targets, " +
+      "An admin web-service test cannot be a registered vendor operation. The " +
+      "transport accepts only local dispatcher paths, refuses redirects, " +
       "and calls the shared maintenance refusal before any request is sent.",
+    sendLocalTestRequest:
+      "The HTTP request executor inside executeWsTestHttp only contacts the " +
+      "local dispatcher after the shared maintenance refusal and path check.",
   },
   "server/services/files/providers/s3.ts": {
     constructor:

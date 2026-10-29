@@ -67,8 +67,8 @@ import {
   fileLoggingConfig,
 } from "./files";
 import {
-  type CronJobRunStorage,
-  createCronJobRunStorage,
+  type JobRunStorage,
+  createJobRunStorage,
 } from "./system/cron";
 import {
   type PluginConfigStorage,
@@ -114,6 +114,7 @@ import {
 } from "./system/entity-metadata-seed";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
+import { type WorkerBadgesDenormStorage, createWorkerBadgesDenormStorage } from "./system/worker-badges-denorm";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
@@ -133,6 +134,7 @@ import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, card
 import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig, setCardcheckStorageDeps } from "./cardchecks";
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./system/sessions";
+import { type SessionHistoryStorage, createSessionHistoryStorage } from "./system/session-history";
 import { type FloodStorage, createFloodStorage } from "./system/flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
 import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch/jobs";
@@ -243,10 +245,11 @@ export interface IStorage {
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
   entityFiles: EntityFilesStorage;
-  cronJobRuns: CronJobRunStorage;
+  jobRuns: JobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
+  workerBadgesDenorm: WorkerBadgesDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   ebs: EbsStorage;
@@ -266,6 +269,7 @@ export interface IStorage {
   cardchecks: CardcheckStorage;
   esigs: EsigStorage;
   sessions: SessionStorage;
+  sessionHistory: SessionHistoryStorage;
   flood: FloodStorage;
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
@@ -369,10 +373,11 @@ export class DatabaseStorage implements IStorage {
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
   entityFiles: EntityFilesStorage;
-  cronJobRuns: CronJobRunStorage;
+  jobRuns: JobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
+  workerBadgesDenorm: WorkerBadgesDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   ebs: EbsStorage;
@@ -392,6 +397,7 @@ export class DatabaseStorage implements IStorage {
   cardchecks: CardcheckStorage;
   esigs: EsigStorage;
   sessions: SessionStorage;
+  sessionHistory: SessionHistoryStorage;
   flood: FloodStorage;
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
@@ -554,7 +560,7 @@ export class DatabaseStorage implements IStorage {
       createEntityFilesStorage(),
       entityFilesLoggingConfig,
     );
-    this.cronJobRuns = createCronJobRunStorage();
+    this.jobRuns = createJobRunStorage();
     this.pluginConfigs = withStorageLogging(
       createPluginConfigStorage(),
       pluginConfigLoggingConfig,
@@ -562,6 +568,7 @@ export class DatabaseStorage implements IStorage {
     // No logging for denorm - high-volume internal workflow state churn.
     this.denorm = createDenormStorage();
     this.workerMshDenorm = createWorkerMshDenormStorage();
+    this.workerBadgesDenorm = createWorkerBadgesDenormStorage();
     this.workerWshDenorm = createWorkerWshDenormStorage();
     this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
     // No logging for ebs - internal scheduled-event churn maintained by plugins.
@@ -636,6 +643,8 @@ export class DatabaseStorage implements IStorage {
       createSessionStorage(),
       sessionLoggingConfig,
     );
+    // Internal observations: no audit logging and no entity metadata.
+    this.sessionHistory = createSessionHistoryStorage();
     this.flood = createFloodStorage();
     this.events = withStorageLogging(createEventStorage(), eventLoggingConfig);
     this.eventOccurrences = withStorageLogging(createEventOccurrenceStorage(), eventOccurrenceLoggingConfig);

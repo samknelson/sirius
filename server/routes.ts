@@ -114,6 +114,7 @@ import { registerEntityNotesRoutes } from "./modules/entity-notes";
 import { assertNoteContextTablesComplete } from "./storage/entity-notes-context-tables";
 import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
+import { registerWorkerBadgesRoutes } from "./modules/workers/badges";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
@@ -204,7 +205,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/auth/user - Get current user from database
-  app.get("/api/auth/user", requireAuth, async (req, res) => {
+  app.get("/api/auth/user", (_req, res, next) => {
+    res.set("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    next();
+  }, requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       const session = req.session as any;
@@ -461,6 +466,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
+  const { registerOneoffRoutes } = await import("./modules/system/oneoff");
+  registerOneoffRoutes(app, requireAuth);
 
   // Register event bus introspection routes (debug component)
   registerEventBusIntrospectRoutes(app);
@@ -1648,6 +1655,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
+  registerWorkerBadgesRoutes(app, requireAuth);
 
   // Register worker relations routes (handles all access control internally)
   registerWorkerRelationsRoutes(app, requireAuth, requireAccess);

@@ -1,4 +1,5 @@
 export { DatabaseStorage, type IStorage, storage } from "./database";
+export { createWorkerBadgesDenormStorage, type WorkerBadgesDenormStorage } from "./system/worker-badges-denorm";
 export { type VariableStorage, createVariableStorage } from "./system/variables";
 export { type UserStorage, createUserStorage } from "./users";
 export { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";

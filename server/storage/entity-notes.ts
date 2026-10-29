@@ -1,4 +1,6 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
+import { eventBus, EventType } from "../services/event-bus";
+import { logger } from "../logger";
 import {
   entityNotes,
   users,
@@ -9,6 +11,20 @@ import {
 import { and, desc, eq, getTableName, isNull, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 import { noteContextTables, isNoteContextAvailable } from "./entity-notes-context-tables";
+
+function emitNoteChanged(
+  event: EventType.ENTITY_NOTE_SAVE_AFTER | EventType.ENTITY_NOTE_DELETE_AFTER,
+  noteId: string,
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(event, { noteId }).catch(error => {
+      logger.error("Failed to announce a committed note change", {
+        service: "entity-notes-storage", event, noteId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  });
+}
 
 /** A note plus the display fields the notes tab renders alongside it. */
 export interface EntityNoteWithDetails extends EntityNote {
@@ -163,6 +179,7 @@ export function createEntityNotesStorage(): EntityNotesStorage {
     async create(note: InsertEntityNote): Promise<EntityNote> {
       const client = getClient();
       const [created] = await client.insert(entityNotes).values(note as any).returning();
+      emitNoteChanged(EventType.ENTITY_NOTE_SAVE_AFTER, created.id);
       return created;
     },
 
@@ -173,12 +190,14 @@ export function createEntityNotesStorage(): EntityNotesStorage {
         .set(note as any)
         .where(eq(entityNotes.id, id))
         .returning();
+      if (updated) emitNoteChanged(EventType.ENTITY_NOTE_SAVE_AFTER, updated.id);
       return updated;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(entityNotes).where(eq(entityNotes.id, id)).returning();
+      if (result.length) emitNoteChanged(EventType.ENTITY_NOTE_DELETE_AFTER, id);
       return result.length > 0;
     },
 

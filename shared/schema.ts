@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, bigserial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, bigserial, bigint, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { isValidYmd, type Ymd } from "./utils/date";
@@ -568,6 +568,12 @@ export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
   // table order, so any other declared order false-positives on db-push runs.
   uniqueWorkerYearMonth: unique("trust_wmb_scan_queue_worker_id_year_month_unique").on(table.workerId, table.month, table.year),
 }));
+
+/** Infrastructure state, not a user-maintained record or audit/provenance entity. */
+export const configurationRevisions = pgTable("configuration_revisions", {
+  scope: text("scope").primaryKey(),
+  revision: bigint("revision", { mode: "bigint" }).notNull().default(sql`0`),
+});
 
 export const variables = pgTable("variables", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1314,6 +1320,13 @@ export {
 } from "./schema/system/sftp-client-schema";
 
 export {
+  sessionHistory,
+  insertSessionHistorySchema,
+  type SessionHistory,
+  type InsertSessionHistory,
+} from "./schema/system/session-history-schema";
+
+export {
   pluginConfigsTrustProviderEdi,
   insertPluginConfigTrustProviderEdiSchema,
   type PluginConfigTrustProviderEdi,
@@ -1479,6 +1492,17 @@ export {
   type WorkerSkill,
   type InsertWorkerSkill,
 } from "./schema/worker/skills/schema";
+
+export {
+  optionsWorkerBadgeTypes,
+  insertOptionsWorkerBadgeTypeSchema,
+  workerBadgesDenorm,
+  insertWorkerBadgeDenormSchema,
+  type WorkerBadgeType,
+  type InsertWorkerBadgeType,
+  type WorkerBadgeDenorm,
+  type InsertWorkerBadgeDenorm,
+} from "./schema/worker/badges/schema";
 
 export {
   optionsCertifications,
@@ -2435,6 +2459,12 @@ export type PluginConfigEventNotifier = typeof pluginConfigsEventNotifier.$infer
 // one row — created by the adapter's `toRows` on write and by the boot-time
 // singleton seeder for built-in jobs — so the generic inner-joined search keeps
 // returning them.
+export const pluginConfigsFlood = pgTable("plugin_configs_flood", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: "cascade" }),
+});
+export type PluginConfigFlood = typeof pluginConfigsFlood.$inferSelect;
+export type InsertPluginConfigFlood = typeof pluginConfigsFlood.$inferInsert;
+
 export const pluginConfigsCron = pgTable("plugin_configs_cron", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
   schedule: varchar("schedule").notNull(),
@@ -2650,29 +2680,41 @@ export const createRateHistorySchema = (minEntries = 1) => {
   return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
 };
 
-// Cron job run history. Configuration for cron jobs now lives in
-// plugin_configs (plugin_kind='cron') + plugin_configs_cron; `jobName` here is
-// the cron plugin id (the former cron_jobs.name). No FK — the legacy cron_jobs
-// table has been dropped and run history is retained independently.
-export const cronJobRuns = pgTable("cron_job_runs", {
+// Shared run history for configured jobs. Snapshots remain after a configuration
+// is deleted, while the nullable FK identifies the exact configuration when it
+// still exists. Cron runs use operation='execute'; Oneoffs can also use preflight.
+export const jobRuns = pgTable("job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobName: text("job_name").notNull(),
+  configurationId: varchar("configuration_id").references(() => pluginConfigs.id, { onDelete: "set null" }),
+  pluginKind: varchar("plugin_kind").notNull(),
+  pluginId: text("plugin_id").notNull(),
+  operation: varchar("operation").notNull().default("execute"),
   status: varchar("status").notNull(), // 'running', 'success', 'error'
   mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
   error: text("error"),
+  input: jsonb("input"),
+  progress: jsonb("progress"),
+  checkpoint: jsonb("checkpoint"),
+  heartbeatAt: timestamp("heartbeat_at"),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
+  confirmationHash: text("confirmation_hash"),
+  confirmationUsedAt: timestamp("confirmation_used_at"),
   startedAt: timestamp("started_at").default(sql`now()`).notNull(),
   completedAt: timestamp("completed_at"),
   triggeredBy: varchar("triggered_by"), // 'scheduler' or user id
-});
+}, (table) => [
+  index("job_runs_configuration_started_idx").on(table.configurationId, table.startedAt),
+  index("job_runs_kind_plugin_started_idx").on(table.pluginKind, table.pluginId, table.startedAt),
+]);
 
-export const insertCronJobRunSchema = createInsertSchema(cronJobRuns).omit({
+export const insertJobRunSchema = createInsertSchema(jobRuns).omit({
   id: true,
   startedAt: true,
 });
 
-export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
-export type CronJobRun = typeof cronJobRuns.$inferSelect;
+export type InsertJobRun = z.infer<typeof insertJobRunSchema>;
+export type JobRun = typeof jobRuns.$inferSelect;
 
 /**
  * Reusable tokenized message templates.
@@ -2962,12 +3004,16 @@ export type CommTagLink = typeof commTags.$inferSelect;
 // Flood control table for rate limiting
 export const flood = pgTable("flood", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pluginConfigurationId: varchar("plugin_configuration_id").notNull()
+    .references(() => pluginConfigsFlood.id, { onDelete: "cascade" }),
   event: varchar("event").notNull(),
   identifier: varchar("identifier").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 }, (table) => ({
   eventIdentifierIdx: index("flood_event_identifier_idx").on(table.event, table.identifier),
+  configurationWindowIdx: index("flood_config_identifier_created_idx")
+    .on(table.pluginConfigurationId, table.identifier, table.createdAt),
   expiresAtIdx: index("flood_expires_at_idx").on(table.expiresAt),
 }));
 

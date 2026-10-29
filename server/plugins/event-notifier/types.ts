@@ -82,6 +82,8 @@ export interface NotifierMessageContent {
  * dispatcher always sets it.
  */
 export interface EventNotifierEventContext {
+  /** Studio event replay is read-only, including recipient credential resolution. */
+  preview?: boolean;
   event: EventType;
   payload: unknown;
   /** `plugin_configs.id` of the configuration being dispatched for. */
@@ -177,7 +179,9 @@ export interface NotifierRecordRoot {
    * nothing truthful to say); mark the root `optional` when a missing
    * record should instead just leave its tokens at their defaults.
    */
-  build(ctx: EventNotifierEventContext): Promise<TokenEntity | null>;
+  build(ctx: EventNotifierEventContext, recipient?: NotifierRecipient): Promise<TokenEntity | null>;
+  /** Build this root separately for each recipient, after recipient resolution. */
+  scope?: "recipient";
   /** Null from `build` leaves this root unseeded instead of aborting. */
   optional?: boolean;
 }
@@ -202,6 +206,11 @@ export interface NotifierTokenTemplates {
    * recipient kind).
    */
   defaultTemplates(configData?: unknown): NotifierChannelTemplates;
+  /** Named alternatives use templates.<variant>_<channel> overrides. */
+  variants?: Record<string, {
+    defaultTemplates(configData?: unknown): NotifierChannelTemplates;
+  }>;
+  selectVariant?(ctx: EventNotifierEventContext, recipient: NotifierRecipient): string | undefined;
   // Preview contexts are not declared here. Named sample data comes
   // from the token plugins' `sampleSets`; a real record is named by the
   // caller and gated by the entity kind's own `previewEntity`
@@ -261,6 +270,19 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   subscribedEvents: EventType[];
   /** The media this notifier is capable of producing a message for. */
   supportedMedia: NotificationMedium[];
+  /** Stable occurrence key, including for token-template composition. */
+  getSendKey?(
+    ctx: EventNotifierEventContext,
+    recipient: NotifierRecipient,
+    medium: NotificationMedium,
+  ): string | undefined;
+  /** Skip a recipient/channel before composition or creating a comm row. */
+  shouldSendToRecipient?(
+    medium: NotificationMedium,
+    recipient: NotifierRecipient,
+    ctx: EventNotifierEventContext,
+    configData?: unknown,
+  ): Promise<boolean>;
 
   /**
    * Resolve the recipients for a fired event. An empty array means "nobody to

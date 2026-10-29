@@ -5,6 +5,7 @@ import {
   type SystemServiceRole,
 } from "@shared/system-service-roles";
 import { getEnvironmentVariable } from "../config/env-registry";
+import { isLocalWsTestRequest } from "../modules/webservices/local-test-access";
 
 export type RequestTrafficClass = SystemServiceRole;
 
@@ -71,6 +72,11 @@ export function installServiceRoleOwnershipGuard(
   const guard: RequestHandler = (req, res, next) => {
     const requiredRole = classifyRequestTraffic(req.path);
     if (roles.has(requiredRole)) return next();
+    // api-user-only processes also mount the dispatcher for their own admin
+    // tester. Do not expose that dispatcher to ordinary api-ws traffic.
+    if (requiredRole === "api-ws" && roles.has("api-user") && isLocalWsTestRequest(req)) {
+      return next();
+    }
     res.status(503).json({
       error: "Service Unavailable",
       code: "SERVICE_ROLE_NOT_ASSIGNED",

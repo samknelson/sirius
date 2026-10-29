@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { winstonLogs, type WinstonLog } from "@shared/schema";
-import { desc, eq, and, sql, or, like, inArray, gte, lte, type SQL } from "drizzle-orm";
+import { desc, eq, and, sql, or, like, inArray, getTableColumns, lte, type SQL } from "drizzle-orm";
 import { eventBus, EventType } from "../../services/event-bus";
 
 /**
@@ -80,6 +80,17 @@ export interface LogsStorage {
   countByModuleOperationOlderThan(module: string | null, operation: string | null, olderThanDays: number): Promise<number>;
 }
 
+// now() writes a session-local wall clock into the naive timestamp column.
+// Drizzle's default decoder instead labels that wall clock UTC. Interpret it
+// in the session zone in SQL, then decode the explicit-offset instant; do not
+// change stored history or apply a browser/display-zone correction.
+const logTimestampInstant = sql`${winstonLogs.timestamp} AT TIME ZONE current_setting('TimeZone')`;
+const logColumns = {
+  ...getTableColumns(winstonLogs),
+  timestamp: logTimestampInstant.mapWith((value: string | null) =>
+    value === null ? null : new Date(value)),
+};
+
 export function createLogsStorage(): LogsStorage {
   return {
     async getLogs(params: LogsQueryParams): Promise<LogsResult> {
@@ -113,7 +124,7 @@ export function createLogsStorage(): LogsStorage {
         .where(whereClause);
 
       const logs = await client
-        .select()
+        .select(logColumns)
         .from(winstonLogs)
         .where(whereClause)
         .orderBy(desc(winstonLogs.timestamp), desc(winstonLogs.id))
@@ -153,7 +164,7 @@ export function createLogsStorage(): LogsStorage {
     async getLogById(id: number): Promise<WinstonLog | undefined> {
       const client = getClient();
       const [log] = await client
-        .select()
+        .select(logColumns)
         .from(winstonLogs)
         .where(eq(winstonLogs.id, id))
         .limit(1);
@@ -187,14 +198,14 @@ export function createLogsStorage(): LogsStorage {
         conditions.push(eq(winstonLogs.operation, params.operation));
       }
       if (params.startDate) {
-        conditions.push(gte(winstonLogs.timestamp, new Date(params.startDate)));
+        conditions.push(sql`${logTimestampInstant} >= ${new Date(params.startDate).toISOString()}::timestamptz`);
       }
       if (params.endDate) {
-        conditions.push(lte(winstonLogs.timestamp, new Date(params.endDate)));
+        conditions.push(sql`${logTimestampInstant} <= ${new Date(params.endDate).toISOString()}::timestamptz`);
       }
 
       let query = client
-        .select()
+        .select(logColumns)
         .from(winstonLogs)
         .where(and(...conditions))
         .orderBy(desc(winstonLogs.timestamp));
@@ -225,7 +236,7 @@ export function createLogsStorage(): LogsStorage {
           userEmail: data.userEmail,
           ipAddress: data.ipAddress,
         })
-        .returning();
+        .returning(logColumns);
 
       eventBus.emit(EventType.LOG, {
         id: log.id,

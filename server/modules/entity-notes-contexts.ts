@@ -18,12 +18,14 @@ import {
  */
 
 /** The access callback for a staff-only area; gates the /api/entity-notes routes. */
-function staffOnly(): Pick<EntityNoteContext, "checkAccess"> {
+function staffOnly(): Pick<EntityNoteContext, "checkAccess" | "checkAccessForUser"> {
+  const checkAccessForUser: NonNullable<EntityNoteContext["checkAccessForUser"]> =
+    async (_verb, _entityId, user) => (await checkAccess("staff", user)).granted;
   return {
+    checkAccessForUser,
     async checkAccess(_verb, _entityId, req: Request): Promise<boolean> {
       const context = await buildContext(req);
-      const result = await checkAccess("staff", context.user);
-      return result.granted;
+      return checkAccessForUser(_verb, _entityId, context.user);
     },
   };
 }

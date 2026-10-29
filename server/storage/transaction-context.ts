@@ -45,7 +45,7 @@ export function getClient(): DrizzleTransaction | typeof db {
  * connection.
  */
 export function runOutsideTransaction<T>(fn: () => T): T {
-  return transactionStorage.exit(fn);
+  return transactionStorage.exit(() => afterCommitStorage.exit(fn));
 }
 
 /**

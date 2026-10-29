@@ -39,7 +39,7 @@ registerCronPlugin({
     // The previous LIVE SUCCESS, not simply the previous run: the row for this
     // run already exists and is still `running`, a test run must not consume a
     // real tick, and a run that failed did not emit what it was owed.
-    const previous = await storage.cronJobRuns.getLastSuccessfulLiveRun(JOB_ID);
+    const previous = await storage.jobRuns.getLastSuccessfulLiveRun(context.configurationId);
     const lastRunAt = previous?.startedAt ?? null;
     const due = ticksDue(now, lastRunAt);
     const periods = due.map((tick) => tick.spec.period);

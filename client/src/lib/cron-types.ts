@@ -1,6 +1,9 @@
 export interface CronJobRun {
   id: string;
-  jobName: string;
+  configurationId: string | null;
+  pluginKind: string;
+  pluginId: string;
+  operation: string;
   status: string;
   mode: string;
   output: string | null;

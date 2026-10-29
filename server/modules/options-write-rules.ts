@@ -182,6 +182,11 @@ export function buildOptionCreateData(
   config: OptionsTypeConfig,
   body: Record<string, any>,
 ): { data: Record<string, any> } | { error: string } {
+  if (config.writeSchema) {
+    const parsed = config.writeSchema.safeParse(body);
+    if (!parsed.success) return { error: parsed.error.issues.map(issue => issue.message).join("; ") };
+    body = parsed.data;
+  }
   for (const field of config.requiredFields) {
     if (body[field] === undefined || body[field] === null || body[field] === "") {
       return { error: `${field} is required` };
@@ -218,6 +223,11 @@ export function buildOptionUpdateData(
   config: OptionsTypeConfig,
   body: Record<string, any>,
 ): { updates: Record<string, any> } | { error: string } {
+  if (config.writeSchema) {
+    const parsed = config.writeSchema.partial().safeParse(body);
+    if (!parsed.success) return { error: parsed.error.issues.map(issue => issue.message).join("; ") };
+    body = parsed.data;
+  }
   const updates: Record<string, any> = {};
   const allFields = [...config.requiredFields, ...config.optionalFields];
 

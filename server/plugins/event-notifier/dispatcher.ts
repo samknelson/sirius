@@ -5,7 +5,7 @@ import { isPluginComponentEnabledSync } from "../_core";
 import { eventNotifierRegistry } from "./registry";
 import { getEnabledConfigsForKind } from "../_core/plugin-config-cache";
 import { checkFlood, recordFloodEvent } from "../../flood/service";
-import { NOTIFICATION_FLOOD_EVENTS } from "../../flood/events";
+import { NOTIFICATION_FLOOD_EVENTS } from "../../flood/constants";
 import {
   type EventNotifierEventContext,
   type NotificationMedium,
@@ -481,6 +481,7 @@ async function dispatchForConfig(
     const { resolveTemplates } = await import("./token-templates");
     const built: import("../tokens/types").TokenRootSeed[] = [];
     for (const root of plugin.tokenTemplates.roots) {
+      if (root.scope === "recipient") continue;
       const entity = await root.build(ctx);
       if (!entity) {
         if (root.optional) continue;
@@ -509,17 +510,34 @@ async function dispatchForConfig(
   }
 
   for (const recipient of recipients) {
+    let recipientContext = seeds && templates && renderCache
+      ? { seeds, templates, cache: renderCache }
+      : null;
+    if (plugin.tokenTemplates && recipientContext) {
+      const { buildRecipientTemplateContext } = await import("./token-templates");
+      recipientContext = await buildRecipientTemplateContext(
+        plugin, ctx, recipient, configData, recipientContext,
+      );
+      if (!recipientContext) {
+        logger.warn("Event-notifier could not load a recipient template record; skipping recipient", {
+          service: SERVICE, pluginId, contactId: recipient.contactId,
+        });
+        continue;
+      }
+    }
     for (const medium of active) {
+      if (plugin.shouldSendToRecipient &&
+        !await plugin.shouldSendToRecipient(medium, recipient, ctx, configData)) continue;
       let content: NotifierMessageContent | null = null;
-      if (plugin.tokenTemplates && seeds && templates && renderCache) {
+      if (plugin.tokenTemplates && recipientContext) {
         const { composeFromTemplates } = await import("./token-templates");
         const composed = await composeFromTemplates(
           plugin,
           medium,
           recipient,
-          seeds,
-          templates,
-          renderCache,
+          recipientContext.seeds,
+          recipientContext.templates,
+          recipientContext.cache,
         );
         content = composed.content;
         if (!content && composed.blankRequired.length > 0) {
@@ -544,6 +562,8 @@ async function dispatchForConfig(
         content = await plugin.getMessage(medium, recipient, ctx, configData);
       }
       if (!content) continue;
+      const sendKey = plugin.getSendKey?.(ctx, recipient, medium);
+      if (sendKey) content = { ...content, sendKey };
       const { sent, comm } = await deliver(medium, recipient, content, pluginId, tagIds);
       // Flash a summary of what went out back to the user who triggered the
       // event. Only successful sends are tallied; self-notifications are already

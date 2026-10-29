@@ -144,13 +144,14 @@ function pad2(value: number): string {
 }
 
 /**
- * Name a user the way the rest of the app does: first and last name, falling
- * back to the email address. Null when there is no user.
+ * Identify an exported user by email, falling back to first and last name.
+ * Null when there is no user or neither value is available.
  */
-export function formatUserName(user: EdlsPassportUser | null): string | null {
+export function formatUserReference(user: EdlsPassportUser | null): string | null {
   if (!user) return null;
+  if (user.email) return user.email;
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
-  return name || user.email || null;
+  return name || null;
 }
 
 /**
@@ -208,7 +209,7 @@ function mapCrew(crew: EdlsPassportCrew): PassportExportCrew {
     checkin_location: crew.location,
     count: crew.workerCount,
     crewlead: crew.crewleadSiriusId ?? "",
-    supervisor: formatUserName(crew.supervisorUser),
+    supervisor: formatUserReference(crew.supervisorUser),
     assignments: crew.assignments.map(mapAssignment),
   };
 }
@@ -221,8 +222,8 @@ function mapSheet(sheet: EdlsPassportSheet): PassportExportSheet {
     version: `${sheet.id}::${sheet.latestSnapshotId ?? ""}`,
     status: SCHEDULED_STATUS_LABEL,
     employer: sheet.employerName,
-    supervisor: formatUserName(sheet.supervisorUser),
-    creator: formatUserName(sheet.creatorUser),
+    supervisor: formatUserReference(sheet.supervisorUser),
+    creator: formatUserReference(sheet.creatorUser),
     changed_date: formatRfc2822(sheet.changed),
     date: formatLongDate(sheet.ymd),
     event: sheet.jobGroupName,

@@ -1,4 +1,5 @@
 import { storage } from "../storage";
+import { readConfigurationSnapshot } from "../storage/configuration-revisions";
 import { 
   TERMINOLOGY_VARIABLE_NAME, 
   terminologySchema, 
@@ -14,9 +15,11 @@ import {
 // the `terminology` catalog, declared in ./terminology-catalog.ts.
 
 let terminologyCache: TerminologyDictionary | null = null;
+let generation = 0;
 
 export async function loadTerminology(): Promise<TerminologyDictionary> {
-  const variable = await storage.variables.getByName(TERMINOLOGY_VARIABLE_NAME);
+  const current = ++generation;
+  const variable = await readConfigurationSnapshot(() => storage.variables.getByName(TERMINOLOGY_VARIABLE_NAME));
   let customTerms: Partial<TerminologyDictionary> | null = null;
   
   if (variable && variable.value) {
@@ -33,8 +36,9 @@ export async function loadTerminology(): Promise<TerminologyDictionary> {
     }
   }
   
-  terminologyCache = mergeTerminology(customTerms);
-  return terminologyCache;
+  const loaded = mergeTerminology(customTerms);
+  if (current === generation) terminologyCache = loaded;
+  return getCachedTerminology();
 }
 
 export function getCachedTerminology(): TerminologyDictionary {
@@ -42,5 +46,6 @@ export function getCachedTerminology(): TerminologyDictionary {
 }
 
 export function invalidateTerminologyCache(): void {
-  terminologyCache = null;
+  // Keep the last confirmed dictionary during an outage, but reject old loads.
+  generation++;
 }

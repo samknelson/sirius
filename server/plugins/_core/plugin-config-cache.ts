@@ -1,11 +1,13 @@
 import { eventBus, EventType, type PluginConfigSavedPayload } from "../../services/event-bus";
 import { logger } from "../../logger";
 import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
+import { readConfigurationSnapshot } from "../../storage/configuration-revisions";
 
 const SERVICE = "plugin-config-cache";
 
 /**
- * Shared, in-memory cache of the *enabled* plugin configs for each kind. Any
+ * Shared, in-memory cache of plugin configs for each kind. Enabled-only and
+ * complete snapshots use separate slices under the same invalidation generation. Any
  * plugin kind that needs to list its enabled configs hot-path (e.g. the
  * event-notifier dispatcher on every fired event) reads from here instead of
  * hitting the DB. Consumers filter the returned envelopes in memory — there are
@@ -20,11 +22,11 @@ const cache = new Map<string, PluginConfigWithSubsidiary[]>();
 const loading = new Map<string, Promise<PluginConfigWithSubsidiary[]>>();
 const generation = new Map<string, number>();
 
-async function build(kind: string): Promise<PluginConfigWithSubsidiary[]> {
+async function build(kind: string, enabledOnly: boolean): Promise<PluginConfigWithSubsidiary[]> {
   const { storage } = await import("../../storage");
-  // Filter `enabled: true` in the DB so a growing pile of disabled configs
-  // costs nothing here.
-  const envelopes = await storage.pluginConfigs.search(kind, { enabled: true });
+  // Existing enabled-only readers retain their DB filter. Singleton consumers
+  // can opt into all rows to distinguish explicit disablement from absence.
+  const envelopes = await readConfigurationSnapshot(() => storage.pluginConfigs.search(kind, enabledOnly ? { enabled: true } : {}));
   logger.info("Plugin-config cache rebuilt", {
     service: SERVICE,
     kind,
@@ -43,25 +45,37 @@ async function build(kind: string): Promise<PluginConfigWithSubsidiary[]> {
 export async function getEnabledConfigsForKind(
   kind: string,
 ): Promise<PluginConfigWithSubsidiary[]> {
-  const cached = cache.get(kind);
+  return readConfigs(kind, true);
+}
+
+/** All configs, including explicit disablement (absence is not disablement). */
+export async function getConfigsForKind(kind: string): Promise<PluginConfigWithSubsidiary[]> {
+  return readConfigs(kind, false);
+}
+
+async function readConfigs(kind: string, enabledOnly: boolean): Promise<PluginConfigWithSubsidiary[]> {
+  const key = enabledOnly ? kind : `${kind}\0all`;
+  const cached = cache.get(key);
   if (cached) return cached;
 
-  const inFlight = loading.get(kind);
+  const inFlight = loading.get(key);
   if (inFlight) return inFlight;
 
   const gen = generation.get(kind) ?? 0;
-  const promise = build(kind)
+  generation.set(kind, gen);
+  const promise = build(kind, enabledOnly)
     .then((built) => {
       // Only stamp the cache if no invalidation happened while building.
-      if ((generation.get(kind) ?? 0) === gen) cache.set(kind, built);
-      loading.delete(kind);
+      if ((generation.get(kind) ?? 0) === gen) cache.set(key, built);
+      if (loading.get(key) === promise) loading.delete(key);
+      if ((generation.get(kind) ?? 0) !== gen) return readConfigs(kind, enabledOnly);
       return built;
     })
     .catch((error) => {
-      loading.delete(kind);
+      if (loading.get(key) === promise) loading.delete(key);
       throw error;
     });
-  loading.set(kind, promise);
+  loading.set(key, promise);
   return promise;
 }
 
@@ -72,7 +86,17 @@ export async function getEnabledConfigsForKind(
  */
 export function invalidatePluginConfigCache(kind: string): void {
   cache.delete(kind);
+  loading.delete(kind);
+  cache.delete(`${kind}\0all`);
+  loading.delete(`${kind}\0all`);
   generation.set(kind, (generation.get(kind) ?? 0) + 1);
+}
+
+/** Component-owned config writes in another process invalidate all lazy slices. */
+export function invalidateAllPluginConfigCaches(): void {
+  for (const kind of generation.keys()) {
+    invalidatePluginConfigCache(kind);
+  }
 }
 
 let initialized = false;

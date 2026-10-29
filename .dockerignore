@@ -25,7 +25,9 @@ generated-icon.png
 
 # Large / non-build assets and generated material
 attached_assets
-exports
+/generated-artifacts/
+/exports/
+/screenshots/
 docs
 design_guidelines.md
 *.md

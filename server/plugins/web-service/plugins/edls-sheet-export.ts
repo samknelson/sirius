@@ -212,8 +212,8 @@ registerWebServicePlugin({
                         },
                         status: { type: "string", const: "Scheduled", description: "Only locked sheets are exported." },
                         employer: { type: ["string", "null"] },
-                        supervisor: { type: ["string", "null"] },
-                        creator: { type: ["string", "null"] },
+                        supervisor: { type: ["string", "null"], description: "User email, falling back to name; null when neither is available." },
+                        creator: { type: ["string", "null"], description: "User email, falling back to name; null when neither is available." },
                         changed_date: { type: "string", description: "RFC-2822 style, in the server's local zone." },
                         date: { type: "string", description: "Long form, e.g. 'Tuesday, May 19, 2026'." },
                         event: { type: ["string", "null"] },
@@ -237,7 +237,7 @@ registerWebServicePlugin({
                               checkin_location: { type: ["string", "null"] },
                               count: { type: "integer", description: "Planned worker count." },
                               crewlead: { type: "string" },
-                              supervisor: { type: ["string", "null"] },
+                              supervisor: { type: ["string", "null"], description: "User email, falling back to name; null when neither is available." },
                               assignments: {
                                 type: "array",
                                 items: {

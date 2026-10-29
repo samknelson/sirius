@@ -5,6 +5,7 @@ import type {
   NotifierChannelTemplates,
   NotifierMessageContent,
   NotifierRecipient,
+  EventNotifierEventContext,
 } from "./types";
 import type { TokenRootSeed } from "../tokens/types";
 import {
@@ -54,9 +55,15 @@ function pick(custom: unknown, fallback: string | undefined): string {
 export function resolveTemplates(
   plugin: EventNotifierPlugin,
   configData: unknown,
+  variant?: string,
 ): NotifierChannelTemplates {
-  const defaults = plugin.tokenTemplates!.defaultTemplates(configData);
-  const custom = customTemplatesOf(configData);
+  const defaults = defaultTemplatesFor(plugin, configData, variant);
+  const stored = customTemplatesOf(configData);
+  const custom = Object.fromEntries(
+    ["email", "sms", "inapp"].map(channel => [
+      channel, stored[variant ? `${variant}_${channel}` : channel],
+    ]),
+  );
   return {
     email: defaults.email && {
       subject: pick(custom.email?.subject, defaults.email.subject),
@@ -71,6 +78,45 @@ export function resolveTemplates(
       linkUrl: pick(custom.inapp?.linkUrl, defaults.inapp.linkUrl),
       linkLabel: pick(custom.inapp?.linkLabel, defaults.inapp.linkLabel),
     },
+  };
+}
+
+/** Unknown variants are configuration errors, never the other message's defaults. */
+export function defaultTemplatesFor(
+  plugin: EventNotifierPlugin, configData: unknown, variant?: string,
+): NotifierChannelTemplates {
+  if (!variant) return plugin.tokenTemplates!.defaultTemplates(configData);
+  const alternative = plugin.tokenTemplates?.variants?.[variant];
+  if (!alternative) throw new Error(`Unknown notifier template variant: ${variant}`);
+  return alternative.defaultTemplates(configData);
+}
+
+export interface NotifierTemplateContext {
+  seeds: TokenRootSeed[];
+  templates: NotifierChannelTemplates;
+  cache: Map<string, unknown>;
+}
+
+/** Shared event roots stay shared; recipient roots and variant caches never do. */
+export async function buildRecipientTemplateContext(
+  plugin: EventNotifierPlugin,
+  ctx: EventNotifierEventContext,
+  recipient: NotifierRecipient,
+  configData: unknown,
+  base: NotifierTemplateContext,
+): Promise<NotifierTemplateContext | null> {
+  const roots = plugin.tokenTemplates!.roots.filter(root => root.scope === "recipient");
+  const scoped: TokenRootSeed[] = [];
+  for (const root of roots) {
+    const entity = await root.build(ctx, recipient);
+    if (!entity && !root.optional) return null;
+    if (entity) scoped.push({ name: root.name, entity });
+  }
+  const variant = plugin.tokenTemplates!.selectVariant?.(ctx, recipient);
+  return {
+    seeds: roots.length ? [...base.seeds, ...scoped] : base.seeds,
+    templates: variant ? resolveTemplates(plugin, configData, variant) : base.templates,
+    cache: roots.length || variant ? new Map() : base.cache,
   };
 }
 

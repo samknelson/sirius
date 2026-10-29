@@ -20,11 +20,41 @@ TZ=America/New_York   12:00Z -> stored 08:00     "08:00" read back -> 12:00Z
 Writes and reads agree as long as the process zone is stable, and the process
 zone is the *only* thing that decides what stored history means.
 
+**Drizzle read-path exception:** A live `job_runs.started_at` defaulted by
+PostgreSQL was stored as 07:xx in an America/Los_Angeles session, but a
+Drizzle `.select()` exposed it as 07:xxZ even with Node `TZ` set to
+America/Los_Angeles: it appeared seven hours old. The low-level driver
+observation above does not guarantee every ORM mapping follows it.
+**Why:** a JS `Date` comparison can immediately expire a freshly approved
+operation even though both database and Node have the same configured zone.
+**How to apply:** compare a naive column to the database's `LOCALTIMESTAMP`
+inside SQL for time-limited decisions; verify the ORM read mapping before
+using `.getTime()` on other naive columns for elapsed time.
+
+**ORM writes also differ from raw pg:** its Date-mode writer serializes UTC
+wall-clock fields, whereas PostgreSQL defaults use the session zone. A column
+written by both paths can therefore contain mixed timestamp bases.
+**Why:** a read correction that fixes a database-defaulted timestamp can shift
+an ORM-written timestamp that already represents UTC.
+**How to apply:** establish the column's actual writers before correcting its
+read mapping or proposing a historical repair. For database-defaulted log
+timestamps, interpret the wall clock in the SQL session zone before serializing
+an instant; compare instant-based filters on that same basis. Do not apply this
+as a blanket schema or browser conversion.
+
 **The matching hazard:** a column default of `now()` is evaluated by POSTGRES,
 using the *session* TimeZone, not Node's. If the two disagree, app-written
 timestamps and defaulted ones land in the same column offset from each other.
 Both zones must be set together — the pg pool sets the session zone on every
 connection checkout.
+
+**Ad hoc script trap:** a one-off `tsx -e` process that imports storage without
+running app initialization may use UTC while the live app writes in the site
+zone. Its `timestamp without time zone` rows can sort hours apart from app rows
+created at the same instant. **Why:** the site-zone bootstrap is not present in
+the standalone process. **How to apply:** do not infer a migration boundary from
+naive `started_at` values written by mixed processes; establish each process's
+zone and verify the rows around the proposed cutoff before correcting data.
 
 ## The decision
 
