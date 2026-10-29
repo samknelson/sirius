@@ -68,6 +68,7 @@ describe("postal vendor safety", () => {
     if (!handler) throw new Error("Missing Lob address verification handler");
 
     const answer = await handler({
+      http: { fetch: globalThis.fetch },
       credential: { secretName: "LOB_TEST_SECRET", value: "live_key" },
       config: {
         id: "lob-config",
@@ -100,6 +101,7 @@ describe("postal vendor safety", () => {
     if (!handler) throw new Error("Missing Lob address verification handler");
 
     await expect(handler({
+      http: { fetch: globalThis.fetch },
       credential: { secretName: "LOB_TEST_SECRET", value: "live_key" },
       config: {
         id: "lob-config",

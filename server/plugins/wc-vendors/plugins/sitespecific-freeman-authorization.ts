@@ -102,7 +102,7 @@ async function fetchFreemanAuthorization(
   const scrub = credentialScrubber(bearerToken ?? "");
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await ctx.http.fetch(url, {
       method: "GET",
       headers: authenticated
         ? { Authorization: `Bearer ${bearerToken}` }
@@ -258,6 +258,8 @@ declare module "../types" {
 
 const freemanAuthorizationVendorPlugin: WcVendorPlugin = {
   id: FREEMAN_AUTHORIZATION_PLUGIN_ID,
+  httpTransport: "webclient",
+  endpointPolicy: { requiresAllowlist: true, defaultAllowedHosts: ["*.freeman.com"] },
   name: "Freeman Bearer Authorization",
   description: "Bearer authorization service for Freeman integrations.",
   requiredComponent: FREEMAN_AUTHORIZATION_COMPONENT_ID,

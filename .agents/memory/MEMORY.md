@@ -136,10 +136,7 @@
 - [Comm vendor cutovers](comm-vendor-cutovers.md) — local plugins omit delivery operations; legacy migrations preserve effective env/override selections without copying credential values.
 - [Vendor cache cutovers](vendor-cache-cutovers.md) — keep legacy namespaces, but never reuse unscoped cache hashes when the originating config cannot be proven.
 - [Nullable usage attribution deletion](nullable-usage-attribution-deletion.md) — NULLS-NOT-DISTINCT counters need merge-before-delete and count-time locking or configuration deletion loses or blocks counts.
-- [One-time Freeman migration verification](freeman-migration-verification.md) — do not add permanent tests for Freeman migration; verify with checks, build, review, and startup because the feature is retired after cutover.
-- [Freeman passport response envelope](freeman-passport-response-envelope.md) — sheet pages live at success→data.success→data.data.sheets; Jan 1, 1970 is rejected because legacy PHP treats strtotime()=0 as false.
-- [Freeman migration count semantics](freeman-migration-count-semantics.md) — matched existing child records count as updated even when values did not change.
-- [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
+- [Freeman migration guidance](freeman-migration-verification.md) — no permanent tests for the temporary cutover; links to response envelopes, count semantics, and worker ID precedence.
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
 - [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
 - [Idle-session status checks](idle-session-status-checks.md) — polling the current idle deadline must be read-only; only explicit or normal authenticated activity may renew it.

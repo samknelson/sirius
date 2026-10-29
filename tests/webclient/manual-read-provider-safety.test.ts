@@ -7,6 +7,7 @@ const stripeDetach = vi.hoisted(() => vi.fn());
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
+    static createFetchHttpClient = vi.fn();
     paymentMethods = {
       retrieve: stripeRetrieve,
       attach: stripeAttach,
@@ -26,6 +27,7 @@ function context(
   data: Record<string, unknown> = {},
 ) {
   return {
+    http: { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) },
     credential: { secretName: "TEST_SECRET", value: credential },
     config: {
       id: `${pluginId}-config`,

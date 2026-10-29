@@ -131,7 +131,7 @@ async function lookupLegislators(
   });
   let response: Response;
   try {
-    response = await fetch(`https://v3.openstates.org/people.geo?${params}`);
+    response = await ctx.http.fetch(`https://v3.openstates.org/people.geo?${params}`);
   } catch (error) {
     throw new CivicApiError(
       redactCredentialText(
@@ -188,6 +188,7 @@ async function lookupLegislators(
 
 registerWcVendorPlugin({
   id: OPENSTATES_PLUGIN_ID,
+  httpTransport: "webclient",
   name: "OpenStates",
   description: "Looks up state legislators by geographic coordinates.",
   requiredComponent: "sitespecific.btu.political",

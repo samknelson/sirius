@@ -480,7 +480,7 @@ async function performT631Fetch(
   });
 
   try {
-    const response = await fetch(settings.url, {
+    const response = await ctx.http.fetch(settings.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -560,6 +560,8 @@ async function performT631Fetch(
 // An exported literal would be the same plugin with the refusal missing.
 const t631WcVendorPlugin: WcVendorPlugin = {
   id: T631_PLUGIN_ID,
+  httpTransport: "webclient",
+  endpointPolicy: { requiresAllowlist: true, defaultAllowedHosts: ["*.teamsters631.com"] },
   name: "Teamsters 631",
   description:
     "The remote Teamsters 631 service. The connection holds the URL, account id and employer id; the secret it names holds both tokens as one JSON object.",

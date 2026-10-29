@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import { WcTwilioHttpClient } from "../../../services/webclient/twilio-http";
 import { parsePhoneNumber } from "libphonenumber-js";
 import type { GatewayConnectionTest, WcVendorContext, WcVendorPlugin } from "../types";
 import {
@@ -40,11 +41,12 @@ function client(ctx: WcVendorContext) {
   const sid = accountSid(ctx);
   if (!sid) throw new Error("Twilio account SID is not configured");
   if (!ctx.credential.value) throw new Error("Twilio auth token is not configured");
-  return twilio(sid, ctx.credential.value);
+  return twilio(sid, ctx.credential.value, { httpClient: new WcTwilioHttpClient(ctx.http) });
 }
 
 const twilioSmsPlugin: WcVendorPlugin = {
   id: "twilio",
+  httpTransport: "webclient",
   name: "Twilio SMS",
   description:
     "Twilio SMS delivery. The account SID and sending number are configuration values; the named secret contains the auth token.",

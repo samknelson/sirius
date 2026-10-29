@@ -69,6 +69,8 @@ const GUARD_MODULE = "server/services/maintenance-flag.ts";
  * rule 1.
  */
 const OUTBOUND_MODULES = [
+  "server/services/webclient/vendor-http.ts",
+  "server/services/webclient/twilio-http.ts",
   "server/services/comm/validators/address.ts",
   "server/services/objectStorage.ts",
   "server/services/container-facts.ts",
@@ -207,6 +209,11 @@ const VENDOR_MARKER_EXEMPT: Record<string, string> = {
  * production code can.
  */
 const FRAMEWORK_ONLY_IMPORTS: { name: string; allowed: string[]; why: string }[] = [
+  {
+    name: "createVendorHttp",
+    allowed: ["server/services/webclient/wc-vendor-context.ts"],
+    why: "Only the resolved webclient vendor context may create a plugin-bound HTTP capability; other importers could skip framework gates.",
+  },
   {
     name: "getWcVendorHandler",
     allowed: ["server/services/webclient/wc-vendor-context.ts"],
@@ -765,6 +772,14 @@ function functionsReachableFrom(
  * silently cover the next method somebody adds to it.
  */
 const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
+  "server/services/webclient/vendor-http.ts": {
+    executeVendorHttps: "The actual socket handoff of the framework-internal checked capability; its factory is import-restricted to resolved webclient contexts.",
+    createVendorHttp: "Framework-internal HTTPS capability; its factory is import-restricted to resolved webclient contexts, after the normal dispatch gates.",
+    fetch: "Framework-internal HTTPS capability; plugin-bound host policy and socket resolver enforce destinations. Its factory has only one allowed framework importer.",
+  },
+  "server/services/webclient/twilio-http.ts": {
+    request: "SDK adapter delegates only to the supplied plugin-bound webclient HTTP capability; it must not recurse through wcRequest or double-count a vendor operation.",
+  },
   "server/services/objectStorage.ts": {
     checkStorageServiceAvailable:
       "Restricted Replit object-storage sidecar health check.",
@@ -1728,6 +1743,25 @@ export function findViolations(): Violation[] {
   }
   violations.push(...auditUnlistedVendorModules(scanned));
   violations.push(...auditFrameworkOnlyImports(scanned));
+  for (const file of transportPlugins) {
+    const sf = parse(file);
+    if (!/httpTransport:\s*["']webclient["']/.test(sf.text)) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression;
+        const rawFetch = (ts.isIdentifier(callee) && callee.text === "fetch") ||
+          ((ts.isPropertyAccessExpression(callee) || ts.isElementAccessExpression(callee)) &&
+            ["globalThis.fetch", "global.fetch", 'globalThis["fetch"]', "globalThis['fetch']"].includes(callee.getText(sf)));
+        if (rawFetch) violations.push({
+          file, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
+          detail: "declares webclient HTTP transport but calls global fetch, bypassing destination policy",
+          remedy: "Use the resolved vendor context's http.fetch capability; do not fall back to global fetch.",
+        });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
   return violations;
 }
 
