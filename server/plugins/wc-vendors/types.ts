@@ -35,6 +35,8 @@ import type {
   WcService,
 } from "../../services/webclient/types";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
+import type { WcEndpointPolicy } from "../../services/webclient/endpoint-policy";
+import type { WcVendorHttp } from "../../services/webclient/vendor-http";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the
@@ -50,6 +52,8 @@ export interface WcVendorContext {
   };
   /** The vendor config row driving this operation (carries `data`). */
   config: PluginConfig;
+  /** Plugin-bound, destination-checked HTTP capability supplied by webclient. */
+  http: WcVendorHttp;
 }
 
 export interface CreateCustomerInput {
@@ -450,6 +454,10 @@ export type RegisteredWcVendorPlugin = Omit<WcVendorPlugin, "operations"> & {
 export type WcVendorSecretNameRequirement = "required" | "optional" | "none";
 
 export interface WcVendorPlugin extends BasePluginMetadata {
+  endpointPolicy?: WcEndpointPolicy;
+  /** All network paths use the framework capability. Omit for SDK/browser
+   * transports: an active allowlist must refuse these until adapted. */
+  httpTransport?: "webclient";
   /**
    * Generic credential-reference contract. The framework owns the editable
    * secret-name field, resolves its value, and supplies both through context.
@@ -535,6 +543,8 @@ export interface WcVendorPlugin extends BasePluginMetadata {
 }
 
 export interface WcVendorManifestEntry {
+  effectiveDestinationPolicy?: import("@shared/webclient-destination-policy").WcVendorDestinationPolicyView;
+  endpointPolicy?: WcEndpointPolicy;
   id: string;
   name: string;
   description?: string;

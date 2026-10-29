@@ -84,7 +84,7 @@ async function lobVerify(ctx: WcVendorContext, address: PostalAddress): Promise<
   const key = ctx.credential.value;
   if (!key) return { valid: false, deliverable: false, error: "Lob credential is not configured" };
 
-  const response = await fetch("https://api.lob.com/v1/us_verifications", {
+  const response = await ctx.http.fetch("https://api.lob.com/v1/us_verifications", {
     method: "POST",
     headers: authHeader(key),
     body: JSON.stringify({
@@ -227,7 +227,7 @@ async function lobSend(ctx: WcVendorContext, params: SendLetterParams): Promise<
   }
   if (params.metadata) letterData.metadata = params.metadata;
 
-  const response = await fetch("https://api.lob.com/v1/letters", {
+  const response = await ctx.http.fetch("https://api.lob.com/v1/letters", {
     method: "POST",
     headers: authHeader(key),
     body: JSON.stringify(letterData),
@@ -258,7 +258,7 @@ async function lobSend(ctx: WcVendorContext, params: SendLetterParams): Promise<
 async function lobStatus(ctx: WcVendorContext, letterId: string) {
   const key = ctx.credential.value;
   if (!key) throw new Error("Lob credential is not configured");
-  const response = await fetch(`https://api.lob.com/v1/letters/${encodeURIComponent(letterId)}`, {
+  const response = await ctx.http.fetch(`https://api.lob.com/v1/letters/${encodeURIComponent(letterId)}`, {
     headers: authHeader(key),
   });
   const data = await response.json().catch(() => ({})) as Record<string, any>;
@@ -300,6 +300,7 @@ export const LOCAL_POSTAL_PLUGIN_ID = "local-postal";
 
 const lobWcVendorPlugin: WcVendorPlugin = {
   id: LOB_POSTAL_PLUGIN_ID,
+  httpTransport: "webclient",
   name: "Lob",
   description: "Lob postal mail and address verification.",
   credential: {
@@ -360,7 +361,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
       run: async (ctx, { letterId }) => {
         const key = ctx.credential.value;
         if (!key) return { success: false, error: "Lob credential is not configured" };
-        const response = await fetch(`https://api.lob.com/v1/letters/${encodeURIComponent(letterId)}`, {
+        const response = await ctx.http.fetch(`https://api.lob.com/v1/letters/${encodeURIComponent(letterId)}`, {
           method: "DELETE",
           headers: authHeader(key),
         });
@@ -377,7 +378,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
       run: async (ctx) => {
         const key = ctx.credential.value;
         if (!key) return [];
-        const response = await fetch("https://api.lob.com/v1/templates?limit=100", {
+        const response = await ctx.http.fetch("https://api.lob.com/v1/templates?limit=100", {
           headers: authHeader(key),
         });
         const data = await response.json().catch(() => ({})) as Record<string, any>;

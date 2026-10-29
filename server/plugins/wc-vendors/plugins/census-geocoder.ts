@@ -1,5 +1,6 @@
 import type { WcAnswer } from "../../../services/webclient";
 import { registerWcVendorPlugin } from "../registry";
+import type { WcVendorContext } from "../types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -83,14 +84,14 @@ function extractDistricts(data: CensusGeocoderResponse): CensusDistrictInfo | nu
 }
 
 async function lookupDistricts(
-  _ctx: unknown,
+  ctx: WcVendorContext,
   args: CensusDistrictArgs,
 ): Promise<WcAnswer<CensusDistrictInfo | null>> {
   const url =
     "https://geocoding.geo.census.gov/geocoder/geographies/coordinates" +
     `?x=${args.lng}&y=${args.lat}` +
     "&benchmark=Public_AR_Current&vintage=Current_Current&layers=all&format=json";
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  const response = await ctx.http.fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!response.ok) {
     return {
       answered: false,
@@ -103,6 +104,7 @@ async function lookupDistricts(
 
 registerWcVendorPlugin({
   id: CENSUS_GEOCODER_PLUGIN_ID,
+  httpTransport: "webclient",
   name: "US Census Geocoder",
   description: "Looks up current electoral districts for geographic coordinates.",
   requiredComponent: "sitespecific.btu.political",

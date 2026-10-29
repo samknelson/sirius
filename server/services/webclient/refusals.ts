@@ -15,6 +15,21 @@
  * Said out loud rather than left as an empty answer, because the alternative
  * is a caller reading "nothing came back" as a success with nothing in it.
  */
+import { WcVendorError } from "../../plugins/wc-vendors/errors";
+
+/** A local security refusal; never cache it as an answer or failure hold. */
+export class WcEndpointPolicyError extends WcVendorError {
+  readonly code = "WC_ENDPOINT_POLICY_REFUSED";
+  constructor(public readonly pluginId: string, reason: string) {
+    super(503, `Vendor '${pluginId}' destination refused: ${reason}.`);
+    this.name = "WcEndpointPolicyError";
+  }
+}
+
+export function isWcEndpointPolicyError(error: unknown): error is WcEndpointPolicyError {
+  return error instanceof WcEndpointPolicyError;
+}
+
 export function notRecordableReason(service: string, operation: string): string {
   return (
     `${service} was not asked to ${operation}: the result could not be recorded ` +

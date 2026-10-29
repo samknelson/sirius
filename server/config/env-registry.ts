@@ -662,6 +662,7 @@ registerEnvironmentVariables([
   // providers when the "Filesystem registry" subsystem is reloaded from the
   // admin Restart & Reload page (Task #1258) — no restart needed.
   { name: "FILESYSTEMS", description: "JSON map of filesystem configs (see server/services/files/config.ts). *_secret settings name further env vars.", secret: false, category: "core", changeTakesEffect: "reload", },
+  { name: "WEBCLIENT_VENDOR_ALLOWED_HOSTS", description: "JSON object mapping vendor plugin IDs to destination hostname arrays. Replaces manifest defaults; [] blocks external calls. Exact hosts or *.subdomain patterns. A deployment value locks the map against in-app overrides.", secret: false, category: "webclient", changeTakesEffect: "immediate" },
   {
     name: "PUBLIC_URL",
     description:

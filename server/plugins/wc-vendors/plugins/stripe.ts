@@ -14,7 +14,10 @@ import { registerWcVendorPlugin } from "../registry";
 
 /** Build a Stripe client from the per-config resolved secret. */
 function client(ctx: WcVendorContext): Stripe {
-  return new Stripe(ctx.credential.value);
+  return new Stripe(ctx.credential.value, {
+    httpClient: Stripe.createFetchHttpClient((url: string, init?: RequestInit) =>
+      ctx.http.fetch(String(url), init)),
+  });
 }
 
 /** Provider config data may carry a publishable key + payment types. */
@@ -98,6 +101,7 @@ const SETUP_ELIGIBLE_TYPE_IDS = new Set(
 // exported literal would be the same plugin with the refusal missing.
 const stripeWcVendorPlugin: WcVendorPlugin = {
   id: "stripe",
+  httpTransport: "webclient",
   name: "Stripe",
   description:
     "Stripe payment gateway. Each configuration names the secret that holds the Stripe API credentials.",

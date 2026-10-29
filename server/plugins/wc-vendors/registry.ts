@@ -183,6 +183,7 @@ export const wcVendorRegistry = new PluginRegistry<
     requiredComponent: p.requiredComponent,
     addComponentId: p.addComponentId,
     credential: p.credential,
+    endpointPolicy: p.endpointPolicy,
     operations: getWcVendorOperationManifest(p),
   }),
 });

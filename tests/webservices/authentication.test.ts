@@ -171,6 +171,20 @@ describe("incoming web-service authentication", () => {
     expect(validateSecret).not.toHaveBeenCalled();
   });
 
+  it("never falls back to the client secret after a vendor destination refusal", async () => {
+    getClient.mockResolvedValue(FREEMAN_CLIENT);
+    wcRequest.mockRejectedValue(new Error("Vendor destination refused"));
+    const result = await call({
+      "X-WS-Client-ID": "public-client-id",
+      "X-WS-Client-Secret": "otherwise-valid-secret",
+      Authorization: "Bearer fake-refused-token",
+    });
+    expect(result.status).toBe(401);
+    expect(result.body).toMatchObject({ code: "FREEMAN_AUTH_CONFIGURATION_UNAVAILABLE" });
+    expect(validateSecret).not.toHaveBeenCalled();
+    expect(JSON.stringify(result.body)).not.toContain("fake-refused-token");
+  });
+
   it("applies client status before spending a Freeman bearer request", async () => {
     getClient.mockResolvedValue({ ...FREEMAN_CLIENT, status: "inactive" });
 

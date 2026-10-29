@@ -315,7 +315,7 @@ async function performFreemanEdlsRequest(
 
   let response: Response;
   try {
-    response = await fetch(settings.url, {
+    response = await ctx.http.fetch(settings.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -491,6 +491,8 @@ declare module "../types" {
 
 const freemanEdlsMigrateVendorPlugin: WcVendorPlugin = {
   id: FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
+  httpTransport: "webclient",
+  endpointPolicy: { requiresAllowlist: true, defaultAllowedHosts: ["*.freeman.com"] },
   name: "Freeman EDLS Migration",
   description:
     "Connection to Freeman's legacy EDLS system for staging historical sheets.",
