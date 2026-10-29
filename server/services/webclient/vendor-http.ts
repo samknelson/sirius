@@ -8,29 +8,49 @@ export interface WcVendorHttp {
   fetch(url: string | URL, init?: RequestInit): Promise<Response>;
 }
 
-const blockedV4 = new BlockList();
-for (const [address, prefix] of [
-  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10],
-  ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
-  ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.88.99.0", 24],
-  ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24],
-  ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4],
-] as const) blockedV4.addSubnet(address, prefix, "ipv4");
+const blockedV4 = [
+  ["0.0.0.0", 8, "unspecified/this-network"], ["10.0.0.0", 8, "private"],
+  ["100.64.0.0", 10, "shared/CGNAT"], ["127.0.0.0", 8, "loopback"],
+  ["169.254.0.0", 16, "link-local/metadata"], ["172.16.0.0", 12, "private"],
+  ["192.0.0.0", 24, "special-use"], ["192.0.2.0", 24, "documentation"],
+  ["192.88.99.0", 24, "deprecated relay"], ["192.168.0.0", 16, "private"],
+  ["198.18.0.0", 15, "benchmarking"], ["198.51.100.0", 24, "documentation"],
+  ["203.0.113.0", 24, "documentation"], ["224.0.0.0", 4, "multicast"],
+  ["240.0.0.0", 4, "reserved/broadcast"],
+] as const;
 const globalV6 = new BlockList();
 globalV6.addSubnet("2000::", 3, "ipv6");
-const blockedV6 = new BlockList();
 // Includes Teredo, benchmarking, documentation, ORCHID and other special-use
 // 2001 ranges. No mapped-IPv4 subnet in a BlockList shared with IPv4 checks.
-blockedV6.addSubnet("2001::", 23, "ipv6");
-blockedV6.addSubnet("2001:db8::", 32, "ipv6");
-blockedV6.addSubnet("2002::", 16, "ipv6");
-blockedV6.addSubnet("3fff::", 20, "ipv6");
-blockedV6.addSubnet("3ffe::", 16, "ipv6");
+const blockedV6 = [
+  ["2001::", 23, "special-use"], ["2001:db8::", 32, "documentation"],
+  ["2002::", 16, "6to4"], ["3fff::", 20, "documentation"],
+  ["3ffe::", 16, "retired 6bone"],
+] as const;
+function addressRules(ranges: readonly (readonly [string, number, string])[], family: "ipv4" | "ipv6") {
+  return ranges.map(([address, prefix, reason]) => {
+    const block = new BlockList();
+    block.addSubnet(address, prefix, family);
+    return { block, reason: `${reason} (${address}/${prefix})` };
+  });
+}
+const v4Rules = addressRules(blockedV4, "ipv4");
+const v6Rules = addressRules(blockedV6, "ipv6");
+const mappedV6 = new BlockList();
+mappedV6.addSubnet("::ffff:0:0", 96, "ipv6");
+
+function vendorAddressRejection(address: string): string | undefined {
+  const family = isIP(address);
+  if (family === 4) return v4Rules.find(({ block }) => block.check(address, "ipv4"))?.reason;
+  if (family !== 6) return "invalid IP address";
+  // Never check ordinary IPv4 against this list: Node maps it into this subnet.
+  if (mappedV6.check(address, "ipv6")) return "IPv4-mapped IPv6";
+  if (!globalV6.check(address, "ipv6")) return "outside global IPv6 unicast (2000::/3)";
+  return v6Rules.find(({ block }) => block.check(address, "ipv6"))?.reason;
+}
 
 export function isPublicVendorAddress(address: string): boolean {
-  const family = isIP(address);
-  return family === 4 ? !blockedV4.check(address, "ipv4")
-    : family === 6 && globalV6.check(address, "ipv6") && !blockedV6.check(address, "ipv6");
+  return vendorAddressRejection(address) === undefined;
 }
 
 export function validateVendorUrl(
@@ -62,13 +82,34 @@ export function publicVendorLookup(
 ): LookupFunction {
   return (host, options, callback) => {
     void resolve(host).then((addresses) => {
-      if (!addresses.length || addresses.some(({ address }) => !isPublicVendorAddress(address))) {
-        callback(new WcEndpointPolicyError(pluginId, `host '${host}' did not resolve exclusively to public addresses`), "", 4);
+      let rejected = 0;
+      const details: string[] = [];
+      for (const { address } of addresses) {
+        const reason = vendorAddressRejection(address);
+        if (reason === undefined) continue;
+        rejected++;
+        // Log only valid IP literals, never arbitrary resolver/error content.
+        // Bound both the number and size of answers included in a refusal.
+        if (details.length < 8) details.push(`${isIP(address) ? address.split("%", 1)[0].slice(0, 64) : "[invalid address]"}: ${reason}`);
+      }
+      if (!addresses.length || rejected) {
+        const summary = addresses.length
+          ? `rejected ${rejected}/${addresses.length} answers [${details.join("; ")}]${rejected > details.length ? `; ${rejected - details.length} more rejected answers omitted` : ""}`
+          : "no address answers";
+        callback(new WcEndpointPolicyError(pluginId, `host '${host}' did not resolve exclusively to public addresses: ${summary}`), "", 4);
         return;
       }
       if (options.all) callback(null, [...addresses]);
       else callback(null, addresses[0].address, addresses[0].family);
-    }, () => callback(new WcEndpointPolicyError(pluginId, `DNS resolution failed for host '${host}'`), "", 4));
+    }, (error: unknown) => {
+      // Native errors may contain arbitrary request/resolver data. Only relay
+      // known DNS codes, not their messages, stacks or other properties.
+      const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+      const safeCode = typeof code === "string" &&
+        ["ENOTFOUND", "ENODATA", "EAI_AGAIN", "EAI_FAIL", "ETIMEOUT", "ESERVFAIL", "ECONNREFUSED"].includes(code)
+        ? ` (${code})` : "";
+      callback(new WcEndpointPolicyError(pluginId, `DNS resolution failed for host '${host}'${safeCode}`), "", 4);
+    });
   };
 }
 
