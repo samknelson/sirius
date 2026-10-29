@@ -1,8 +1,10 @@
 import { WebSocket, WebSocketServer } from "ws";
 import type { Server } from "http";
 import type { IncomingMessage } from "http";
+import type { Duplex } from "stream";
 import { parse as parseCookie } from "cookie";
 import { logger } from "../logger";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 interface UserConnection {
   userId: string;
@@ -35,6 +37,7 @@ type WebSocketMessage = AlertUpdateMessage | NotificationSummaryMessage | BadgeG
 const connections: Map<string, Set<UserConnection>> = new Map();
 let wss: WebSocketServer | null = null;
 let pingInterval: NodeJS.Timeout | null = null;
+let removeUpgradeListener: (() => void) | null = null;
 
 type ConnectionListener = (userId: string) => void;
 const connectionListeners: Set<ConnectionListener> = new Set();
@@ -99,10 +102,24 @@ export function initializeWebSocket(
   server: Server,
   sessionMiddleware: any
 ): WebSocketServer {
-  wss = new WebSocketServer({ 
-    server,
-    path: "/ws"
-  });
+  if (getEnvironmentVariable("NODE_ENV") === "development") {
+    // A ws server attached with { server, path } rejects OTHER paths with
+    // HTTP 400, even when another upgrade listener (Vite) owns that socket.
+    // In development only, claim /ws explicitly and leave HMR to Vite.
+    const devWss = new WebSocketServer({ noServer: true, path: "/ws" });
+    const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+      if (req.url?.split("?")[0] !== "/ws") return;
+      devWss.handleUpgrade(req, socket, head, (ws) => {
+        devWss.emit("connection", ws, req);
+      });
+    };
+    server.on("upgrade", onUpgrade);
+    removeUpgradeListener = () => server.off("upgrade", onUpgrade);
+    wss = devWss;
+  } else {
+    // Keep production upgrade handling unchanged.
+    wss = new WebSocketServer({ server, path: "/ws" });
+  }
 
   wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {
     try {
@@ -325,6 +342,8 @@ export function getUserConnectionCount(userId: string): number {
 }
 
 export function shutdown(): void {
+  removeUpgradeListener?.();
+  removeUpgradeListener = null;
   if (pingInterval) {
     clearInterval(pingInterval);
     pingInterval = null;
