@@ -11,7 +11,9 @@ export function onSessionAuthorityEnded(sid: string, listener: () => void): () =
   callbacks.add(listener);
   return () => {
     callbacks.delete(listener);
-    if (callbacks.size === 0) listeners.delete(sid);
+    // A closing old socket may unsubscribe AFTER a new group was installed
+    // for this sid. It must not remove that newer group's revocation hooks.
+    if (callbacks.size === 0 && listeners.get(sid) === callbacks) listeners.delete(sid);
   };
 }
 

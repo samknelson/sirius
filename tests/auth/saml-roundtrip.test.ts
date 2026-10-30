@@ -7,11 +7,14 @@ import type { Server } from "node:http";
 const f = vi.hoisted(() => ({
   info: vi.fn(), error: vi.fn(), failSave: false, failRead: false,
   rows: new Map<string, any>(),
-  user: { id: "fixture-user", email: "fixture@example.invalid", isActive: true },
+  user: { id: "fixture-user", email: "fixture@example.invalid", isActive: true, sessionVersion: 0 },
 }));
 vi.mock("../../server/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   storageLogger: { info: f.info, error: f.error },
+}));
+vi.mock("../../server/storage/transaction-context", () => ({
+  runOutsideTransaction: (fn: () => unknown) => fn(),
 }));
 vi.mock("../../server/storage", () => ({
   storage: {

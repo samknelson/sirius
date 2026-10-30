@@ -305,6 +305,9 @@ export function registerUserRoutes(
     try {
       const { id } = req.params;
       const { isActive } = req.body;
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ message: "isActive must be a boolean" });
+      }
 
       const user = await storage.users.updateUser(id, { isActive });
       if (!user) {

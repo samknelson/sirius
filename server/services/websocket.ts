@@ -6,6 +6,7 @@ import { logger } from "../logger";
 import { hasTrustedExplicitOrigin } from "../middleware/browser-request-protection";
 import { onSessionAuthorityEnded, sessionSocketIdentity } from "../auth/socket-authority";
 import { runOutsideTransaction } from "../storage/transaction-context";
+import { currentSessionAccounts, withRequestAccounts } from "../auth/account-authority";
 
 interface SocketAuthority {
   sid: string;
@@ -296,6 +297,12 @@ async function validateConnection(connection: UserConnection): Promise<boolean> 
       (expiresAt != null && (!Number.isFinite(Number(expiresAt)) || Date.now() >= Number(expiresAt) * 1000)) ||
       (cookieExpires != null && (!Number.isFinite(Date.parse(cookieExpires)) || Date.now() >= Date.parse(cookieExpires)))
     ) {
+      refuseConnection(connection);
+      return false;
+    }
+    // Each delivery observes live database state, not the HTTP request's cache.
+    const authority = await withRequestAccounts(() => currentSessionAccounts(sess));
+    if (!authority) {
       refuseConnection(connection);
       return false;
     }

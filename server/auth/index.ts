@@ -18,6 +18,7 @@ import { getEnvironmentVariable } from "../config/env-registry";
 import { observeSuccessfulSignIns } from "./sign-in-events";
 import { createDeviceCookieMiddleware } from "./device-cookie";
 import { endSessionSocketAuthority } from "./socket-authority";
+import { withRequestAccounts, currentSessionAccounts } from "./account-authority";
 
 const getStorage = () => require("../storage").storage;
 
@@ -89,13 +90,13 @@ export function getSession(): RequestHandler {
       maxAge: sessionTtl,
     },
   });
-  return (req, res, next) => restoreSession(req, res, (error?: unknown) => {
+  return (req, res, next) => withRequestAccounts(() => restoreSession(req, res, (error?: unknown) => {
     if (error) return next(error);
     // Restored cookies use the stored Cookie options, not the new defaults.
     // Apply the policy to existing sessions too, without rotating their IDs.
     if (req.session) req.session.cookie.sameSite = "lax";
     next();
-  });
+  }));
 }
 
 export async function setupAuth(app: Express): Promise<void> {
@@ -110,17 +111,17 @@ export async function setupAuth(app: Express): Promise<void> {
   app.use(passport.session());
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser(async (user: Express.User, cb) => {
+  passport.deserializeUser(async (req: Request, user: Express.User, cb: (error: unknown, user?: Express.User | false) => void) => {
     const sessionUser = user as AuthenticatedUser;
-    if (sessionUser.claims?.sub && !sessionUser.dbUser) {
-      try {
-        const { resolveDbUser } = await import("./helpers");
-        await resolveDbUser(sessionUser, sessionUser.claims.sub);
-      } catch (error) {
-        logger.error("Failed to rehydrate dbUser during deserialization", { error });
-      }
+    try {
+      const authority = await currentSessionAccounts({ ...req.session, passport: { user } });
+      if (!authority) return cb(null, false);
+      sessionUser.dbUser = authority.owner;
+      cb(null, user);
+    } catch (error) {
+      // Do not continue into provider middleware on an authority lookup failure.
+      cb(error);
     }
-    cb(null, user);
   });
 
   const validProviderTypes = ["replit", "okta", "saml", "oauth", "local", "clerk"] as const;
@@ -269,6 +270,13 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   if (!req.isAuthenticated() || !user) {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+  try {
+    if (!await currentSessionAccounts({ ...req.session, passport: { user } })) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+  } catch {
+    return res.status(503).json({ message: "Unable to verify account access" });
   }
 
   if (user.expires_at) {

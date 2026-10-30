@@ -12,6 +12,7 @@ import { eventBus, EventType, type EventPayloadMap } from "../../services/event-
 import { logger } from "../../logger";
 import { randomUUID } from "node:crypto";
 import { endSessionSocketAuthority, sessionSocketIdentity } from "../../auth/socket-authority";
+import { lockSessionAccounts } from "../session-account-authority";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -154,6 +155,7 @@ export function createSessionStorage(): SessionStorage {
       const newUserId = sessionUserId(sess);
       return allowInMaintenanceMode(() => runInTransaction(async () => {
         const client = getClient();
+        await lockSessionAccounts(sess);
         // The prior owner must be read from the exact row version this upsert
         // overwrites. A snapshot read (plain SELECT or CTE) can diverge from
         // what ON CONFLICT UPDATE actually replaces under concurrency, so:

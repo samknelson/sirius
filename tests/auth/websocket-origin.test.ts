@@ -10,6 +10,19 @@ vi.mock("../../server/logger", () => ({
 vi.mock("../../server/storage/transaction-context", () => ({
   runOutsideTransaction: (fn: () => unknown) => fn(),
 }));
+const liveAccounts = vi.hoisted(() => ({
+  inactive: new Set<string>(),
+  missing: new Set<string>(),
+  versions: new Map<string, number>(),
+  fail: false,
+}));
+vi.mock("../../server/storage", () => ({
+  storage: { users: { getUser: vi.fn(async (id: string) => {
+    if (liveAccounts.fail) throw new Error("Authority read failed");
+    if (liveAccounts.missing.has(id)) return undefined;
+    return { id, isActive: !liveAccounts.inactive.has(id), sessionVersion: liveAccounts.versions.get(id) ?? 0 };
+  }) } },
+}));
 
 import {
   broadcastNotificationSummary, getConnectionCount, initializeWebSocket, shutdown, onNotificationSummaryAck,
@@ -36,11 +49,16 @@ let persisted: Map<string, any>;
 let storeGet: ReturnType<typeof vi.fn>;
 
 async function settled() {
+  await vi.dynamicImportSettled();
   // Both session restoration and the independent persisted-authority read.
   for (let i = 0; i < 12; i++) await Promise.resolve();
 }
 
 beforeEach(() => {
+  liveAccounts.inactive.clear();
+  liveAccounts.missing.clear();
+  liveAccounts.versions.clear();
+  liveAccounts.fail = false;
   setEnvironmentVariableOverride("PUBLIC_URL", () => origin);
   server = new Server();
   sockets = [];
@@ -89,6 +107,37 @@ describe.each(["development", "production"])("%s application socket origin bound
   beforeEach(() => {
     setEnvironmentVariableOverride("NODE_ENV", () => mode);
     appWss = initializeWebSocket(server, session);
+  });
+
+  it.each(["owner", "target"])("stops private delivery after the current %s is deactivated", async who => {
+    if (who === "target") persisted.get("session-one").masqueradeUserId = "target-user";
+    const userId = who === "target" ? "target-user" : "private-user";
+    const socket = upgrade({ origin });
+    await settled();
+    expect(getConnectionCount()).toBe(1);
+    liveAccounts.inactive.add(userId);
+    expect(await broadcastNotificationSummary(userId, "must-not-deliver", { inapp: 1 })).toBe(false);
+    expect(getConnectionCount()).toBe(0);
+    expect(socket.output).not.toContain("must-not-deliver");
+  });
+
+  it.each(["missing", "error", "reactivated"])("fails closed before private delivery on %s account authority", async change => {
+    const socket = upgrade({ origin });
+    await settled();
+    expect(getConnectionCount()).toBe(1);
+    if (change === "missing") liveAccounts.missing.add("private-user");
+    if (change === "error") liveAccounts.fail = true;
+    if (change === "reactivated") liveAccounts.versions.set("private-user", 1);
+    expect(await broadcastNotificationSummary("private-user", "private-canary", { inapp: 1 })).toBe(false);
+    expect(socket.output).not.toContain("private-canary");
+  });
+
+  it("refuses an inactive user during initial connection", async () => {
+    liveAccounts.inactive.add("private-user");
+    const socket = upgrade({ origin });
+    await settled();
+    expect(getConnectionCount()).toBe(0);
+    expect(socket.output).not.toContain('"type":"connected"');
   });
 
   it.each<Record<string, string | string[]>>([

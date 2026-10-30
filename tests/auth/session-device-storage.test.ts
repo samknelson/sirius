@@ -38,6 +38,7 @@ describe("live-session device observations", () => {
     const queries: { sql: string; params: unknown[] }[] = [];
     const client = drizzle(async (sql, params) => {
       queries.push({ sql, params });
+      if (sql.includes("FROM users")) return { rows: [...new Set(params)].map(id => ({ id, is_active: true, session_version: 0 })) };
       return { rows: sql.includes("FOR UPDATE")
         ? [{ old_user_id: null, user_id: null, old_ip: "192.0.2.1", old_user_agent: previous, old_sess: oldSession }]
         : [] };

@@ -29,6 +29,8 @@ import { runInTransaction } from './transaction-context';
 import { defineLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
+import { createSessionStorage } from "./system/sessions";
+import { sessionProviderType } from "../auth/account-authority";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -176,21 +178,58 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
       validate.validateOrThrow(userUpdate);
-      const client = getClient();
-      const previousUser = await client.select().from(users).where(eq(users.id, id)).then(r => r[0]);
-      const previousEmail = previousUser?.email;
-      
-      const [user] = await client
-        .update(users)
-        .set(userUpdate)
-        .where(eq(users.id, id))
-        .returning();
-      
-      if (user && contactSync) {
-        await contactSync.ensureContactForUser(user, previousEmail);
+      if (userUpdate.isActive !== undefined && typeof userUpdate.isActive !== "boolean") {
+        throw new TypeError("isActive must be a boolean");
       }
-      
-      return user || undefined;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const previousUser = await client.select().from(users).where(eq(users.id, id)).then(r => r[0]);
+        const previousEmail = previousUser?.email;
+
+        const [user] = await client
+          .update(users)
+          .set({
+            ...userUpdate,
+            // Never accept a caller-supplied generation, including runtime
+            // payloads that bypass TypeScript / the public insert schema.
+            sessionVersion: userUpdate.isActive === false
+              ? sql`${users.sessionVersion} + 1` : sql`${users.sessionVersion}`,
+          })
+          .where(eq(users.id, id))
+          .returning();
+
+        if (user && userUpdate.isActive === false) {
+          const defaultProvider = await sessionProviderType();
+          // Lock matching rows while the account lock is held. Resolve legacy
+          // subjects through provider identities, never compare sub to user id.
+          const revoked = await client.execute(sql`
+            SELECT sid FROM sessions s
+            WHERE s.sess #>> '{passport,user,dbUser,id}' = ${id}
+               OR s.sess ->> 'masqueradeUserId' = ${id}
+               OR s.sess ->> 'originalUserId' = ${id}
+               OR (
+                 s.sess #>> '{passport,user,dbUser,id}' IS NULL
+                 AND EXISTS (
+                   SELECT 1 FROM auth_identities a
+                   WHERE a.user_id = ${id}
+                     AND a.external_id = s.sess #>> '{passport,user,claims,sub}'
+                     AND a.provider_type::text = COALESCE(s.sess #>> '{passport,user,providerType}', ${defaultProvider})
+                 )
+               )
+            ORDER BY sid FOR UPDATE
+          `);
+          const sessionStorage = createSessionStorage();
+          for (const row of revoked.rows as { sid: string }[]) {
+            await sessionStorage.deleteSession(row.sid, "account deactivated");
+          }
+        }
+
+        if (user && contactSync) {
+          await contactSync.ensureContactForUser(user, previousEmail);
+        }
+
+        return user || undefined;
+      });
     },
 
     async updateUserLastLogin(id: string): Promise<User | undefined> {
@@ -565,6 +604,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
+          sessionVersion: users.sessionVersion,
           lastLogin: users.lastLogin,
           timezone: users.timezone,
           data: users.data,
@@ -738,6 +778,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
+          sessionVersion: users.sessionVersion,
           lastLogin: users.lastLogin,
           timezone: users.timezone,
           data: users.data,

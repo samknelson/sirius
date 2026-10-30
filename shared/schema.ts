@@ -194,6 +194,8 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   accountStatus: varchar("account_status").default("pending").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  /** Authentication revocation generation; only storage may advance it. */
+  sessionVersion: integer("session_version").default(0).notNull(),
   /**
    * When the account last signed in. Behaviour, not provenance: it is not a
    * record of the account being changed, and nothing else records it.
@@ -1610,12 +1612,14 @@ export {
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
+  sessionVersion: true,
 });
 
 // For Replit Auth upsert operations
 export const upsertUserSchema = createInsertSchema(users).omit({
   lastLogin: true,
   isActive: true,
+  sessionVersion: true,
 });
 
 // For admin user creation (email-based provisioning)
