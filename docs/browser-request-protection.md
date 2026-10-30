@@ -74,10 +74,40 @@ Supplying an Authorization header does not exempt an ordinary API. Adding a
 protocol or upload route requires explicitly reviewing its corresponding narrow
 exception in the shared middleware; do not exempt entire API namespaces.
 
-**Existing separate gap:** Twilio status callbacks validate signatures, but the
-SendGrid and Lob callback validators currently accept requests without signature
-verification. This task preserves that behavior, not an assurance of verified
-delivery-status payloads. Those validators need separate hardening.
+Delivery callbacks authenticate independently of browser sessions:
+
+- SendGrid verifies ECDSA/SHA-256 over the signed timestamp and original JSON
+  bytes. In its webclient vendor configuration, set **Webhook Verification
+  Public Key** (`webhookPublicKey`) to the base64 public key from SendGrid's
+  **Signed Event Webhook** settings.
+- Lob verifies the hexadecimal HMAC-SHA256 of `timestamp + "." + original body`.
+  Store the webhook's signing secret in an environment secret and set
+  **Webhook Signing Secret Name** (`webhookSecretName`) on the Lob vendor
+  configuration to that secret's name. This is not the Lob API credential.
+  The debugger's publicly known `secret` key is deliberately refused.
+- Both require signed Unix timestamps within five minutes of server time,
+  including a five-minute allowance for clock skew into the future. Keep the
+  server clock synchronized. Retries need a current delivery signature; an old
+  event creation date does not itself cause refusal.
+- New sends record the originating vendor configuration. Keep that configuration
+  and its verification settings for in-flight callbacks, even if disabled.
+  Historical sends without a recorded configuration require exactly one matching
+  vendor configuration; ambiguity, missing keys, or deleted configurations fail
+  closed. Browser login and API send credentials never replace verification.
+- Signed SendGrid/Lob events must match the saved provider message identifier
+  for the communication named in the URL. A signed batch cannot update an
+  unrelated communication.
+- Twilio retains its account-matched configuration and standard signature
+  verification, including form-encoded callback support.
+
+Original callback bytes are captured only at this route, before JSON decoding.
+Raw callback payloads and verification material are not included in callback
+logs. Malformed JSON is refused without passing its payload-bearing parse error
+to the general error logger.
+
+Protocol references:
+[SendGrid Event Webhook Security Features](https://www.twilio.com/docs/sendgrid/for-developers/tracking-events/getting-started-event-webhook-security-features)
+and [Lob Webhook Signatures](https://help.lob.com/print-and-mail/getting-data-and-results/using-webhooks#webhook-signatures-11).
 
 ## Compatibility and verification
 

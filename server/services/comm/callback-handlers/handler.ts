@@ -79,7 +79,10 @@ export async function handleStatusCallback(
       return;
     }
 
-    const validationResult = await handler.validateRequest(req);
+    const commData = (comm.data ?? {}) as Record<string, unknown>;
+    const vendorConfigId = typeof commData.callbackVendorConfigId === "string"
+      ? commData.callbackVendorConfigId : undefined;
+    const validationResult = await handler.validateRequest(req, vendorConfigId);
     if (!validationResult.valid) {
       console.warn(`Invalid ${providerId} callback for comm ${commId}: ${validationResult.error}`);
       
@@ -98,6 +101,29 @@ export async function handleStatusCallback(
       
       res.status(403).send('Forbidden');
       return;
+    }
+
+    // A valid signature authenticates the payload, not the URL's commId.
+    // Bind it to the saved provider message before any writes. SendGrid batches
+    // may include other messages; select only an event for this communication.
+    const savedData = (comm.data ?? {}) as Record<string, unknown>;
+    if (providerId === "sendgrid") {
+      const messageId = savedData.messageId;
+      const events = Array.isArray(req.body) ? req.body : [req.body];
+      const matching = typeof messageId === "string" && messageId
+        ? events.filter((event) => typeof event?.sg_message_id === "string" &&
+            (event.sg_message_id === messageId || event.sg_message_id.startsWith(`${messageId}.`)))
+        : [];
+      if (!matching.length) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      req.body = matching;
+    } else if (providerId === "lob") {
+      if (!savedData.letterId || handler.getProviderMessageId(req) !== savedData.letterId) {
+        res.status(403).send('Forbidden');
+        return;
+      }
     }
 
     const statusUpdate = handler.parseStatusUpdate(req);
@@ -154,7 +180,6 @@ export async function handleStatusCallback(
         ...postalData,
         providerStatus: statusUpdate.providerStatus,
         lastWebhookAt: statusUpdate.timestamp.toISOString(),
-        lastWebhookPayload: rawPayload,
       };
       
       if (providerMessageId) updatedPostalData.letterId = providerMessageId;
@@ -185,7 +210,6 @@ export async function handleStatusCallback(
         providerMessageId,
         ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
         ...(statusUpdate.errorMessage && { errorMessage: statusUpdate.errorMessage }),
-        rawPayload: statusUpdate.rawPayload,
       },
     });
 
