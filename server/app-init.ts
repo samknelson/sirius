@@ -290,6 +290,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
   // without writing anything. See `server/services/bringup.ts`.
   await runSchemaBringUp();
+  // Empty-DB bootstrap stamps migrations as applied. Non-Drizzle invariants
+  // must also be installed on that path, before routes/crons can write.
+  {
+    const { installLedgerIdentityProtection } = await import("./storage/ledger/identity-protection");
+    await installLedgerIdentityProtection();
+  }
 
   // Initialize address validation service (loads or creates config). Runs
   // after bring-up: it writes a config row, which report-only mode must not

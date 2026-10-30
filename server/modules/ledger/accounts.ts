@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
-import { insertLedgerAccountSchema, ledgerAccountDataSchema } from "@shared/schema";
+import { insertLedgerAccountSchema, updateLedgerAccountSchema, ledgerAccountDataSchema } from "@shared/schema";
+import { assertUnchangedLedgerIdentity, ACCOUNT_IDENTITY_FIELDS, ACCOUNT_CURRENCY_MESSAGE, ledgerIdentityConflictMessage } from "@shared/ledger/immutable-identity";
 import { getAllCurrencies, hasCurrency } from "@shared/currency";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
@@ -96,12 +97,11 @@ export function registerLedgerAccountRoutes(app: Express) {
   app.put("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
-      const validatedData = insertLedgerAccountSchema.partial().parse(req.body);
-      
-      // Prevent currencyCode from being updated - it's immutable after creation
-      const { currencyCode, ...safeUpdateData } = validatedData;
-      
-      const account = await storage.ledger.accounts.update(id, safeUpdateData);
+      const existing = await storage.ledger.accounts.get(id);
+      if (!existing) return void res.status(404).json({ message: "Ledger account not found" });
+      assertUnchangedLedgerIdentity(existing, req.body ?? {}, ACCOUNT_IDENTITY_FIELDS, ACCOUNT_CURRENCY_MESSAGE);
+      const validatedData = updateLedgerAccountSchema.parse(req.body);
+      const account = await storage.ledger.accounts.update(id, validatedData);
       
       if (!account) {
         res.status(404).json({ message: "Ledger account not found" });
@@ -115,7 +115,8 @@ export function registerLedgerAccountRoutes(app: Express) {
       } else if (isDuplicateSiriusId(error)) {
         res.status(409).json({ message: DUPLICATE_SIRIUS_ID_MESSAGE });
       } else {
-        res.status(500).json({ message: "Failed to update ledger account" });
+        const conflict = ledgerIdentityConflictMessage(error);
+        res.status(conflict ? 409 : 500).json({ message: conflict ?? "Failed to update ledger account" });
       }
     }
   });
@@ -125,6 +126,10 @@ export function registerLedgerAccountRoutes(app: Express) {
     try {
       const { id } = req.params;
       const { data } = req.body;
+      // PATCH edits settings, but must not silently discard a currency change.
+      const existing = await storage.ledger.accounts.get(id);
+      if (!existing) return void res.status(404).json({ message: "Ledger account not found" });
+      assertUnchangedLedgerIdentity(existing, req.body ?? {}, ACCOUNT_IDENTITY_FIELDS, ACCOUNT_CURRENCY_MESSAGE);
       
       // Validate the data structure - explicitly handle undefined and null
       let validatedData;
@@ -146,7 +151,8 @@ export function registerLedgerAccountRoutes(app: Express) {
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid account data format" });
       } else {
-        res.status(500).json({ message: "Failed to update ledger account settings" });
+        const conflict = ledgerIdentityConflictMessage(error);
+        res.status(conflict ? 409 : 500).json({ message: conflict ?? "Failed to update ledger account settings" });
       }
     }
   });

@@ -1920,6 +1920,12 @@ export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
   id: true,
 });
 
+// Identity fields in update payloads are compatibility assertions, never edits.
+export const updateLedgerEaSchema = insertLedgerEaSchema.partial();
+export const updateLedgerAccountSchema = insertLedgerAccountSchema.partial();
+export type UpdateLedgerEa = z.infer<typeof updateLedgerEaSchema>;
+export type UpdateLedgerAccount = z.infer<typeof updateLedgerAccountSchema>;
+
 export type InsertLedgerEa = z.infer<typeof insertLedgerEaSchema>;
 export type SelectLedgerEa = typeof ledgerEa.$inferSelect;
 

@@ -7,10 +7,10 @@ export const financeUploadHelp: SystemHelpEntry[] = [
     summary: "Find ledger accounts and participant balances, then review payments and transactions before changing account settings or financial records.",
     details: `
       <h3>Purpose</h3><p>An account defines the ledger being tracked; an entity account links a participant such as a worker or employer to that ledger.</p>
-      <h3>Before you start</h3><p>Ledger and the relevant account or entity access are required. Staff account administration and a participant's statement access are different capabilities. Batch tabs require the batch feature.</p>
+      <h3>Before you start</h3><p>Ledger and the relevant account or entity access are required. Staff account administration and a participant's statement access are different capabilities. Batch tabs require the batch feature. Account currency is permanent after creation. Before creating an account, choose the correct unit and purpose. Before selecting <strong>Create Entry</strong> from a worker's or employer's Accounts page, confirm you are on the correct participant and select the correct <strong>Ledger Account</strong>. The participant type, participant ID, and parent ledger account are permanent immediately, even before financial activity exists.</p>
       <h3>How to use this page</h3><ol><li>Find the correct account and check its unit and purpose.</li><li>Open Participants or the worker's or employer's Accounts to find the relevant entity account.</li><li>Compare Payments, Transactions, and Summary for the same period.</li><li>Review downstream financial effects before saving account settings.</li></ol>
       <h3>Results and status meanings</h3><p>Charges increase an obligation; credits reduce it according to the payment type. A saved payment, pending provider attempt, or batch membership alone is not posted money. Allocations determine which participant and statement month receives an amount.</p>
-      <h3>Limitations and common problems</h3><p>Check dates, account units, allocation, and status before treating a balance as a discrepancy. An account total is not interchangeable with one participant's monthly statement.</p>`,
+      <h3>Limitations and common problems</h3><p>Check dates, account units, allocation, and status before treating a balance as a discrepancy. An account total is not interchangeable with one participant's monthly statement. A changed participant, parent account, or currency is refused without saving the other changes in that request. Ask authorized staff to review historical activity and source evidence; ownership editing is not a correction or transfer workflow. An entity account with financial history cannot be deleted. Do not delete and recreate records to repair history.</p>`,
   },
   {
     id: "system:entity-account-statements",
@@ -18,10 +18,10 @@ export const financeUploadHelp: SystemHelpEntry[] = [
     summary: "Review a participant's statements, payments, and transactions for the selected account and period, separating posted obligations from pending funds.",
     details: `
       <h3>Purpose</h3><p>Use Invoices for statement-month detail, Payments for payment records, Transactions for ledger entries, and Summary for totals.</p>
-      <h3>Before you start</h3><p>You need permission to view this entity account. Check the participant and ledger account before interpreting amounts.</p>
+      <h3>Before you start</h3><p>You need permission to view this entity account. Check the participant and ledger account before interpreting amounts. The participant type, participant ID, and parent ledger account are permanent after creation; account currency is also permanent. Choose the correct participant and ledger account at creation, not by editing ownership later.</p>
       <h3>How to use this page</h3><ol><li>Choose the statement month and year where offered.</li><li>Review charges, credits, and allocated payments for that month.</li><li>Open the underlying records to investigate an unexpected amount.</li></ol>
       <h3>Results and status meanings</h3><p>Cleared posted allocations contribute to financial evidence; pending online funds are not yet posted credit. Account-wide balance and one statement-month balance can differ. Credits in another month do not prove a particular premium month has been paid.</p>
-      <h3>Limitations and common problems</h3><p>Reading an invoice does not send it, collect payment, or establish benefit coverage. If a payment is absent, check its account, allocation month, and status before recording it again.</p>`,
+      <h3>Limitations and common problems</h3><p>Reading an invoice does not send it, collect payment, or establish benefit coverage. If a payment is absent, check its account, allocation month, and status before recording it again. Ask authorized staff to review source evidence before correcting historical activity. An ownership edit is not available and would not move attached charges or payments. Existing authorized payment-allocation corrections are separate from entity-account ownership; no automatic reversal or transfer is promised.</p>`,
   },
   {
     id: "system:staff-payment-entry",

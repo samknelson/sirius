@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
-import { insertLedgerEaSchema } from "@shared/schema";
+import { insertLedgerEaSchema, updateLedgerEaSchema } from "@shared/schema";
+import { assertUnchangedLedgerIdentity, EA_IDENTITY_FIELDS, EA_IDENTITY_MESSAGE, ledgerIdentityConflictMessage } from "@shared/ledger/immutable-identity";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
@@ -18,7 +19,12 @@ async function checkEaAccessInline(req: Request, res: Response, ea: { entityType
 }
 
 function isEaHistoryDeleteConflict(error: unknown): boolean {
-  return (error as { code?: string } | null)?.code === "23503";
+  let current = error as { code?: string; cause?: unknown } | undefined;
+  for (let depth = 0; current && depth < 5; depth++) {
+    if (current.code === "23503") return true;
+    current = current.cause as typeof current;
+  }
+  return false;
 }
 
 export function registerLedgerEaRoutes(app: Express) {
@@ -138,7 +144,8 @@ export function registerLedgerEaRoutes(app: Express) {
       
       if (!await checkEaAccessInline(req, res, existing, 'ledger.ea.edit')) return;
       
-      const validatedData = insertLedgerEaSchema.partial().parse(req.body);
+      assertUnchangedLedgerIdentity(existing, req.body ?? {}, EA_IDENTITY_FIELDS, EA_IDENTITY_MESSAGE);
+      const validatedData = updateLedgerEaSchema.parse(req.body);
       const entry = await storage.ledger.ea.update(id, validatedData);
       
       res.json(entry);
@@ -146,7 +153,8 @@ export function registerLedgerEaRoutes(app: Express) {
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid ledger EA data" });
       } else {
-        res.status(500).json({ message: "Failed to update ledger EA entry" });
+        const conflict = ledgerIdentityConflictMessage(error);
+        res.status(conflict ? 409 : 500).json({ message: conflict ?? "Failed to update ledger EA entry" });
       }
     }
   });

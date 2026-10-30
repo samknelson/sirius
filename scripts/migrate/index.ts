@@ -268,6 +268,7 @@ import "./core/1202_create_employer_contact_payment_grants";
 import "./core/1203_payment_type_direction";
 import "./core/1204_adopt_template_assets";
 import "./core/1205_index_wmb_dependent_results";
+import "./core/1206_lock_ledger_identity";
 
 export {
   runMigrations,

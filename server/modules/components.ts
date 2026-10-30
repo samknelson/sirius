@@ -204,6 +204,11 @@ export function registerComponentRoutes(
         }
       }
 
+      if (componentId === "ledger" && enabled) {
+        const { installLedgerIdentityProtection } = await import("../storage/ledger/identity-protection");
+        await installLedgerIdentityProtection();
+      }
+
       // Materialize / deactivate any plugin_configs this component owns
       // (Task #397). Runs after the schema lifecycle so the rows are only
       // created once the component's tables (if any) are in place.

@@ -23,6 +23,8 @@ import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
 import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
+import { updateLedgerEaSchema, updateLedgerAccountSchema, type UpdateLedgerEa, type UpdateLedgerAccount } from "@shared/schema";
+import { assertUnchangedLedgerIdentity, EA_IDENTITY_FIELDS, ACCOUNT_IDENTITY_FIELDS, EA_IDENTITY_MESSAGE, ACCOUNT_CURRENCY_MESSAGE } from "@shared/ledger/immutable-identity";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -49,7 +51,7 @@ export interface LedgerEaStorage {
   getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
   getBalance(id: string): Promise<string>;
   create(entry: InsertLedgerEa): Promise<SelectLedgerEa>;
-  update(id: string, entry: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined>;
+  update(id: string, entry: UpdateLedgerEa): Promise<SelectLedgerEa | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -288,7 +290,7 @@ export interface LedgerAccountStorage {
    */
   getBySiriusId(siriusId: string): Promise<LedgerAccount | undefined>;
   create(account: InsertLedgerAccount): Promise<LedgerAccount>;
-  update(id: string, account: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined>;
+  update(id: string, account: UpdateLedgerAccount): Promise<LedgerAccount | undefined>;
   delete(id: string): Promise<boolean>;
   getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }>;
 }
@@ -375,11 +377,17 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
       return account;
     },
 
-    async update(id: string, accountUpdate: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined> {
+    async update(id: string, accountUpdate: UpdateLedgerAccount): Promise<LedgerAccount | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
+      const [existing] = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, id));
+      if (!existing) return undefined;
+      assertUnchangedLedgerIdentity(existing, accountUpdate, ACCOUNT_IDENTITY_FIELDS, ACCOUNT_CURRENCY_MESSAGE);
+      const patch = updateLedgerAccountSchema.parse(accountUpdate);
+      const { currencyCode: _currencyCode, ...editable } = patch;
+      if (Object.values(editable).every(value => value === undefined)) return existing;
       const [account] = await client.update(ledgerAccounts)
-        .set(accountUpdate)
+        .set(editable)
         .where(eq(ledgerAccounts.id, id))
         .returning();
       return account || undefined;
@@ -636,11 +644,17 @@ export function createLedgerEaStorage(): LedgerEaStorage {
       return entry;
     },
 
-    async update(id: string, entryUpdate: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined> {
+    async update(id: string, entryUpdate: UpdateLedgerEa): Promise<SelectLedgerEa | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
+      const [existing] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, id));
+      if (!existing) return undefined;
+      assertUnchangedLedgerIdentity(existing, entryUpdate, EA_IDENTITY_FIELDS, EA_IDENTITY_MESSAGE);
+      const patch = updateLedgerEaSchema.parse(entryUpdate);
+      // Never pass identity (or runtime-injected id/unknown fields) to SET.
+      if (patch.data === undefined) return existing;
       const [entry] = await client.update(ledgerEa)
-        .set(entryUpdate)
+        .set({ data: patch.data })
         .where(eq(ledgerEa.id, id))
         .returning();
       return entry || undefined;
