@@ -2,9 +2,8 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { Server } from "http";
 import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
-import { parse as parseCookie } from "cookie";
 import { logger } from "../logger";
-import { getEnvironmentVariable } from "../config/env-registry";
+import { hasTrustedExplicitOrigin } from "../middleware/browser-request-protection";
 
 interface UserConnection {
   userId: string;
@@ -102,24 +101,25 @@ export function initializeWebSocket(
   server: Server,
   sessionMiddleware: any
 ): WebSocketServer {
-  if (getEnvironmentVariable("NODE_ENV") === "development") {
-    // A ws server attached with { server, path } rejects OTHER paths with
-    // HTTP 400, even when another upgrade listener (Vite) owns that socket.
-    // In development only, claim /ws explicitly and leave HMR to Vite.
-    const devWss = new WebSocketServer({ noServer: true, path: "/ws" });
-    const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-      if (req.url?.split("?")[0] !== "/ws") return;
-      devWss.handleUpgrade(req, socket, head, (ws) => {
-        devWss.emit("connection", ws, req);
-      });
-    };
-    server.on("upgrade", onUpgrade);
-    removeUpgradeListener = () => server.off("upgrade", onUpgrade);
-    wss = devWss;
-  } else {
-    // Keep production upgrade handling unchanged.
-    wss = new WebSocketServer({ server, path: "/ws" });
-  }
+  // The automatic { server, path } listener rejects other listeners' paths.
+  // Own only /ws, in every environment; Vite HMR keeps its own upgrade path.
+  const appWss = new WebSocketServer({ noServer: true, path: "/ws" });
+  const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (req.url?.split("?")[0] !== "/ws") return;
+    // This session-authorized endpoint requires an explicit canonical Origin
+    // even for non-browser clients. No Referer, Host, forwarded-header, or
+    // missing-Origin exemption: Origin is a browser boundary, not client auth.
+    if (!hasTrustedExplicitOrigin(req.headers.origin)) {
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      return;
+    }
+    appWss.handleUpgrade(req, socket, head, (ws) => {
+      appWss.emit("connection", ws, req);
+    });
+  };
+  server.on("upgrade", onUpgrade);
+  removeUpgradeListener = () => server.off("upgrade", onUpgrade);
+  wss = appWss;
 
   wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {
     try {

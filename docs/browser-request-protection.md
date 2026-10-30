@@ -32,6 +32,31 @@ Origin validation protects requests immediately, including older browser cookies
 
 ## Protocol exceptions
 
+### Authenticated WebSocket upgrades
+
+The notification socket at `/ws` (including query strings) requires an explicit,
+single serialized HTTP(S) `Origin` matching the current registry-resolved
+`PUBLIC_URL`. The upgrade receives HTTP 403 **before** session restoration or
+the WebSocket handshake when Origin is absent, null, malformed, foreign, or a
+sibling subdomain. Unlike HTTP requests, Referer is not a fallback.
+
+There is no non-browser exemption on this session-authorized endpoint. A
+non-browser notification client must provide both that explicit Origin and a
+valid session; Origin alone is not authentication. Independently authenticated
+machine integrations should use the web-service endpoints instead.
+
+Host and forwarded headers never expand the allowlist. The registry's existing
+platform-domain resolution supports proxied development; an explicitly
+configured local HTTP origin must match its scheme and port too. Only `/ws`
+upgrades are owned by this service, in both production and development. Other
+paths, including Vite's `/__vite_hmr`, are left to their own upgrade listeners.
+
+Focused in-memory handshake tests cover accepted/rejected origins, refusal
+before session work and event delivery, trusted private notifications, live
+registry changes, and independent upgrade-listener ownership.
+
+### Independently authenticated HTTP protocols
+
 These exceptions bypass browser provenance/body-format rules, **not their own
 authentication or validation**:
 

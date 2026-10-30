@@ -15,19 +15,25 @@ function httpUrl(value: string): URL | undefined {
   }
 }
 
+/** Accept only a single serialized HTTP(S) origin, never a URL or origin list. */
+export function hasTrustedExplicitOrigin(origin: unknown): boolean {
+  if (typeof origin !== "string") return false;
+  const parsed = httpUrl(origin);
+  return !!parsed && parsed.origin === origin &&
+    parsed.origin === getEnvironmentVariable("PUBLIC_URL");
+}
+
 /** Missing provenance is not evidence of a same-origin request. */
 export function hasTrustedBrowserOrigin(req: Request): boolean {
   if (req.get("Sec-Fetch-Site")?.toLowerCase() === "cross-site") return false;
-  const expected = getEnvironmentVariable("PUBLIC_URL");
   const origin = req.get("Origin");
   if (origin !== undefined) {
-    const parsed = httpUrl(origin);
     // Origin must be a single serialized origin, not a URL with a path,
     // userinfo, query, fragment, or an origin list. Never fall back on failure.
-    return !!parsed && parsed.origin === origin && parsed.origin === expected;
+    return hasTrustedExplicitOrigin(origin);
   }
   const referer = req.get("Referer");
-  return !!referer && httpUrl(referer)?.origin === expected;
+  return !!referer && httpUrl(referer)?.origin === getEnvironmentVariable("PUBLIC_URL");
 }
 
 function isUpload(req: Request, path: string): boolean {

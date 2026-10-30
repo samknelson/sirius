@@ -7,7 +7,17 @@ When sharing an HTTP server with Vite, a ws server's `path` option is not a pass
 
 **Why:** This caused development HMR failures independently of the Node runtime upgrade. An invalid localhost fallback was a secondary symptom, not proof of a Node regression.
 
-**How to apply:** Preserve production routing when changing development upgrade ownership. Preserve configured HMR options when supplying middleware-mode server options. Verify the actual proxied browser receives a 101 and a rendered hot update, not merely that the HTTP page loads.
+**How to apply:** The application notification socket deliberately claims only `/ws` in every environment; origin refusal must not touch another listener's paths. Preserve configured HMR options when supplying middleware-mode server options. Verify the actual proxied browser receives a 101 and a rendered hot update, not merely that the HTTP page loads.
+
+The notification socket requires the canonical PUBLIC_URL Origin even from
+non-browser clients; missing Origin is not a machine-client exemption.
+
+**Why:** Session cookies authorize this socket, so exemptions based on missing
+browser headers would bypass the cross-origin boundary. Non-browser clients
+can supply Origin but must still authenticate independently with their session.
+
+**How to apply:** Keep machine integrations on independently authenticated web
+services, or require explicit canonical Origin plus a session on `/ws`.
 
 A localhost screenshot does not exercise the Replit proxy's TLS/port behavior.
 
