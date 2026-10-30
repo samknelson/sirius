@@ -17,6 +17,7 @@ import { loadProvider } from "./provider-loader";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { observeSuccessfulSignIns } from "./sign-in-events";
 import { createDeviceCookieMiddleware } from "./device-cookie";
+import { endSessionSocketAuthority } from "./socket-authority";
 
 const getStorage = () => require("../storage").storage;
 
@@ -230,6 +231,8 @@ export async function setupAuth(app: Express): Promise<void> {
   });
 
   app.get("/api/logout", (req, res, next) => {
+    // Stop delivery now, even if a provider's remote logout is slow or fails.
+    endSessionSocketAuthority(req.sessionID);
     const user = req.user as AuthenticatedUser | undefined;
     const providerType = user?.providerType;
 

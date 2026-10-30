@@ -10,6 +10,8 @@ import { normalizeSessionIp } from "../../auth/session-ip";
 import { getSessionAuthenticationContext } from "../../auth/session-authentication-context";
 import { eventBus, EventType, type EventPayloadMap } from "../../services/event-bus";
 import { logger } from "../../logger";
+import { randomUUID } from "node:crypto";
+import { endSessionSocketAuthority, sessionSocketIdentity } from "../../auth/socket-authority";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -114,6 +116,7 @@ export function createSessionStorage(): SessionStorage {
           .delete(sessions)
           .where(eq(sessions.sid, sid))
           .returning({ sess: sessions.sess });
+        onAfterCommit(() => endSessionSocketAuthority(sid));
         if (row) announceSessionMutation(EventType.SESSION_DELETE_AFTER, {
           sid, userId: sessionUserId(row.sess) ?? null,
           ip: storedSessionIp(row.sess), occurredAt: new Date().toISOString(),
@@ -161,20 +164,27 @@ export function createSessionStorage(): SessionStorage {
         for (let attempt = 0; attempt < 3; attempt++) {
           const locked = await client.execute(sql`
             SELECT sess #>> '{passport,user,dbUser,id}' AS old_user_id,
+                   sess AS old_sess,
                    sess ->> '_sessionClientIp' AS old_ip,
                    sess -> '_sessionClientUserAgent' AS old_user_agent
             FROM sessions WHERE sid = ${sid} FOR UPDATE
           `);
           if (locked.rows.length > 0) {
-            const previous = locked.rows[0] as { old_user_id: string | null; old_ip: string | null; old_user_agent: unknown };
+            const previous = locked.rows[0] as { old_user_id: string | null; old_sess: any; old_ip: string | null; old_user_agent: unknown };
+            const changed = JSON.stringify(sessionSocketIdentity(previous.old_sess)) !==
+              JSON.stringify(sessionSocketIdentity(sess));
+            // Legacy sessions have no generation. Keep that baseline until an
+            // actual authority change, rather than dropping sockets on renewal.
+            const generation = changed ? randomUUID() : previous.old_sess?._socketAuthorityVersion ?? null;
             const previousIp = normalizeSessionIp(previous.old_ip);
             const ip = normalizeSessionIp(getRequestContext()?.ipAddress) ?? previousIp;
             const previousUserAgent = suppliedSessionUserAgent(previous.old_user_agent);
             const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent) ?? previousUserAgent;
             await client
               .update(sessions)
-              .set({ sess: withSessionClientDetails(sess, ip, userAgent), expire })
+              .set({ sess: { ...(withSessionClientDetails(sess, ip, userAgent) as object), _socketAuthorityVersion: generation }, expire })
               .where(eq(sessions.sid, sid));
+            if (changed) onAfterCommit(() => endSessionSocketAuthority(sid));
             announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
               sid, created: false, previousUserId: previous.old_user_id,
               userId: newUserId ?? null, previousIp, ip,
@@ -193,7 +203,7 @@ export function createSessionStorage(): SessionStorage {
           const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent);
           const inserted = await client
             .insert(sessions)
-            .values({ sid, sess: withSessionClientDetails(sess, ip, userAgent), expire })
+            .values({ sid, sess: { ...(withSessionClientDetails(sess, ip, userAgent) as object), _socketAuthorityVersion: randomUUID() }, expire })
             .onConflictDoNothing()
             .returning({ sid: sessions.sid });
           if (inserted.length > 0) {
@@ -264,6 +274,7 @@ export function createSessionStorage(): SessionStorage {
           .delete(sessions)
           .where(sql`${sessions.sid} = ${sid} AND ${sessions.expire} < ${now}`)
           .returning({ sess: sessions.sess });
+        if (row) onAfterCommit(() => endSessionSocketAuthority(sid));
         if (row) announceSessionMutation(EventType.SESSION_DELETE_AFTER, {
           sid, userId: sessionUserId(row.sess) ?? null,
           ip: storedSessionIp(row.sess), occurredAt: new Date().toISOString(),

@@ -155,3 +155,4 @@
 - [Shared Vite upgrade ownership](vite-shared-upgrade-ownership.md) — ws path filtering rejects other listeners' sockets; verify HMR through the proxy, not a localhost screenshot.
 - [Native ESM vendor verification](native-esm-vendor-verification.md) — development/test interop can hide CommonJS export shapes; verify production-format adapters with fake HTTP and the installed SDK.
 - [Session cookie restoration](session-cookie-restoration.md) — express-session restores saved Cookie options over defaults; security policy changes must cover legacy sessions too.
+- [Socket session authority](socket-session-authority.md) — local revocation hooks are not enough across processes; authority generations must survive identity round trips without changing on ordinary renewal.

@@ -4,11 +4,22 @@ import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import { logger } from "../logger";
 import { hasTrustedExplicitOrigin } from "../middleware/browser-request-protection";
+import { onSessionAuthorityEnded, sessionSocketIdentity } from "../auth/socket-authority";
+import { runOutsideTransaction } from "../storage/transaction-context";
 
-interface UserConnection {
+interface SocketAuthority {
+  sid: string;
+  ownerId: string;
   userId: string;
+  generation: unknown;
+  store: { get(sid: string, callback: (error: unknown, sess?: any) => void): void };
+}
+
+interface UserConnection extends SocketAuthority {
   ws: WebSocket;
   lastPing: number;
+  active: boolean;
+  unsubscribe: () => void;
 }
 
 interface AlertUpdateMessage {
@@ -122,34 +133,57 @@ export function initializeWebSocket(
   wss = appWss;
 
   wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {
+    // Install handlers before asynchronous sign-in checks. A peer may disappear
+    // while the session store is answering; never register it afterwards.
+    let connection: UserConnection | undefined;
+    ws.on("close", () => {
+      if (connection) removeConnection(connection.userId, connection);
+    });
+    ws.on("error", () => {
+      if (connection) removeConnection(connection.userId, connection);
+    });
     try {
-      const userId = await authenticateConnection(req, sessionMiddleware);
+      const authority = await authenticateConnection(req, sessionMiddleware);
       
-      if (!userId) {
+      if (!authority || ws.readyState !== WebSocket.OPEN) {
         ws.close(4001, "Unauthorized");
         return;
       }
 
-      const connection: UserConnection = {
-        userId,
+      const userId = authority.userId;
+      const established: UserConnection = {
+        ...authority,
         ws,
         lastPing: Date.now(),
+        active: true,
+        unsubscribe: () => {},
       };
+      connection = established;
+      established.unsubscribe = onSessionAuthorityEnded(authority.sid, () => {
+        refuseConnection(established);
+      });
 
-      addConnection(userId, connection);
+      // Read again after subscribing, covering revocation during restoration.
+      if (!await validateConnection(established) || !established.active || wss !== appWss) {
+        refuseConnection(established);
+        return;
+      }
+      addConnection(userId, established);
       logger.debug("WebSocket connection established", { 
         service: "websocket",
         userId 
       });
 
-      ws.on("message", (data) => {
+      ws.on("message", async (data) => {
         try {
           const message = JSON.parse(data.toString());
           if (message.type === "pong") {
-            connection.lastPing = Date.now();
+            // Transport liveness is not authenticated activity.
+            established.lastPing = Date.now();
           } else if (
             message.type === "notification_summary_ack" &&
-            typeof message.id === "string"
+            typeof message.id === "string" &&
+            await validateConnection(established) && established.active
           ) {
             // The client confirmed it rendered this summary; let the outbox
             // drop it so it is not re-sent on the next reconnect.
@@ -161,7 +195,7 @@ export function initializeWebSocket(
       });
 
       ws.on("close", () => {
-        removeConnection(userId, connection);
+        removeConnection(userId, established);
         logger.debug("WebSocket connection closed", { 
           service: "websocket",
           userId 
@@ -174,7 +208,7 @@ export function initializeWebSocket(
           userId,
           error: error.message,
         });
-        removeConnection(userId, connection);
+        removeConnection(userId, established);
       });
 
       ws.send(JSON.stringify({ type: "connected" }));
@@ -205,7 +239,11 @@ export function initializeWebSocket(
           connection.ws.terminate();
           removeConnection(userId, connection);
         } else if (connection.ws.readyState === WebSocket.OPEN) {
-          connection.ws.send(JSON.stringify({ type: "ping" }));
+          void validateConnection(connection).then(valid => {
+            if (valid && connection.active && connection.ws.readyState === WebSocket.OPEN) {
+              connection.ws.send(JSON.stringify({ type: "ping" }));
+            }
+          });
         }
       });
     });
@@ -218,32 +256,55 @@ export function initializeWebSocket(
 function authenticateConnection(
   req: IncomingMessage,
   sessionMiddleware: any
-): Promise<string | null> {
-  return new Promise((resolve) => {
+): Promise<SocketAuthority | null> {
+  return new Promise((resolve, reject) => {
     const mockRes = {
       setHeader: () => {},
       end: () => {},
     };
 
-    sessionMiddleware(req, mockRes, () => {
+    sessionMiddleware(req, mockRes, (error?: unknown) => {
+      if (error) return reject(error);
       const session = (req as any).session;
-      
-      // Check for masquerade first
-      if (session?.masqueradeUserId) {
-        resolve(session.masqueradeUserId);
-        return;
-      }
-      
-      // Get user ID from Passport session (session.passport.user.dbUser.id)
-      const passportUser = session?.passport?.user;
-      if (passportUser?.dbUser?.id) {
-        resolve(passportUser.dbUser.id);
-        return;
-      }
-      
-      resolve(null);
+      const identity = sessionSocketIdentity(session);
+      const sid = (req as any).sessionID;
+      const store = (req as any).sessionStore;
+      if (!identity || !sid || !store?.get) return resolve(null);
+      resolve({ ...identity, sid, store, generation: session._socketAuthorityVersion ?? null });
     });
   });
+}
+
+function refuseConnection(connection: UserConnection): void {
+  removeConnection(connection.userId, connection);
+  connection.ws.close(4001, "Session ended");
+}
+
+/** Re-read persisted authority, never touch/renew it or trust a client pong. */
+async function validateConnection(connection: UserConnection): Promise<boolean> {
+  if (!connection.active || connection.ws.readyState !== WebSocket.OPEN) return false;
+  try {
+    const sess = await runOutsideTransaction(() => new Promise<any>((resolve, reject) => {
+      connection.store.get(connection.sid, (error, value) => error ? reject(error) : resolve(value));
+    }));
+    const identity = sessionSocketIdentity(sess);
+    const expiresAt = sess?.passport?.user?.expires_at;
+    const cookieExpires = sess?.cookie?.expires;
+    if (
+      !identity || identity.ownerId !== connection.ownerId || identity.userId !== connection.userId ||
+      (sess?._socketAuthorityVersion ?? null) !== connection.generation ||
+      (expiresAt != null && (!Number.isFinite(Number(expiresAt)) || Date.now() >= Number(expiresAt) * 1000)) ||
+      (cookieExpires != null && (!Number.isFinite(Date.parse(cookieExpires)) || Date.now() >= Date.parse(cookieExpires)))
+    ) {
+      refuseConnection(connection);
+      return false;
+    }
+    return connection.active && connection.ws.readyState === WebSocket.OPEN;
+  } catch {
+    // A failed authority read is not permission to deliver private data.
+    refuseConnection(connection);
+    return false;
+  }
 }
 
 function addConnection(userId: string, connection: UserConnection): void {
@@ -254,6 +315,8 @@ function addConnection(userId: string, connection: UserConnection): void {
 }
 
 function removeConnection(userId: string, connection: UserConnection): void {
+  connection.active = false;
+  connection.unsubscribe();
   const userConnections = connections.get(userId);
   if (userConnections) {
     userConnections.delete(connection);
@@ -270,7 +333,7 @@ function removeConnection(userId: string, connection: UserConnection): void {
  * delivery guarantee (e.g. the flash-summary toast) use the return value to
  * decide whether to retain and replay the message when the user reconnects.
  */
-export function broadcastToUser(userId: string, message: WebSocketMessage): boolean {
+export async function broadcastToUser(userId: string, message: WebSocketMessage): Promise<boolean> {
   const userConnections = connections.get(userId);
   if (!userConnections || userConnections.size === 0) {
     return false;
@@ -278,8 +341,8 @@ export function broadcastToUser(userId: string, message: WebSocketMessage): bool
 
   const messageStr = JSON.stringify(message);
   let delivered = false;
-  userConnections.forEach((connection) => {
-    if (connection.ws.readyState === WebSocket.OPEN) {
+  await Promise.all([...userConnections].map(async (connection) => {
+    if (await validateConnection(connection) && connection.active && connection.ws.readyState === WebSocket.OPEN) {
       try {
         connection.ws.send(messageStr);
         delivered = true;
@@ -291,20 +354,20 @@ export function broadcastToUser(userId: string, message: WebSocketMessage): bool
         });
       }
     }
-  });
+  }));
   return delivered;
 }
 
-export function broadcastAlertUpdate(userId: string, unreadCount: number): void {
-  broadcastToUser(userId, {
+export function broadcastAlertUpdate(userId: string, unreadCount: number): Promise<boolean> {
+  return broadcastToUser(userId, {
     type: "alert_update",
     payload: { unreadCount },
   });
 }
 
 /** One-shot feedback only: disconnected browsers silently miss this flash. */
-export function broadcastBadgeGrant(userId: string, badgeName: string): void {
-  broadcastToUser(userId, {
+export function broadcastBadgeGrant(userId: string, badgeName: string): Promise<boolean> {
+  return broadcastToUser(userId, {
     type: "badge_granted",
     payload: { badgeName },
   });
@@ -321,7 +384,7 @@ export function broadcastNotificationSummary(
   userId: string,
   id: string,
   counts: Partial<Record<"email" | "sms" | "inapp" | "postal", number>>,
-): boolean {
+): Promise<boolean> {
   return broadcastToUser(userId, {
     type: "notification_summary",
     id,
@@ -352,10 +415,13 @@ export function shutdown(): void {
   if (wss) {
     connections.forEach((userConnections) => {
       userConnections.forEach((connection) => {
+        removeConnection(connection.userId, connection);
         connection.ws.close(1001, "Server shutting down");
       });
     });
     connections.clear();
+    // Includes peers still waiting for their initial session lookup.
+    wss.clients.forEach(ws => ws.close(1001, "Server shutting down"));
     wss.close();
     wss = null;
   }
