@@ -76,7 +76,7 @@ export function getSession(): RequestHandler {
 
   const isProduction = getEnvironmentVariable("NODE_ENV") === "production";
 
-  return session({
+  const restoreSession = session({
     secret: config.sessionSecret,
     store: sessionStore,
     resave: false,
@@ -84,8 +84,16 @@ export function getSession(): RequestHandler {
     cookie: {
       httpOnly: true,
       secure: isProduction,
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
+  });
+  return (req, res, next) => restoreSession(req, res, (error?: unknown) => {
+    if (error) return next(error);
+    // Restored cookies use the stored Cookie options, not the new defaults.
+    // Apply the policy to existing sessions too, without rotating their IDs.
+    if (req.session) req.session.cookie.sameSite = "lax";
+    next();
   });
 }
 
@@ -175,6 +183,8 @@ export async function setupAuth(app: Express): Promise<void> {
       custom && custom.startsWith("/") && !custom.startsWith("//")
         ? custom
         : "/api/auth/saml/callback";
+    const { setSamlCallbackPath } = await import("./saml-roundtrip");
+    setSamlCallbackPath(samlCallbackPath);
     app.all(samlCallbackPath, (_req, res) => {
       logger.warn("SAML callback hit but no SAML provider is configured", {
         service: "saml-auth",

@@ -24,7 +24,8 @@ import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
-import { observeSamlCallback } from "./auth/saml-roundtrip";
+import { observeSamlCallback, getMountedSamlCallbackPath } from "./auth/saml-roundtrip";
+import { createBrowserRequestProtection } from "./middleware/browser-request-protection";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -102,6 +103,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
   }
 
   app.use(observeSamlCallback);
+  app.use(createBrowserRequestProtection(getMountedSamlCallbackPath));
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 

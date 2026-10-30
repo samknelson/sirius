@@ -21,6 +21,7 @@ import type { AddressInfo } from 'node:net';
 import http from 'node:http';
 
 import express from 'express';
+import { createBrowserRequestProtection } from '../../server/middleware/browser-request-protection';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const validateSecret = vi.fn();
@@ -104,6 +105,7 @@ beforeAll(async () => {
   // oversized request is cheap to send; what it proves is that the parser
   // never gets to answer while maintenance is on.
   installWebServiceMaintenanceGate(app);
+  app.use(createBrowserRequestProtection(() => undefined));
   app.use(express.json({ limit: '1kb' }));
   registerWebServiceDispatcher(app);
 

@@ -8,6 +8,11 @@ export function setSamlCallbackPath(path: string): void {
   mountedPath = path;
 }
 
+/** The boot-mounted route is authoritative even if configuration changes live. */
+export function getMountedSamlCallbackPath(): string | undefined {
+  return mountedPath;
+}
+
 /** Deliberately allowlisted: never log bodies, queries, cookies, or session ids. */
 export function samlMilestone(
   req: Request,

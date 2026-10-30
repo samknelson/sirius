@@ -54,7 +54,8 @@ vi.mock("../../server/config/env-registry", () => ({
 
 import { createProvider } from "../../server/auth/providers/saml";
 import { StorageSessionStore } from "../../server/auth/session-store";
-import { observeSamlCallback } from "../../server/auth/saml-roundtrip";
+import { observeSamlCallback, getMountedSamlCallbackPath } from "../../server/auth/saml-roundtrip";
+import { createBrowserRequestProtection } from "../../server/middleware/browser-request-protection";
 
 let server: Server;
 let origin: string;
@@ -66,9 +67,11 @@ beforeEach(async () => {
   f.rows.clear(); f.failSave = false; f.failRead = false;
   const app = express();
   app.use(observeSamlCallback);
+  app.use(createBrowserRequestProtection(getMountedSamlCallbackPath));
   app.use(express.urlencoded({ extended: false }));
   app.use(session({
     secret: "fixture-only-secret", resave: false, saveUninitialized: false,
+    cookie: { sameSite: "lax" },
     store: new StorageSessionStore({ ttlMs: 60_000 }),
   }));
   app.use(passport.initialize());
@@ -99,7 +102,8 @@ afterEach(async () => {
 
 function post(body = "SAMLResponse=fixture-assertion") {
   return fetch(`${origin}${callback}?private=do-not-log`, {
-    method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded",
+      Origin: "https://idp.example.invalid", "Sec-Fetch-Site": "cross-site" },
     redirect: "manual",
   });
 }
