@@ -41,7 +41,7 @@ export default function AuthErrorPage() {
   // admins can look it up in the system logs. Reject anything that doesn't
   // look like one of our generated references.
   const rawRef = params.get("ref") ?? "";
-  const reference = /^SAML-[A-Z0-9-]{1,24}$/.test(rawRef) ? rawRef : "";
+  const reference = /^(?:SAML|REPLIT|CLERK)-[A-Z0-9-]{1,24}$/.test(rawRef) ? rawRef : "";
 
   // Validate category against the allowlist — never show free-text from the URL.
   const rawCategory = params.get("category") ?? "";

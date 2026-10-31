@@ -837,9 +837,9 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
       "Returns the inbound Replit login handler, which may initialize its OIDC strategy.",
     getCallbackHandler:
       "Returns the inbound Replit callback handler, which may initialize its OIDC strategy.",
-    "anonymous function at line 212":
+    replitLoginHandler:
       "Inbound Replit login callback that initializes the configured authentication strategy.",
-    "anonymous function at line 222":
+    replitCallbackHandler:
       "Inbound Replit callback that initializes the configured authentication strategy.",
   },
   "server/services/file-transfer-client.ts": {
