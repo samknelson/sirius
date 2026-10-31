@@ -51,7 +51,7 @@
 - [Policy delegation defeats skipCache](policy-delegation-cache-staleness.md) — ctx.checkPolicy sub-policy results are cached ~5min even when the outer policy sets skipCache; inline relationship checks for revocation-critical policies.
 - [Template Studio preview pattern](template-studio-host-pattern.md) — preview request is self-describing (specs+finished templates+context, no registry); callers compose their own templates; shared field tables keep preview==delivery.
 - [Token plugin framework](token-plugin-framework.md) — legacy ids must stay valid chains; audience gating fail-closed per channel; evaluator mirrors shared arg validation; test scripts import storage/database not barrel.
-- [Auth provisioning & role reconcile](auth-provisioning-reconcile.md) — auth_settings is one variables row; provider-managed roles tracked in authIdentities.metadata.managedRoleIds, never claim locally held roles.
+- [Authentication and sessions](authentication-session-index.md) — provisioning, verified error disclosure, cookie restoration, idle observation, and durable account/socket authority.
 - [Template preview contexts](template-preview-subjects.md) — context is raw root JSON or an entity ref; entity refs gated per token KIND (fail closed, same id checked+loaded); persona keys belong to the kind owning the leaf.
 - [Derived registry cache versioning](derived-registry-cache-versioning.md) — caches over listEnabledSync must key on registry version + component-cache revision, else validation accepts what delivery renders as unknown.
 - [Per-plugin envelope narrowing](plugin-config-envelope-per-plugin-narrowing.md) — narrow kind-level config fields per plugin via the adapter hook served by /configs/meta; lock (don't hide) unavailable choices, keep selected ones clearable.
@@ -136,9 +136,6 @@
 - [Freeman migration guidance](freeman-migration-verification.md) — no permanent tests for the temporary cutover; links to response envelopes, count semantics, and worker ID precedence.
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
 - [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
-- [Idle-session status checks](idle-session-status-checks.md) — polling the current idle deadline must be read-only; only explicit or normal authenticated activity may renew it.
-- [Configured external auth fails closed](configured-external-auth-fail-closed.md) — saved external-auth selection is the contract; disabled/unavailable verifier must refuse, never fall back to a default credential mode.
-- [Credentials in SPA entry URLs](spa-entry-url-credentials.md) — remove before app bootstrap, set initial no-referrer policy, dispatch once, and never retain in query caches or page state.
 - [Permission-dependent public response caching](permission-dependent-public-response-caching.md) — viewer-specific enrichment needs private/no-store + Vary: Cookie and a viewer-scoped browser query key.
 - [Retained assignment generations](retained-assignment-generations.md) — a durable assignment ID can represent successive fillings, even in the same crew; stale actions need the filling's generation.
 - [Node BlockList IPv4 mapping](node-blocklist-ipv4-mapping.md) — an IPv6 `::ffff:0:0/96` block also rejects ordinary IPv4 addresses in Node; don't combine it with a public-IPv4 allow check.
@@ -154,6 +151,3 @@
 - [Vendor destination policy](webclient-destination-policy-direction.md) — manifest defaults and deployment overrides; enforce within existing webclient, not a parallel framework.
 - [Shared Vite upgrade ownership](vite-shared-upgrade-ownership.md) — ws path filtering rejects other listeners' sockets; verify HMR through the proxy, not a localhost screenshot.
 - [Native ESM vendor verification](native-esm-vendor-verification.md) — development/test interop can hide CommonJS export shapes; verify production-format adapters with fake HTTP and the installed SDK.
-- [Session cookie restoration](session-cookie-restoration.md) — express-session restores saved Cookie options over defaults; security policy changes must cover legacy sessions too.
-- [Socket session authority](socket-session-authority.md) — local revocation hooks are not enough across processes; authority generations must survive identity round trips without changing on ordinary renewal.
-- [Account deactivation authority](account-deactivation-authority.md) — reactivation must not revive old sessions; fresh account checks and deletion need a durable generation against late saves.

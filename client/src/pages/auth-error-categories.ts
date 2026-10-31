@@ -27,3 +27,13 @@ export const CATEGORY_REASONS: Readonly<Record<string, string>> = {
   // "unrecognized" is intentionally omitted — the generic error message is
   // more helpful than surfacing "Unrecognized SAML error" to the user.
 };
+
+/** Account refusals and verification failures have separate public reasons. */
+export function getAuthErrorCategoryReason(code: string, category: string): string | null {
+  if (code === "access_denied") {
+    return category === "inactive_account"
+      ? "Your account is inactive. Contact an administrator to reactivate it."
+      : null;
+  }
+  return Object.hasOwn(CATEGORY_REASONS, category) ? CATEGORY_REASONS[category] : null;
+}
