@@ -29,6 +29,7 @@ import {
 import "./token-roots";
 import { tokenContextRootNames } from "../../plugins/tokens/contexts";
 import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
+import { sanitizeAuthoredFields } from "../../delivery/sanitize-authored-fields";
 
 /**
  * How many of a message's sends the studio previews against.
@@ -318,11 +319,11 @@ export function registerBulkMessageRoutes(
           if (existing) {
             const parsed = insertBulkMessagesEmailSchema.partial().safeParse(emailBody);
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
-            result = await storage.bulkMessagesEmail.update(existing.id, parsed.data);
+            result = await storage.bulkMessagesEmail.update(existing.id, sanitizeAuthoredFields("email", parsed.data));
           } else {
             const parsed = insertBulkMessagesEmailSchema.safeParse({ ...emailBody, bulkId: bulk.id });
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
-            result = await storage.bulkMessagesEmail.create(parsed.data);
+            result = await storage.bulkMessagesEmail.create(sanitizeAuthoredFields("email", parsed.data));
           }
           break;
         }
