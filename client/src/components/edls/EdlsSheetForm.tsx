@@ -261,7 +261,7 @@ export function EdlsSheetForm({
           workerCount: 0,
           location: "",
           startTime: "08:00",
-          endTime: "17:00",
+          endTime: "12:00",
           supervisor: effectiveSupervisor || null,
           taskId: null,
           data: null,
