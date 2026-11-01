@@ -318,6 +318,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         data: {
           ...comm.data as object,
           messageId: sendResult.messageId,
+          callbackVendorConfigId: sendResult.details?.vendorConfigId,
         },
       });
 

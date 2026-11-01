@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams, useSearch } from "wouter";
 import { useQuery, useQueries, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -93,6 +93,8 @@ import type { IChangeEvent } from "@rjsf/core";
 import type { UiSchema } from "@rjsf/utils";
 import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-form";
 import { usePluginKindsCatalog } from "@/hooks/usePluginKindsCatalog";
+import { WcVendorDestinationPolicy } from "@/components/wc-vendor-destination-policy";
+import type { WcVendorDestinationPolicyView } from "@shared/webclient-destination-policy";
 
 /**
  * Generic, kind-aware plugin-config admin page (Task #353 — additive
@@ -124,6 +126,7 @@ interface ManifestEntry {
     description: string;
     needsWritableDatabase: boolean;
   }>;
+  effectiveDestinationPolicy?: WcVendorDestinationPolicyView;
 }
 
 interface PluginConfigRow {
@@ -213,7 +216,11 @@ export default function GenericPluginConfigsPage({
   // for the dynamic filterable columns.
   const [sort, setSort] = useState<{ column: string; direction: SortDirection } | null>(null);
 
-  const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ManifestEntry[]>({
+  const {
+    data: plugins = [],
+    isLoading: isLoadingPlugins,
+    refetch: refetchPlugins,
+  } = useQuery<ManifestEntry[]>({
     queryKey: pluginManifestQueryKey(kind),
     enabled: isValidKind,
     // The manifest carries each plugin's settings JSON Schema, including any
@@ -570,8 +577,13 @@ export default function GenericPluginConfigsPage({
                         >
                           {plugin.name}
                         </span>
-                        {(plugin.description || plugin.operations) && (
-                          <PluginInfoPopover plugin={plugin} configId={config.id} />
+                        {(plugin.description || plugin.operations || kind === "wc-vendors") && (
+                          <PluginInfoPopover
+                            plugin={plugin}
+                            configId={config.id}
+                            refreshManifest={refetchPlugins}
+                            showDestinationPolicy={kind === "wc-vendors"}
+                          />
                         )}
                       </div>
                     </TableCell>
@@ -660,6 +672,8 @@ export default function GenericPluginConfigsPage({
           onOpenChange={setDialogOpen}
           kind={kind}
           plugin={dialogPlugin}
+          refreshManifest={refetchPlugins}
+          showDestinationPolicy={kind === "wc-vendors"}
           config={dialogConfig}
           envelopeFields={
             envelopeFieldsByPlugin[dialogPlugin.id] ?? envelopeFields
@@ -825,12 +839,41 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
 function PluginInfoPopover({
   plugin,
   configId,
+  refreshManifest,
+  showDestinationPolicy,
 }: {
   plugin: ManifestEntry;
   configId: string;
+  refreshManifest: () => Promise<{ data?: ManifestEntry[]; isError: boolean }>;
+  showDestinationPolicy: boolean;
 }) {
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policyError, setPolicyError] = useState(false);
+  const [refreshedPolicy, setRefreshedPolicy] = useState<WcVendorDestinationPolicyView>();
+
+  const handleOpenChange = async (open: boolean) => {
+    if (!open || !showDestinationPolicy) return;
+    setPolicyLoading(true);
+    setPolicyError(false);
+    setRefreshedPolicy(undefined);
+    try {
+      const result = await refreshManifest();
+      if (result.isError || !result.data) {
+        setPolicyError(true);
+      } else {
+        setRefreshedPolicy(
+          result.data.find((entry) => entry.id === plugin.id)?.effectiveDestinationPolicy,
+        );
+      }
+    } catch {
+      setPolicyError(true);
+    } finally {
+      setPolicyLoading(false);
+    }
+  };
+
   return (
-    <Popover>
+    <Popover onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -843,12 +886,19 @@ function PluginInfoPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 text-sm"
+        className="w-96 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto text-sm"
         data-testid={`popover-plugin-info-${configId}`}
       >
         <p className="font-medium">{plugin.name}</p>
         {plugin.description && (
           <p className="mt-1 text-muted-foreground">{plugin.description}</p>
+        )}
+        {showDestinationPolicy && (
+          <WcVendorDestinationPolicy
+            policy={refreshedPolicy}
+            loading={policyLoading}
+            error={policyError}
+          />
         )}
         {plugin.operations && (
           <div className="mt-4 border-t pt-3">
@@ -938,6 +988,8 @@ interface GenericConfigDialogProps {
   onOpenChange: (open: boolean) => void;
   kind: ArrayManifestPluginKind;
   plugin: ManifestEntry;
+  refreshManifest: () => Promise<{ data?: ManifestEntry[]; isError: boolean }>;
+  showDestinationPolicy: boolean;
   config?: PluginConfigRow | null;
   envelopeFields: PluginConfigEnvelopeField[];
   /**
@@ -965,6 +1017,8 @@ function GenericConfigDialog({
   onOpenChange,
   kind,
   plugin,
+  refreshManifest,
+  showDestinationPolicy,
   config,
   envelopeFields,
   pluginFields,
@@ -984,6 +1038,39 @@ function GenericConfigDialog({
   const [envelope, setEnvelope] = useState<Record<string, string>>({});
   // Per-plugin field values, seeded from / persisted into the config's `data`.
   const [pluginData, setPluginData] = useState<Record<string, string>>({});
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policyError, setPolicyError] = useState(false);
+  const [refreshedPolicy, setRefreshedPolicy] = useState<WcVendorDestinationPolicyView>();
+  const refreshManifestRef = useRef(refreshManifest);
+  refreshManifestRef.current = refreshManifest;
+
+  useLayoutEffect(() => {
+    if (!open || !showDestinationPolicy) return;
+    let active = true;
+    setPolicyLoading(true);
+    setPolicyError(false);
+    setRefreshedPolicy(undefined);
+    refreshManifestRef.current()
+      .then((result) => {
+        if (!active) return;
+        if (result.isError || !result.data) {
+          setPolicyError(true);
+          return;
+        }
+        setRefreshedPolicy(
+          result.data.find((entry) => entry.id === plugin.id)?.effectiveDestinationPolicy,
+        );
+      })
+      .catch(() => {
+        if (active) setPolicyError(true);
+      })
+      .finally(() => {
+        if (active) setPolicyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, showDestinationPolicy, plugin.id]);
 
   // Seeding runs in the render phase (see useModalSeed): the settings form
   // must see the config's values on its FIRST render, or it initializes itself
@@ -1166,6 +1253,13 @@ function GenericConfigDialog({
         </DialogHeader>
 
         <div className="py-2 flex-1 min-h-0 overflow-y-auto pr-1 space-y-5">
+          {showDestinationPolicy && (
+            <WcVendorDestinationPolicy
+              policy={refreshedPolicy}
+              loading={policyLoading}
+              error={policyError}
+            />
+          )}
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 border rounded-md">
               <div>

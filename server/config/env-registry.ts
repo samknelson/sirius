@@ -662,6 +662,7 @@ registerEnvironmentVariables([
   // providers when the "Filesystem registry" subsystem is reloaded from the
   // admin Restart & Reload page (Task #1258) — no restart needed.
   { name: "FILESYSTEMS", description: "JSON map of filesystem configs (see server/services/files/config.ts). *_secret settings name further env vars.", secret: false, category: "core", changeTakesEffect: "reload", },
+  { name: "WEBCLIENT_VENDOR_ALLOWED_HOSTS", description: "JSON object mapping vendor plugin IDs to objects with required allowedHosts (exact hosts or *.subdomain patterns) and optional boolean allowPrivateAddresses (default false). Replaces manifest defaults; allowedHosts: [] blocks external calls. Private opt-in trusts those hosts on internal networks, but never permits metadata, loopback or link-local addresses. Legacy array entries are rejected; update deployments manually. A deployment value locks the map against in-app overrides.", secret: false, category: "webclient", changeTakesEffect: "immediate" },
   {
     name: "PUBLIC_URL",
     description:
@@ -678,7 +679,7 @@ registerEnvironmentVariables([
   { name: "AUTH_DEFAULT_PROVIDER", description: "Which configured auth provider is the default.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "AUTH_LOCAL_ENABLED", description: "Set to false to disable the local auth provider without editing AUTH_PROVIDER.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "AUTH_LOCAL_PEPPER", description: "Pepper concatenated to passwords before hashing for local auth.", secret: true, category: "core", changeTakesEffect: "restart", },
-  { name: "LOCAL_AUTH_EMAIL", description: "Break-glass admin account. While set (with LOCAL_AUTH_PASSWORD_HASH), every boot guarantees a user with this email exists, is active, holds the admin permission and carries that password. Requires 'local' in AUTH_PROVIDER.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "LOCAL_AUTH_EMAIL", description: "Break-glass admin account. While set (with LOCAL_AUTH_PASSWORD_HASH), every boot guarantees a user with this email exists, is active, holds the admin permission and carries that password. Requires 'local' in AUTH_PROVIDER. Any nonblank effective value disables public first-admin bootstrap, even if the hash is missing or invalid or local auth is disabled; that guard reads the value on each request.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "LOCAL_AUTH_PASSWORD_HASH", description: "bcrypt hash of the LOCAL_AUTH_EMAIL account's password (scripts/oneoffs/generate-password-hash.ts). Applied on every boot; a non-bcrypt value is refused and reported rather than stored.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider (legacy name).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "REPLIT_ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider.", secret: false, category: "core", changeTakesEffect: "restart", },

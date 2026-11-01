@@ -4,6 +4,7 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { storageLogger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
 import { resolveDbUser } from "../auth/helpers";
+import { currentSessionAccounts } from "../auth/account-authority";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -17,40 +18,10 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
  * @param sessionUser - User object from session that may already have dbUser
  */
 export async function getEffectiveUser(session: any, sessionUser?: any) {
-  let dbUser;
-  let originalUser = null;
-  
-  if (session.masqueradeUserId) {
-    // Get masqueraded user
-    dbUser = await storage.users.getUser(session.masqueradeUserId);
-    if (!dbUser) {
-      // Clear invalid masquerade session and fall back to original user
-      delete session.masqueradeUserId;
-      delete session.originalUserId;
-      await new Promise((resolve, reject) => {
-        session.save((err: any) => err ? reject(err) : resolve(undefined));
-      });
-      
-      // Fall back to the original user via resolveDbUser
-      dbUser = await resolveDbUser(sessionUser, sessionUser?.claims?.sub);
-      if (!dbUser) {
-        return { dbUser: null, originalUser: null };
-      }
-    } else {
-      // Get the original user info
-      if (session.originalUserId) {
-        originalUser = await storage.users.getUser(session.originalUserId);
-      }
-    }
-  } else {
-    // Not masquerading - get user via resolveDbUser
-    dbUser = await resolveDbUser(sessionUser, sessionUser?.claims?.sub);
-    if (!dbUser) {
-      return { dbUser: null, originalUser: null };
-    }
-  }
-  
-  return { dbUser, originalUser };
+  const authority = await currentSessionAccounts({ ...session, passport: { user: sessionUser } });
+  return authority
+    ? { dbUser: authority.target, originalUser: session.masqueradeUserId ? authority.owner : null }
+    : { dbUser: null, originalUser: null };
 }
 
 /**
@@ -80,7 +51,7 @@ export function registerMasqueradeRoutes(
       
       // Verify the target user exists
       const targetUser = await storage.users.getUser(userId);
-      if (!targetUser) {
+      if (!targetUser?.isActive) {
         return res.status(404).json({ message: "Target user not found" });
       }
       
@@ -92,6 +63,7 @@ export function registerMasqueradeRoutes(
       // Start masquerade session
       session.originalUserId = originalUser.id;
       session.masqueradeUserId = userId;
+      session.masqueradeSessionVersion = targetUser.sessionVersion;
       
       await new Promise((resolve, reject) => {
         session.save((err: any) => err ? reject(err) : resolve(undefined));
@@ -226,6 +198,7 @@ export function registerMasqueradeRoutes(
       // Clear masquerade session
       delete session.masqueradeUserId;
       delete session.originalUserId;
+      delete session.masqueradeSessionVersion;
       
       await new Promise((resolve, reject) => {
         session.save((err: any) => err ? reject(err) : resolve(undefined));

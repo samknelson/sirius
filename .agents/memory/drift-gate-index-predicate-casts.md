@@ -1,6 +1,6 @@
 ---
 name: Drift gate index predicate cast matching
-description: Why partial-index WHERE predicates on text/varchar columns must be written casted in shared/schema.ts to pass the startup drift gate.
+description: Index expressions and partial-index predicates must mirror PostgreSQL's reflected casts and quoting to pass the drift gate.
 ---
 
 The startup schema drift gate reflects index predicates and compares them, but
@@ -25,6 +25,18 @@ the casted form. Verify by booting — the gate error prints expected vs found.
 (`plugin_configs_singleton_cron_uniq` on `(plugin_kind, plugin_id) WHERE
 plugin_kind = 'cron'`); first boot failed with
 `expected plugin_kind = 'cron', found (plugin_kind)::text = 'cron'::text`.
+
+The same rule applies to **expression-index keys**, not just WHERE clauses.
+Postgres reflects string literals inside functions with their inferred casts
+(for example, the empty string in `nullif(btrim(email), ''::text)`). Declare
+those casts in the schema expression as well.
+
+**Why:** Semantically identical expression keys can still block startup because
+the drift comparison is textual; testing the migration alone does not test
+schema-declaration parity.
+
+**How to apply:** After adding an expression index, verify a real startup
+against the reflected database, not just that its SQL enforces uniqueness.
 
 **Reserved-word identifier quoting (same root cause):** `normalizeIndexExpr`
 also does NOT strip double quotes around an *individual* identifier (it only

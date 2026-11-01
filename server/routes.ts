@@ -1,3 +1,5 @@
+import { contactEmailInput } from "@shared/utils/contact-email";
+import { respondContactEmailError } from "./services/contact-email-access";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
@@ -205,7 +207,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/auth/user - Get current user from database
-  app.get("/api/auth/user", requireAuth, async (req, res) => {
+  app.get("/api/auth/user", (_req, res, next) => {
+    res.set("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    next();
+  }, requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       const session = req.session as any;
@@ -1103,7 +1109,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       // Handle email updates (staff only)
       if (email !== undefined) {
-        const worker = await storage.workers.updateWorkerContactEmail(id, email);
+        const parsedEmail = contactEmailInput.safeParse(email);
+        if (!parsedEmail.success) return res.status(400).json({ message: "Invalid email" });
+        const worker = await storage.workers.updateWorkerContactEmail(id, parsedEmail.data);
         
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
@@ -1182,6 +1190,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         });
       }
     } catch (error) {
+      if (respondContactEmailError(res, error)) return;
       res.status(500).json({ message: "Failed to update worker" });
     }
   });

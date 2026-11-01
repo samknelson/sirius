@@ -11,6 +11,7 @@ function EmployerContactEmailContent() {
         <EntityEmailManagement 
           config={{
             entityId: employerContact.id,
+            contactId: employerContact.contactId,
             currentEmail: employerContact.contact.email,
             apiEndpoint: `/api/employer-contacts/${employerContact.id}`,
             apiMethod: "PATCH",

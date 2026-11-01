@@ -42,7 +42,7 @@ interface LogEntry {
   userId: string | null;
   userEmail: string | null;
   ipAddress: string | null;
-  timestamp: string;
+  timestamp: string | null;
   meta: any;
 }
 
@@ -244,7 +244,7 @@ export default function LogsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm" data-testid={`text-timestamp-${log.id}`}>
-                        {formatDistanceToNow(new Date(log.timestamp), { addSuffix: true })}
+                        {log.timestamp ? formatDistanceToNow(new Date(log.timestamp), { addSuffix: true }) : "Unknown"}
                       </TableCell>
                       <TableCell className="max-w-md truncate" data-testid={`text-description-${log.id}`}>
                         {log.entityId?.trim() && (
@@ -320,7 +320,7 @@ export default function LogsPage() {
           <DialogHeader>
             <DialogTitle>Log Entry Details</DialogTitle>
             <DialogDescription>
-              {selectedLog && formatDistanceToNow(new Date(selectedLog.timestamp), { addSuffix: true })}
+              {selectedLog?.timestamp ? formatDistanceToNow(new Date(selectedLog.timestamp), { addSuffix: true }) : "Unknown"}
             </DialogDescription>
           </DialogHeader>
           {selectedLog && (
@@ -333,7 +333,7 @@ export default function LogsPage() {
                 <div>
                   <p className="text-sm font-medium">Timestamp</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(selectedLog.timestamp).toLocaleString()}
+                    {selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : "Unknown"}
                   </p>
                 </div>
                 <div>

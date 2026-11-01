@@ -134,7 +134,7 @@ const sendInappSchema = z.object({
 async function notifyAlertCountChange(userId: string): Promise<void> {
   try {
     const count = await commInappStorage.getUnreadCountByUser(userId);
-    broadcastAlertUpdate(userId, count);
+    await broadcastAlertUpdate(userId, count);
   } catch (error) {
     console.error("Failed to broadcast alert update:", error);
   }

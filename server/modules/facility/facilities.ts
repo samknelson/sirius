@@ -4,6 +4,8 @@ import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import type { FacilityFilters } from "../../storage/facility/facilities";
+import { contactEmailInput } from "@shared/utils/contact-email";
+import { assertContactEmailChange, respondContactEmailError } from "../../services/contact-email-access";
 
 // Note: `siriusId` and `data` are sync-only fields, populated programmatically
 // by backend processes (e.g. T631 sync). They are intentionally NOT part of
@@ -29,10 +31,7 @@ const updateFacilitySchema = z
   .object({
     name: z.string().trim().min(1).optional(),
     nameComponents: nameComponentsSchema.optional(),
-    email: z
-      .union([z.string().email(), z.literal(""), z.null()])
-      .transform((v) => (v === "" ? null : v))
-      .optional(),
+    email: contactEmailInput.optional(),
   })
   .strict();
 
@@ -134,6 +133,9 @@ export function registerFacilityRoutes(
           return res.status(404).json({ message: "Facility not found" });
         }
 
+        if (email !== undefined) {
+          await assertContactEmailChange(req, facility.contactId, email);
+        }
         if (nameComponents !== undefined) {
           facility = await storage.facilities.updateContactNameComponents(
             req.params.id,
@@ -156,6 +158,7 @@ export function registerFacilityRoutes(
         const result = await storage.facilities.getWithContact(req.params.id);
         res.json(result);
       } catch (error) {
+        if (respondContactEmailError(res, error)) return;
         console.error("Failed to update facility:", error);
         res.status(500).json({ message: "Failed to update facility" });
       }

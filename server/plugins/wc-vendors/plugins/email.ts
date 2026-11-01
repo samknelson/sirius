@@ -1,4 +1,3 @@
-import sgMail from "@sendgrid/mail";
 import type {
   WcVendorContext,
   WcVendorOperationDeclaration,
@@ -116,7 +115,7 @@ async function testSendGridConnection(ctx: WcVendorContext) {
     };
   }
   try {
-    const response = await fetch("https://api.sendgrid.com/v3/user/profile", {
+    const response = await ctx.http.fetch("https://api.sendgrid.com/v3/user/profile", {
       headers: { Authorization: `Bearer ${key}` },
     });
     if (response.ok) return { status: "connected" as const };
@@ -154,7 +153,7 @@ async function sendGridEmail(
     };
   }
 
-  sgMail.setApiKey(sendGridKey(ctx));
+  const key = sendGridKey(ctx);
   const recipients = Array.isArray(args.to) ? args.to : [args.to];
   const message: Record<string, unknown> = {
     to: recipients.map((recipient) => ({
@@ -174,14 +173,36 @@ async function sendGridEmail(
   }
 
   try {
-    const [response] = await sgMail.send(
-      message as unknown as sgMail.MailDataRequired,
-    );
+    const content = [
+      ...(args.text ? [{ type: "text/plain", value: args.text }] : []),
+      ...(args.html ? [{ type: "text/html", value: args.html }] : []),
+    ];
+    const response = await ctx.http.fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        personalizations: [{
+          to: message.to,
+          ...(args.cc?.length ? { cc: args.cc } : {}),
+          ...(args.bcc?.length ? { bcc: args.bcc } : {}),
+        }],
+        from: message.from,
+        subject: args.subject,
+        content,
+        ...(args.replyTo ? { reply_to: args.replyTo } : {}),
+        ...(message.custom_args ? { custom_args: message.custom_args } : {}),
+      }),
+    });
+    if (!response.ok) {
+      const failure = await response.json().catch(() => undefined) as
+        { errors?: { message?: string }[] } | undefined;
+      return { success: false, error: failure?.errors?.[0]?.message ?? `SendGrid returned HTTP ${response.status}` };
+    }
     return {
       success: true,
-      messageId: response.headers["x-message-id"] as string | undefined,
+      messageId: response.headers.get("x-message-id") ?? undefined,
       status: "sent",
-      details: { statusCode: response.statusCode },
+      details: { statusCode: response.status, vendorConfigId: ctx.config.id },
     };
   } catch (error: any) {
     return {
@@ -324,6 +345,7 @@ const localOperations = {
 
 const sendGridPlugin: WcVendorPlugin = {
   id: SENDGRID_EMAIL_PLUGIN_ID,
+  httpTransport: "webclient",
   name: "SendGrid Email",
   description: "Send email through SendGrid.",
   credential: {
@@ -332,6 +354,12 @@ const sendGridPlugin: WcVendorPlugin = {
       "Name the secret containing the SendGrid API key. The secret value is never stored in plugin configuration.",
   },
   configFields: [
+    {
+      name: "webhookPublicKey",
+      label: "Webhook Verification Public Key",
+      type: "string",
+      description: "Base64 public key from SendGrid's Signed Event Webhook settings. Callbacks are refused without it.",
+    },
     {
       name: "defaultFromEmail",
       label: "Default From Email",

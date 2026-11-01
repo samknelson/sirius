@@ -333,6 +333,7 @@ describe.skip("with maintenance ON, no vendor is reached", () => {
     const localEmailTest = getWcVendorHandler("local-email", "service.test-connection");
     if (!localEmailTest) throw new Error("Local Email test operation is not registered");
     await expect(localEmailTest({
+      http: { fetch: vi.fn() },
       credential: { value: "" },
       config: { id: "test-local-email", pluginKind: "wc-vendors", pluginId: "local-email", enabled: true, ordering: 0 } as PluginConfig,
     }, undefined as never)).resolves.toMatchObject({
@@ -341,6 +342,7 @@ describe.skip("with maintenance ON, no vendor is reached", () => {
     const localPostalTest = getWcVendorHandler("local-postal", "service.test-connection");
     if (!localPostalTest) throw new Error("Local Postal test operation is not registered");
     await expect(localPostalTest({
+      http: { fetch: vi.fn() },
       credential: { value: "" },
       config: { id: "test-local-postal", pluginKind: "wc-vendors", pluginId: "local-postal", enabled: true, ordering: 0 } as PluginConfig,
     }, undefined as never)).resolves.toMatchObject({

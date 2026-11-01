@@ -41,7 +41,8 @@ vi.mock("../../server/storage/wc-cache", async (importOriginal) => {
   return { ...actual, wcCacheStorage: { ...actual.wcCacheStorage, canStore } };
 });
 
-import { registerWcVendorPlugin } from "../../server/plugins/wc-vendors/registry";
+import { getWcVendorPlugin, registerWcVendorPlugin, wcVendorRegistry } from "../../server/plugins/wc-vendors/registry";
+import { describeVendorDestinationPolicy } from "../../server/services/webclient/endpoint-policy";
 import { getWcRequest } from "../../server/services/webclient/registry";
 import { wcRequest } from "../../server/services/webclient";
 
@@ -249,6 +250,27 @@ describe("the one entry point, for a vendor operation", () => {
 });
 
 describe("the contract a caller writes against", () => {
+  it("refuses an unadapted transport exactly when the administrator view says unsupported", async () => {
+    const plugin = getWcVendorPlugin(TEST_PLUGIN_ID)!;
+    for (const hosts of [[], ["api.example.com"]]) {
+      vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", JSON.stringify({ [TEST_PLUGIN_ID]: { allowedHosts: hosts } }));
+      try {
+        expect(describeVendorDestinationPolicy(plugin, (id) => wcVendorRegistry.has(id)))
+          .toMatchObject({ transport: "unsupported", effectivePatterns: hosts });
+        await expect(ask("cfg-a")).rejects.toMatchObject({ code: "WC_ENDPOINT_POLICY_REFUSED" });
+        expect(farEnd).not.toHaveBeenCalled();
+        expect(recordCall).not.toHaveBeenCalled();
+      } finally { vi.unstubAllEnvs(); }
+    }
+    vi.stubEnv("WEBCLIENT_VENDOR_ALLOWED_HOSTS", "{}");
+    try {
+      expect(describeVendorDestinationPolicy(plugin, (id) => wcVendorRegistry.has(id)))
+        .toMatchObject({ transport: "unguarded", status: "unrestricted" });
+      await expect(ask("cfg-a")).resolves.toMatchObject({ outcome: "success" });
+      expect(farEnd).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("rejects a misspelled operation at compile time", () => {
     // Not a runtime assertion: the value of naming operations in the type
     // system is that a typo never reaches a running site, and a test that only

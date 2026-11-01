@@ -24,6 +24,8 @@ import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
+import { observeSamlCallback, getMountedSamlCallbackPath } from "./auth/saml-roundtrip";
+import { createBrowserRequestProtection } from "./middleware/browser-request-protection";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -60,6 +62,7 @@ import {
 } from "./services/component-cache";
 import { runOrDeferStartupOperation } from "./services/startup-deferrals";
 import { registerPluginCatalogs } from "./plugins/_core/catalogs";
+import { captureCallbackBody, refuseCallbackParseError } from "./services/comm/callback-handlers/verification";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -100,8 +103,11 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
     installWebServiceMaintenanceGate(app);
   }
 
-  app.use(express.json({ limit: '50mb' }));
+  app.use(observeSamlCallback);
+  app.use(createBrowserRequestProtection(getMountedSamlCallbackPath));
+  app.use(express.json({ limit: '50mb', verify: captureCallbackBody }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+  app.use(refuseCallbackParseError);
 
   app.use((req, res, next) => {
     const start = Date.now();

@@ -1,5 +1,5 @@
 import { storage } from "../../storage";
-import { getWcVendorHandler, getWcVendorPlugin } from "../../plugins/wc-vendors/registry";
+import { getWcVendorHandler, getWcVendorPlugin, wcVendorRegistry } from "../../plugins/wc-vendors/registry";
 import type {
   RegisteredWcVendorPlugin,
   WcVendorOperationInfo,
@@ -22,7 +22,10 @@ import {
   isMaintenanceModeError,
 } from "../maintenance-flag";
 import { wcCacheStorage } from "../../storage/wc-cache";
-import { notRecordableReason, isWcRateLimitError } from "./refusals";
+import { notRecordableReason, isWcRateLimitError, isWcEndpointPolicyError } from "./refusals";
+import { assertVendorDestinationTransport, resolveVendorDestinationPolicy } from "./endpoint-policy";
+import { createVendorHttp } from "./vendor-http";
+import { logger } from "../../logger";
 import type {
   WcTransportRequestOptions,
   WcVendorRequestOptions,
@@ -54,7 +57,7 @@ import { isPluginComponentEnabledAsync } from "../../plugins/_core/gating";
 interface ResolvedWcVendor {
   config: PluginConfig;
   plugin: RegisteredWcVendorPlugin;
-  context: WcVendorContext;
+  context: WcVendorContext & { http: ReturnType<typeof createVendorHttp> };
 }
 
 /** The framework's core, as this half calls it. */
@@ -156,6 +159,9 @@ async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendo
   }
 
   const data = (config.data ?? {}) as Record<string, unknown>;
+  const http = createVendorHttp(plugin.id, () => resolveVendorDestinationPolicy(
+    plugin.id, plugin.endpointPolicy, (id) => wcVendorRegistry.has(id),
+  ));
   const requirement = plugin.credential.secretName;
   const secretName =
     typeof data.secretName === "string" ? data.secretName.trim() : "";
@@ -170,7 +176,7 @@ async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendo
     return {
       config,
       plugin,
-      context: { credential: { value: "" }, config },
+      context: { credential: { value: "" }, config, http },
     };
   }
 
@@ -206,6 +212,7 @@ async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendo
     context: {
       credential: { secretName, value: credentialValue ?? "" },
       config,
+      http,
     },
   };
 }
@@ -502,7 +509,26 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
       `Vendor '${resolved.plugin.name}' declares '${name}' but registered no handler for it`,
     );
   }
-  const run = () => handler(resolved.context, args as never);
+  const run = async () => {
+    try {
+      const allowed = resolveVendorDestinationPolicy(resolved.plugin.id,
+        resolved.plugin.endpointPolicy, (id) => wcVendorRegistry.has(id));
+      assertVendorDestinationTransport(resolved.plugin.id, Boolean(resolved.plugin.service),
+        resolved.plugin.httpTransport, allowed);
+      try {
+        return await handler(resolved.context, args as never);
+      } finally {
+        // Legacy plugins often catch everything. A security refusal must not
+        // be disguised as a completed answer and subsequently cached.
+        resolved.context.http.throwIfRefused();
+      }
+    } catch (error) {
+      if (isWcEndpointPolicyError(error)) logger.warn(error.message, {
+        service: "webclient", pluginId: resolved.plugin.id, code: error.code,
+      });
+      throw error;
+    }
+  };
 
   // No outside system: there is nothing to refuse, nothing to count and no
   // vendor to name, so the core — which is built around all three — has no
@@ -530,7 +556,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
         fetchedAt: new Date(),
       };
     } catch (thrown) {
-      if (isMaintenanceModeError(thrown) || isWcRateLimitError(thrown)) throw thrown;
+      if (isMaintenanceModeError(thrown) || isWcRateLimitError(thrown) || isWcEndpointPolicyError(thrown)) throw thrown;
       return {
         source: "network",
         outcome: "failure",
@@ -572,7 +598,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
         return { answered: true, value: answer as WcVendorOperationResult<N> };
       } catch (thrown) {
         // A refusal is the framework's own answer, not the vendor's.
-        if (isMaintenanceModeError(thrown) || isWcRateLimitError(thrown)) throw thrown;
+        if (isMaintenanceModeError(thrown) || isWcRateLimitError(thrown) || isWcEndpointPolicyError(thrown)) throw thrown;
         providerFailed = true;
         providerError = thrown;
         return { answered: false, error: errorMessage(thrown) };

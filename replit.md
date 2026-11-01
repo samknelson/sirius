@@ -4,6 +4,20 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Run & Operate
 
+-   **Runtime:** Node **24.22.1** (LTS), npm **11.19.1** (bundled).
+    `.node-version` and `package.json` record the exact supported versions.
+    Use Replit's standard Node 24 module. The owner selected its supplied
+    patch rather than custom provisioning solely to obtain 24.22.2.
+    The existing `stable-25_05` channel is unchanged.
+    Reload the environment after changes; `node -v` and
+    `npm -v` must report those versions before installing with `npm ci`.
+    Docker pins both Bookworm stages to the same Node patch; Freeman CI
+    pins are maintained separately on their owning branches, using local
+    Git worktrees without switching this workspace away from `main`.
+    Source changes
+    alone do not upgrade a deployed service: its image must be rebuilt
+    and deployed separately.
+
 -   **Starting the project runs the app, and nothing else.** No check runs
     alongside it.
 

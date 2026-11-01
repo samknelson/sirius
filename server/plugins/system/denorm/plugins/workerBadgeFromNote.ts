@@ -75,7 +75,9 @@ const plugin: DenormPlugin<NoteBadgeGrant | null, BadgeGrantState | undefined> =
       const badgeName = before.badgeName;
       onAfterCommit(() => {
         try {
-          broadcastBadgeGrant(userId, badgeName);
+          void Promise.resolve(broadcastBadgeGrant(userId, badgeName)).catch(() => {
+            // Ephemeral feedback must never fail badge processing. No replay.
+          });
         } catch {
           // Ephemeral feedback must never fail badge processing. No replay.
         }

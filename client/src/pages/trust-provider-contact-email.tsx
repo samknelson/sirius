@@ -11,6 +11,7 @@ function TrustProviderContactEmailContent() {
         <EntityEmailManagement 
           config={{
             entityId: trustProviderContact.id,
+            contactId: trustProviderContact.contactId,
             currentEmail: trustProviderContact.contact.email,
             apiEndpoint: `/api/trust-provider-contacts/${trustProviderContact.id}/contact/email`,
             apiMethod: "PATCH",

@@ -28,8 +28,12 @@ export async function setupVite(app: Express, server: Server) {
   const viteLogger = createLogger();
 
   const serverOptions = {
+    ...viteConfig.server,
     middlewareMode: true,
-    hmr: { server },
+    hmr: {
+      ...(typeof viteConfig.server?.hmr === "object" ? viteConfig.server.hmr : {}),
+      server,
+    },
     allowedHosts: true as const,
   };
 

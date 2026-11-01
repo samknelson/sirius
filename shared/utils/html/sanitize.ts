@@ -62,6 +62,12 @@ export function sanitizeHtml(
   html: string,
   policy: HtmlSanitizePolicyName | HtmlSanitizeAllowlist,
 ): string {
+  return DOMPurify.sanitize(html, sanitizerConfig(policy));
+}
+
+function sanitizerConfig(
+  policy: HtmlSanitizePolicyName | HtmlSanitizeAllowlist,
+): Record<string, unknown> {
   const allowlist: HtmlSanitizeAllowlist =
     typeof policy === "string" ? HTML_SANITIZE_POLICIES[policy] : policy;
 
@@ -73,7 +79,31 @@ export function sanitizeHtml(
   if (allowlist.attributes) config.ALLOWED_ATTR = [...allowlist.attributes];
   if (allowlist.uriPattern) config.ALLOWED_URI_REGEXP = allowlist.uriPattern;
 
-  return DOMPurify.sanitize(html, config);
+  return config;
+}
+
+/**
+ * Authored templates may still contain legacy span[data-token] chips.
+ * Parse them ONLY through DOMPurify's inert parser, retaining the chip
+ * vocabulary under a narrow intermediate policy. Never assign the raw
+ * string to a document-owned element, even a detached one: image handlers
+ * can run there before a later sanitizer sees the result.
+ */
+export function sanitizeTemplateHtml(
+  html: string,
+  policy: "authored-document" | "rich-document" = "rich-document",
+): string {
+  if (!/data-token/i.test(html)) return sanitizeHtml(html, policy);
+  const root = DOMPurify.sanitize(html, {
+    ...sanitizerConfig("legacy-token-document"),
+    RETURN_DOM: true,
+  }) as HTMLElement; // HTML mode returns a body element; the API types it as Node.
+  root.querySelectorAll("span[data-token]").forEach((el) => {
+    const token = el.getAttribute("data-token") || "";
+    el.replaceWith(el.ownerDocument.createTextNode(`{{${token}}}`));
+  });
+  // The intermediate span/attribute vocabulary must not reach live DOM.
+  return sanitizeHtml(root.innerHTML, policy);
 }
 
 /**

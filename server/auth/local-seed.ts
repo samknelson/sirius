@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import { logger, storageLogger } from "../logger";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { clearAccessCache } from "../services/access-policy-evaluator";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 
 /**
  * Guarantee an admin account from environment variables.
@@ -351,7 +352,7 @@ export async function ensureLocalAdminAccount(): Promise<LocalAdminReport> {
         report.guarantees.account = "created";
       } catch (error: any) {
         // Lost a race with another boot or a concurrent signup.
-        if (error?.code !== "23505") throw error;
+        if (!isUserEmailConflict(error)) throw error;
         user = await storage.users.getUserByEmail(email);
         if (!user) throw error;
         report.guarantees.account = "already-correct";

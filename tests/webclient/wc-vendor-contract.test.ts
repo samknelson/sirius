@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setEnvironmentVariableOverride } from "../../server/config/env-registry";
+import { WcEndpointPolicyError } from "../../server/services/webclient/refusals";
 
 const canStore = vi.hoisted(() => vi.fn());
 const getConfig = vi.hoisted(() => vi.fn());
@@ -9,6 +11,9 @@ const cacheWriteFailure = vi.hoisted(() => vi.fn());
 const cachedRun = vi.hoisted(() => vi.fn());
 const componentEnabled = vi.hoisted(() => vi.fn());
 const getConfigsByPlugin = vi.hoisted(() => vi.fn());
+const recordCall = vi.hoisted(() => vi.fn());
+
+vi.mock("../../server/storage/wc-stats", () => ({ wcStatsStorage: { recordCall } }));
 
 vi.mock("../../server/storage", () => ({
   storage: {
@@ -81,6 +86,7 @@ declare module "../../server/plugins/wc-vendors/types" {
 registerWcVendorPluginKind();
 registerWcVendorPlugin({
   id: "cached-contract-fixture",
+  httpTransport: "webclient",
   name: "Cached contract fixture",
   description: "Exercises cached and uncached operation registration.",
   credential: { secretName: "none" },
@@ -142,7 +148,10 @@ registerWcVendorPlugin({
   },
 });
 
+afterEach(() => setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", null));
+
 beforeEach(() => {
+  recordCall.mockReset().mockResolvedValue(undefined);
   canStore.mockReset();
   canStore.mockResolvedValue(true);
   cacheRead.mockReset();
@@ -181,6 +190,48 @@ function plugin(id: string) {
 }
 
 describe("the wc-vendor plugin contract", () => {
+  it("never caches a swallowed destination refusal as a successful vendor answer", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config", pluginKind: "wc-vendors", pluginId: "cached-contract-fixture",
+      enabled: true, data: {},
+    });
+    cachedRun.mockImplementation(async (ctx) => {
+      try { await ctx.http.fetch("http://127.0.0.1/?credential=canary"); } catch { /* Legacy swallowing handler. */ }
+      return { answered: true, value: { normalized: "must-not-be-cached" } };
+    });
+    await expect(wcRequest({
+      vendor: { configId: "cached-config" }, operation: "tests.cache.answer",
+      args: { address: "anything" },
+    })).rejects.toBeInstanceOf(WcEndpointPolicyError);
+    expect(cacheWriteSuccess).not.toHaveBeenCalled();
+    expect(cacheWriteFailure).not.toHaveBeenCalled();
+    expect(recordCall).not.toHaveBeenCalled();
+  });
+
+  it("refuses unadapted transports before the handler when a policy is active", async () => {
+    // The normal credential resolution happens before dispatch. Use a
+    // credential-free metadata fixture to prove the SDK/browser refusal
+    // without touching any real browser or credential.
+    const fixture = plugin("cached-contract-fixture");
+    const original = fixture.httpTransport;
+    fixture.httpTransport = undefined;
+    getConfig.mockResolvedValue({
+      id: "cached-config", pluginKind: "wc-vendors", pluginId: fixture.id,
+      enabled: true, data: {},
+    });
+    setEnvironmentVariableOverride("WEBCLIENT_VENDOR_ALLOWED_HOSTS", () => '{"cached-contract-fixture":{"allowedHosts":[]}}');
+    try {
+      await expect(wcRequest({
+        vendor: { configId: "cached-config" }, operation: "tests.cache.answer",
+        args: { address: "anything" },
+      })).rejects.toThrow("SDK/browser transport");
+      expect(cachedRun).not.toHaveBeenCalled();
+      expect(cacheWriteSuccess).not.toHaveBeenCalled();
+      expect(cacheWriteFailure).not.toHaveBeenCalled();
+      expect(recordCall).not.toHaveBeenCalled();
+    } finally { fixture.httpTransport = original; }
+  });
+
   it("normalizes legacy connection results without leaking provider fields", () => {
     expect(normalizeWcConnectionTestResult({ connected: true })).toEqual({
       status: "connected",

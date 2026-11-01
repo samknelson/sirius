@@ -77,19 +77,17 @@
 # ----------------------------------------------------------------------------
 # Stage 1: builder
 # ----------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS builder
+FROM node:24.22.1-bookworm-slim AS builder
 
 # Toolchain required to compile native modules (bcrypt, bufferutil).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# node:20-bookworm-slim ships npm 10.8.2, which has the known
-# "Exit handler never called!" bug: npm can exit 0 with the install left
-# incomplete, so buildkit caches a broken node_modules layer and the next
-# step fails with e.g. "vite: not found". Upgrade npm before any npm command
-# runs (this also busts any previously cached broken `npm ci` layer).
-RUN npm install -g npm@11
+# Node 24.22.1 already supplies npm 11.19.1. No global npm upgrade is
+# needed for the old npm 10 exit-handler bug. Assert the bundled versions
+# instead of installing an unbounded npm major.
+RUN test "$(node --version)" = "v24.22.1" && test "$(npm --version)" = "11.19.1"
 
 WORKDIR /app
 
@@ -134,7 +132,7 @@ RUN npm prune --omit=dev
 # ----------------------------------------------------------------------------
 # Stage 2: runtime
 # ----------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:24.22.1-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
 # Default port; override with -e PORT=...

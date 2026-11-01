@@ -5,6 +5,7 @@ import {
   getSessionIdleTimeoutSettings,
   type SessionIdleTimeoutSettings,
 } from "./session-idle-timeout";
+import { currentSessionAccounts } from "./account-authority";
 
 const getStorage = () => storage;
 
@@ -84,6 +85,7 @@ export class StorageSessionStore extends session.Store {
       .then(async (value: unknown) => {
         const sess = value as session.SessionData | undefined;
         if (!sess) return null;
+        if (this.isAuthenticated(sess) && !await currentSessionAccounts(sess)) return null;
         const settings = await getSessionIdleTimeoutSettings(getStorage());
         return this.applyAuthenticatedActivity(sid, sess, settings, false);
       })

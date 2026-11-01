@@ -185,10 +185,7 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
 
       const normalizedEmail = email === null || email === "null" || email?.trim() === "" ? null : email.trim();
 
-      await client
-        .update(contacts)
-        .set({ email: normalizedEmail })
-        .where(eq(contacts.id, providerContact.contactId));
+      await contactsStorage.updateEmail(providerContact.contactId, normalizedEmail);
 
       return this.get(id);
     },
@@ -239,7 +236,7 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
         .select({ id: trustProviderContacts.id })
         .from(trustProviderContacts)
         .innerJoin(contacts, eq(trustProviderContacts.contactId, contacts.id))
-        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`)
+        .where(sql`lower(nullif(btrim(${contacts.email}), '')) = lower(${email.trim()})`)
         .limit(1);
       return result ? { id: result.id } as TrustProviderContact : null;
     },

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
-import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
+import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, edlsSheetStatusEnum, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { z } from "zod";
@@ -11,13 +11,30 @@ import { getEffectiveUser } from "../masquerade";
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
 /**
- * `notificationsEnabled` is omitted on purpose: the dedicated toggle endpoint
- * below is the ONLY way the flag changes. It would otherwise ride in on any
- * sheet create or edit, since both request schemas derive from the table's
- * insert schema.
+ * Ordinary HTTP saves accept only these sheet fields. Status, notification
+ * settings and application-managed JSON belong to their dedicated actions.
+ * Keep the trusted storage schema intact for imports and copies, and reject
+ * unknown fields rather than silently accepting mixed ordinary/action payloads.
  */
-const sheetWithCrewsSchema = insertEdlsSheetsSchema.omit({ employerId: true, notificationsEnabled: true }).extend({
+const ordinarySheetSchema = insertEdlsSheetsSchema.pick({
+  departmentId: true,
+  title: true,
+  ymd: true,
+  workerCount: true,
+  supervisor: true,
+  assignee: true,
+  jobGroupId: true,
+  facilityId: true,
+  showStatusId: true,
+  notes: true,
+}).strict();
+
+const sheetWithCrewsSchema = ordinarySheetSchema.extend({
   crews: z.array(crewInputSchema).min(1, "At least one crew is required"),
+});
+
+const updateSheetWithCrewsSchema = ordinarySheetSchema.partial().extend({
+  crews: z.array(crewInputSchema.extend({ id: z.string().optional() })).optional(),
 });
 
 export function registerEdlsSheetsRoutes(
@@ -197,6 +214,12 @@ export function registerEdlsSheetsRoutes(
 
   app.post("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('edls.sheet.create'), async (req, res) => {
     try {
+      const parsed = sheetWithCrewsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        return;
+      }
+
       const user = (req as any).user;
       const session = req.session as any;
       const { dbUser } = await getEffectiveUser(session, user);
@@ -218,13 +241,6 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      const parsed = sheetWithCrewsSchema.safeParse(req.body);
-      
-      if (!parsed.success) {
-        res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
-        return;
-      }
-      
       const { crews, ...sheetData } = parsed.data;
       
       const supervisorContext = await getSupervisorContext(dbUser.id);
@@ -241,6 +257,7 @@ export function registerEdlsSheetsRoutes(
       
       const finalSheetData = {
         ...sheetData,
+        status: "draft" as const,
         employerId: edlsSettings.employer,
         supervisor: supervisorValidation.supervisorId,
         assignee: sheetData.assignee || supervisorValidation.supervisorId,
@@ -279,6 +296,12 @@ export function registerEdlsSheetsRoutes(
 
   app.put("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('edls.sheet.edit', req => req.params.id), async (req, res) => {
     try {
+      const parsed = updateSheetWithCrewsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        return;
+      }
+
       const { id } = req.params;
       
       const user = (req as any).user;
@@ -305,16 +328,6 @@ export function registerEdlsSheetsRoutes(
       const existingSheet = await storage.edlsSheets.get(id);
       if (!existingSheet) {
         res.status(404).json({ message: "Sheet not found" });
-        return;
-      }
-      
-      const updateSchema = sheetWithCrewsSchema.partial().extend({
-        crews: z.array(crewInputSchema.extend({ id: z.string().optional() })).optional(),
-      });
-      const parsed = updateSchema.safeParse(req.body);
-      
-      if (!parsed.success) {
-        res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
         return;
       }
       
@@ -711,7 +724,7 @@ export function registerEdlsSheetsRoutes(
   );
 
   const setStatusSchema = z.object({
-    status: z.enum(["draft", "request", "lock", "trash", "reserved"]),
+    status: z.enum(edlsSheetStatusEnum),
   });
 
   const trashLockSchema = z.object({

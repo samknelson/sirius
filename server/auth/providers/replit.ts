@@ -9,6 +9,7 @@ import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import { maybeProvisionUser } from "../provisioning";
+import { recordAccountRefusal, VerifiedAccountRefusal, type AccountAccessResult } from "./account-refusal";
 
 async function discoverOidcConfig(issuerUrl: string, clientId: string) {
   return client.discovery(new URL(issuerUrl), clientId);
@@ -29,10 +30,11 @@ function updateUserSession(
 
 async function checkUserAccess(
   claims: any
-): Promise<{ allowed: boolean; user?: any }> {
+): Promise<AccountAccessResult> {
   const externalId = claims["sub"];
   const email = claims["email"];
 
+  if (!externalId) return { allowed: false, reason: "missing_external_id" };
   logger.info("Replit Auth attempt", {
     externalId: externalId,
     email: email,
@@ -46,12 +48,12 @@ async function checkUserAccess(
     const user = await storage.users.getUser(identity.userId);
     if (!user) {
       logger.warn("Auth identity found but user missing", { identityId: identity.id });
-      return { allowed: false };
+      return { allowed: false, reason: "identity_found_but_user_missing" };
     }
 
     if (!user.isActive) {
       logger.info("User account is inactive", { userId: user.id });
-      return { allowed: false };
+      return { allowed: false, reason: "inactive_account" };
     }
 
     await storage.authIdentities.update(identity.id, {
@@ -76,6 +78,7 @@ async function checkUserAccess(
   }
 
   // No auth identity found - try to find user by email and link account
+  if (!email) return { allowed: false, reason: "missing_email" };
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
@@ -89,7 +92,7 @@ async function checkUserAccess(
     });
     if (!provisioned) {
       logger.info("No provisioned account found for email", { email });
-      return { allowed: false };
+      return { allowed: false, reason: "no_provisioned_account" };
     }
 
     await storage.users.updateUserLastLogin(provisioned.user.id);
@@ -99,7 +102,7 @@ async function checkUserAccess(
 
   if (!user.isActive) {
     logger.info("User account is inactive", { userId: user.id });
-    return { allowed: false };
+    return { allowed: false, reason: "inactive_account" };
   }
 
   logger.info("Linking Replit account to provisioned user", { userId: user.id });
@@ -177,7 +180,10 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
 
         if (!accessCheck.allowed) {
           return verified(
-            new Error("Access denied. Please contact an administrator to set up your account."),
+            new VerifiedAccountRefusal(recordAccountRefusal("replit", accessCheck.reason, {
+              externalId: user.claims?.sub,
+              email: user.claims?.email,
+            })),
             false
           );
         }
@@ -209,7 +215,7 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
     },
 
     getLoginHandler(): RequestHandler {
-      return (req, res, next) => {
+      return function replitLoginHandler(req, res, next) {
         ensureStrategy(req.hostname);
         passport.authenticate(`replitauth:${req.hostname}`, {
           prompt: "login consent",
@@ -219,12 +225,15 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
     },
 
     getCallbackHandler(): RequestHandler {
-      return (req, res, next) => {
+      return function replitCallbackHandler(req, res, next) {
         ensureStrategy(req.hostname);
         passport.authenticate(`replitauth:${req.hostname}`, {
           successReturnToOrRedirect: "/",
           failureRedirect: "/unauthorized",
         })(req, res, (err: any) => {
+          if (err instanceof VerifiedAccountRefusal) {
+            return res.redirect(err.redirectUrl);
+          }
           if (err) {
             logger.error("Authentication callback error", { error: err.message });
             return res.redirect("/unauthorized");

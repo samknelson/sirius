@@ -35,3 +35,19 @@ auditability (console block + storageLogger), not a denylist.
 **Still open:** removing the variables does not revoke the account, and a
 deployment with AUTH_LOCAL_PEPPER set will accept a pepper-less hash that can
 never verify.
+
+## Public first-run bootstrap boundary
+
+The owner chose to disable public first-admin bootstrap whenever an effective,
+nonblank LOCAL_AUTH_EMAIL is configured, even if the password hash is missing,
+invalid, or reconciliation fails. Do not allow a submitted matching email as
+an exception.
+
+**Why:** operator-declared admin provisioning must not fall back to an
+unauthenticated claimant when the reconciler cannot establish the account.
+This is a targeted control, not a decision to remove public bootstrap for
+deployments without that setting.
+
+**How to apply:** align bootstrap status and write refusal using the registry's
+effective value and existing release semantics. Leave normal reconciliation
+and SSO provisioning unchanged; introduce no new bootstrap token mechanism.

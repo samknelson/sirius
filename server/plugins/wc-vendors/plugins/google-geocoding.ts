@@ -83,7 +83,7 @@ async function geocode(
 
   let response: Response;
   try {
-    response = await fetch(
+    response = await ctx.http.fetch(
       `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`,
     );
   } catch (error) {
@@ -130,6 +130,7 @@ async function geocode(
 
 registerWcVendorPlugin({
   id: GOOGLE_GEOCODING_PLUGIN_ID,
+  httpTransport: "webclient",
   name: "Google Geocoding",
   description: "Turns street addresses into normalized addresses and coordinates.",
   credential: {

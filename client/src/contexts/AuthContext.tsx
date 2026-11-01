@@ -7,6 +7,8 @@ import {
   resolveEffectiveTimeZone,
 } from '@shared/utils/timezone';
 import { getBrowserTimeZone, setDisplayTimeZone } from '@/lib/display-timezone';
+import { fetchAuthUser } from '@/lib/auth-user';
+import { clearSamlAttempt } from '@/lib/saml-attempt';
 
 let _clerkSignOut: ((opts?: { redirectUrl?: string }) => Promise<void>) | null = null;
 export function registerClerkSignOut(fn: typeof _clerkSignOut) {
@@ -55,6 +57,9 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   authReady: boolean; // True when auth state has been definitively resolved
+  authError: boolean;
+  retryAuth: () => void;
+  isCheckingAuth: boolean;
   hasPermission: (permission: string) => boolean;
   hasComponent: (componentId: string) => boolean;
 }
@@ -93,30 +98,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }));
 
   // Check if user is authenticated on app start
-  const { data: authData, isLoading } = useQuery({
+  const { data: authData, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['/api/auth/user'],
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/auth/user', {
-          credentials: 'include',
-        });
-        if (response.status === 401) {
-          return null; // Not authenticated
-        }
-        if (!response.ok) {
-          throw new Error('Failed to fetch user data');
-        }
-        return await response.json();
-      } catch (error) {
-        return null;
-      }
-    },
+    queryFn: fetchAuthUser,
   });
 
   useEffect(() => {
+    if (authData === undefined) return;
     if (authData && (authData as any).user) {
+      clearSamlAttempt();
       setUser((authData as any).user);
       setPermissions((authData as any).permissions || []);
       setComponents((authData as any).components || []);
@@ -180,7 +172,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return components.includes(componentId);
   };
 
-  const authReady = !isLoading; // Auth state is ready when loading is complete
+  // Wait for state synchronization too: the query can settle one render before
+  // its effect, otherwise the login guard briefly sees a signed-out user.
+  const authReady = !isLoading && !isError && authData !== undefined &&
+    (authData === null ? user === null : user?.id === authData.user.id);
 
   const displayTimeZone = resolveEffectiveTimeZone({
     systemTimeZone: timezone.systemTimeZone,
@@ -221,6 +216,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         authReady,
+        authError: isError,
+        retryAuth: () => { void refetch(); },
+        isCheckingAuth: isFetching,
         hasPermission,
         hasComponent,
       }}

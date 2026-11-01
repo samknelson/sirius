@@ -11,7 +11,11 @@
 # Idempotent and non-interactive. Stdin is closed by the runner.
 set -e
 
-echo "[post-merge] Installing npm dependencies"
-npm install --no-audit --no-fund
+echo "[post-merge] Checking runtime and installing locked npm dependencies"
+test "$(node --version)" = "v$(cat .node-version)" || {
+  echo "[post-merge] Wrong Node runtime; reload the Replit Nix environment" >&2
+  exit 1
+}
+npm ci --no-audit --no-fund
 
 echo "[post-merge] Done"

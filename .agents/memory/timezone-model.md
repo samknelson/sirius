@@ -31,6 +31,17 @@ operation even though both database and Node have the same configured zone.
 inside SQL for time-limited decisions; verify the ORM read mapping before
 using `.getTime()` on other naive columns for elapsed time.
 
+**ORM writes also differ from raw pg:** its Date-mode writer serializes UTC
+wall-clock fields, whereas PostgreSQL defaults use the session zone. A column
+written by both paths can therefore contain mixed timestamp bases.
+**Why:** a read correction that fixes a database-defaulted timestamp can shift
+an ORM-written timestamp that already represents UTC.
+**How to apply:** establish the column's actual writers before correcting its
+read mapping or proposing a historical repair. For database-defaulted log
+timestamps, interpret the wall clock in the SQL session zone before serializing
+an instant; compare instant-based filters on that same basis. Do not apply this
+as a blanket schema or browser conversion.
+
 **The matching hazard:** a column default of `now()` is evaluated by POSTGRES,
 using the *session* TimeZone, not Node's. If the two disagree, app-written
 timestamps and defaulted ones land in the same column offset from each other.

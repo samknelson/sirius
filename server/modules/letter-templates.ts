@@ -14,6 +14,7 @@ import {
   tokenContextRootNames,
 } from "../plugins/tokens/contexts";
 import { validateTokenExpressionForRoots } from "../plugins/tokens";
+import { sanitizeAuthoredFields } from "../delivery/sanitize-authored-fields";
 
 type Middleware = (
   req: Request,
@@ -141,6 +142,7 @@ export function registerLetterTemplateRoutes(
   app.post("/api/admin/letter-templates", staff, async (req, res) => {
     try {
       const input = createInput.parse(req.body);
+      input.content = sanitizeAuthoredFields(input.medium, input.content);
       const problem = validationMessage(input);
       if (problem) return res.status(400).json({ message: problem });
       const created = await storage.letterTemplates.create({
@@ -178,9 +180,20 @@ export function registerLetterTemplateRoutes(
       const current = await storage.letterTemplates.get(req.params.id);
       if (!current) return res.status(404).json({ message: "Letter template not found" });
       const input = updateInput.parse(req.body);
-      const problem = validationMessage(input, current);
+      // A medium-only change reclassifies the existing content. Clean that
+      // effective value too; otherwise leave omitted content entirely alone.
+      const changes = input.content !== undefined || input.medium !== undefined
+        ? {
+            ...input,
+            content: sanitizeAuthoredFields(
+              input.medium ?? (current.medium as MediumName),
+              input.content ?? (current.content as Record<string, string>),
+            ),
+          }
+        : input;
+      const problem = validationMessage(changes, current);
       if (problem) return res.status(400).json({ message: problem });
-      const updated = await storage.letterTemplates.update(req.params.id, input);
+      const updated = await storage.letterTemplates.update(req.params.id, changes);
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {

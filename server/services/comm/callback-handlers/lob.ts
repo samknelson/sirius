@@ -1,12 +1,30 @@
 import type { Request } from 'express';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { freshTimestamp, verificationConfig, webhookSecret, type CallbackRequest } from "./verification";
 
 export class LobStatusHandler implements CommStatusHandler {
   readonly providerId = 'lob';
   readonly medium = 'postal' as const;
 
-  async validateRequest(req: Request): Promise<{ valid: boolean; error?: string }> {
-    return { valid: true };
+  async validateRequest(req: Request, vendorConfigId?: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const signature = req.headers["lob-signature"];
+      const timestamp = req.headers["lob-signature-timestamp"];
+      const raw = (req as CallbackRequest).rawCallbackBody;
+      if (typeof signature !== "string" || !/^[a-fA-F0-9]{64}$/.test(signature) ||
+          !freshTimestamp(timestamp) || !Buffer.isBuffer(raw)) {
+        return { valid: false, error: "Missing or invalid Lob signature, timestamp, or raw body" };
+      }
+      const config = await verificationConfig("lob", vendorConfigId);
+      const secret = webhookSecret(config.webhookSecretName);
+      // Protocol reference: Lob's "Using webhooks / Webhook signatures".
+      const expected = createHmac("sha256", secret).update(timestamp).update(".").update(raw).digest();
+      const valid = timingSafeEqual(expected, Buffer.from(signature, "hex"));
+      return valid ? { valid: true } : { valid: false, error: "Invalid Lob signature" };
+    } catch {
+      return { valid: false, error: "Lob callback verification unavailable or invalid" };
+    }
   }
 
   parseStatusUpdate(req: Request): CommStatusUpdate {

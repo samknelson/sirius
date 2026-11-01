@@ -403,6 +403,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         data: {
           ...comm.data as object,
           letterId: sendResult.letterId,
+          callbackVendorConfigId: sendResult.details?.vendorConfigId,
           expectedDeliveryDate: sendResult.expectedDeliveryDate,
           trackingNumber: sendResult.trackingNumber,
         },

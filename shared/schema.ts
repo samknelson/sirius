@@ -188,12 +188,14 @@ export const sessions = pgTable(
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").notNull().unique(),
+  email: varchar("email").notNull(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   accountStatus: varchar("account_status").default("pending").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  /** Authentication revocation generation; only storage may advance it. */
+  sessionVersion: integer("session_version").default(0).notNull(),
   /**
    * When the account last signed in. Behaviour, not provenance: it is not a
    * record of the account being changed, and nothing else records it.
@@ -215,7 +217,9 @@ export const users = pgTable("users", {
    */
   timezone: varchar("timezone"),
   data: jsonb("data"),
-});
+}, (table) => [
+  uniqueIndex("users_email_normalized_unique").on(sql`lower(nullif(btrim(${table.email}::text), ''::text))`),
+]);
 
 export const authProviderTypeEnum = pgEnum("auth_provider_type", [
   "replit",
@@ -298,12 +302,14 @@ export const contacts = pgTable("contacts", {
   generational: text("generational"),
   credentials: text("credentials"),
   displayName: text("display_name").notNull(),
-  email: text("email").unique(),
+  email: text("email"),
   birthDate: date("birth_date"),
   gender: varchar("gender").references(() => optionsGender.id, { onDelete: 'set null' }),
   genderNota: text("gender_nota"),
   genderCalc: text("gender_calc"),
-});
+}, (table) => [
+  uniqueIndex("contacts_email_normalized_unique").on(sql`lower(nullif(btrim(${table.email}), ''::text))`),
+]);
 
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1608,19 +1614,25 @@ export {
 } from "./schema/edls/schema";
 
 // Zod schemas for validation
-export const insertUserSchema = createInsertSchema(users).omit({
+export const insertUserSchema = createInsertSchema(users, {
+  email: z.string().trim(),
+}).omit({
   id: true,
+  sessionVersion: true,
 });
 
 // For Replit Auth upsert operations
-export const upsertUserSchema = createInsertSchema(users).omit({
+export const upsertUserSchema = createInsertSchema(users, {
+  email: z.string().trim(),
+}).omit({
   lastLogin: true,
   isActive: true,
+  sessionVersion: true,
 });
 
 // For admin user creation (email-based provisioning)
 export const createUserSchema = z.object({
-  email: z.string().email("Valid email is required"),
+  email: z.string().trim().email("Valid email is required"),
   firstName: z.string().optional().nullable(),
   lastName: z.string().optional().nullable(),
   isActive: z.boolean().default(true),

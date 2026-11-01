@@ -4,6 +4,7 @@ import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-quer
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import AuthCheckError from "@/components/auth/AuthCheckError";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
@@ -11,7 +12,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import {
@@ -37,17 +38,7 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const RecordGoPage = lazy(() => import("@/pages/record-go"));
-function RecordGoResolverRoute() {
-  const navigationStarted = useRef(false);
-
-  useEffect(() => {
-    if (navigationStarted.current) return;
-    navigationStarted.current = true;
-    window.location.assign(window.location.href);
-  }, []);
-
-  return <PageLoader />;
-}
+const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
@@ -539,7 +530,7 @@ function T631ArrivalRoute() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authReady, authError } = useAuth();
   const [location, setLocation] = useLocation();
 
   // Check if bootstrap is needed - only for unauthenticated users
@@ -549,13 +540,13 @@ function Router() {
   }>({
     queryKey: ["/api/bootstrap/needed"],
     retry: false,
-    enabled: !isAuthenticated && !isLoading,
+    enabled: !isAuthenticated && authReady,
   });
 
   // Redirect to bootstrap page if needed (only for unauthenticated users)
   useEffect(() => {
     // Skip redirect logic for authenticated users - they don't need bootstrap
-    if (isAuthenticated) return;
+    if (isAuthenticated || !authReady || location === "/auth-error") return;
     
     if (!isBootstrapLoading && bootstrapData) {
       if (bootstrapData.needed && location !== "/bootstrap") {
@@ -564,10 +555,13 @@ function Router() {
         setLocation("/login");
       }
     }
-  }, [bootstrapData, isBootstrapLoading, location, setLocation, isAuthenticated]);
+  }, [bootstrapData, isBootstrapLoading, location, setLocation, isAuthenticated, authReady]);
 
   // Show loading while checking auth or bootstrap status (for unauthenticated users only)
-  const showLoading = isLoading || (!isAuthenticated && isBootstrapLoading);
+  // Server error explanations must remain reachable even if session reads fail.
+  if (authError && location !== "/auth-error") return <AuthCheckError />;
+  const showLoading = location !== "/auth-error" &&
+    (isLoading || !authReady || (!isAuthenticated && isBootstrapLoading));
   if (showLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">

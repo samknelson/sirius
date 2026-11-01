@@ -27,13 +27,16 @@ Resolve the browser executable from PATH before searching the filesystem.
 
 **How to apply:** Try `command -v chromium` first. Avoid traversing the entire Nix store just to locate a test executable.
 
-For small signed-in component checks, prefer an isolated bundle of the actual
-components with browser/session fixtures rather than hand-authored imports into
-Vite's transformed development modules.
+For small signed-in component and navigation-count checks, prefer an isolated
+bundle of the actual components with browser/session fixtures rather than
+hand-authored imports into Vite's transformed development modules or stubs of
+Vite's runtime exports.
 
 **Why:** Hand-authored module imports bypass Vite's CommonJS interop and React
-refresh setup, and dependency URLs depend on the server's configured root. These
-harness failures can obscure otherwise-working application behavior.
+refresh setup, and dependency URLs depend on the server's configured root. The
+development SPA can also perform unrelated document navigations; stubbing its
+hot-reload runtime can prevent rendering entirely. These harness failures can
+obscure otherwise-working application behavior.
 
 **How to apply:** Keep fixtures outside application authentication and outside
 the permanent UI suite. Bundle with automatic JSX, exercise the real WebSocket
