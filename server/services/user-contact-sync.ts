@@ -1,6 +1,7 @@
 import type { User } from "@shared/schema";
 import type { ContactsStorage } from "../storage/contacts";
 import { generateDisplayName } from "@shared/schema";
+import { normalizeUserEmail } from "@shared/utils/user-email";
 
 export interface UserContactSyncService {
   ensureContactForUser(user: User, previousEmail?: string | null): Promise<void>;
@@ -9,6 +10,8 @@ export interface UserContactSyncService {
 export function createUserContactSyncService(contacts: ContactsStorage): UserContactSyncService {
   return {
     async ensureContactForUser(user: User, previousEmail?: string | null): Promise<void> {
+      user = { ...user, email: normalizeUserEmail(user.email) };
+      previousEmail = previousEmail?.trim() || null;
       if (!user.email) {
         return;
       }
@@ -20,7 +23,7 @@ export function createUserContactSyncService(contacts: ContactsStorage): UserCon
       }
       
       if (existingContact) {
-        const needsEmailUpdate = existingContact.email?.toLowerCase() !== user.email.toLowerCase();
+        const needsEmailUpdate = existingContact.email?.trim().toLowerCase() !== user.email.toLowerCase();
         const needsNameUpdate = 
           (user.firstName && existingContact.given !== user.firstName) ||
           (user.lastName && existingContact.family !== user.lastName);

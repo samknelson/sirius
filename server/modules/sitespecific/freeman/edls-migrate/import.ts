@@ -644,12 +644,7 @@ async function resolveSupervisor(name: string | null, live: boolean): Promise<st
     if (live) {
       await client.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${normalizedEmail}, 0))`);
     }
-    const [existing] = await client
-      .select({ id: users.id })
-      .from(users)
-      .where(sql`LOWER(${users.email}) = ${normalizedEmail}`)
-      .orderBy(asc(users.id))
-      .limit(1);
+    const existing = await storage.users.getUserByEmail(parsedEmail.data);
     if (existing) return existing.id;
     if (!live) return `planned:${normalizedEmail}`;
     const [created] = await client.insert(users).values({
@@ -660,12 +655,7 @@ async function resolveSupervisor(name: string | null, live: boolean): Promise<st
       isActive: false,
     }).onConflictDoNothing().returning({ id: users.id });
     if (created) return created.id;
-    const [conflicting] = await client
-      .select({ id: users.id })
-      .from(users)
-      .where(sql`LOWER(${users.email}) = ${normalizedEmail}`)
-      .orderBy(asc(users.id))
-      .limit(1);
+    const conflicting = await storage.users.getUserByEmail(parsedEmail.data);
     return conflicting?.id ?? null;
   }
   const parts = name.split(/\s+/).filter(Boolean);
@@ -696,7 +686,7 @@ async function resolveSupervisor(name: string | null, live: boolean): Promise<st
     },
   }).onConflictDoNothing().returning({ id: users.id });
   if (created) return created.id;
-  const [existing] = await client.select({ id: users.id }).from(users).where(eq(users.email, email));
+  const existing = await storage.users.getUserByEmail(email);
   return existing?.id ?? null;
 }
 

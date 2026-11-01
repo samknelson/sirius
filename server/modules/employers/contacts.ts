@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import { storage } from "../../storage";
 import { insertContactSchema } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
@@ -215,6 +216,11 @@ export function registerEmployerContactRoutes(
             summary.enabled++;
           }
         } catch (err: any) {
+          if (isUserEmailConflict(err)) {
+            results.push({ contactId, contactName: null, status: 'conflict', message: 'User with this email already exists. Reload before retrying.' });
+            summary.conflict++;
+            continue;
+          }
           results.push({ contactId, contactName: null, status: 'error', message: err?.message || 'Unknown error' });
           summary.error++;
         }
@@ -584,6 +590,9 @@ export function registerEmployerContactRoutes(
       });
     } catch (error) {
       console.error("Error creating/updating employer contact user:", error);
+      if (isUserEmailConflict(error)) {
+        return res.status(409).json({ message: "User with this email already exists. Reload before retrying." });
+      }
       res.status(500).json({ message: "Failed to create or update user" });
     }
   });

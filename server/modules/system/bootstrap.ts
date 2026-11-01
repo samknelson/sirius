@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import { storage } from "../../storage";
 import { getEnvironmentVariable } from "../../config/env-registry";
 
@@ -94,6 +95,9 @@ export function registerBootstrapRoutes(app: Express) {
       });
     } catch (error) {
       console.error("Bootstrap error:", error);
+      if (isUserEmailConflict(error)) {
+        return res.status(409).json({ message: "A user account with this email already exists." });
+      }
       res.status(500).json({ message: "Failed to complete bootstrap" });
     }
   });

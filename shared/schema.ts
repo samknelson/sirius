@@ -188,7 +188,7 @@ export const sessions = pgTable(
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").notNull().unique(),
+  email: varchar("email").notNull(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -217,7 +217,9 @@ export const users = pgTable("users", {
    */
   timezone: varchar("timezone"),
   data: jsonb("data"),
-});
+}, (table) => [
+  uniqueIndex("users_email_normalized_unique").on(sql`lower(nullif(btrim(${table.email}::text), ''::text))`),
+]);
 
 export const authProviderTypeEnum = pgEnum("auth_provider_type", [
   "replit",
@@ -1612,13 +1614,17 @@ export {
 } from "./schema/edls/schema";
 
 // Zod schemas for validation
-export const insertUserSchema = createInsertSchema(users).omit({
+export const insertUserSchema = createInsertSchema(users, {
+  email: z.string().trim(),
+}).omit({
   id: true,
   sessionVersion: true,
 });
 
 // For Replit Auth upsert operations
-export const upsertUserSchema = createInsertSchema(users).omit({
+export const upsertUserSchema = createInsertSchema(users, {
+  email: z.string().trim(),
+}).omit({
   lastLogin: true,
   isActive: true,
   sessionVersion: true,
@@ -1626,7 +1632,7 @@ export const upsertUserSchema = createInsertSchema(users).omit({
 
 // For admin user creation (email-based provisioning)
 export const createUserSchema = z.object({
-  email: z.string().email("Valid email is required"),
+  email: z.string().trim().email("Valid email is required"),
   firstName: z.string().optional().nullable(),
   lastName: z.string().optional().nullable(),
   isActive: z.boolean().default(true),

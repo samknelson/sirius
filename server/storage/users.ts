@@ -31,6 +31,7 @@ import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
 import { createSessionStorage } from "./system/sessions";
 import { sessionProviderType } from "../auth/account-authority";
+import { AmbiguousUserEmailError, normalizeUserEmail } from "@shared/utils/user-email";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -133,14 +134,20 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getUserByEmail(email: string): Promise<User | undefined> {
+      const normalized = normalizeUserEmail(email);
+      if (!normalized) return undefined;
       const client = getClient();
-      const [user] = await client.select().from(users).where(sql`LOWER(btrim(${users.email})) = LOWER(${email.trim()})`);
-      return user || undefined;
+      const matches = await client.select().from(users).where(
+        sql`lower(nullif(btrim(${users.email}), ''::text)) = lower(${normalized})`,
+      );
+      if (matches.length > 1) throw new AmbiguousUserEmailError(matches.map(user => user.id).sort());
+      return matches[0];
     },
 
     async hasOtherUserWithEmail(email: string, userId: string): Promise<boolean> {
+      if (!normalizeUserEmail(email)) return false;
       const [other] = await getClient().select({ id: users.id }).from(users).where(and(
-        sql`lower(btrim(${users.email})) = lower(${email.trim()})`,
+        sql`lower(nullif(btrim(${users.email}), ''::text)) = lower(${normalizeUserEmail(email)})`,
         sql`${users.id} <> ${userId}`,
       )).limit(1);
       return !!other;
@@ -148,6 +155,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async upsertUser(userData: UpsertUser): Promise<User> {
       validate.validateOrThrow(userData);
+      userData = { ...userData, email: normalizeUserEmail(userData.email) };
       const client = getClient();
       const [user] = await client
         .insert(users)
@@ -172,6 +180,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async createUser(insertUser: InsertUser): Promise<User> {
       validate.validateOrThrow(insertUser);
+      insertUser = { ...insertUser, email: normalizeUserEmail(insertUser.email) };
       const client = getClient();
       const [user] = await client
         .insert(users)
@@ -187,6 +196,9 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
       validate.validateOrThrow(userUpdate);
+      if (userUpdate.email !== undefined) {
+        userUpdate = { ...userUpdate, email: normalizeUserEmail(userUpdate.email) };
+      }
       if (userUpdate.isActive !== undefined && typeof userUpdate.isActive !== "boolean") {
         throw new TypeError("isActive must be a boolean");
       }

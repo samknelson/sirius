@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import { storage } from "../../../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../../../services/access-policy-evaluator";
@@ -493,6 +494,9 @@ export function registerTrustProviderContactRoutes(
       });
     } catch (error) {
       console.error("Error saving provider contact user:", error);
+      if (isUserEmailConflict(error)) {
+        return res.status(409).json({ message: "User with this email already exists. Reload before retrying." });
+      }
       res.status(500).json({ message: "Failed to save user account" });
     }
   });

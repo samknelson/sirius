@@ -14,6 +14,7 @@ import { requireAccess, clearAccessCache } from "../services/access-policy-evalu
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 import { requireComponent } from "./components";
 import { sessionHistoryPagingSchema } from "@shared/session-history";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -241,6 +242,9 @@ export function registerUserRoutes(
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid user data" });
       } else {
+        if (isUserEmailConflict(error)) {
+          return res.status(409).json({ message: "User with this email already exists" });
+        }
         console.error("Failed to create user:", error);
         res.status(500).json({ message: "Failed to create user" });
       }

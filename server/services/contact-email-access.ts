@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import type { User } from "@shared/schema";
 import { isContactEmailConflict } from "@shared/utils/contact-email";
 import { storage } from "../storage";
@@ -53,6 +54,10 @@ export async function assertContactEmailLink(req: Request, contactId: string, em
 }
 
 export function respondContactEmailError(res: Response, error: unknown): boolean {
+  if (isUserEmailConflict(error)) {
+    res.status(409).json({ message: "A user account with this email already exists." });
+    return true;
+  }
   if (error instanceof ContactEmailRefusal) {
     res.status(error.status).json({ message: error.message });
     return true;

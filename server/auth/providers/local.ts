@@ -14,7 +14,7 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { getDbUserFromSession } from "../helpers";
 
 const loginBodySchema = z.object({
-  email: z.string().email().max(320),
+  email: z.string().trim().email().max(320),
   password: z.string().min(1).max(200),
 });
 

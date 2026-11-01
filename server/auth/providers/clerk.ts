@@ -1,4 +1,5 @@
 import { clerkMiddleware, getAuth, createClerkClient } from "@clerk/express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import type { Express, RequestHandler } from "express";
 import type { AuthProvider, ClerkProviderConfig, AuthenticatedUser } from "../types";
 import { storage } from "../../storage";
@@ -740,6 +741,9 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           });
         } catch (error) {
           logger.error("Worker registration completion error", { error });
+          if (isUserEmailConflict(error)) {
+            return res.status(409).json({ message: "A user account with this email already exists. Please restart sign-in." });
+          }
           res.status(500).json({ message: "An unexpected error occurred. Please try again." });
         }
       });
