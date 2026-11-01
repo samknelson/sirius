@@ -29,6 +29,9 @@ import { runInTransaction } from './transaction-context';
 import { defineLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
+import { createSessionStorage } from "./system/sessions";
+import { sessionProviderType } from "../auth/account-authority";
+import { AmbiguousUserEmailError, normalizeUserEmail } from "@shared/utils/user-email";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -63,6 +66,7 @@ export interface UserStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  hasOtherUserWithEmail(email: string, userId: string): Promise<boolean>;
   upsertUser(user: UpsertUser): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
@@ -130,13 +134,28 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getUserByEmail(email: string): Promise<User | undefined> {
+      const normalized = normalizeUserEmail(email);
+      if (!normalized) return undefined;
       const client = getClient();
-      const [user] = await client.select().from(users).where(sql`LOWER(${users.email}) = LOWER(${email})`);
-      return user || undefined;
+      const matches = await client.select().from(users).where(
+        sql`lower(nullif(btrim(${users.email}), ''::text)) = lower(${normalized})`,
+      );
+      if (matches.length > 1) throw new AmbiguousUserEmailError(matches.map(user => user.id).sort());
+      return matches[0];
+    },
+
+    async hasOtherUserWithEmail(email: string, userId: string): Promise<boolean> {
+      if (!normalizeUserEmail(email)) return false;
+      const [other] = await getClient().select({ id: users.id }).from(users).where(and(
+        sql`lower(nullif(btrim(${users.email}), ''::text)) = lower(${normalizeUserEmail(email)})`,
+        sql`${users.id} <> ${userId}`,
+      )).limit(1);
+      return !!other;
     },
 
     async upsertUser(userData: UpsertUser): Promise<User> {
       validate.validateOrThrow(userData);
+      userData = { ...userData, email: normalizeUserEmail(userData.email) };
       const client = getClient();
       const [user] = await client
         .insert(users)
@@ -161,6 +180,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async createUser(insertUser: InsertUser): Promise<User> {
       validate.validateOrThrow(insertUser);
+      insertUser = { ...insertUser, email: normalizeUserEmail(insertUser.email) };
       const client = getClient();
       const [user] = await client
         .insert(users)
@@ -176,21 +196,61 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
       validate.validateOrThrow(userUpdate);
-      const client = getClient();
-      const previousUser = await client.select().from(users).where(eq(users.id, id)).then(r => r[0]);
-      const previousEmail = previousUser?.email;
-      
-      const [user] = await client
-        .update(users)
-        .set(userUpdate)
-        .where(eq(users.id, id))
-        .returning();
-      
-      if (user && contactSync) {
-        await contactSync.ensureContactForUser(user, previousEmail);
+      if (userUpdate.email !== undefined) {
+        userUpdate = { ...userUpdate, email: normalizeUserEmail(userUpdate.email) };
       }
-      
-      return user || undefined;
+      if (userUpdate.isActive !== undefined && typeof userUpdate.isActive !== "boolean") {
+        throw new TypeError("isActive must be a boolean");
+      }
+      return runInTransaction(async () => {
+        const client = getClient();
+        const previousUser = await client.select().from(users).where(eq(users.id, id)).then(r => r[0]);
+        const previousEmail = previousUser?.email;
+
+        const [user] = await client
+          .update(users)
+          .set({
+            ...userUpdate,
+            // Never accept a caller-supplied generation, including runtime
+            // payloads that bypass TypeScript / the public insert schema.
+            sessionVersion: userUpdate.isActive === false
+              ? sql`${users.sessionVersion} + 1` : sql`${users.sessionVersion}`,
+          })
+          .where(eq(users.id, id))
+          .returning();
+
+        if (user && userUpdate.isActive === false) {
+          const defaultProvider = await sessionProviderType();
+          // Lock matching rows while the account lock is held. Resolve legacy
+          // subjects through provider identities, never compare sub to user id.
+          const revoked = await client.execute(sql`
+            SELECT sid FROM sessions s
+            WHERE s.sess #>> '{passport,user,dbUser,id}' = ${id}
+               OR s.sess ->> 'masqueradeUserId' = ${id}
+               OR s.sess ->> 'originalUserId' = ${id}
+               OR (
+                 s.sess #>> '{passport,user,dbUser,id}' IS NULL
+                 AND EXISTS (
+                   SELECT 1 FROM auth_identities a
+                   WHERE a.user_id = ${id}
+                     AND a.external_id = s.sess #>> '{passport,user,claims,sub}'
+                     AND a.provider_type::text = COALESCE(s.sess #>> '{passport,user,providerType}', ${defaultProvider})
+                 )
+               )
+            ORDER BY sid FOR UPDATE
+          `);
+          const sessionStorage = createSessionStorage();
+          for (const row of revoked.rows as { sid: string }[]) {
+            await sessionStorage.deleteSession(row.sid, "account deactivated");
+          }
+        }
+
+        if (user && contactSync) {
+          await contactSync.ensureContactForUser(user, previousEmail);
+        }
+
+        return user || undefined;
+      });
     },
 
     async updateUserLastLogin(id: string): Promise<User | undefined> {
@@ -565,6 +625,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
+          sessionVersion: users.sessionVersion,
           lastLogin: users.lastLogin,
           timezone: users.timezone,
           data: users.data,
@@ -738,6 +799,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
+          sessionVersion: users.sessionVersion,
           lastLogin: users.lastLogin,
           timezone: users.timezone,
           data: users.data,

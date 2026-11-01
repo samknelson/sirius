@@ -70,8 +70,30 @@ function EdlsSheetManageContent() {
     mutationFn: async (newStatus: EdlsSheetStatus) => {
       return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/status`, { status: newStatus });
     },
-    onSuccess: (_data, newStatus) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] });
+    onSuccess: async (_data, newStatus) => {
+      // Status changes alter both the sheet tabs and cached page/action guards.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/access/tabs", "edls_sheet", sheetId] }),
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) => {
+            if (queryKey[0] === "/api/access/policies") {
+              return typeof queryKey[1] === "string"
+                && queryKey[1].startsWith("edls.sheet.")
+                && queryKey[2] === sheetId;
+            }
+            const params = queryKey[1] as {
+              policy?: string; entityId?: string; policyId?: string; entityIds?: string;
+            } | undefined;
+            return (queryKey[0] === "/api/access/check"
+              && params?.policy?.startsWith("edls.sheet.") === true
+              && params.entityId === sheetId)
+              || (queryKey[0] === "/api/access/check-batch"
+                && params?.policyId?.startsWith("edls.sheet.") === true
+                && params.entityIds?.split(",").includes(sheetId) === true);
+          },
+        }),
+      ]);
       setPendingStatus("");
       const statusLabel = statusOptions.find(s => s.value === newStatus)?.label;
       toast({

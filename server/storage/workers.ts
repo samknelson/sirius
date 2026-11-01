@@ -257,7 +257,7 @@ export interface WorkerStorage {
     generational?: string;
     credentials?: string;
   }): Promise<Worker | undefined>;
-  updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined>;
+  updateWorkerContactEmail(workerId: string, email: string | null): Promise<Worker | undefined>;
   updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined>;
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
@@ -1009,7 +1009,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         })
         .from(workers)
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
+        .where(sql`lower(nullif(btrim(${contacts.email}), '')) = lower(${email.trim()})`);
 
       if (!result) return undefined;
       const [wsRow] = await client
@@ -1196,7 +1196,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return stripWorkerData(currentWorker);
     },
 
-    async updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined> {
+    async updateWorkerContactEmail(workerId: string, email: string | null): Promise<Worker | undefined> {
       const client = getClient();
       // Get the current worker to find its contact
       const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));

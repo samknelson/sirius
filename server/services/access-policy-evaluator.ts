@@ -187,17 +187,8 @@ export async function buildContext(req: Request): Promise<AccessContext> {
   if (sessionUser && sessionUser.claims && storage) {
     const session = (req as any).session;
 
-    // Check if masquerading
-    if (session?.masqueradeUserId) {
-      const masqueradeUser = await storage.getUser(session.masqueradeUserId);
-      if (masqueradeUser) {
-        user = masqueradeUser;
-      }
-    } else {
-      // Normal authentication - use resolveDbUser helper
-      const { resolveDbUser } = await import("../auth/helpers");
-      user = await resolveDbUser(sessionUser, sessionUser.claims.sub);
-    }
+    const { getEffectiveUser } = await import("../modules/masquerade");
+    user = (await getEffectiveUser(session ?? {}, sessionUser)).dbUser;
   }
 
   return {

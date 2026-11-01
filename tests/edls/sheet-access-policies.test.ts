@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { PolicyContext } from "../../shared/access-policies";
 import edit from "../../shared/access-policies/edls/sheet/edit";
 import assign from "../../shared/access-policies/edls/sheet/assign";
+import create from "../../shared/access-policies/edls/sheet/create";
+import setStatus from "../../shared/access-policies/edls/sheet/set-status";
+import { edlsSheetStatusEnum } from "../../shared/schema/edls/schema";
 
 function context(
   permissions: string[],
-  sheet: { status: string; supervisor: string } | null,
+  sheet: { status: string; supervisor: string; data?: unknown } | null,
 ): PolicyContext {
   return {
     user: { id: "supervisor", email: "supervisor@example.test" },
@@ -71,5 +74,33 @@ describe("EDLS sheet details and assignment authorization", () => {
       expect(policy.noAdminBypass).toBe(true);
       expect(policy.cacheKeyFields).toEqual(["status", "supervisor"]);
     }
+  });
+});
+
+describe("EDLS sheet creation and dedicated status authority", () => {
+  it("permits creation for staff and advisors, not supervisors alone", async () => {
+    for (const permission of ["admin", "edls.manager", "edls.coordinator", "edls.worker.advisor", "edls.supervisor"]) {
+      expect((await create.evaluate!(context([permission], null))).granted)
+        .toBe(permission !== "edls.supervisor");
+    }
+  });
+
+  it("preserves the transition matrix, including Scheduled and trash-lock refusals", async () => {
+    for (const permission of ["admin", "edls.manager", "edls.coordinator", "edls.worker.advisor", "edls.supervisor"]) {
+      for (const current of edlsSheetStatusEnum) {
+        for (const target of edlsSheetStatusEnum) {
+          for (const trashLock of [true, false]) {
+            const ctx = context([permission], { status: current, supervisor: "supervisor", data: { trashLock } });
+            ctx.entityData = { targetStatus: target };
+            const blockedTrash = target === "trash" && (current === "lock" || trashLock);
+            const staff = ["admin", "edls.manager", "edls.coordinator"].includes(permission);
+            const advisor = permission === "edls.worker.advisor" && current !== "lock" && target !== "lock";
+            expect((await setStatus.evaluate!(ctx)).granted).toBe(!blockedTrash && (staff || advisor));
+          }
+        }
+      }
+    }
+    expect(setStatus.skipCache).toBe(true);
+    expect(setStatus.noAdminBypass).toBe(true);
   });
 });

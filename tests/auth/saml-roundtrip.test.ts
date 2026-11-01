@@ -7,20 +7,26 @@ import type { Server } from "node:http";
 const f = vi.hoisted(() => ({
   info: vi.fn(), error: vi.fn(), failSave: false, failRead: false,
   rows: new Map<string, any>(),
-  user: { id: "fixture-user", email: "fixture@example.invalid", isActive: true },
+  user: { id: "fixture-user", email: "fixture@example.invalid", isActive: true, sessionVersion: 0 },
+  identityFound: true, userFound: true, emailUserFound: true,
 }));
 vi.mock("../../server/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   storageLogger: { info: f.info, error: f.error },
 }));
+vi.mock("../../server/storage/transaction-context", () => ({
+  runOutsideTransaction: (fn: () => unknown) => fn(),
+}));
 vi.mock("../../server/storage", () => ({
   storage: {
     authIdentities: {
-      getByProviderAndExternalId: async () => ({ id: "identity", userId: f.user.id }),
+      getByProviderAndExternalId: async () =>
+        f.identityFound ? { id: "identity", userId: f.user.id } : undefined,
       update: vi.fn(), updateLastUsed: vi.fn(),
     },
     users: {
-      getUser: async () => f.user, updateUser: async () => f.user,
+      getUser: async () => f.userFound ? f.user : undefined, updateUser: async () => f.user,
+      getUserByEmail: async () => f.emailUserFound ? f.user : undefined,
       updateUserLastLogin: vi.fn(),
     },
     sessions: {
@@ -54,7 +60,9 @@ vi.mock("../../server/config/env-registry", () => ({
 
 import { createProvider } from "../../server/auth/providers/saml";
 import { StorageSessionStore } from "../../server/auth/session-store";
-import { observeSamlCallback } from "../../server/auth/saml-roundtrip";
+import { observeSamlCallback, getMountedSamlCallbackPath } from "../../server/auth/saml-roundtrip";
+import { createBrowserRequestProtection } from "../../server/middleware/browser-request-protection";
+import { getAuthErrorCategoryReason } from "../../client/src/pages/auth-error-categories";
 
 let server: Server;
 let origin: string;
@@ -64,11 +72,15 @@ const callback = "/api/auth/saml/callback";
 beforeEach(async () => {
   vi.clearAllMocks();
   f.rows.clear(); f.failSave = false; f.failRead = false;
+  f.user.isActive = true;
+  f.identityFound = true; f.userFound = true; f.emailUserFound = true;
   const app = express();
   app.use(observeSamlCallback);
+  app.use(createBrowserRequestProtection(getMountedSamlCallbackPath));
   app.use(express.urlencoded({ extended: false }));
   app.use(session({
     secret: "fixture-only-secret", resave: false, saveUninitialized: false,
+    cookie: { sameSite: "lax" },
     store: new StorageSessionStore({ ttlMs: 60_000 }),
   }));
   app.use(passport.initialize());
@@ -99,7 +111,8 @@ afterEach(async () => {
 
 function post(body = "SAMLResponse=fixture-assertion") {
   return fetch(`${origin}${callback}?private=do-not-log`, {
-    method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded",
+      Origin: "https://idp.example.invalid", "Sec-Fetch-Site": "cross-site" },
     redirect: "manual",
   });
 }
@@ -143,6 +156,51 @@ describe("SAML application session handoff", () => {
     expect(operations()).not.toContain("saml_session_established");
   });
 
+  it.each([
+    { match: "existing identity", identityFound: true, userFound: true, emailUserFound: true, active: false, reason: "inactive_account" },
+    { match: "email lookup", identityFound: false, userFound: true, emailUserFound: true, active: false, reason: "inactive_account" },
+    { match: "missing provisioned account", identityFound: false, userFound: true, emailUserFound: false, active: true, reason: "no_provisioned_account" },
+    { match: "dangling identity", identityFound: true, userFound: false, emailUserFound: true, active: true, reason: "identity_found_but_user_missing" },
+  ])("preserves the original account denial for $match", async ({ identityFound, userFound, emailUserFound, active, reason }) => {
+    f.identityFound = identityFound; f.userFound = userFound; f.emailUserFound = emailUserFound;
+    f.user.isActive = active;
+    const response = await post();
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!, origin);
+    expect(location.pathname).toBe("/auth-error");
+    expect(location.searchParams.get("error")).toBe("access_denied");
+    expect(location.searchParams.get("category")).toBe(reason === "inactive_account" ? reason : null);
+    expect(f.error).toHaveBeenCalledTimes(1);
+    const [message, metadata] = f.error.mock.calls[0];
+    expect(message).toBe(`SAML access denied [${location.searchParams.get("ref")}]`);
+    expect(metadata).toMatchObject({
+      operation: "access_denied", reference: location.searchParams.get("ref"), category: reason,
+    });
+    expect(operations()).toContain("saml_assertion_verified");
+    expect(operations()).toContain("saml_access_denied");
+    expect(operations()).not.toContain("saml_verification_rejected");
+    expect(operations()).not.toContain("saml_session_established");
+    expect(f.rows.size).toBe(0);
+    expect(location.search).not.toContain(f.user.email);
+    if (reason === "inactive_account") {
+      expect(getAuthErrorCategoryReason("access_denied", reason))
+        .toBe("Your account is inactive. Contact an administrator to reactivate it.");
+    }
+  });
+
+  it("still records a generic rejection when no profile or account denial is supplied", async () => {
+    validate.mockResolvedValue({ profile: null, loggedOut: false });
+    const response = await post();
+    const location = new URL(response.headers.get("location")!, origin);
+    expect(location.searchParams.get("error")).toBe("saml_failed");
+    expect(location.searchParams.get("ref")).toMatch(/^SAML-/);
+    expect(f.error).toHaveBeenCalledTimes(1);
+    expect(f.error.mock.calls[0][1]).toMatchObject({
+      operation: "saml_failed", errorMessage: "SAML authentication rejected",
+    });
+    expect(operations()).toContain("saml_verification_rejected");
+  });
+
   it("does not announce success if the authenticated session cannot be saved", async () => {
     f.failSave = true;
     const response = await post();
@@ -175,4 +233,23 @@ describe("SAML application session handoff", () => {
     expect(operations()).toContain("saml_callback_received");
     expect(validate).not.toHaveBeenCalled();
   });
+});
+
+describe("authentication error reason allowlisting", () => {
+  it("scopes the inactive-account explanation to account refusals", () => {
+    expect(getAuthErrorCategoryReason("access_denied", "inactive_account"))
+      .toBe("Your account is inactive. Contact an administrator to reactivate it.");
+    expect(getAuthErrorCategoryReason("saml_failed", "inactive_account")).toBeNull();
+    expect(getAuthErrorCategoryReason("session_failed", "inactive_account")).toBeNull();
+    expect(getAuthErrorCategoryReason("access_denied", "invalid_signature")).toBeNull();
+    expect(getAuthErrorCategoryReason("saml_callback_failed", "invalid_signature"))
+      .toContain("Signature validation failed");
+  });
+
+  it.each(["", "unrecognized", "missing_email", "no_provisioned_account", "__proto__", "constructor", "<script>arbitrary input</script>"])(
+    "does not display arbitrary or internal reason %j", (category) => {
+      expect(getAuthErrorCategoryReason("access_denied", category)).toBeNull();
+      expect(getAuthErrorCategoryReason("saml_failed", category)).toBeNull();
+    },
+  );
 });

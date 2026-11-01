@@ -2,6 +2,7 @@ import type { AddressInfo } from "node:net";
 import http from "node:http";
 
 import express from "express";
+import { createBrowserRequestProtection } from "../../server/middleware/browser-request-protection";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getByClientKey = vi.fn();
@@ -58,8 +59,10 @@ let origin: string;
 
 beforeAll(async () => {
   const app = express();
+  app.use(createBrowserRequestProtection(() => undefined));
   app.use(createWebServiceAuthMiddleware());
   app.get("/protected", (_req, res) => res.json({ authenticated: true }));
+  app.post("/api/ws/config/operation", (_req, res) => res.json({ authenticated: true }));
 
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -94,6 +97,24 @@ async function call(headers: Record<string, string>) {
 }
 
 describe("incoming web-service authentication", () => {
+  it("preserves header-authenticated POSTs without browser provenance", async () => {
+    const response = await fetch(`${origin}/api/ws/config/operation`, {
+      method: "POST",
+      headers: { "X-WS-Client-ID": "public-client-id", "X-WS-Client-Secret": "secret" },
+    });
+    expect(response.status).toBe(200);
+    expect(validateSecret).toHaveBeenCalledWith("public-client-id", "secret");
+  });
+
+  it("does not use a session cookie as authority for an exempt WS POST", async () => {
+    const response = await fetch(`${origin}/api/ws/config/operation`, {
+      method: "POST", headers: { Cookie: "connect.sid=pretend-admin-session" },
+    });
+    expect(response.status).toBe(401);
+    expect((await response.json()).code).toBe("MISSING_CREDENTIALS");
+    expect(validateSecret).not.toHaveBeenCalled();
+  });
+
   it("accepts X-WS-Client-ID with the matching secret", async () => {
     const result = await call({
       "X-WS-Client-ID": "public-client-id",

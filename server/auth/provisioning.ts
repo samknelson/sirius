@@ -9,6 +9,7 @@ import {
   type SamlRoleMapping,
 } from "./auth-settings";
 import type { User, AuthIdentity } from "@shared/schema";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 
 interface ProvisionInfo {
   externalId: string;
@@ -61,14 +62,19 @@ export async function maybeProvisionUser(
       return { user, identity };
     });
   } catch (error: any) {
-    if (error?.code !== "23505") throw error;
+    if (error?.code !== "23505" && error?.cause?.code !== "23505") throw error;
     // Lost the race. If the winner linked this exact provider identity,
     // continue with it; otherwise refuse (fresh transaction, per tx-race rule).
     const identity = await storage.authIdentities.getByProviderAndExternalId(
       provider,
       info.externalId,
     );
-    if (!identity) return null;
+    if (!identity) {
+      // An email collision is not evidence that this external identity owns
+      // the winning account. Refuse it; never recover by email.
+      if (isUserEmailConflict(error)) throw error;
+      return null;
+    }
     const user = await storage.users.getUser(identity.userId);
     if (!user || !user.isActive) return null;
     logger.info("Provisioning race resolved to existing identity", {

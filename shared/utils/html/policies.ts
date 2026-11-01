@@ -84,6 +84,19 @@ export const HTML_SANITIZE_POLICIES = {
   },
 
   /**
+   * Intermediate input policy ONLY for converting legacy token chips.
+   * Events, active elements and unsafe URLs are still removed. The extra
+   * span/data-token vocabulary survives just long enough to become text;
+   * sanitizeTemplateHtml applies the normal document policy afterward.
+   */
+  "legacy-token-document": {
+    description: "Safe intermediate document for legacy token-to-text conversion",
+    tags: [...RICH_DOCUMENT_TAGS, "span"],
+    attributes: [...RICH_DOCUMENT_ATTR, "data-token"],
+    uriPattern: SAFE_URI_PATTERN,
+  },
+
+  /**
    * Short admin-authored blurbs that get to carry presentation hooks
    * (`span`/`div` with a `class`) but no tables: the login page intro,
    * its admin preview on Site Information, dashboard welcome messages.

@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml } from "@shared/utils/html";
+import { sanitizeTemplateHtml } from "@shared/utils/html/sanitize";
 
 const SPECIAL_CHARACTERS = [
   { name: 'Copyright', symbol: '©' },
@@ -88,14 +89,6 @@ function replaceLegacyChips(root: HTMLElement): void {
     const id = el.getAttribute('data-token') || '';
     el.replaceWith(document.createTextNode(`{{${id}}}`));
   });
-}
-
-function legacyChipsToText(html: string): string {
-  if (!html.includes('data-token')) return html;
-  const temp = document.createElement('div');
-  temp.innerHTML = html;
-  replaceLegacyChips(temp);
-  return temp.innerHTML;
 }
 
 /**
@@ -337,9 +330,9 @@ export function SimpleHtmlEditor({
     if (editorRef.current && !isFocused && !rawMode) {
       // Tokens are shown as the text they are; only stale chip markup
       // from the old editor needs converting on the way in.
-      const rendered = sanitizeEditorHtml(
-        enableTokens ? legacyChipsToText(value) : value,
-      );
+      const rendered = enableTokens
+        ? sanitizeTemplateHtml(value, EDITOR_POLICY)
+        : sanitizeEditorHtml(value);
       if (editorRef.current.innerHTML !== rendered) {
         editorRef.current.innerHTML = rendered;
       }
@@ -433,8 +426,22 @@ export function SimpleHtmlEditor({
   const handleCreateLink = () => {
     const url = prompt('Enter URL:');
     if (url) {
-      execCommand('createLink', url);
+      // Check the URL BEFORE createLink can introduce it into the live DOM.
+      const safe = document.createElement("template");
+      safe.innerHTML = sanitizeEditorHtml(`<a href="${escapeHtml(url)}"></a>`);
+      const href = safe.content.querySelector("a")?.getAttribute("href");
+      if (href) execCommand('createLink', href);
     }
+  };
+
+  const insertTransferredContent = (transfer: DataTransfer) => {
+    const html = transfer.getData("text/html");
+    const text = transfer.getData("text/plain");
+    const clean = html
+      ? (enableTokens ? sanitizeTemplateHtml(html, EDITOR_POLICY) : sanitizeEditorHtml(html))
+      : escapeHtml(text).replace(/\r?\n/g, "<br>");
+    document.execCommand("insertHTML", false, clean);
+    handleInput();
   };
 
   const handleInsertCharacter = (character: string) => {
@@ -762,6 +769,21 @@ export function SimpleHtmlEditor({
           // content preference — same affordance as the raw-HTML textarea.
           style={{ minHeight, resize: "vertical", overflow: "auto" }}
           onInput={handleEditorInput}
+          onPaste={(event) => {
+            event.preventDefault();
+            insertTransferredContent(event.clipboardData);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+            if (range && editorRef.current?.contains(range.startContainer)) {
+              const selection = window.getSelection();
+              selection?.removeAllRanges();
+              selection?.addRange(range);
+            }
+            insertTransferredContent(event.dataTransfer);
+          }}
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
             saveRichSelection();

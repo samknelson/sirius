@@ -11,6 +11,13 @@ import {
   createStorageValidator
 } from "./utils/validation";
 import { parseYmdParts } from '@shared/utils/date';
+import { normalizeContactEmail } from "@shared/utils/contact-email";
+
+async function invalidateContactIdentityAccess(): Promise<void> {
+  // Identity can affect worker, employer and delegated policies, not just contact.edit.
+  const { invalidateAccessCache } = await import("../services/access-policy-evaluator");
+  onAfterCommit(() => invalidateAccessCache({}));
+}
 
 export const addressValidate = createStorageValidator<InsertContactPostal, ContactPostal, {}>(
   (data, existing) => {
@@ -792,17 +799,20 @@ export function createContactStorage(): ContactStorage {
     },
 
     async getContactByEmail(email: string): Promise<Contact | undefined> {
+      const normalized = normalizeContactEmail(email);
+      if (!normalized) return undefined;
       const client = getClient();
-      const [contact] = await client
+      const matches = await client
         .select()
         .from(contacts)
         .where(
           and(
             sql`${contacts.email} IS NOT NULL`,
-            sql`LOWER(${contacts.email}) = LOWER(${email})`
+            sql`lower(nullif(btrim(${contacts.email}), '')) = lower(${normalized})`
           )
         );
-      return contact || undefined;
+      if (matches.length > 1) throw new Error("Ambiguous contact email identity");
+      return matches[0];
     },
 
     async getExistingIds(ids: string[]): Promise<string[]> {
@@ -914,6 +924,7 @@ export function createContactStorage(): ContactStorage {
         .insert(contacts)
         .values({
           ...insertContact,
+          email: normalizeContactEmail(insertContact.email),
           title: canonicalized.title,
           given: canonicalized.given,
           middle: canonicalized.middle,
@@ -923,6 +934,7 @@ export function createContactStorage(): ContactStorage {
           displayName,
         })
         .returning();
+      await invalidateContactIdentityAccess();
       return contact;
     },
 
@@ -1011,6 +1023,7 @@ export function createContactStorage(): ContactStorage {
         .where(eq(contacts.id, contactId))
         .returning();
       
+      await invalidateContactIdentityAccess();
       return contact || undefined;
     },
 

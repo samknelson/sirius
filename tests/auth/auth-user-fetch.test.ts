@@ -30,4 +30,36 @@ describe("current-user lookup failures are not logouts", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(data)));
     expect(await fetchAuthUser()).toEqual(data);
   });
+  it("opens the existing error page for a verified Clerk account refusal", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/login", assign } });
+    const url = "/auth-error?error=access_denied&ref=CLERK-ABC-123&category=inactive_account";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ authErrorUrl: url }, { status: 403 })));
+    expect(await fetchAuthUser()).toBeNull();
+    expect(assign).toHaveBeenCalledWith(url);
+  });
+  it("does not redirect again from the error page", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/auth-error", assign } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      authErrorUrl: "/auth-error?error=access_denied&ref=CLERK-ABC-123",
+    }, { status: 403 })));
+    expect(await fetchAuthUser()).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+  });
+  it.each(["/register", "/login"])("keeps an unlinked Clerk user on %s to register or sign out", async pathname => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { pathname, assign } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      authErrorUrl: "/auth-error?error=access_denied&ref=CLERK-ABC-123",
+    }, { status: 403 })));
+    expect(await fetchAuthUser()).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+  });
+  it.each(["https://example.invalid", "//example.invalid", "/auth-error?error=access_denied&category=private_details"])(
+    "rejects an unrecognized refusal redirect %s", async authErrorUrl => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ authErrorUrl }, { status: 403 })));
+      await expect(fetchAuthUser()).rejects.toThrow();
+    },
+  );
 });

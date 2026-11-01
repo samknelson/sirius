@@ -44,6 +44,7 @@ import './file/delete';
 
 import './contact/view';
 import './contact/edit';
+import './contact/email-edit';
 
 import './employer/dispatch';
 import './employer/dispatch/manage';

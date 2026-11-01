@@ -32,7 +32,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 const DEFAULT_MESSAGE =
   "Sign-in failed. Please try again, or contact an administrator if the problem persists.";
 
-import { CATEGORY_REASONS } from "./auth-error-categories";
+import { getAuthErrorCategoryReason } from "./auth-error-categories";
 
 export default function AuthErrorPage() {
   const params = new URLSearchParams(window.location.search);
@@ -41,13 +41,13 @@ export default function AuthErrorPage() {
   // admins can look it up in the system logs. Reject anything that doesn't
   // look like one of our generated references.
   const rawRef = params.get("ref") ?? "";
-  const reference = /^SAML-[A-Z0-9-]{1,24}$/.test(rawRef) ? rawRef : "";
+  const reference = /^(?:SAML|REPLIT|CLERK)-[A-Z0-9-]{1,24}$/.test(rawRef) ? rawRef : "";
 
   // Validate category against the allowlist — never show free-text from the URL.
   const rawCategory = params.get("category") ?? "";
-  const categoryReason = CATEGORY_REASONS[rawCategory] ?? null;
+  const categoryReason = getAuthErrorCategoryReason(code, rawCategory);
 
-  const message = ERROR_MESSAGES[code] ?? DEFAULT_MESSAGE;
+  const message = Object.hasOwn(ERROR_MESSAGES, code) ? ERROR_MESSAGES[code] : DEFAULT_MESSAGE;
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">

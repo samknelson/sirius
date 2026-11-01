@@ -187,6 +187,10 @@ type AccessDenialReason =
   | "missing_email"
   | "no_provisioned_account";
 
+type SamlRequest = Request & {
+  _samlAccessDenied?: { reference: string; reason: AccessDenialReason };
+};
+
 type CheckUserAccessResult =
   | { allowed: true; user: any; roleReconciliation: RoleReconciliationDiagnostics }
   | { allowed: false; reason: AccessDenialReason; email?: string; externalId?: string };
@@ -540,7 +544,7 @@ class SamlAuthProvider implements AuthProvider {
                 email: result.email,
                 externalId: result.externalId,
               }, req);
-              (req as any)._samlAccessDeniedRef = reference;
+              (req as SamlRequest)._samlAccessDenied = { reference, reason: result.reason };
               captureSamlDebugLog(req, "access_denied", {
                 profile: samlProfile,
                 matchedEmail: result.email,
@@ -712,6 +716,18 @@ class SamlAuthProvider implements AuthProvider {
           }
 
           if (!user) {
+            const denial = (req as SamlRequest)._samlAccessDenied;
+            if (denial) {
+              samlMilestone(req, "access_denied");
+              const params = new URLSearchParams({
+                error: "access_denied",
+                ref: denial.reference,
+              });
+              // Only the inactive-account explanation is public. Other
+              // account details remain in the original administrator log.
+              if (denial.reason === "inactive_account") params.set("category", denial.reason);
+              return res.redirect(`/auth-error?${params}`);
+            }
             samlMilestone(req, "verification_rejected");
             // Passport rejected the assertion (e.g. signature/timing failure or
             // the verify callback returned done(null, false)). Previously this

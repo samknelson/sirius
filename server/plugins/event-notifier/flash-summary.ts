@@ -114,15 +114,13 @@ function enqueueAndSend(userId: string, counts: MediumCounts): void {
 
 /** Push one outbox entry to the user's open sockets (best-effort). */
 function sendEntry(userId: string, entry: OutboxEntry): void {
-  try {
-    broadcastNotificationSummary(userId, entry.id, entry.counts);
-  } catch (error) {
+  void broadcastNotificationSummary(userId, entry.id, entry.counts).catch(error => {
     logger.warn("Failed to push notification summary", {
       service: SERVICE,
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
-  }
+  });
 }
 
 /** Remove one outbox entry and clear its TTL timer, tidying empty user maps. */

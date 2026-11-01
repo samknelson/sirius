@@ -12,6 +12,7 @@ const fakes = vi.hoisted(() => ({
 
 vi.mock("../../server/storage", () => ({
   storage: {
+    users: { getUser: async (id: string) => ({ id, isActive: true, sessionVersion: 0 }) },
     variables: { getByName: fakes.getByName },
     sessions: {
       getSessionData: fakes.getSessionData,

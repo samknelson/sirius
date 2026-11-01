@@ -1,4 +1,5 @@
 import { clerkMiddleware, getAuth, createClerkClient } from "@clerk/express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import type { Express, RequestHandler } from "express";
 import type { AuthProvider, ClerkProviderConfig, AuthenticatedUser } from "../types";
 import { storage } from "../../storage";
@@ -9,6 +10,7 @@ import { createHash } from "node:crypto";
 import { runWithSessionAuthentication } from "../session-authentication-context";
 import { parseSSN } from "@shared/utils/ssn";
 import { z } from "zod";
+import { recordAccountRefusal, type AccountAccessResult } from "./account-refusal";
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   const userName =
@@ -47,7 +49,7 @@ async function resolveClerkUser(
     lastName?: string | null;
     profileImageUrl?: string | null;
   }
-): Promise<{ allowed: boolean; user?: any }> {
+): Promise<AccountAccessResult> {
   const { email, firstName, lastName, profileImageUrl } = clerkUserData;
 
   logger.info("Clerk auth attempt", {
@@ -63,12 +65,12 @@ async function resolveClerkUser(
     const user = await storage.users.getUser(identity.userId);
     if (!user) {
       logger.warn("Auth identity found but user missing", { identityId: identity.id });
-      return { allowed: false };
+      return { allowed: false, reason: "identity_found_but_user_missing" };
     }
 
     if (!user.isActive) {
       logger.info("User account is inactive", { userId: user.id });
-      return { allowed: false };
+      return { allowed: false, reason: "inactive_account" };
     }
 
     await storage.authIdentities.update(identity.id, {
@@ -119,7 +121,7 @@ async function resolveClerkUser(
 
   if (!email) {
     logger.info("No email available from Clerk user", { clerkUserId });
-    return { allowed: false };
+    return { allowed: false, reason: "missing_email" };
   }
 
   const user = await storage.users.getUserByEmail(email);
@@ -135,7 +137,7 @@ async function resolveClerkUser(
     });
     if (!provisioned) {
       logger.info("No provisioned account found for email", { email });
-      return { allowed: false };
+      return { allowed: false, reason: "no_provisioned_account" };
     }
 
     await storage.users.updateUserLastLogin(provisioned.user.id);
@@ -145,7 +147,7 @@ async function resolveClerkUser(
 
   if (!user.isActive) {
     logger.info("User account is inactive", { userId: user.id });
-    return { allowed: false };
+    return { allowed: false, reason: "inactive_account" };
   }
 
   logger.info("Linking Clerk account to provisioned user", { userId: user.id });
@@ -183,7 +185,7 @@ async function resolveClerkUser(
 }
 
 export function createProvider(config: ClerkProviderConfig): AuthProvider {
-  const unlinkedUserCache = new Map<string, number>();
+  const unlinkedUserCache = new Map<string, { at: number; refusalUrl?: string }>();
   const UNLINKED_CACHE_TTL = 60 * 1000;
 
   return {
@@ -198,6 +200,20 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
       );
 
       app.use(async (req, _res, next) => {
+        // The error page must remain reachable even with a valid Clerk cookie.
+        if (req.path === "/auth-error") return next();
+        // Passport may have rejected this serialized account before Clerk runs.
+        // That is session restoration, not a fresh verified account refusal.
+        const restoringApplicationSession = !!(req.session as any)?.passport?.user;
+        const showRefusal = (url: string) => {
+          if (restoringApplicationSession || previousAuthenticationReference) return false;
+          if (req.method === "GET" && req.path === "/api/auth/user") {
+            _res.setHeader("Cache-Control", "private, no-store");
+            _res.status(403).json({ authErrorUrl: url });
+            return true;
+          }
+          return false;
+        };
         let previousAuthenticationReference: string | undefined;
         if (req.isAuthenticated?.() && req.user) {
           const existingUser = req.user as AuthenticatedUser;
@@ -237,7 +253,8 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           }
 
           const cachedAt = unlinkedUserCache.get(auth.userId);
-          if (cachedAt && Date.now() - cachedAt < UNLINKED_CACHE_TTL) {
+          if (cachedAt && Date.now() - cachedAt.at < UNLINKED_CACHE_TTL) {
+            if (cachedAt.refusalUrl && showRefusal(cachedAt.refusalUrl)) return;
             return next();
           }
 
@@ -318,14 +335,18 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
                 else resolve();
               }));
             });
-          } else {
-            unlinkedUserCache.set(auth.userId, Date.now());
+          } else if (!result.allowed) {
+            const refusalUrl = restoringApplicationSession || previousAuthenticationReference
+              ? undefined
+              : recordAccountRefusal("clerk", result.reason, { externalId: auth.userId, email: primaryEmail });
+            unlinkedUserCache.set(auth.userId, { at: Date.now(), refusalUrl });
+            if (refusalUrl && showRefusal(refusalUrl)) return;
           }
         } catch (error) {
           try {
             const auth = getAuth(req);
             if (auth?.userId) {
-              unlinkedUserCache.set(auth.userId, Date.now());
+              unlinkedUserCache.set(auth.userId, { at: Date.now() });
             }
           } catch {}
           logger.error("Clerk middleware user resolution error", { error });
@@ -720,6 +741,9 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           });
         } catch (error) {
           logger.error("Worker registration completion error", { error });
+          if (isUserEmailConflict(error)) {
+            return res.status(409).json({ message: "A user account with this email already exists. Please restart sign-in." });
+          }
           res.status(500).json({ message: "An unexpected error occurred. Please try again." });
         }
       });

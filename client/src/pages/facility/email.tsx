@@ -18,6 +18,7 @@ function EmailContent() {
     <EntityEmailManagement
       config={{
         entityId: facility.id,
+        contactId: facility.contactId,
         currentEmail: facility.contact?.email || null,
         apiEndpoint: `/api/facilities/${facility.id}`,
         apiMethod: "PATCH",

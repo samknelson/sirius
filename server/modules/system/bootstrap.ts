@@ -1,12 +1,25 @@
 import type { Express } from "express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import { storage } from "../../storage";
+import { getEnvironmentVariable } from "../../config/env-registry";
+
+/** A configured operator account closes public provisioning even if its
+ * reconciliation failed. Share this decision with the first-run status UI. */
+async function bootstrapRefusal(): Promise<string | null> {
+  if (getEnvironmentVariable("LOCAL_AUTH_EMAIL")?.trim()) {
+    return "Public bootstrap is disabled because administrator provisioning is operator-managed";
+  }
+  return await storage.users.hasAnyUsers()
+    ? "Bootstrap is only allowed when no users exist"
+    : null;
+}
 
 export function registerBootstrapRoutes(app: Express) {
-  // GET /api/bootstrap/needed - Check if bootstrap is needed (no users in database)
+  // GET /api/bootstrap/needed - Report whether public first-run setup is available.
   app.get("/api/bootstrap/needed", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
     try {
-      const hasUsers = await storage.users.hasAnyUsers();
-      res.json({ needed: !hasUsers });
+      res.json({ needed: (await bootstrapRefusal()) === null });
     } catch (error) {
       res.status(500).json({ message: "Failed to check bootstrap status" });
     }
@@ -15,16 +28,15 @@ export function registerBootstrapRoutes(app: Express) {
   // POST /api/bootstrap - Create admin role with all permissions and first user (only if no users exist)
   app.post("/api/bootstrap", async (req, res) => {
     try {
+      const refusal = await bootstrapRefusal();
+      if (refusal) {
+        return res.status(403).json({ message: refusal });
+      }
+
       const { email, firstName, lastName } = req.body;
 
       if (!email) {
         return res.status(400).json({ message: "Email is required" });
-      }
-
-      // Check if any users already exist
-      const hasUsers = await storage.users.hasAnyUsers();
-      if (hasUsers) {
-        return res.status(403).json({ message: "Bootstrap is only allowed when no users exist" });
       }
 
       // Get all permissions from the registry
@@ -83,6 +95,9 @@ export function registerBootstrapRoutes(app: Express) {
       });
     } catch (error) {
       console.error("Bootstrap error:", error);
+      if (isUserEmailConflict(error)) {
+        return res.status(409).json({ message: "A user account with this email already exists." });
+      }
       res.status(500).json({ message: "Failed to complete bootstrap" });
     }
   });

@@ -14,7 +14,7 @@ export interface CommStatusHandler {
   readonly providerId: string;
   readonly medium: 'sms' | 'email' | 'postal';
   
-  validateRequest(req: Request): Promise<{ valid: boolean; error?: string }>;
+  validateRequest(req: Request, vendorConfigId?: string): Promise<{ valid: boolean; error?: string }>;
   
   parseStatusUpdate(req: Request): CommStatusUpdate;
   

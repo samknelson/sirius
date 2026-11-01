@@ -62,3 +62,18 @@ angle-bracket soup in one direction and live markup in the other. Note
 that widening an escaper (e.g. adding quote escaping) is safe for text
 *content* — `&quot;` renders as `"` — so those migrations are not the
 risky ones; picking the wrong function is.
+
+## Parsing untrusted HTML is already a security boundary
+
+A document-owned detached element is not an inert parser. Do not put raw
+authored HTML into one for a preprocessing pass and rely on sanitizing the
+result afterward.
+
+**Why:** a Chromium positive control confirmed that an image error handler
+executes from a detached div even without inserting it into the page. A
+later sanitizer cannot undo that execution.
+
+**How to apply:** preprocess only in an inert, sanitizer-controlled tree.
+Preserve meaningful legacy metadata until it has become safe text, then
+apply the normal output policy. Validate the normalized token text, not
+only the pre-conversion markup, or legacy metadata can evade token checks.

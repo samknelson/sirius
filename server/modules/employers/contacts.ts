@@ -1,9 +1,12 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { isUserEmailConflict } from "@shared/utils/user-email";
 import { storage } from "../../storage";
 import { insertContactSchema } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../../services/clerk-provisioning";
 import { z } from "zod";
+import { contactEmailInput } from "@shared/utils/contact-email";
+import { assertContactEmailChange, assertContactEmailDestination, assertContactEmailLink, respondContactEmailError } from "../../services/contact-email-access";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -213,6 +216,11 @@ export function registerEmployerContactRoutes(
             summary.enabled++;
           }
         } catch (err: any) {
+          if (isUserEmailConflict(err)) {
+            results.push({ contactId, contactName: null, status: 'conflict', message: 'User with this email already exists. Reload before retrying.' });
+            summary.conflict++;
+            continue;
+          }
           results.push({ contactId, contactName: null, status: 'error', message: err?.message || 'Unknown error' });
           summary.error++;
         }
@@ -241,12 +249,7 @@ export function registerEmployerContactRoutes(
     try {
       const { employerId } = req.params;
       const parsed = insertContactSchema.extend({ 
-        email: z.union([
-          z.string().email("Valid email format"),
-          z.literal(""),
-          z.null(),
-          z.undefined()
-        ]).transform(val => val === "" ? null : val),
+        email: contactEmailInput.optional(),
         contactTypeId: z.string().optional().nullable()
       }).safeParse(req.body);
       
@@ -263,12 +266,14 @@ export function registerEmployerContactRoutes(
       if (email) {
         const existingContact = await storage.contacts.getContactByEmail(email);
         if (existingContact) {
+          await assertContactEmailLink(req, existingContact.id, employerId);
           contact = existingContact;
           linked = true;
         }
       }
 
       if (!contact) {
+        await assertContactEmailDestination(req, email);
         contact = await storage.contacts.createContact({ ...contactFields, email });
       }
 
@@ -280,6 +285,7 @@ export function registerEmployerContactRoutes(
 
       res.status(201).json({ employerContact, contact, ...(linked ? { linked: true } : {}) });
     } catch (error: any) {
+      if (respondContactEmailError(res, error)) return;
       if (error?.message === "This contact is already linked to this employer") {
         return res.status(409).json({ message: error.message });
       }
@@ -312,6 +318,15 @@ export function registerEmployerContactRoutes(
     try {
       const { id } = req.params;
       const { contactTypeId, email, nameComponents } = req.body;
+
+      // Authorize every supplied email before any other branch can write.
+      if ("email" in req.body) {
+        const parsedEmail = contactEmailInput.safeParse(email);
+        if (!parsedEmail.success) return res.status(400).json({ message: "Invalid email" });
+        const existing = await storage.employerContacts.get(id);
+        if (!existing) return res.status(404).json({ message: "Employer contact not found" });
+        await assertContactEmailChange(req, existing.contactId, parsedEmail.data);
+      }
       
       // Handle name component updates
       if (nameComponents) {
@@ -329,10 +344,7 @@ export function registerEmployerContactRoutes(
       // Validate and parse other fields
       const parsed = z.object({
         contactTypeId: z.string().uuid().nullable().optional(),
-        email: z.string().email().or(z.literal("")).nullable().optional().transform(val => {
-          if (val === null || val === "" || val === "null") return null;
-          return val?.trim() || null;
-        }),
+        email: contactEmailInput.optional(),
       }).safeParse(req.body);
       
       if (!parsed.success) {
@@ -360,7 +372,7 @@ export function registerEmployerContactRoutes(
       
       // Handle email updates
       if ("email" in req.body) {
-        const updated = await storage.employerContacts.updateContactEmail(id, parsed.data.email);
+        const updated = await storage.employerContacts.updateContactEmail(id, parsed.data.email ?? null);
         
         if (!updated) {
           res.status(404).json({ message: "Employer contact not found" });
@@ -373,6 +385,7 @@ export function registerEmployerContactRoutes(
       
       res.status(400).json({ message: "No valid update fields provided" });
     } catch (error) {
+      if (respondContactEmailError(res, error)) return;
       res.status(500).json({ message: "Failed to update employer contact" });
     }
   });
@@ -577,6 +590,9 @@ export function registerEmployerContactRoutes(
       });
     } catch (error) {
       console.error("Error creating/updating employer contact user:", error);
+      if (isUserEmailConflict(error)) {
+        return res.status(409).json({ message: "User with this email already exists. Reload before retrying." });
+      }
       res.status(500).json({ message: "Failed to create or update user" });
     }
   });

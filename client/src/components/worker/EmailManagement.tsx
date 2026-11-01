@@ -102,6 +102,10 @@ export default function EmailManagement({ contactId, workerId, canEdit = true }:
       return apiRequest("PUT", `/api/workers/${workerId}`, { email });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        predicate: ({ queryKey }) => typeof queryKey[0] === "string"
+          && queryKey[0].startsWith("/api/access/"),
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId] });
       queryClient.invalidateQueries({ queryKey: ["/api/workers"] });

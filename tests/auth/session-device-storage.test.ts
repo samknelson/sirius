@@ -5,12 +5,13 @@ const state = vi.hoisted(() => ({
   client: undefined as unknown,
   context: {} as { ipAddress?: string; userAgent?: string | null },
   emit: vi.fn().mockResolvedValue(undefined),
+  afterCommit: undefined as Array<() => void> | undefined,
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => state.client,
   runInTransaction: (fn: () => unknown) => fn(),
   runOutsideTransaction: (fn: () => unknown) => fn(),
-  onAfterCommit: (fn: () => unknown) => fn(),
+  onAfterCommit: (fn: () => void) => state.afterCommit ? state.afterCommit.push(fn) : fn(),
 }));
 vi.mock("../../server/storage/maintenance", () => ({
   allowInMaintenanceMode: (fn: () => unknown) => fn(),
@@ -24,19 +25,22 @@ vi.mock("../../server/logger", () => ({ logger: { error: vi.fn() } }));
 import { createSessionStorage } from "../../server/storage/system/sessions";
 import { createSessionHistoryStorage } from "../../server/storage/system/session-history";
 import { insertSessionHistorySchema, type InsertSessionHistory } from "../../shared/schema/system/session-history-schema";
+import { onSessionAuthorityEnded } from "../../server/auth/socket-authority";
 
 beforeEach(() => {
   state.context = { ipAddress: "192.0.2.1", userAgent: "Browser/2" };
   state.emit.mockClear();
+  state.afterCommit = undefined;
 });
 
 describe("live-session device observations", () => {
-  function database(previous: string | null) {
+  function database(previous: string | null, oldSession?: unknown) {
     const queries: { sql: string; params: unknown[] }[] = [];
     const client = drizzle(async (sql, params) => {
       queries.push({ sql, params });
+      if (sql.includes("FROM users")) return { rows: [...new Set(params)].map(id => ({ id, is_active: true, session_version: 0 })) };
       return { rows: sql.includes("FOR UPDATE")
-        ? [{ old_user_id: null, user_id: null, old_ip: "192.0.2.1", old_user_agent: previous }]
+        ? [{ old_user_id: null, user_id: null, old_ip: "192.0.2.1", old_user_agent: previous, old_sess: oldSession }]
         : [] };
     });
     // pg-proxy's raw execute returns rows directly; node-postgres returns
@@ -51,6 +55,65 @@ describe("live-session device observations", () => {
     });
     return queries;
   }
+
+  it.each([undefined, "current-generation"])("preserves socket authority during renewal, including legacy sessions: %s", async generation => {
+    const saved = { passport: { user: { dbUser: { id: "owner" } } }, _socketAuthorityVersion: generation };
+    const queries = database("Browser/1", saved);
+    const invalidated = vi.fn();
+    const unsubscribe = onSessionAuthorityEnded("renewal", invalidated);
+    try {
+      await createSessionStorage().upsertSession("renewal", { ...saved, _socketAuthorityVersion: "stale-caller" }, new Date());
+      const stored = JSON.parse(queries.find(query => query.sql.startsWith("update"))!.params[0] as string);
+      expect(stored._socketAuthorityVersion).toBe(generation ?? null);
+      expect(invalidated).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each(["owner", "masquerade-start", "masquerade-stop", "logout"])(
+    "changes persisted socket generation and invalidates only after committed %s", async change => {
+      const saved: any = { passport: { user: { dbUser: { id: "owner" } } }, _socketAuthorityVersion: "old-generation" };
+      if (change === "masquerade-stop") saved.masqueradeUserId = "target";
+      const next = structuredClone(saved);
+      if (change === "owner") next.passport.user.dbUser.id = "other";
+      if (change === "masquerade-start") next.masqueradeUserId = "target";
+      if (change === "masquerade-stop") delete next.masqueradeUserId;
+      if (change === "logout") delete next.passport;
+      const queries = database("Browser/1", saved);
+      state.afterCommit = [];
+      const invalidated = vi.fn();
+      const unsubscribe = onSessionAuthorityEnded("changing", invalidated);
+      try {
+        await createSessionStorage().upsertSession("changing", next, new Date());
+        const stored = JSON.parse(queries.find(query => query.sql.startsWith("update"))!.params[0] as string);
+        expect(typeof stored._socketAuthorityVersion).toBe("string");
+        expect(stored._socketAuthorityVersion).not.toBe("old-generation");
+        expect(invalidated).not.toHaveBeenCalled();
+        state.afterCommit.forEach(fn => fn());
+        expect(invalidated).toHaveBeenCalledOnce();
+      } finally {
+        unsubscribe();
+      }
+    },
+  );
+
+  it.each(["deleteSession", "deleteExpiredSession"] as const)("ends socket authority on committed %s", async method => {
+    state.client = {
+      delete: () => ({ where: () => ({ returning: async () => [{ sess: { passport: { user: { dbUser: { id: "owner" } } } } }] }) }),
+    };
+    state.afterCommit = [];
+    const invalidated = vi.fn();
+    const unsubscribe = onSessionAuthorityEnded("deleted", invalidated);
+    try {
+      expect(await createSessionStorage()[method]("deleted")).toEqual({ deleted: true, userId: "owner" });
+      expect(invalidated).not.toHaveBeenCalled();
+      state.afterCommit.forEach(fn => fn());
+      expect(invalidated).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
 
   it("reports a device-only touch while keeping the idle expiry unchanged", async () => {
     const queries = database("Browser/1");

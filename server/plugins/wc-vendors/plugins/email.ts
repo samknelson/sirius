@@ -202,7 +202,7 @@ async function sendGridEmail(
       success: true,
       messageId: response.headers.get("x-message-id") ?? undefined,
       status: "sent",
-      details: { statusCode: response.status },
+      details: { statusCode: response.status, vendorConfigId: ctx.config.id },
     };
   } catch (error: any) {
     return {
@@ -354,6 +354,12 @@ const sendGridPlugin: WcVendorPlugin = {
       "Name the secret containing the SendGrid API key. The secret value is never stored in plugin configuration.",
   },
   configFields: [
+    {
+      name: "webhookPublicKey",
+      label: "Webhook Verification Public Key",
+      type: "string",
+      description: "Base64 public key from SendGrid's Signed Event Webhook settings. Callbacks are refused without it.",
+    },
     {
       name: "defaultFromEmail",
       label: "Default From Email",

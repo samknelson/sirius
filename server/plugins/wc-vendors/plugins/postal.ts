@@ -247,6 +247,7 @@ async function lobSend(ctx: WcVendorContext, params: SendLetterParams): Promise<
     trackingNumber: data.tracking_number || undefined,
     carrier: data.carrier,
     details: {
+      vendorConfigId: ctx.config.id,
       url: data.url,
       dateCreated: data.date_created,
       sendDate: data.send_date,
@@ -308,6 +309,14 @@ const lobWcVendorPlugin: WcVendorPlugin = {
     setupGuidance: "The named secret must contain a Lob API key (test_... or live_...).",
   },
   service: "Lob",
+  configFields: [
+    {
+      name: "webhookSecretName",
+      label: "Webhook Signing Secret Name",
+      type: "string",
+      description: "Environment secret name containing the Lob webhook signing secret, not the API key. Callbacks are refused without it. Never use the debugger's public 'secret' value.",
+    },
+  ],
   operations: {
     "service.test-connection": {
       description: "test connection",
