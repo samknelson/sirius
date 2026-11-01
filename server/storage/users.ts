@@ -65,6 +65,7 @@ export interface UserStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  hasOtherUserWithEmail(email: string, userId: string): Promise<boolean>;
   upsertUser(user: UpsertUser): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
@@ -133,8 +134,16 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async getUserByEmail(email: string): Promise<User | undefined> {
       const client = getClient();
-      const [user] = await client.select().from(users).where(sql`LOWER(${users.email}) = LOWER(${email})`);
+      const [user] = await client.select().from(users).where(sql`LOWER(btrim(${users.email})) = LOWER(${email.trim()})`);
       return user || undefined;
+    },
+
+    async hasOtherUserWithEmail(email: string, userId: string): Promise<boolean> {
+      const [other] = await getClient().select({ id: users.id }).from(users).where(and(
+        sql`lower(btrim(${users.email})) = lower(${email.trim()})`,
+        sql`${users.id} <> ${userId}`,
+      )).limit(1);
+      return !!other;
     },
 
     async upsertUser(userData: UpsertUser): Promise<User> {

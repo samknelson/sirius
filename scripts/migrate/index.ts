@@ -202,6 +202,7 @@ import "./components/system.session_history/003_require_user_id";
 import "./core/1121_configuration_revisions";
 import "./core/1122_flood_configuration_identity";
 import "./core/1123_user_session_version";
+import "./core/1124_contact_email_identity";
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
 import "./baseline/sirius-dev-20260704";

@@ -300,12 +300,14 @@ export const contacts = pgTable("contacts", {
   generational: text("generational"),
   credentials: text("credentials"),
   displayName: text("display_name").notNull(),
-  email: text("email").unique(),
+  email: text("email"),
   birthDate: date("birth_date"),
   gender: varchar("gender").references(() => optionsGender.id, { onDelete: 'set null' }),
   genderNota: text("gender_nota"),
   genderCalc: text("gender_calc"),
-});
+}, (table) => [
+  uniqueIndex("contacts_email_normalized_unique").on(sql`lower(nullif(btrim(${table.email}), ''::text))`),
+]);
 
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

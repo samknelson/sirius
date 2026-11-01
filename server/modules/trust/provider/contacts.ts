@@ -4,6 +4,8 @@ import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../../../services/access-policy-evaluator";
 import { z } from "zod";
 import { storageLogger } from "../../../logger";
+import { contactEmailInput } from "@shared/utils/contact-email";
+import { respondContactEmailError } from "../../../services/contact-email-access";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -56,7 +58,7 @@ export function registerTrustProviderContactRoutes(
     try {
       const { providerId } = req.params;
       const parsed = insertContactSchema.extend({ 
-        email: z.string().email("Valid email is required"),
+        email: z.string().trim().email("Valid email is required"),
         contactTypeId: z.string().optional().nullable()
       }).safeParse(req.body);
       
@@ -90,6 +92,7 @@ export function registerTrustProviderContactRoutes(
       
       res.status(201).json({ providerContact, contact, ...(linked ? { linked: true } : {}) });
     } catch (error: any) {
+      if (respondContactEmailError(res, error)) return;
       if (error.message === "This contact is already linked to this provider") {
         return res.status(409).json({ message: error.message });
       }
@@ -147,7 +150,7 @@ export function registerTrustProviderContactRoutes(
     try {
       const { id } = req.params;
       const emailSchema = z.object({
-        email: z.string().email("Valid email is required").nullable(),
+        email: contactEmailInput,
       });
 
       const parsed = emailSchema.safeParse(req.body);
@@ -164,6 +167,7 @@ export function registerTrustProviderContactRoutes(
 
       res.json(result);
     } catch (error) {
+      if (respondContactEmailError(res, error)) return;
       res.status(500).json({ message: "Failed to update contact email" });
     }
   });

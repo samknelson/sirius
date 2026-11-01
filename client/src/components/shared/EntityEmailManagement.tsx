@@ -7,10 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, Mail } from "lucide-react";
+import { useAccessCheck } from "@/hooks/use-access-check";
 
 export interface EntityEmailManagementConfig {
   entityId: string;
   currentEmail: string | null;
+  /** The actual shared contact ID, not its employer/facility association ID. */
+  contactId: string;
   apiEndpoint: string;
   apiMethod?: "PATCH" | "PUT";
   apiPayloadKey?: string;
@@ -26,14 +29,19 @@ interface EntityEmailManagementProps {
 export default function EntityEmailManagement({ config }: EntityEmailManagementProps) {
   const {
     currentEmail,
+    contactId,
     apiEndpoint,
     apiMethod = "PATCH",
     apiPayloadKey = "email",
     invalidateQueryKeys,
     cardTitle = "Email Address",
-    cardDescription = "Manage contact email address",
+    cardDescription = "This does not change the sign-in email. Access linked to the old email may no longer apply.",
   } = config;
 
+  const { canAccess: canChangeEmail, isLoading: checkingEmailAccess } = useAccessCheck(
+    "contact.email.edit", contactId,
+  );
+  const canEdit = !!contactId && canChangeEmail && !checkingEmailAccess;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editedEmail, setEditedEmail] = useState<string>("");
@@ -46,6 +54,10 @@ export default function EntityEmailManagement({ config }: EntityEmailManagementP
     onSuccess: () => {
       invalidateQueryKeys.forEach((key) => {
         queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
+      });
+      queryClient.invalidateQueries({
+        predicate: ({ queryKey }) => typeof queryKey[0] === "string"
+          && queryKey[0].startsWith("/api/access/"),
       });
       setIsEditing(false);
       toast({
@@ -69,6 +81,7 @@ export default function EntityEmailManagement({ config }: EntityEmailManagementP
   };
 
   const handleSave = () => {
+    if (!canEdit) return;
     const cleanEmail = editedEmail.trim();
     
     if (!cleanEmail) {
@@ -101,7 +114,7 @@ export default function EntityEmailManagement({ config }: EntityEmailManagementP
         <CardDescription>{cardDescription}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {!isEditing ? (
+        {!isEditing || !canEdit ? (
           <div className="space-y-4">
             <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg border border-border">
               <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center">
@@ -115,6 +128,7 @@ export default function EntityEmailManagement({ config }: EntityEmailManagementP
               </div>
               <Button
                 onClick={handleEdit}
+                disabled={!canEdit}
                 variant="outline"
                 size="sm"
                 data-testid="button-edit-email"

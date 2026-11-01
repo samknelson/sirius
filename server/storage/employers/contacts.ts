@@ -263,7 +263,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         .select({ id: employerContacts.id })
         .from(employerContacts)
         .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
-        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`)
+        .where(sql`lower(nullif(btrim(${contacts.email}), '')) = lower(${email.trim()})`)
         .limit(1);
       return result ? { id: result.id } as EmployerContact : null;
     },
@@ -288,7 +288,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         })
         .from(employerContacts)
         .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
-        .leftJoin(users, sql`lower(${contacts.email}) = lower(${users.email})`)
+        .leftJoin(users, sql`lower(nullif(btrim(${contacts.email}), '')) = lower(btrim(${users.email}))`)
         .where(inArray(employerContacts.id, employerContactIds));
 
       // Map results and maintain input order
@@ -331,7 +331,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         .from(employerContacts)
         .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
         .leftJoin(optionsEmployerContactType, eq(employerContacts.contactTypeId, optionsEmployerContactType.id))
-        .leftJoin(users, sql`lower(${contacts.email}) = lower(${users.email})`)
+        .leftJoin(users, sql`lower(nullif(btrim(${contacts.email}), '')) = lower(btrim(${users.email}))`)
         .where(employerIds && employerIds.length > 0 ? inArray(employerContacts.employerId, employerIds) : undefined);
 
       return rows.map(row => ({

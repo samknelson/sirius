@@ -5,7 +5,9 @@ import { useAccessCheck } from "@/hooks/use-access-check";
 
 function WorkerEmailContent() {
   const { worker } = useWorkerLayout();
-  const { canAccess: canEdit } = useAccessCheck("contact.edit", worker.contactId);
+  // This endpoint intentionally remains staff-only; do not offer self-service
+  // just because other contact fields permit it.
+  const { canAccess: canEdit } = useAccessCheck("staff", worker.id);
 
   return (
     <Card>
