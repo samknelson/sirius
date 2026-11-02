@@ -1,5 +1,5 @@
 import { logger } from "../../../logger";
-import { wmbPrimaryKeys, type EdiField } from "./base";
+import { wmbPrimaryKeys, type EdiField, type EdiCsvField } from "./base";
 import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import type { BasePluginMetadata } from "../../_core";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -63,6 +63,11 @@ export interface TrustProviderEdiPlugin extends BasePluginMetadata {
    * field placement, padding, truncation, and null/constant handling.
    */
   ediFields: readonly EdiField[];
+  /** Authoritative CSV detail layout, including legacy serializers. */
+  csvFields?: readonly EdiCsvField[];
+  /** Layouts correspond one-for-one to records returned by the file hooks. */
+  fileHeaderLayouts?: readonly EdiOutputLayout[];
+  fileTrailerLayouts?: readonly EdiOutputLayout[];
   /** Columns for the wizard results preview table (and CSV export). */
   getColumns(): Array<{ id: string; header: string; type?: string; width?: number }>;
   /**
@@ -118,6 +123,10 @@ export interface TrustProviderEdiPlugin extends BasePluginMetadata {
   /** Name of the delivered file (e.g. `KAISER_20260801.txt`). */
   buildFilename(ctx: TrustProviderEdiContext): string;
 }
+
+export type EdiOutputLayout =
+  | { format: "fixed-width"; fields: readonly EdiField[] }
+  | { format: "csv"; fields: readonly EdiCsvField[] };
 
 /** Manifest entry served by the generic /api/plugins/:kind/manifest route. */
 export interface TrustProviderEdiPluginMetadata extends BasePluginMetadata {

@@ -209,6 +209,7 @@ registerTrustProviderEdiPlugin({
   outputFormat: "csv",
   // CSV layouts have no fixed-width field metadata.
   ediFields: [],
+  csvFields: CSV_FIELDS,
   // Legacy `edi_csv_hide_header`: the delivered file has no header row.
   csvIncludeHeaderRow: false,
   configSchema: {

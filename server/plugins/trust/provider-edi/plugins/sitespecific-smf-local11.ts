@@ -97,6 +97,8 @@ registerTrustProviderEdiPlugin({
     "name and code, year, month, hours, and hours type.",
   // CSV layouts have no fixed-width field metadata.
   ediFields: [],
+  // Keep legacy header suppression and native serializer bytes unchanged.
+  csvFields: COLUMNS.map(c => ({ name: c.header, get: (r) => str(r[c.id]) })),
   // Bespoke worker-hours range export runs its own read-only queries.
   needsReadOnlyDb: true,
 

@@ -6,7 +6,6 @@ import {
   type EdiCsvField,
   encodeCsvRow,
   encodeCsvHeaderRow,
-  csvEscape,
   str,
   ymdCompact,
   padSsn,
@@ -57,6 +56,16 @@ const CSV_FIELDS: EdiCsvField[] = [
 
 /** Exported for the smoke test. */
 export const DENTWELL_CSV_FIELDS = CSV_FIELDS;
+const HEADER_FIELDS: EdiCsvField[] = [
+  { name: "Record Type", get: () => "H" },
+  { name: "Group ID" },
+  { name: "Report Date", get: r => str(r.reportDate) },
+];
+const TRAILER_FIELDS: EdiCsvField[] = [
+  { name: "Record Type", get: () => "T" },
+  { name: "Subscriber Count", get: r => str(r.subs) },
+  { name: "Dependent Count", get: r => str(r.deps) },
+];
 
 /**
  * Relation-type sirius id → Dentwell relationship code. Legacy comment:
@@ -92,6 +101,13 @@ registerTrustProviderEdiPlugin({
   outputFormat: "csv",
   // CSV layouts have no fixed-width field metadata.
   ediFields: [],
+  csvFields: CSV_FIELDS,
+  fileHeaderLayouts: [
+    { format: "csv", fields: HEADER_FIELDS },
+    { format: "csv", fields: HEADER_FIELDS },
+    { format: "csv", fields: [] },
+  ],
+  fileTrailerLayouts: [{ format: "csv", fields: TRAILER_FIELDS }],
   configSchema: {
     type: "object",
     properties: {
@@ -185,8 +201,8 @@ registerTrustProviderEdiPlugin({
   // Dentwell preamble: file-definition columns, H record, then a blank row.
   encodeFileHeader(ctx: TrustProviderEdiContext) {
     return [
-      ["Record Type", "Group ID", "Report Date"].map(csvEscape).join(","),
-      ["H", "", ymdCompact(readAsOfYmd(ctx))].map(csvEscape).join(","),
+      encodeCsvHeaderRow(HEADER_FIELDS),
+      encodeCsvRow(HEADER_FIELDS, { reportDate: ymdCompact(readAsOfYmd(ctx)) }),
       "",
     ];
   },
@@ -199,7 +215,7 @@ registerTrustProviderEdiPlugin({
       if (row.memberType === "SUB") subs++;
       else deps++;
     }
-    return ["T", String(subs), String(deps)].map(csvEscape).join(",");
+    return encodeCsvRow(TRAILER_FIELDS, { subs, deps });
   },
 
   encodeRow(row) {

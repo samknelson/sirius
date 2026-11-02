@@ -62,6 +62,17 @@ const browserPaths = [...app.matchAll(/<(?:ProtectedRoute|Route)\b[^>]*?path="([
   .flatMap(match => concretePaths(match[1]));
 
 describe("audited authenticated workflow help", () => {
+  it("explains carrier-layout QA at the provider EDI entry without leaking onto unrelated pages", () => {
+    const help = getSystemHelp("system:provider-edi")!;
+    expect(idsFor("/trust/provider-edi")).toContain(help.id);
+    for (const path of ["/trust/provider-edi/extra", "/trust/providers", "/workers/example", "/reports/example"]) {
+      expect(idsFor(path)).not.toContain(help.id);
+    }
+    for (const text of ["Provider file", "Carrier-layout CSV", "Results CSV", "QA-only", "SFTP", "as text", "sensitive", "without regenerating"]) {
+      expect(help.details).toContain(text);
+    }
+    expect(sanitizeHtml(help.details!, "rich-document")).toBe(help.details);
+  });
   it("accounts for 47 missing families, with 45 backfill families and separate shipped payment ownership", () => {
     const expected = Array.from({ length: 48 }, (_, i) => `F${String(i + 1).padStart(2, "0")}`)
       .filter(id => id !== "F32");

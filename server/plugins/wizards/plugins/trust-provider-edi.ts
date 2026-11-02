@@ -7,6 +7,7 @@ import {
   type TrustProviderEdiPlugin,
 } from "../../trust/provider-edi/registry";
 import { assembleEdiFileLines } from "../../trust/provider-edi/base";
+import { carrierLayoutCsv } from "../../trust/provider-edi/carrier-csv";
 
 /**
  * The single trust-provider EDI wizard. Generation, preview, and SFTP
@@ -239,6 +240,26 @@ const deliverStep: WizardStepHandler = {
   description: "Send the encoded file to the configured SFTP destination",
   kind: "custom",
   component: "DeliverStep",
+  exportFile: async (ctx, format) => {
+    if (format !== "provider" && format !== "carrier-csv") throw new Error("Unknown EDI download format");
+    const selected = readSelectedConfig(ctx.wizard);
+    if (!selected || !(ctx.wizard.data as any)?.reportMeta) {
+      throw new Error("Generate the file before downloading it");
+    }
+    const plugin = resolvePlugin(selected.pluginId);
+    const ediCtx = buildEdiContext(ctx, selected);
+    const filename = plugin.buildFilename(ediCtx);
+    if (format === "provider") {
+      const { content } = await encodeAllRows(ctx, plugin, ediCtx);
+      return { content, filename, mimeType: "text/plain; charset=utf-8" };
+    }
+    const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
+    return {
+      content: carrierLayoutCsv(plugin, rows.map(r => (r.data ?? {}) as Record<string, unknown>), ediCtx),
+      filename: `${filename.replace(/\.[^.]+$/, "")}-carrier-layout-qa.csv`,
+      mimeType: "text/csv; charset=utf-8",
+    };
+  },
   getState: (wizard) => {
     const data = (wizard.data as any) || {};
     if (data.delivery?.deliveredAt) return "completed";
@@ -252,7 +273,6 @@ const deliverStep: WizardStepHandler = {
     }
     const plugin = resolvePlugin(selected.pluginId);
     const ediCtx = buildEdiContext(ctx, selected);
-    const { content, rowCount } = await encodeAllRows(ctx, plugin, ediCtx);
     let destinationName: string | null = null;
     if (selected.sftpClientId) {
       const dest = await ctx.storage.sftpClientDestinations.getById(selected.sftpClientId);
@@ -261,8 +281,7 @@ const deliverStep: WizardStepHandler = {
     return {
       ready: true,
       filename: plugin.buildFilename(ediCtx),
-      rowCount,
-      content,
+      rowCount: data.reportMeta.recordCount,
       destinationId: selected.sftpClientId,
       destinationName,
       delivery: data.delivery ?? null,

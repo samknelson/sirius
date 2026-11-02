@@ -146,6 +146,7 @@ registerTrustProviderEdiPlugin({
   outputFormat: "csv",
   // CSV layouts have no fixed-width field metadata.
   ediFields: [],
+  csvFields: CSV_FIELDS,
   configSchema: {
     type: "object",
     properties: {

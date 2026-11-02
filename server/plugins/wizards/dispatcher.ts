@@ -449,6 +449,16 @@ export function registerWizardDispatcherRoutes(
         );
         if (!step) return;
         let columns: Array<{ id: string; header: string; type?: string }>;
+        if (step.exportFile) {
+          const file = await step.exportFile(
+            buildStepContext(loaded.wizard, step.id, {}, req),
+            typeof req.query.format === "string" ? req.query.format : "provider",
+          );
+          res.setHeader("Content-Type", file.mimeType);
+          res.setHeader("Content-Disposition", buildContentDisposition("attachment", file.filename));
+          res.setHeader("Cache-Control", "no-store");
+          return res.send(file.content);
+        }
         let rows: Array<Record<string, unknown>>;
         // Mirror the data route: a `getData` step builds the CSV from its
         // returned { columns, records }; otherwise fall back to the

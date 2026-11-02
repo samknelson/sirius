@@ -250,6 +250,8 @@ registerTrustProviderEdiPlugin({
     "include/exclude feed split.",
   benefitSiriusIds: ["EXPRESSSCRIPTS"],
   ediFields: DETAIL_FIELDS,
+  fileHeaderLayouts: [{ format: "fixed-width", fields: HEADER_FIELDS }],
+  fileTrailerLayouts: [{ format: "fixed-width", fields: TRAILER_FIELDS }],
   configSchema: {
     type: "object",
     properties: {

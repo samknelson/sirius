@@ -132,6 +132,11 @@ export interface WizardStepHandler {
   getData?: (
     ctx: WizardStepContext,
   ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  /** Read-only custom download through the same plugin/step authorization gates. */
+  exportFile?: (
+    ctx: WizardStepContext,
+    format: string,
+  ) => Promise<{ content: string; filename: string; mimeType: string }>;
   /**
    * Server-computed completion state, derived from the wizard row. When
    * omitted, the dispatcher derives a default from progress + currentStep.

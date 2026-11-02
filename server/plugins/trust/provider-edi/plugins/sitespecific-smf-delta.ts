@@ -249,6 +249,8 @@ registerTrustProviderEdiPlugin({
     "client group ID.",
   benefitSiriusIds: ["D"],
   ediFields: DETAIL_FIELDS,
+  fileHeaderLayouts: [{ format: "fixed-width", fields: HEADER_FIELDS }],
+  fileTrailerLayouts: [{ format: "fixed-width", fields: TRAILER_FIELDS }],
   configSchema: {
     type: "object",
     properties: {
