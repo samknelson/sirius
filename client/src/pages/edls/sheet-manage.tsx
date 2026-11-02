@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueries } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Settings, Trash2, Lock, Unlock, Copy, Bell, BellOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import type { EdlsSheetStatus } from "@shared/schema";
 
@@ -53,6 +54,7 @@ interface CopySheetResponse {
 
 function EdlsSheetManageContent() {
   const { sheet } = useEdlsSheetLayout();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const sheetId = sheet.id;
@@ -65,6 +67,31 @@ function EdlsSheetManageContent() {
   const sheetData = (sheet.data as Record<string, any>) || {};
   const hasTrashLock = !!sheetData.trashLock;
   const notificationsEnabled = !!sheet.notificationsEnabled;
+
+  const statusAccess = useQueries({
+    queries: statusOptions.map(({ value }) => ({
+      queryKey: [
+        "/api/access/policies", "edls.sheet.set_status", sheetId,
+        { targetStatus: value, currentStatus, hasTrashLock, viewerId: user?.id },
+      ],
+      queryFn: async (): Promise<{ access: { granted: boolean } }> => {
+        const params = new URLSearchParams({ entityId: sheetId, targetStatus: value });
+        return apiRequest("GET", `/api/access/policies/edls.sheet.set_status?${params}`);
+      },
+      enabled: !!user,
+      staleTime: 0,
+      retry: false,
+    })),
+  });
+  const isCheckingStatuses = statusAccess.some(result => result.isPending);
+  const statusCheckFailed = statusAccess.some(result => result.isError);
+  const availableStatuses = statusOptions.filter((status, index) => {
+    if (status.value === currentStatus) return false;
+    if (status.value === "trash" && (hasTrashLock || currentStatus === "lock")) return false;
+    return !isCheckingStatuses && !statusCheckFailed && statusAccess[index].data?.access.granted === true;
+  });
+  // A selection may become unavailable after a sheet or effective-viewer change.
+  const selectedStatus = availableStatuses.some(status => status.value === pendingStatus) ? pendingStatus : "";
 
   const setStatusMutation = useMutation({
     mutationFn: async (newStatus: EdlsSheetStatus) => {
@@ -212,18 +239,18 @@ function EdlsSheetManageContent() {
   };
 
   const handleSubmitStatus = () => {
-    if (!pendingStatus || pendingStatus === currentStatus) return;
+    if (!selectedStatus) return;
 
-    if (pendingStatus === "trash") {
+    if (selectedStatus === "trash") {
       setShowTrashConfirm(true);
     } else {
-      setStatusMutation.mutate(pendingStatus);
+      setStatusMutation.mutate(selectedStatus);
     }
   };
 
   const handleConfirmTrash = () => {
     setShowTrashConfirm(false);
-    setStatusMutation.mutate("trash");
+    if (selectedStatus === "trash") setStatusMutation.mutate("trash");
   };
 
   const handleTrashLockToggle = () => {
@@ -234,12 +261,6 @@ function EdlsSheetManageContent() {
     notificationsMutation.mutate(!notificationsEnabled);
   };
 
-  const availableStatuses = statusOptions.filter(s => {
-    if (s.value === currentStatus) return false;
-    if (s.value === "trash" && hasTrashLock) return false;
-    if (s.value === "trash" && currentStatus === "lock") return false;
-    return true;
-  });
   const isPending = setStatusMutation.isPending || trashLockMutation.isPending || notificationsMutation.isPending || copySheetMutation.isPending;
   const canEdit = currentStatus !== "lock" && currentStatus !== "trash";
 
@@ -278,7 +299,7 @@ function EdlsSheetManageContent() {
             <Label htmlFor="select-new-status">Change status to</Label>
             <div className="flex items-center gap-3">
               <Select
-                value={pendingStatus}
+                value={selectedStatus}
                 onValueChange={(value) => setPendingStatus(value as EdlsSheetStatus)}
                 disabled={isPending || availableStatuses.length === 0}
               >
@@ -303,13 +324,19 @@ function EdlsSheetManageContent() {
               </Select>
               <Button
                 onClick={handleSubmitStatus}
-                disabled={isPending || !pendingStatus || pendingStatus === currentStatus}
+                disabled={isPending || !selectedStatus}
                 data-testid="button-submit-status"
               >
                 {setStatusMutation.isPending ? "Submitting..." : "Submit"}
               </Button>
             </div>
-            {availableStatuses.length === 0 && (
+            {isCheckingStatuses ? (
+              <p className="text-sm text-muted-foreground">Checking available statuses...</p>
+            ) : statusCheckFailed ? (
+              <p className="text-sm text-destructive" role="alert">
+                Unable to check available statuses. Please reload to try again.
+              </p>
+            ) : availableStatuses.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No other statuses are available for this sheet.
               </p>
