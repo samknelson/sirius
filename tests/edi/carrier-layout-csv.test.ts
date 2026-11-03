@@ -6,7 +6,7 @@ import { carrierLayoutCsv } from "../../server/plugins/trust/provider-edi/carrie
 import type { TrustProviderEdiContext } from "../../server/plugins/trust/provider-edi/registry";
 import { kaiserEncodeNumber } from "../../server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser";
 
-const ctx = { input: { asOfDate: "2026-10-01" }, configData: {} } as TrustProviderEdiContext;
+const ctx = { input: { asOfDate: "2026-10-01" }, configData: {} } as unknown as TrustProviderEdiContext;
 const csv = (text: string): string[][] => parse(text, { relax_column_count: true, skip_empty_lines: false });
 afterEach(() => vi.useRealTimers());
 

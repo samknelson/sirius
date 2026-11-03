@@ -70,6 +70,8 @@ export interface AdvisoryLockHandle {
 }
 
 export interface SessionLockOptions {
+  /** Readers may coexist; transitions take the default exclusive lease. */
+  shared?: boolean;
   /**
    * Hard deadline for acquiring the lock, in milliseconds. Never unbounded:
    * there is no "wait forever" value, and a non-positive number means a
@@ -149,7 +151,9 @@ export function createAdvisoryLockStorage(lockPool: pg.Pool = pool): AdvisoryLoc
       try {
         for (;;) {
           const result = await client.query<{ locked: boolean; backend_pid: number }>(
-            "SELECT pg_try_advisory_lock($1::int4, hashtext($2)::int4) AS locked, pg_backend_pid() AS backend_pid",
+            options.shared
+              ? "SELECT pg_try_advisory_lock_shared($1::int4, hashtext($2)::int4) AS locked, pg_backend_pid() AS backend_pid"
+              : "SELECT pg_try_advisory_lock($1::int4, hashtext($2)::int4) AS locked, pg_backend_pid() AS backend_pid",
             [ADVISORY_LOCK_CLASS_ID, name],
           );
           if (result.rows[0]?.locked === true) {
@@ -165,7 +169,9 @@ export function createAdvisoryLockStorage(lockPool: pg.Pool = pool): AdvisoryLoc
                 if (released) return;
                 try {
                   await client.query(
-                    "SELECT pg_advisory_unlock($1::int4, hashtext($2)::int4)",
+                    options.shared
+                      ? "SELECT pg_advisory_unlock_shared($1::int4, hashtext($2)::int4)"
+                      : "SELECT pg_advisory_unlock($1::int4, hashtext($2)::int4)",
                     [ADVISORY_LOCK_CLASS_ID, name],
                   );
                   releaseClient();

@@ -5,6 +5,7 @@ import "./index.css";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";
 import { registerClerkSignOut } from "@/contexts/AuthContext";
 import { installTimeZoneRedirection } from "@/lib/display-timezone";
+import { installPresentationGuard } from "@/lib/presentation-guard";
 
 // Before anything renders, so no date is ever formatted by an unredirected
 // path. A no-op for everyone whose display zone is their own browser's.
@@ -35,4 +36,8 @@ function Root() {
   return <App />;
 }
 
-createRoot(document.getElementById("root")!).render(<Root />);
+// No auth provider, application query or third-party injection mounts until
+// authoritative presentation state has been confirmed.
+void installPresentationGuard().then(allowed => {
+  if (allowed) createRoot(document.getElementById("root")!).render(<Root />);
+});

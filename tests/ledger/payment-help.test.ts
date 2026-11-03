@@ -11,7 +11,7 @@ import { likePatternMatches } from "../../server/help/path-match";
 import { sanitizeHtml } from "@shared/utils/html";
 
 const authored = [workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp, workerPaymentMethodsHelp];
-const ids = new Set(authored.map(entry => entry.id));
+const ids = new Set<string>(authored.map(entry => entry.id));
 const chooser = workerPaymentChooserHelp.id;
 const checkout = onlineCheckoutHelp.id;
 const receipt = onlinePaymentReceiptHelp.id;

@@ -377,6 +377,25 @@ export const pool = poolInstance as pg.Pool;
 export const db = dbInstance;
 
 /**
+ * Response leases must not consume the same pool their handlers need for SQL:
+ * enough concurrent readers would otherwise hold every connection while
+ * waiting for a domain query. Reuse the already-resolved driver/TLS/IAM options;
+ * this pool only takes advisory locks and never reads application tables.
+ */
+export const presentationLeasePool = new (poolInstance.constructor as typeof pg.Pool)({
+  ...pool.options,
+  max: 4,
+  connectionTimeoutMillis: 2500,
+  idleTimeoutMillis: 5000,
+  allowExitOnIdle: true,
+});
+presentationLeasePool.on("error", () => {
+  // Per-lease error listeners fence and destroy affected HTTP responses.
+  // Do not log a connection string or any driver-supplied credential text.
+  console.error("[mask-mode] Presentation coordination connection unavailable");
+});
+
+/**
  * Create a small, independent pool for infrastructure protocols that must
  * hold session-scoped state (for example advisory locks) across application
  * work. Keeping these clients out of the main storage pool prevents a set of

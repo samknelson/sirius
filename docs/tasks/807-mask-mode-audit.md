@@ -1,6 +1,10 @@
 # Mask Mode: approval audit
 
-**Status: proposal only; implementation requires explicit approval.**
+**Status: proposed safeguards and limitations explicitly approved by the user; admin-only toggle. Implementation prerequisites and live inventory remain open.**
+
+The original read-only audit below is preserved as evidence, not a claim of
+implementation. See [implementation approval and prerequisites](808-mask-mode-approval.md)
+for the subsequent approval, including full withholding of legacy AAT.
 
 Audit date: 2026-11-03. Scope: Step 1 of the supplied Mask Mode specification, not Steps 2–3. This is not a claim of PHI de-identification or a security certification.
 

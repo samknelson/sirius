@@ -418,6 +418,12 @@ export default function Header() {
 
         {/* User menu - right side of row 1 */}
         <div className="flex shrink-0 items-center gap-1 md:gap-2">
+          {user && (
+            <a href="/mask-mode" className={buttonVariants({ variant: "outline", size: "sm" })}
+              data-testid="link-mask-mode">
+              Mask Mode
+            </a>
+          )}
           {user && <TimeZoneClock />}
           {user && <QuickSearch />}
           {user && <AlertsBell />}

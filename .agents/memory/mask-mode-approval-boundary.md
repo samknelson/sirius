@@ -3,8 +3,8 @@ name: Mask Mode scope and approval boundary
 description: User requirements for recording mode and the distinction between an audit and implementation approval.
 ---
 
-Mask Mode must be audited and explicitly approved before implementation. First names remain visible; first-name aliasing is outside the requested initial version. Full original surnames, SSNs and approved sensitive display identifiers must not reach the browser while enabled; CSS or client-only formatting is insufficient.
+The user selected **strict live-data de-identification**, with **admin** as the only role permitted to toggle. This supersedes the earlier convenience policy that kept first names and last-four fragments. Neither those fragments nor initials qualify under Safe Harbor. Legacy AAT and unclassified identifiers remain withheld; CSS or client-only formatting is insufficient.
 
-**Why:** The user records training against live S2 data and explicitly required an audit-first stop before any masking behavior is added. They asked for a session-local recording convenience, not a claim of comprehensive PHI de-identification.
+**Why:** The user records training against live S2 data, required an audit-first approval boundary, and subsequently broadened the objective to HIPAA-informed protection. HHS explicitly rejects last-four SSNs and initials under Safe Harbor; a masking feature cannot certify the whole workflow.
 
-**How to apply:** Treat an accepted/completed exposure audit as documentation approval only, not permission to implement. Present unsafe free-text/document/public-link limitations for approval rather than silently claiming field masking protects them. Proposed policies in task documentation remain proposals until explicitly approved.
+**How to apply:** Do not silently replace live data with fictional people or re-enable convenience fragments. The strict approach deliberately refuses original/unknown surfaces rather than assuming their complex output is safe; expanding it requires a positive reviewed disclosure contract. Do not substitute development configuration for live evidence. Preserve public-link, prior-browser-content and sleeping-tab limitations, and never claim whole-workflow HIPAA compliance or an Expert Determination from UI or test results alone.

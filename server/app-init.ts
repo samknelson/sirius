@@ -659,7 +659,9 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
       return;
     }
 
-    res.status(status).json({ message });
+    // Includes body/session parser failures before presentation admission.
+    // Do not echo submitted identity data or store errors into the browser.
+    res.status(status).json({ message: "Request could not be completed." });
   });
 }
 

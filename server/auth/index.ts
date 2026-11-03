@@ -15,6 +15,7 @@ import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
 import { isWorkerSelfRegistrationEnabled } from "./worker-provisioning";
 import { getEnvironmentVariable } from "../config/env-registry";
+import { installMaskMode } from "../privacy";
 
 const getStorage = () => require("../storage").storage;
 
@@ -115,6 +116,9 @@ export async function setupAuth(app: Express): Promise<void> {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+  // Must precede provider setup (which registers routes), all ordinary
+  // auth/user APIs, files and the application router.
+  installMaskMode(app);
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser(async (user: Express.User, cb) => {

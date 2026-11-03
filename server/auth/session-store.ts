@@ -1,8 +1,11 @@
 import session from "express-session";
 import { logger } from "../logger";
 import { storage } from "../storage";
+import { createHash } from "node:crypto";
 
 const getStorage = () => storage;
+type ObservedSessionData = session.SessionData & { _presentationObserved?: string };
+const observedKey = (sid: string) => createHash("sha256").update(sid).digest("hex");
 
 /**
  * express-session Store backed by the storage layer (storage.sessions.*),
@@ -36,7 +39,9 @@ export class StorageSessionStore extends session.Store {
 
   get(sid: string, callback: (err: unknown, session?: session.SessionData | null) => void): void {
     getStorage().sessions.getSessionData(sid)
-      .then((sess: unknown) => callback(null, (sess as session.SessionData | undefined) ?? null))
+      .then((sess: unknown) => callback(null, sess
+        ? { ...(sess as session.SessionData), _presentationObserved: observedKey(sid) } as ObservedSessionData
+        : null))
       .catch((err: unknown) => {
         logger.error("Session store get failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });
         callback(err);
@@ -44,7 +49,12 @@ export class StorageSessionStore extends session.Store {
   }
 
   set(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
-    getStorage().sessions.upsertSession(sid, sess, this.getExpireTime(sess))
+    // A loaded session cannot be recreated by a late save after logout/prune.
+    // Regenerated authentication SIDs differ and may be initialized normally.
+    // Strip the non-secret observation marker before persistence/audit.
+    const { _presentationObserved, ...payload } = sess as ObservedSessionData;
+    getStorage().sessions.upsertSession(sid, payload, this.getExpireTime(sess),
+      _presentationObserved === observedKey(sid))
       .then(() => callback?.())
       .catch((err: unknown) => {
         logger.error("Session store set failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });

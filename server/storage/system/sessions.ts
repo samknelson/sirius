@@ -1,7 +1,11 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient, runInTransaction } from '../transaction-context';
+import { getClient, runInTransaction, onAfterCommit } from '../transaction-context';
+import { storageLogger } from "../../logger";
 import { allowInMaintenanceMode } from '../maintenance';
-import { sessions } from "@shared/schema";
+import { sessions, workers, contacts } from "@shared/schema";
+import { readMaskState, preserveMaskState, type MaskPolicy } from "@shared/privacy/mask-mode";
+import { presentationLeasePool } from "../db";
+import { createAdvisoryLockStorage, type AdvisoryLockHandle } from "../advisory-lock";
 import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 
@@ -20,6 +24,11 @@ export interface SessionWithUser {
 }
 
 export interface SessionStorage {
+  acquirePresentationLease(sid: string, exclusive: boolean): Promise<AdvisoryLockHandle | null>;
+  /** CAS under the presentation lease; never accepts arbitrary session fields. */
+  transitionMaskMode(sid: string, expectedRevision: number, mode: "on" | "off"): Promise<MaskPolicy | null>;
+  /** Staff-only caller; deliberately selects no names, source IDs or opaque data. */
+  getTrainingBirthDates(): Promise<Array<{ birthDate: string | null }>>;
   getSessions(): Promise<SessionWithUser[]>;
   /**
    * Delete one session row. Logged ("Deleted session ..."); the optional
@@ -45,7 +54,7 @@ export interface SessionStorage {
    * the same statement), so ownership changes — login (NONE→user), logout
    * strip (user→NONE), and anomalous user→user swaps — are loggable 1:1.
    */
-  upsertSession(sid: string, sess: unknown, expire: Date): Promise<{
+  upsertSession(sid: string, sess: unknown, expire: Date, existingOnly?: boolean): Promise<{
     created: boolean;
     oldUserId?: string;
     newUserId?: string;
@@ -65,7 +74,48 @@ export interface SessionStorage {
 }
 
 export function createSessionStorage(): SessionStorage {
+  const presentationLocks = createAdvisoryLockStorage(presentationLeasePool);
   const storage: SessionStorage = {
+    acquirePresentationLease(sid, exclusive) {
+      return presentationLocks.tryAcquireSession(`presentation:${sid}`, {
+        timeoutMs: 2500, pollIntervalMs: 25, shared: !exclusive,
+      });
+    },
+    async getTrainingBirthDates() {
+      return getClient().select({ birthDate: contacts.birthDate })
+        .from(workers).innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .orderBy(sql`random()`).limit(20);
+    },
+
+    async transitionMaskMode(sid, expectedRevision, mode) {
+      return allowInMaintenanceMode(() => runInTransaction(async () => {
+        const client = getClient();
+        const rows = await client.execute(sql`
+          SELECT sess FROM sessions
+          WHERE sid = ${sid} AND expire > now() FOR UPDATE
+        `);
+        const row = rows.rows[0] as { sess: { maskMode?: unknown } } | undefined;
+        if (!row) return null;
+        const before = readMaskState(row.sess.maskMode);
+        if (before.revision !== expectedRevision || before.revision >= Number.MAX_SAFE_INTEGER) return null;
+        const after: MaskPolicy = { version: 1, revision: before.revision + 1, mode };
+        await client.update(sessions).set({
+          sess: sql`jsonb_set(${sessions.sess}, '{maskMode}', ${JSON.stringify(after)}::jsonb)`,
+        }).where(eq(sessions.sid, sid));
+        const ownerId = sessionUserId(rows.rows[0].sess);
+        const effectiveId = (rows.rows[0].sess as any)?.masqueradeUserId ?? ownerId;
+        onAfterCommit(() => storageLogger.info("Presentation protection changed", {
+          module: "privacy", operation: "mask_mode_transition",
+          user_id: effectiveId, host_entity_id: ownerId,
+          meta: {
+            mode, revision: after.revision,
+            ...(effectiveId !== ownerId ? { masqueradedBy: ownerId } : {}),
+          },
+        }));
+        return after;
+      }));
+    },
+
     async getSessions(): Promise<SessionWithUser[]> {
       const client = getClient();
       const now = new Date();
@@ -133,7 +183,7 @@ export function createSessionStorage(): SessionStorage {
       return row?.sess;
     },
 
-    async upsertSession(sid: string, sess: unknown, expire: Date): Promise<{
+    async upsertSession(sid: string, sess: unknown, expire: Date, existingOnly = false): Promise<{
       created: boolean;
       oldUserId?: string;
       newUserId?: string;
@@ -150,13 +200,13 @@ export function createSessionStorage(): SessionStorage {
         // insert race means a row now exists — retry the locked-update path.
         for (let attempt = 0; attempt < 3; attempt++) {
           const locked = await client.execute(sql`
-            SELECT sess #>> '{passport,user,dbUser,id}' AS old_user_id
+            SELECT sess #>> '{passport,user,dbUser,id}' AS old_user_id, sess AS prior_payload
             FROM sessions WHERE sid = ${sid} FOR UPDATE
           `);
           if (locked.rows.length > 0) {
             await client
               .update(sessions)
-              .set({ sess, expire })
+              .set({ sess: preserveMaskState(sess, (locked.rows[0] as any).prior_payload), expire })
               .where(eq(sessions.sid, sid));
             return {
               created: false,
@@ -164,9 +214,18 @@ export function createSessionStorage(): SessionStorage {
               newUserId,
             };
           }
+          if (existingOnly) throw new Error("Session ended before it could be saved");
           const inserted = await client
             .insert(sessions)
-            .values({ sid, sess, expire })
+            .values({
+              sid,
+              // Only creation of a newly authenticated SID establishes OFF.
+              // Existing/legacy rows without policy remain UNKNOWN.
+              sess: newUserId
+                ? { ...(sess as object), maskMode: { version: 1, mode: "off", revision: 1 } }
+                : preserveMaskState(sess, {}),
+              expire,
+            })
             .onConflictDoNothing()
             .returning({ sid: sessions.sid });
           if (inserted.length > 0) {

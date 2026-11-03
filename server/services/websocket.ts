@@ -3,9 +3,12 @@ import type { Server } from "http";
 import type { IncomingMessage } from "http";
 import { parse as parseCookie } from "cookie";
 import { logger } from "../logger";
+import { readMaskState } from "@shared/privacy/mask-mode";
+import { guardedPresentationDelivery } from "../privacy/socket";
 
 interface UserConnection {
   userId: string;
+  sessionId: string;
   ws: WebSocket;
   lastPing: number;
 }
@@ -133,6 +136,7 @@ export function initializeWebSocket(
 
       const connection: UserConnection = {
         userId,
+        sessionId: (req as any).sessionID,
         ws,
         lastPing: Date.now(),
       };
@@ -228,6 +232,10 @@ function authenticateConnection(
 
     sessionMiddleware(req, mockRes, () => {
       const session = (req as any).session;
+      if (readMaskState(session?.maskMode).mode !== "off") {
+        resolve(null);
+        return;
+      }
       
       // Check for masquerade first
       if (session?.masqueradeUserId) {
@@ -266,8 +274,9 @@ function removeConnection(userId: string, connection: UserConnection): void {
 
 /**
  * Send `message` to every OPEN socket the user currently has. Returns true if
- * the message was handed to at least one open socket, false if the user has no
- * open connection right now (nothing was delivered). Callers that need a
+ * an attempt was queued for at least one open socket, false if the user has no
+ * open connection right now. Each attempt rechecks presentation state before
+ * sending; a true return is NOT proof of delivery. Callers that need a
  * delivery guarantee (e.g. the flash-summary toast) use the return value to
  * decide whether to retain and replay the message when the user reconnects.
  */
@@ -282,7 +291,18 @@ export function broadcastToUser(userId: string, message: WebSocketMessage): bool
   userConnections.forEach((connection) => {
     if (connection.ws.readyState === WebSocket.OPEN) {
       try {
-        connection.ws.send(messageStr);
+        void guardedPresentationDelivery(connection.sessionId, connection.userId,
+          () => new Promise<void>((resolve, reject) => {
+            if (connection.ws.readyState !== WebSocket.OPEN) { reject(new Error("Closed")); return; }
+            connection.ws.send(messageStr, error => error ? reject(error) : resolve());
+          }), {
+            acquire: async sid => (await import("../storage")).storage.sessions.acquirePresentationLease(sid, false),
+            read: async sid => (await import("../storage")).storage.sessions.getSessionData(sid),
+          }).then(sent => {
+            if (!sent && connection.ws.readyState === WebSocket.OPEN) {
+              connection.ws.close(4003, "Presentation state changed");
+            }
+          });
         delivered = true;
       } catch (error) {
         logger.error("Failed to send WebSocket message", {

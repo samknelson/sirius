@@ -21,6 +21,7 @@ import { administrationHelp } from "./administration";
 import { integrationsAppearanceHelp } from "./integrations-appearance";
 import { additionalPluginKindHelp } from "./additional-plugin-kinds";
 import { reportTypeHelp } from "./report-types";
+import { maskModeHelp } from "./mask-mode";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -39,6 +40,7 @@ export interface SystemHelpEntry {
 export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
+  maskModeHelp,
   workerPaymentChooserHelp,
   onlineCheckoutHelp,
   onlinePaymentReceiptHelp,
