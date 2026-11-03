@@ -259,3 +259,45 @@ mtime_ms = 1790286238294
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/4783c5d2-b07e-4147-9fea-c0053195acf1/368635ce-907f-48af-9bf8-ac43218f1262"
 storage_version_token = "1790286293739863"
 content_type = "image/png"
+
+[[outputs]]
+id = "pBrB-qLYy6T8prWeccKXf"
+uri = "file://docs/tasks/807-mask-mode-audit.md"
+type = "text"
+title = "Mask Mode approval audit"
+description = "Identifier inventory, proposed masking policy, server-side design, limits and approval decisions. No implementation."
+logical_id = "2fa0a067-02cb-48c6-bece-f867e444b02c"
+content_hash = "sha256:e2bd0fb965981ad9b0e830c5344221760854dab28c4655c243b40e8feb7ee654"
+size = 29833
+mtime_ms = 1793671537540
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/2fa0a067-02cb-48c6-bece-f867e444b02c/578144fb-3cb9-49b8-9690-d9c8f2d1eecd"
+storage_version_token = "1793671547004466"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "Y4S5gQIt8SQ3ArE_eaUXR"
+uri = "file://docs/tasks/807-mask-mode-exposures.md"
+type = "text"
+title = "Mask Mode exposure table"
+description = "Source-backed screen, API, document, export, communication and realtime exposure inventory."
+logical_id = "694e6758-ed19-4c76-ab83-8ebf0f4667b4"
+content_hash = "sha256:f3c7a51f00673f9224013da0205b761bc115b1764079f099878166a918dc92f6"
+size = 34190
+mtime_ms = 1793671534628
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/694e6758-ed19-4c76-ab83-8ebf0f4667b4/45435f8f-df88-47bf-9274-36f07607c70e"
+storage_version_token = "1793671547475766"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "3Iqb7-8hKa3deGfITa4Uz"
+uri = "file://docs/tasks/807-mask-mode-coverage.md"
+type = "text"
+title = "Mask Mode coverage and verification"
+description = "Worker-tab coverage checklist, explicit runtime limits and verification scope for later implementation."
+logical_id = "5573ba92-8562-4611-b8de-942e6aab8d1d"
+content_hash = "sha256:f492f620e756ac316502cd65984866ca8382f18e2a6b3b14a82a4e6522e049c6"
+size = 18063
+mtime_ms = 1793671407624
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/5573ba92-8562-4611-b8de-942e6aab8d1d/29ca0bda-9bea-4876-9307-a117fe64d3ec"
+storage_version_token = "1793671547930492"
+content_type = "text/markdown"

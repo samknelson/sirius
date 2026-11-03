@@ -126,19 +126,12 @@
 - [Live staging range evidence](live-staging-range-evidence.md) — daily high-churn staging freezes exact ranges; cleanup authorization and checkpoint commit atomically, while final-freeze stays whole-source exact.
 - Document/billing integrity — [Lob pagination](lob-html-pagination-limits.md) cannot trust padded blocks for arbitrary multi-page HTML; [DP billing authority](dp-report-billing-authority.md) treats surviving posted charges as authoritative when reconstruction fails.
 - [Webhook replay must retry unfinished effects](webhook-replay-unfinished-effects.md) — duplicate receipt proves ingestion, not completion; replays must resume any uncommitted internal side effect.
-- [Payment editor lifecycle](payment-editor-lifecycle.md) — intact allocations can disappear during control initialization; distinguish deliberate account changes from hydration and preserve local drafts.
-- [Ledger currency discovery](ledger-currency-discovery.md) — nonfinancial units must not invalidate account discovery; monetary validation belongs to payable responses.
 - [Browser fixture lifecycle](browser-fixture-lifecycle.md) — print failures before bounded Vite cleanup; wait for closing confirmation portals before typing into the underlying editor.
 - [Queue existence/index coupling](queue-existence-index-coupling.md) — LIMIT 1 can regress without an active-run index; measure populated and empty probes and deploy them together.
 - [Legacy month reconciliation proof](legacy-month-reconciliation-proof.md) — crossing a loader horizon is safe only for the exact old-rule month with loader anchor + live mapping proof; overlaps always win.
 - [Appeal benefit inventory format](appeal-benefit-inventory-format.md) — for T16 appeal unmapped triage, supply a read-only staging query rather than expanding loader reports.
 - Worker exports — [sensitive filters](worker-list-sensitive-filters.md) stay body-only with opaque caches; [keyset traversal](worker-export-traversal-consistency.md) may move rows if sort keys change mid-download.
-- [Online payment rollout](online-payment-foundation-boundary.md) — reuse existing attempts and pending ACH recovery; historical payer/consent stay unknown; foundation does not authorize live charging.
-- [Checkout abandonment boundary](checkout-abandonment-boundary.md) — only provider-created, unconfirmed checkout is abandonable; serialize explicit cancellation with webhook settlement.
-- [Checkout rejection proof](checkout-initiation-proof.md) — current config rejection on replay cannot disprove earlier creation; provider-entry evidence must survive crashes and lost commits.
-- [Test-mode provider entry order](test-mode-provider-entry-order.md) — reject live credentials before customer creation, not only before SetupIntent; redact client secrets in response previews.
-- [Whole-statement checkout](whole-statement-checkout.md) — net credits apply oldest-first; unknown pending allocations block checkout rather than guessing; method management differs from method use.
-- [Payment direction historical correction](payment-direction-historical-correction.md) — changing a type's charge/credit meaning after clearing needs a reviewed snapshot and payment-plugin reconciliation, never a blind sign flip.
+- [Payment safety decisions](payment-safety-index.md) — checkout authority, cancellation, provider-entry proof, allocation hydration, currency discovery and historical corrections.
 - [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.
@@ -156,4 +149,4 @@
 - [Isolated renderer cancellation](isolated-renderer-cancellation.md) — timeout must stop CPU work and await exit; native conversion and inherited worker CLI flags can defeat isolation assumptions.
 - [Browser callback compiler boundary](browser-callback-transpiler-boundary.md) — Puppeteer callbacks can capture compiler helpers under tsx that Vitest omits; verify both real runtime transforms.
 - [COBRA initial obligation](cobra-initial-obligation.md) — initial payment covers every month from coverage start through election month; later premiums are separate.
-- [Financial correction boundaries](financial-correction-boundaries.md) — permanent EA ownership does not freeze staff allocations; uncertain historical attribution is never auto-repaired.
+- [Mask Mode approval boundary](mask-mode-approval-boundary.md) — audit completion is not implementation approval; first names stay visible and browser payloads, not just screens, define protection.
