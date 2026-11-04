@@ -93,13 +93,22 @@ export function registerBulkMessageRoutes(
       const { getEffectiveUser } = await import("../masquerade");
       const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
       if (!dbUser?.id) return res.status(401).json({ message: "User not authenticated" });
-      const output = await downloadMailCsv(storage, req.params.id, dbUser.id);
+      const mode = req.body?.mode === undefined ? "outstanding" : req.body.mode;
+      if (mode !== "outstanding" && mode !== "all") {
+        return res.status(400).json({ message: "Invalid mailing download mode. Choose outstanding or all." });
+      }
+      const output = await downloadMailCsv(storage, req.params.id, dbUser.id, mode);
+      if (output.noFile) return res.json({
+        noFile: true, message: output.message, recipientCount: 0,
+        blockedCount: output.blockedCount, missingAddressCount: output.missingAddressCount,
+      });
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       // Do not interpolate user-controlled message names into headers.
       res.setHeader("Content-Disposition", 'attachment; filename="bulk-mail.csv"');
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("X-Recipient-Count", String(output.recipientCount));
       res.setHeader("X-Missing-Address-Count", String(output.missingAddressCount));
+      res.setHeader("X-Blocked-Recipient-Count", String(output.blockedCount));
       res.send(output.content);
     } catch (error) {
       const status = error instanceof MailCsvError ? error.status : 500;

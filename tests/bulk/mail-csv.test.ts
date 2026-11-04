@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getByIdForUpdate: vi.fn(),
   update: vi.fn(),
   participants: vi.fn(),
+  evidence: vi.fn(),
+  outcomes: vi.fn(),
   record: vi.fn(),
   content: vi.fn(),
   render: vi.fn(),
@@ -14,11 +16,12 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../server/storage/bulk/participants", () => ({
   createBulkParticipantStorage: () => ({
-    getMailingContacts: mocks.mailingContacts, getByMessageId: mocks.participants,
+    getMailingContacts: mocks.mailingContacts, getPostalMailingParticipants: mocks.participants,
+    getPostalExportComms: mocks.evidence,
   }),
 }));
 vi.mock("../../server/storage/bulk/offline-postal", () => ({
-  createOfflinePostalExportStorage: () => ({ record: mocks.record }),
+  createOfflinePostalExportStorage: () => ({ record: mocks.record, applyOutcomes: mocks.outcomes }),
 }));
 vi.mock("../../server/plugins/tokens", () => ({
   createTokenEvalContext: mocks.context,
@@ -58,11 +61,14 @@ beforeEach(() => {
     id: "participant", messageId: "message", contactId: "one", medium: "postal", commId: null,
   }]);
   mocks.content.mockResolvedValue(undefined);
+  mocks.evidence.mockResolvedValue([]);
+  mocks.outcomes.mockResolvedValue(1);
   mocks.context.mockImplementation((_storage, contactId, options) => ({ contactId, options }));
   mocks.render.mockImplementation(async description => ({ output: description }));
   mocks.record.mockImplementation(async (_messageId, records) => {
     mocks.participants.mockResolvedValue(records.map((record: { participantId: string; contactId: string }) => ({
-      id: record.participantId, messageId: "message", contactId: record.contactId, medium: "postal", commId: "offline-comm",
+      id: record.participantId, messageId: "message", contactId: record.contactId, medium: "postal",
+      commId: "offline-comm", commStatus: "offline", status: "see_comm",
     })));
     return records.length;
   });
@@ -111,17 +117,17 @@ describe("offline mailing CSV", () => {
     const result = buildMailCsv([
       { contactId: "one", name: 'Last, "First"', address: address() },
       { contactId: "one", name: 'Last, "First"', address: address({
-        isPrimary: true, street: "20 Oak\r\nApt 2\nBuilding B", deliverabilityStatus: "undeliverable",
+        isPrimary: true, street: "20 Oak\r\nApt 2\nBuilding B", deliverabilityStatus: "verified",
       }) },
       { contactId: "one", name: 'Last, "First"', address: address({ isActive: false, isPrimary: true }) },
       { contactId: "two", name: "No Address", address: address({ isActive: false }) },
       { contactId: "three", name: "Fallback", address: address() },
     ]);
-    expect(result.recipientCount).toBe(3);
+    expect(result.recipientCount).toBe(2);
     expect(result.missingAddressCount).toBe(1);
     expect(result.csv).toContain('"Full Name","Address 1","Address 2","City","State","ZIP","Primary Address","Deliverability Status"');
-    expect(result.csv).toContain('"Last, ""First""","20 Oak","Apt 2\nBuilding B","Boston","MA","00501","true","undeliverable"');
-    expect(result.csv).toContain('"No Address","","","","","","",""');
+    expect(result.csv).toContain('"Last, ""First""","20 Oak","Apt 2\nBuilding B","Boston","MA","00501","true","verified"');
+    expect(result.csv).not.toContain('"No Address"');
     expect(result.csv).toContain('"Fallback","10 Main St","","Boston","MA","00501","false","unknown"');
   });
 
@@ -147,7 +153,7 @@ describe("offline mailing CSV", () => {
     mocks.getByIdForUpdate.mockResolvedValue({
       medium: ["postal"], data: { offline: true }, status: "sent",
     });
-    const second = await downloadMailCsv(storage, "message");
+    const second = await downloadMailCsv(storage, "message", undefined, "all");
     expect(second.csv).toBe(first.csv);
     expect(mocks.update).toHaveBeenCalledTimes(1);
     expect(mocks.record).toHaveBeenCalledTimes(1);
@@ -175,31 +181,130 @@ describe("offline mailing CSV", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it("preserves existing comm links and other media, but records missing-address postal recipients", async () => {
+  it("preserves successful comm links and blocks missing-address recipients instead of recording success", async () => {
     mocks.participants.mockResolvedValue([
-      { id: "existing", contactId: "one", medium: "postal", commId: "previous-comm" },
-      { id: "email", contactId: "one", medium: "email", commId: null },
+      { id: "existing", contactId: "one", medium: "postal", commId: "previous-comm", commStatus: "offline", status: "see_comm" },
       { id: "missing", messageId: "message", contactId: "missing", medium: "postal", commId: null },
     ]);
     mocks.mailingContacts.mockResolvedValue([
-      { contactId: "one", name: "Existing", address: address() },
       { contactId: "missing", name: "No Address", address: null },
     ]);
     const result = await downloadMailCsv(storage, "message");
+    expect(result.noFile).toBe(true);
     expect(result.missingAddressCount).toBe(1);
-    expect(mocks.record).toHaveBeenCalledTimes(1);
-    expect(mocks.record.mock.calls[0][1]).toEqual([
+    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.outcomes.mock.calls[0][1]).toEqual([
       expect.objectContaining({ participantId: "missing", contactId: "missing",
-        postal: expect.objectContaining({ toAddressLine1: "" }) }),
+        status: "send_failed", commId: null, message: expect.stringContaining("no active postal address") }),
     ]);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("does not mark sent on empty exports or failed preparation", async () => {
+    mocks.participants.mockResolvedValue([]);
     mocks.mailingContacts.mockResolvedValue([]);
-    await expect(downloadMailCsv(storage, "message")).rejects.toMatchObject({ status: 400 });
+    await expect(downloadMailCsv(storage, "message")).resolves.toMatchObject({ noFile: true, recipientCount: 0 });
     mocks.mailingContacts.mockRejectedValue(new Error("read failed"));
     await expect(downloadMailCsv(storage, "message")).rejects.toThrow("read failed");
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("exports only newly appended recipients after the first completion", async () => {
+    await downloadMailCsv(storage, "message");
+    mocks.participants.mockResolvedValue([
+      { id: "participant", contactId: "one", medium: "postal", commId: "offline-comm", commStatus: "offline", status: "see_comm" },
+      { id: "new", contactId: "two", medium: "postal", commId: null },
+    ]);
+    mocks.mailingContacts.mockResolvedValue([{ contactId: "two", name: "New Worker", address: address() }]);
+    const result = await downloadMailCsv(storage, "message");
+    expect(mocks.mailingContacts).toHaveBeenLastCalledWith("message", ["two"]);
+    expect(result.recipientCount).toBe(1);
+    expect(result.csv).toContain("New Worker");
+    expect(mocks.record.mock.calls[1][1]).toHaveLength(1);
+    expect(mocks.record.mock.calls[1][1][0].contactId).toBe("two");
+  });
+
+  it("returns a no-file explanation when outstanding selection is already complete", async () => {
+    mocks.participants.mockResolvedValue([{
+      id: "participant", contactId: "one", medium: "postal", commId: "completed", commStatus: "offline", status: "see_comm",
+    }]);
+    mocks.mailingContacts.mockResolvedValue([]);
+    const result = await downloadMailCsv(storage, "message");
+    expect(result).toMatchObject({ noFile: true, recipientCount: 0, blockedCount: 0 });
+    expect(result.message).toContain("No recipients need mailing");
+    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an undeliverable primary without using a secondary address, and allows a corrected retry", async () => {
+    mocks.mailingContacts.mockResolvedValue([
+      { contactId: "one", name: "Blocked", address: address({ isPrimary: true, deliverabilityStatus: "undeliverable" }) },
+      { contactId: "one", name: "Blocked", address: address({ deliverabilityStatus: "verified" }) },
+    ]);
+    const blocked = await downloadMailCsv(storage, "message");
+    expect(blocked).toMatchObject({ noFile: true, blockedCount: 1, recipientCount: 0 });
+    expect(blocked.csv).not.toContain("Blocked");
+    expect(mocks.outcomes.mock.calls[0][1][0]).toMatchObject({ status: "send_failed", commId: null });
+    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    mocks.mailingContacts.mockResolvedValue([{ contactId: "one", name: "Corrected", address: address() }]);
+    mocks.participants.mockResolvedValue([{ id: "participant", contactId: "one", medium: "postal", commId: null, status: "send_failed" }]);
+    const corrected = await downloadMailCsv(storage, "message");
+    expect(corrected).toMatchObject({ noFile: false, blockedCount: 0, recipientCount: 1 });
+    expect(mocks.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports partial batches, completing only usable recipients", async () => {
+    mocks.participants.mockResolvedValue([
+      { id: "good", contactId: "one", medium: "postal", commId: null },
+      { id: "bad", contactId: "two", medium: "postal", commId: null },
+    ]);
+    mocks.mailingContacts.mockResolvedValue([
+      { contactId: "one", name: "Good", address: address() },
+      { contactId: "two", name: "Bad", address: address({ deliverabilityStatus: "undeliverable" }) },
+    ]);
+    const result = await downloadMailCsv(storage, "message");
+    expect(result).toMatchObject({ noFile: false, recipientCount: 1, blockedCount: 1 });
+    expect(result.csv).not.toContain('"Bad"');
+    expect(mocks.record.mock.calls[0][1].map((row: { contactId: string }) => row.contactId)).toEqual(["one"]);
+    expect(mocks.outcomes.mock.calls[0][1][0].participantId).toBe("bad");
+  });
+
+  it("retries a linked failed comm without treating it as already mailed or reusing its spent key", async () => {
+    mocks.participants.mockResolvedValue([{
+      id: "participant", contactId: "one", medium: "postal", commId: "failed-comm", commStatus: "failed",
+    }]);
+    mocks.evidence.mockResolvedValue([{
+      id: "failed-comm", contactId: "one", status: "failed", sendKey: "bulk-postal-export:message",
+    }]);
+    const result = await downloadMailCsv(storage, "message");
+    expect(result.recipientCount).toBe(1);
+    expect(mocks.record.mock.calls[0][1][0]).toMatchObject({
+      previousCommId: "failed-comm", sendKey: "bulk-postal-export:message:retry:failed-comm",
+    });
+  });
+
+  it("repairs a removed/re-added recipient from send-once evidence without exporting or creating history again", async () => {
+    mocks.mailingContacts.mockResolvedValue([]);
+    mocks.evidence.mockResolvedValue([{
+      id: "spent", contactId: "one", status: "offline", sendKey: "bulk-postal-export:message",
+    }]);
+    const result = await downloadMailCsv(storage, "message");
+    expect(result.noFile).toBe(true);
+    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.outcomes.mock.calls[0][1][0]).toMatchObject({
+      participantId: "participant", commId: "spent", status: "see_comm",
+    });
+  });
+
+  it("does not erase a previous all-recipient address refusal during an outstanding-only no-op", async () => {
+    mocks.mailingContacts.mockResolvedValue([]);
+    mocks.participants.mockResolvedValue([{
+      id: "participant", contactId: "one", medium: "postal", commId: "sent", commStatus: "offline",
+      status: "send_failed", message: "Postal address is marked undeliverable.",
+    }]);
+    expect((await downloadMailCsv(storage, "message")).noFile).toBe(true);
+    expect(mocks.outcomes).not.toHaveBeenCalled();
   });
 
   it("does not return a download if the sent-state update fails", async () => {

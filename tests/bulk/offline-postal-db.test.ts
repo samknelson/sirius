@@ -108,7 +108,7 @@ describe.skipIf(!hasDevelopmentDb)("offline mailing database integration", () =>
         const evidence = await client.execute(sql`SELECT count(*)::int AS attributed FROM comm WHERE status='offline' AND data->>'initiatedBy'='fixture-actor' AND send_key='bulk-postal-export:fixture-message'`);
         expect(evidence.rows[0]?.attributed).toBe(637);
         queryCount = 0;
-        const repeat = await downloadMailCsv(storage, "fixture-message", "fixture-actor");
+        const repeat = await downloadMailCsv(storage, "fixture-message", "fixture-actor", "all");
         const repeatQueries = queryCount;
         expect(repeat.csv).toBe(result.csv);
         expect(repeatQueries).toBeLessThan(6);
@@ -157,6 +157,8 @@ describe.skipIf(!hasDevelopmentDb)("offline mailing database integration", () =>
             await client.execute(sql.raw(`CREATE TABLE ${fixtureSchema}.${table} (LIKE public.${table} INCLUDING ALL)`));
           }
           await client.execute(sql`INSERT INTO contacts(id,display_name) VALUES ('fixture-one','One'),('fixture-two','Two'),('fixture-three','Three')`);
+          await client.execute(sql`INSERT INTO contact_postal(contact_id,street,city,state,postal_code,country,source)
+            SELECT id,'10 Main St','Boston','MA','00501','US','admin' FROM contacts`);
           await client.execute(sql`INSERT INTO options_comm_tags(id,name) VALUES ('fixture-tag','Fixture SPD')`);
           await client.execute(sql`INSERT INTO bulk_messages(id,name,medium,status,data)
             VALUES ('fixture-concurrent','Fixture',ARRAY['postal'],'draft','{"offline":true,"tagIds":["fixture-tag"]}')`);
@@ -169,8 +171,9 @@ describe.skipIf(!hasDevelopmentDb)("offline mailing database integration", () =>
           inFixture(() => downloadMailCsv(storage, "fixture-concurrent", "fixture-actor")),
           inFixture(() => downloadMailCsv(storage, "fixture-concurrent", "fixture-actor")),
         ]));
-        expect(both[0].csv).toBe(both[1].csv);
-        expect(both[0].missingAddressCount).toBe(3);
+        expect(both.filter(result => !result.noFile)).toHaveLength(1);
+        expect(both.filter(result => result.noFile)).toHaveLength(1);
+        expect(both.find(result => !result.noFile)?.recipientCount).toBe(3);
         await inFixture(async () => {
           const result = await getClient().execute(sql`SELECT
             (SELECT count(*)::int FROM comm) AS comms,
@@ -182,8 +185,80 @@ describe.skipIf(!hasDevelopmentDb)("offline mailing database integration", () =>
         });
         await new Promise(resolve => setImmediate(resolve));
         expect(captures.logs.mock.calls.filter(([, meta]) => meta?.module === "comm-tags")).toHaveLength(3);
-        expect(captures.logs.mock.calls.filter(([, meta]) => meta?.operation === "update" && meta?.module === "bulkParticipants")).toHaveLength(3);
-        const recipientAudit = captures.logs.mock.calls.filter(([, meta]) => meta?.operation === "update" || meta?.module === "comm-tags");
+        const concurrentAudit = [...captures.logs.mock.calls];
+        // A blocked recipient commits an error even without a CSV; correcting
+        // the address later makes the same recipient eligible without a reset.
+        await inFixture(async () => {
+          const client = getClient();
+          await client.execute(sql`INSERT INTO bulk_messages(id,name,medium,status,data)
+            VALUES ('fixture-blocked','Blocked',ARRAY['postal'],'draft','{"offline":true,"tagIds":["fixture-tag"]}')`);
+          await client.execute(sql`INSERT INTO bulk_participants(message_id,contact_id,medium)
+            VALUES ('fixture-blocked','fixture-one','postal')`);
+          await client.execute(sql`UPDATE contact_postal SET deliverability_status='undeliverable' WHERE contact_id='fixture-one'`);
+        });
+        const blocked = await inFixture(() => downloadMailCsv(storage, "fixture-blocked", "fixture-actor"));
+        expect(blocked).toMatchObject({ noFile: true, blockedCount: 1, recipientCount: 0 });
+        await inFixture(async () => {
+          const client = getClient();
+          const result = await client.execute(sql`SELECT p.status,p.comm_id,p.message,b.status AS bulk_status,
+            (SELECT count(*)::int FROM comm WHERE send_key='bulk-postal-export:fixture-blocked') AS comms
+            FROM bulk_participants p JOIN bulk_messages b ON b.id=p.message_id WHERE b.id='fixture-blocked'`);
+          expect(result.rows[0]).toMatchObject({
+            status: "send_failed", comm_id: null, bulk_status: "draft", comms: 0,
+          });
+          expect(result.rows[0]?.message).toContain("undeliverable");
+          await client.execute(sql`UPDATE contact_postal SET deliverability_status='verified' WHERE contact_id='fixture-one'`);
+        });
+        expect(await inFixture(() => downloadMailCsv(storage, "fixture-blocked", "fixture-actor")))
+          .toMatchObject({ noFile: false, blockedCount: 0, recipientCount: 1 });
+        // Appending to the now-sent message selects only new recipients. A
+        // mixed batch exports the valid contact and persists the other's error.
+        await inFixture(async () => {
+          await getClient().execute(sql`INSERT INTO bulk_participants(message_id,contact_id,medium)
+            VALUES ('fixture-blocked','fixture-two','postal'),('fixture-blocked','fixture-three','postal')`);
+          await getClient().execute(sql`UPDATE contact_postal SET is_active=false WHERE contact_id='fixture-three'`);
+        });
+        const partial = await inFixture(() => downloadMailCsv(storage, "fixture-blocked", "fixture-actor"));
+        expect(partial).toMatchObject({ noFile: false, recipientCount: 1, blockedCount: 1, missingAddressCount: 1 });
+        expect(partial.csv).toContain('"Two"');
+        expect(partial.csv).not.toContain('"One"');
+        expect(partial.csv).not.toContain('"Three"');
+        await inFixture(async () => {
+          const rows = await getClient().execute(sql`SELECT contact_id,status,comm_id FROM bulk_participants
+            WHERE message_id='fixture-blocked' ORDER BY contact_id`);
+          expect(rows.rows.map(row => row.status)).toEqual(["see_comm", "send_failed", "see_comm"]);
+          expect(rows.rows[1]?.comm_id).toBeNull();
+          await getClient().execute(sql`UPDATE contact_postal SET is_active=true WHERE contact_id='fixture-three'`);
+        });
+        expect(await inFixture(() => downloadMailCsv(storage, "fixture-blocked", "fixture-actor")))
+          .toMatchObject({ noFile: false, recipientCount: 1, blockedCount: 0 });
+        const redownload = await inFixture(() => downloadMailCsv(storage, "fixture-blocked", "fixture-actor", "all"));
+        expect(redownload.recipientCount).toBe(3);
+        await inFixture(async () => {
+          const rows = await getClient().execute(sql`SELECT count(*)::int AS count FROM comm
+            WHERE send_key='bulk-postal-export:fixture-blocked'`);
+          expect(rows.rows[0]?.count).toBe(3);
+          await getClient().execute(sql`INSERT INTO bulk_messages(id,name,medium,status,data)
+            VALUES ('fixture-retry','Retry',ARRAY['postal'],'draft','{"offline":true}')`);
+          await getClient().execute(sql`INSERT INTO comm(id,medium,contact_id,status,send_key)
+            VALUES ('fixture-old-failure','postal','fixture-one','failed','bulk-postal-export:fixture-retry')`);
+          await getClient().execute(sql`INSERT INTO bulk_participants(message_id,contact_id,medium,comm_id,status)
+            VALUES ('fixture-retry','fixture-one','postal','fixture-old-failure','see_comm')`);
+        });
+        expect(await inFixture(() => downloadMailCsv(storage, "fixture-retry", "fixture-actor")))
+          .toMatchObject({ noFile: false, recipientCount: 1 });
+        await inFixture(async () => {
+          const rows = await getClient().execute(sql`SELECT cm.id,cm.status,cm.send_key FROM comm cm
+            WHERE cm.contact_id='fixture-one' AND starts_with(cm.send_key,'bulk-postal-export:fixture-retry')
+            ORDER BY cm.status`);
+          expect(rows.rows).toHaveLength(2);
+          expect(rows.rows[0]).toMatchObject({ id: "fixture-old-failure", status: "failed" });
+          expect(rows.rows[1]).toMatchObject({
+            status: "offline", send_key: "bulk-postal-export:fixture-retry:retry:fixture-old-failure",
+          });
+        });
+        expect(concurrentAudit.filter(([, meta]) => meta?.operation === "update" && meta?.module === "bulkParticipants")).toHaveLength(3);
+        const recipientAudit = concurrentAudit.filter(([, meta]) => meta?.operation === "update" || meta?.module === "comm-tags");
         for (const [, meta] of recipientAudit) {
           expect(meta.user_id).toBe("fixture-actor");
           expect(meta.meta.masqueradedBy).toEqual({ userId: "fixture-session-user", userEmail: undefined });
@@ -201,6 +276,7 @@ describe.skipIf(!hasDevelopmentDb)("offline mailing database integration", () =>
         const failStorage = { ...storage, bulkMessages: { ...storage.bulkMessages,
           update: async () => { throw new Error("fixture final update failure"); },
         } } as IStorage;
+        const tagAuditCountBeforeFailure = captures.logs.mock.calls.filter(([, meta]) => meta?.module === "comm-tags").length;
         await expect(inFixture(() => downloadMailCsv(failStorage, "fixture-failure", "fixture-actor"))).rejects.toThrow("fixture final update failure");
         await inFixture(async () => {
           const result = await getClient().execute(sql`SELECT
@@ -209,7 +285,7 @@ describe.skipIf(!hasDevelopmentDb)("offline mailing database integration", () =>
             (SELECT status FROM bulk_messages WHERE id='fixture-failure') AS status`);
           expect(result.rows[0]).toEqual({ comms: 0, linked: 0, status: "draft" });
         });
-        expect(captures.logs.mock.calls.filter(([, meta]) => meta?.module === "comm-tags")).toHaveLength(3);
+        expect(captures.logs.mock.calls.filter(([, meta]) => meta?.module === "comm-tags")).toHaveLength(tagAuditCountBeforeFailure);
       } finally {
         // Destructive only to the uniquely named fixtures this test created.
         await db.execute(sql.raw(`DROP SCHEMA ${fixtureSchema} CASCADE`));

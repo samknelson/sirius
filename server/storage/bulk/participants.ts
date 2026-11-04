@@ -2,7 +2,7 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, comm, contactPostal, type ContactPostal } from "../../../shared/schema";
-import { eq, and, ne, desc, notInArray } from "drizzle-orm";
+import { eq, and, ne, desc, notInArray, or, sql, inArray } from "drizzle-orm";
 import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
@@ -32,7 +32,11 @@ export interface BulkParticipantDeliveryStatRow {
 }
 
 export interface BulkParticipantStorage {
-  getMailingContacts(messageId: string): Promise<Array<{
+  getPostalMailingParticipants(messageId: string): Promise<Array<BulkParticipant & { commStatus: string | null }>>;
+  getPostalExportComms(messageId: string): Promise<Array<{
+    id: string; contactId: string; status: string; sendKey: string | null;
+  }>>;
+  getMailingContacts(messageId: string, contactIds?: string[]): Promise<Array<{
     contactId: string;
     name: string | null;
     address: ContactPostal | null;
@@ -53,7 +57,30 @@ export interface BulkParticipantStorage {
 
 export function createBulkParticipantStorage(): BulkParticipantStorage {
   const storage: BulkParticipantStorage = {
-    async getMailingContacts(messageId) {
+    async getPostalMailingParticipants(messageId) {
+      return getClient().select({
+        id: bulkParticipants.id, messageId: bulkParticipants.messageId,
+        contactId: bulkParticipants.contactId, medium: bulkParticipants.medium,
+        commId: bulkParticipants.commId, status: bulkParticipants.status,
+        message: bulkParticipants.message, data: bulkParticipants.data,
+        commStatus: comm.status,
+      }).from(bulkParticipants).leftJoin(comm, and(
+        eq(comm.id, bulkParticipants.commId), eq(comm.contactId, bulkParticipants.contactId),
+        eq(comm.medium, "postal"),
+      )).where(and(eq(bulkParticipants.messageId, messageId), eq(bulkParticipants.medium, "postal")));
+    },
+    async getPostalExportComms(messageId) {
+      const key = `bulk-postal-export:${messageId}`;
+      return getClient().select({
+        id: comm.id, contactId: comm.contactId, status: comm.status, sendKey: comm.sendKey,
+      }).from(comm).where(and(eq(comm.medium, "postal"), or(
+        eq(comm.sendKey, key), sql`starts_with(${comm.sendKey}, ${`${key}:retry:`})`,
+      ), sql`${comm.contactId} IN (
+        SELECT contact_id FROM bulk_participants WHERE message_id = ${messageId} AND medium = 'postal'
+      )`));
+    },
+    async getMailingContacts(messageId, contactIds) {
+      if (contactIds?.length === 0) return [];
       return getClient().select({
         contactId: bulkParticipants.contactId,
         name: contacts.displayName,
@@ -64,6 +91,7 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
         .where(and(
           eq(bulkParticipants.messageId, messageId),
           eq(bulkParticipants.medium, "postal"),
+          contactIds ? inArray(bulkParticipants.contactId, contactIds) : undefined,
         ))
         .orderBy(contacts.displayName, contacts.id, desc(contactPostal.isPrimary));
     },

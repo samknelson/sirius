@@ -41,3 +41,20 @@ work and can load sensitive fields the address list never uses.
 audit attribution and parent provenance intact when batching. Emit recipient
 audit entries only after commit; a completion failure must roll back everything.
 Evaluate any personalized description with a separate recipient context.
+
+## Incremental mailing and address refusals
+
+The owner wants “Add to existent message > get only people who need the
+message,” while retaining an explicit all-recipient re-download. Offline
+completion means the recorded mailing handoff, not confirmed physical receipt.
+An explicitly undeliverable selected address must be a recipient delivery error,
+not a row in the mail file or a successful mailing.
+
+**Why:** Exporting the whole message after appending recipients causes repeat
+mailings, and recording bad addresses as mailed hides distribution gaps.
+
+**How to apply:** Default to outstanding recipients; preserve prior successful
+history and allow corrected-address retries. Keep active-primary address
+authority rather than silently choosing a secondary address, and do not equate
+unverified with undeliverable. A no-file result must still preserve any address
+errors recorded during the attempt.
