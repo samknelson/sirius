@@ -1,4 +1,5 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -12,11 +13,20 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Users, Undo2, UserMinus } from "lucide-react";
 import { DependentsStep } from "@/components/wizards/framework/enrollment/DependentsStep";
+import { DependentGenderFields } from "@/components/wizards/framework/enrollment/DependentGenderFields";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
+
+interface GenderOption {
+  id: string;
+  nota: boolean;
+}
 
 interface CurrentRelationship {
   relationId: string;
   label: string;
+  gender?: string | null;
+  genderNota?: string | null;
+  genderCalc?: string | null;
 }
 
 /**
@@ -29,16 +39,33 @@ interface CurrentRelationship {
 export function LifeEventDependentsStep(props: WizardStepComponentProps) {
   const { wizardId, step, data } = props;
   const { toast } = useToast();
+  const [genderDrafts, setGenderDrafts] = useState<
+    Record<string, { gender: string; genderNota: string }>
+  >({});
   const eventAction = data?.eventAction as "add" | "remove" | undefined;
+  const stepDataKey = `/api/wizards/${wizardId}/dispatch/${step.id}/data`;
+  const { data: stepData } = useQuery<{
+    currentRelationships?: CurrentRelationship[];
+  }>({ queryKey: [stepDataKey] });
+  const { data: genderOptions = [] } = useQuery<GenderOption[]>({
+    queryKey: ["/api/options/gender"],
+  });
 
   const submitUrl = `/api/wizards/${wizardId}/dispatch/${step.id}/submit`;
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+    queryClient.invalidateQueries({ queryKey: [stepDataKey] });
+  };
   const onError = (error: Error) =>
     toast({ title: "Error", description: error.message, variant: "destructive" });
 
   const markMutation = useMutation({
-    mutationFn: async (vars: { action: string; relationId: string }) =>
+    mutationFn: async (vars: {
+      action: string;
+      relationId: string;
+      gender?: string;
+      genderNota?: string;
+    }) =>
       apiRequest("POST", submitUrl, { input: vars }),
     onSuccess: invalidate,
     onError,
@@ -59,7 +86,9 @@ export function LifeEventDependentsStep(props: WizardStepComponentProps) {
     return <DependentsStep {...props} />;
   }
 
-  const current: CurrentRelationship[] = Array.isArray(data?.currentRelationships)
+  const current: CurrentRelationship[] = Array.isArray(stepData?.currentRelationships)
+    ? stepData.currentRelationships
+    : Array.isArray(data?.currentRelationships)
     ? (data.currentRelationships as CurrentRelationship[])
     : [];
   const removed: string[] = Array.isArray(data?.removedRelationshipIds)
@@ -94,9 +123,9 @@ export function LifeEventDependentsStep(props: WizardStepComponentProps) {
           current.map((rel) => {
             const isRemoved = removed.includes(rel.relationId);
             return (
-              <div
+        <div
                 key={rel.relationId}
-                className="flex items-center gap-3 rounded-lg border p-3"
+                className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
                 data-testid={`row-current-dependent-${rel.relationId}`}
               >
                 <div className="flex-1">
@@ -110,6 +139,71 @@ export function LifeEventDependentsStep(props: WizardStepComponentProps) {
                       Will be removed
                     </Badge>
                   )}
+                </div>
+                <div className="flex-1">
+                  <DependentGenderFields
+                    idPrefix={`current-dependent-${rel.relationId}`}
+                    gender={genderDrafts[rel.relationId]?.gender ?? ""}
+                    genderNota={genderDrafts[rel.relationId]?.genderNota ?? ""}
+                    currentDesignation={rel.genderCalc}
+                    showUnspecifiedCurrent
+                    onGenderChange={(gender) =>
+                      setGenderDrafts((previous) => ({
+                        ...previous,
+                        [rel.relationId]: {
+                          gender,
+                          genderNota:
+                            previous[rel.relationId]?.genderNota ?? "",
+                        },
+                      }))
+                    }
+                    onGenderNotaChange={(genderNota) =>
+                      setGenderDrafts((previous) => ({
+                        ...previous,
+                        [rel.relationId]: {
+                          gender: previous[rel.relationId]?.gender ?? "",
+                          genderNota,
+                        },
+                      }))
+                    }
+                  />
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    onClick={() => {
+                      const draft = genderDrafts[rel.relationId];
+                      if (!draft?.gender) return;
+                      markMutation.mutate(
+                        {
+                          action: "setCurrentGender",
+                          relationId: rel.relationId,
+                          gender: draft.gender,
+                          genderNota: draft.genderNota,
+                        },
+                        {
+                          onSuccess: () =>
+                            setGenderDrafts((previous) => {
+                              const next = { ...previous };
+                              delete next[rel.relationId];
+                              return next;
+                            }),
+                        },
+                      );
+                    }}
+                    disabled={
+                      markMutation.isPending ||
+                      !genderDrafts[rel.relationId]?.gender ||
+                      (genderOptions.some(
+                        (option) =>
+                          option.id === genderDrafts[rel.relationId]?.gender &&
+                          option.nota,
+                      ) &&
+                        !genderDrafts[rel.relationId]?.genderNota.trim())
+                    }
+                    data-testid={`button-save-dependent-gender-${rel.relationId}`}
+                  >
+                    Save gender
+                  </Button>
                 </div>
                 {isRemoved ? (
                   <Button

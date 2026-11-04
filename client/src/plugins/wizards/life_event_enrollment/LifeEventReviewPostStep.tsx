@@ -28,11 +28,13 @@ import type { WizardStepComponentProps } from "@/components/wizards/framework/ty
 interface DependentEntry {
   relationId: string;
   name: string;
+  genderCalc?: string | null;
 }
 
 interface CurrentRelationship {
   relationId: string;
   label: string;
+  genderCalc?: string | null;
 }
 
 const EVENT_LABEL: Record<string, string> = {
@@ -58,6 +60,12 @@ export function LifeEventReviewPostStep({
   const { data: wizard } = useQuery<{ status?: string }>({
     queryKey: [`/api/wizards/${wizardId}`],
   });
+  const { data: dependentsStepData } = useQuery<{
+    currentRelationships?: CurrentRelationship[];
+  }>({
+    queryKey: [`/api/wizards/${wizardId}/dispatch/dependents/data`],
+    enabled: data?.eventAction === "remove",
+  });
   const status = wizard?.status ?? "draft";
 
   const eventType = (data?.eventType as string) || "";
@@ -68,7 +76,11 @@ export function LifeEventReviewPostStep({
   const added: DependentEntry[] = Array.isArray(data?.dependents)
     ? (data.dependents as DependentEntry[])
     : [];
-  const current: CurrentRelationship[] = Array.isArray(data?.currentRelationships)
+  const current: CurrentRelationship[] = Array.isArray(
+    dependentsStepData?.currentRelationships,
+  )
+    ? dependentsStepData.currentRelationships
+    : Array.isArray(data?.currentRelationships)
     ? (data.currentRelationships as CurrentRelationship[])
     : [];
   const removedIds: string[] = Array.isArray(data?.removedRelationshipIds)
@@ -80,11 +92,21 @@ export function LifeEventReviewPostStep({
   const changeSummary =
     eventAction === "add"
       ? added.length > 0
-        ? `Adding: ${added.map((d) => d.name).join(", ")}`
+        ? `Adding: ${added
+            .map(
+              (d) =>
+                `${d.name} (Gender: ${d.genderCalc || "Not specified"})`,
+            )
+            .join(", ")}`
         : "No dependent added yet"
       : eventAction === "remove"
         ? removed.length > 0
-          ? `Removing: ${removed.map((r) => r.label).join(", ")}`
+          ? `Removing: ${removed
+              .map(
+                (r) =>
+                  `${r.label} (Gender: ${r.genderCalc || "Not specified"})`,
+              )
+              .join(", ")}`
           : "No dependent selected for removal yet"
         : "No life event chosen yet";
 

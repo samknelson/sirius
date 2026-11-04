@@ -62,6 +62,29 @@ const browserPaths = [...app.matchAll(/<(?:ProtectedRoute|Route)\b[^>]*?path="([
   .flatMap(match => concretePaths(match[1]));
 
 describe("audited authenticated workflow help", () => {
+  it("documents dependent gender only on the existing enrollment review help", () => {
+    const enrollmentHelp = getSystemHelp("system:enrollment-review")!;
+    expect(enrollmentHelp.details).toContain("Gender is optional");
+    expect(enrollmentHelp.details).toContain("Specify Gender");
+    expect(sanitizeHtml(enrollmentHelp.details!, "rich-document")).toBe(
+      enrollmentHelp.details,
+    );
+    for (const path of [
+      "/workers/example/elections/list",
+      "/trust/enrollment-queue",
+      "/trust/election/example",
+    ]) {
+      expect(idsFor(path)).toContain(enrollmentHelp.id);
+    }
+    for (const path of [
+      "/wizards/example",
+      "/workers/example/elections/current",
+      "/cobra/cases/example",
+    ]) {
+      expect(idsFor(path)).not.toContain(enrollmentHelp.id);
+    }
+  });
+
   it("explains carrier-layout QA at the provider EDI entry without leaking onto unrelated pages", () => {
     const help = getSystemHelp("system:provider-edi")!;
     expect(idsFor("/trust/provider-edi")).toContain(help.id);

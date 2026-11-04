@@ -55,6 +55,44 @@ const EVENT_ACTION: Record<EventType, EventAction> = {
 interface CurrentRelationship {
   relationId: string;
   label: string;
+  workerId?: string | null;
+  genderCalc?: string | null;
+}
+
+async function loadCurrentRelationshipsWithGender(
+  storage: WizardStepContext["storage"],
+  data: Record<string, any>,
+): Promise<CurrentRelationship[]> {
+  const current: CurrentRelationship[] = Array.isArray(data.currentRelationships)
+    ? data.currentRelationships
+    : [];
+  const sourceElectionId = data.sourceElectionId as string | undefined;
+  const sourceElection = sourceElectionId
+    ? await storage.workerTrustElections.getViewById(sourceElectionId)
+    : undefined;
+  const workerByRelationId = new Map(
+    (sourceElection?.relationships ?? []).map((relationship) => [
+      relationship.id,
+      relationship.coveredWorkerId,
+    ]),
+  );
+
+  return await Promise.all(
+    current.map(async (relationship) => {
+      const workerId =
+        relationship.workerId ?? workerByRelationId.get(relationship.relationId);
+      if (!workerId) return relationship;
+      const worker = await storage.workers.getWorker(workerId);
+      const contact = worker?.contactId
+        ? await storage.contacts.getContact(worker.contactId)
+        : undefined;
+      return {
+        ...relationship,
+        workerId,
+        genderCalc: contact?.genderCalc ?? null,
+      };
+    }),
+  );
 }
 
 function eventActionOf(data: Record<string, any>): EventAction | undefined {
@@ -156,7 +194,12 @@ async function submitDependents(
   // Remove flow: mark/unmark one of the CURRENT relationships for removal.
   // Nothing is deleted — the relationship simply won't carry forward onto
   // the new election.
-  const input = ctx.input as { action?: string; relationId?: string };
+  const input = ctx.input as {
+    action?: string;
+    relationId?: string;
+    gender?: unknown;
+    genderNota?: unknown;
+  };
   const current: CurrentRelationship[] = Array.isArray(data.currentRelationships)
     ? data.currentRelationships
     : [];
@@ -168,6 +211,55 @@ async function submitDependents(
   const dependents: DependentEntry[] = Array.isArray(data.dependents)
     ? data.dependents
     : [];
+
+  if (input.action === "setCurrentGender") {
+    if (!input.relationId || !currentIds.has(input.relationId)) {
+      throw new Error("That relationship is not on the current election");
+    }
+    if (typeof input.gender !== "string" || !input.gender) {
+      throw new Error("Choose a gender option");
+    }
+    if (input.genderNota !== undefined && typeof input.genderNota !== "string") {
+      throw new Error("Gender specification must be text");
+    }
+
+    const sourceElectionId = data.sourceElectionId as string | undefined;
+    const workerId = data.workerId as string | undefined;
+    if (!sourceElectionId || !workerId) {
+      throw new Error("The current election could not be verified");
+    }
+    const [sourceElection, activeElection] = await Promise.all([
+      ctx.storage.workerTrustElections.getViewById(sourceElectionId),
+      ctx.storage.workerTrustElections.getActiveViewByWorker(workerId),
+    ]);
+    if (
+      !sourceElection ||
+      sourceElection.workerId !== workerId ||
+      activeElection?.id !== sourceElectionId ||
+      !(sourceElection.relationshipIds ?? []).includes(input.relationId)
+    ) {
+      throw new Error("That relationship is no longer on the current election");
+    }
+    const relationship = sourceElection.relationships.find(
+      (entry) => entry.id === input.relationId,
+    );
+    if (!relationship?.coveredWorkerId) {
+      throw new Error("The dependent worker could not be found");
+    }
+    await ctx.storage.workers.updateWorkerContactGender(
+      relationship.coveredWorkerId,
+      input.gender,
+      typeof input.genderNota === "string" ? input.genderNota : null,
+    );
+    return {
+      data: {
+        currentRelationships: await loadCurrentRelationshipsWithGender(
+          ctx.storage,
+          data,
+        ),
+      },
+    };
+  }
 
   if (input.action === "removeCurrent") {
     if (!input.relationId || !currentIds.has(input.relationId)) {
@@ -231,6 +323,10 @@ const dependentsStep: WizardStepHandler = {
       ? data.dependents
       : [];
     return {
+      currentRelationships: await loadCurrentRelationshipsWithGender(
+        ctx.storage,
+        data,
+      ),
       dualCoverageConflicts: await computeDualCoverageConflicts(
         ctx.storage,
         data,

@@ -30,6 +30,7 @@ interface DependentEntry {
   name: string;
   ssnLast4: string;
   birthDate: string;
+  genderCalc?: string | null;
 }
 
 interface BenefitSelection {
@@ -272,7 +273,12 @@ export function ReviewPostStep({
             <dt className="text-muted-foreground">Dependents</dt>
             <dd data-testid="text-review-dependents">
               {dependents.length > 0
-                ? dependents.map((d) => d.name).join(", ")
+                ? dependents
+                    .map(
+                      (d) =>
+                        `${d.name} (${d.genderCalc || "Gender not specified"})`,
+                    )
+                    .join(", ")
                 : "None"}
             </dd>
           </div>

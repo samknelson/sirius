@@ -299,6 +299,7 @@ export interface DependentEntry {
   birthDate: string;
   relationTypeId: string;
   matchedExisting: boolean;
+  genderCalc?: string | null;
   documentFileId: string;
   documentFileName: string | null;
   /**
@@ -317,6 +318,7 @@ export async function lookupDependent(
   status: "matched" | "dob_mismatch" | "no_match";
   workerId?: string;
   name?: string;
+  genderCalc?: string | null;
   message: string;
 }> {
   const cleaned = parseSSN(ssn);
@@ -341,6 +343,7 @@ export async function lookupDependent(
       status: "matched",
       workerId: existing.id,
       name: contact?.displayName || existing.id,
+      genderCalc: contact?.genderCalc ?? null,
       message: `SSN and date of birth match existing worker ${contact?.displayName || existing.id}. Choose the relationship type to link them.`,
     };
   }
@@ -481,6 +484,8 @@ export async function handleDependentsSubmit(
     given?: string;
     family?: string;
     relationTypeId?: string;
+    gender?: unknown;
+    genderNota?: unknown;
     documentFileId?: string;
     relationId?: string;
   };
@@ -544,6 +549,22 @@ export async function handleDependentsSubmit(
       throw new Error("This dependent has already been added");
     }
 
+    // Gender is optional. An omitted/blank value deliberately leaves a
+    // matched worker's existing contact designation unchanged.
+    if (input.gender !== undefined && input.gender !== null && input.gender !== "") {
+      if (typeof input.gender !== "string") {
+        throw new Error("Choose a valid gender option");
+      }
+      if (input.genderNota !== undefined && typeof input.genderNota !== "string") {
+        throw new Error("Gender specification must be text");
+      }
+      await ctx.storage.workers.updateWorkerContactGender(
+        dependentWorkerId,
+        input.gender,
+        typeof input.genderNota === "string" ? input.genderNota : null,
+      );
+    }
+
     // Reuse an existing active relationship of the same type between the
     // subscriber and this dependent, if there is one — repeated enrollment
     // attempts must not pile up duplicate relationship rows (storage also
@@ -573,6 +594,10 @@ export async function handleDependentsSubmit(
         },
       }));
 
+    const dependentWorker = await ctx.storage.workers.getWorker(dependentWorkerId);
+    const dependentContact = dependentWorker?.contactId
+      ? await ctx.storage.contacts.getContact(dependentWorker.contactId)
+      : undefined;
     dependents.push({
       createdByWizard: !reused,
       relationId: relation.id,
@@ -582,6 +607,7 @@ export async function handleDependentsSubmit(
       birthDate: input.birthDate,
       relationTypeId: input.relationTypeId,
       matchedExisting: lookup.status === "matched",
+      genderCalc: dependentContact?.genderCalc ?? null,
       documentFileId: input.documentFileId,
       documentFileName:
         (data.pendingDocument as any)?.fileId === input.documentFileId

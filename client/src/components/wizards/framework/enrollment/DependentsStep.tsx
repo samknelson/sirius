@@ -21,6 +21,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { DependentGenderFields } from "./DependentGenderFields";
 import {
   Users,
   Search,
@@ -39,6 +40,7 @@ interface DependentEntry {
   birthDate: string;
   relationTypeId: string;
   matchedExisting: boolean;
+  genderCalc?: string | null;
   documentFileId: string;
   documentFileName: string | null;
 }
@@ -47,12 +49,20 @@ interface LookupResult {
   status: "matched" | "dob_mismatch" | "no_match";
   workerId?: string;
   name?: string;
+  gender?: string | null;
+  genderNota?: string | null;
+  genderCalc?: string | null;
   message: string;
 }
 
 interface RelationTypeOption {
   id: string;
   name: string;
+}
+
+interface GenderOption {
+  id: string;
+  nota: boolean;
 }
 
 interface DualCoverageConflict {
@@ -88,6 +98,15 @@ export function DependentsStep({
   const [given, setGiven] = useState("");
   const [family, setFamily] = useState("");
   const [relationTypeId, setRelationTypeId] = useState("");
+  const [gender, setGender] = useState("");
+  const [genderNota, setGenderNota] = useState("");
+
+  const { data: genderOptions = [] } = useQuery<GenderOption[]>({
+    queryKey: ["/api/options/gender"],
+  });
+  const genderNotaRequired = genderOptions.some(
+    (option) => option.id === gender && option.nota,
+  );
 
   const { data: relationTypes } = useQuery<RelationTypeOption[]>({
     queryKey: ["/api/options/worker-relation-type"],
@@ -119,6 +138,10 @@ export function DependentsStep({
       apiRequest("POST", submitUrl, {
         input: { action: "lookup", ssn, birthDate },
       }),
+    onMutate: () => {
+      setGender("");
+      setGenderNota("");
+    },
     onSuccess: invalidate,
     onError,
   });
@@ -151,6 +174,7 @@ export function DependentsStep({
           given,
           family,
           relationTypeId,
+          ...(gender ? { gender, genderNota } : {}),
           documentFileId: pendingDocument?.fileId,
         },
       }),
@@ -161,6 +185,8 @@ export function DependentsStep({
       setGiven("");
       setFamily("");
       setRelationTypeId("");
+      setGender("");
+      setGenderNota("");
       if (fileInputRef.current) fileInputRef.current.value = "";
       toast({ title: "Dependent added" });
     },
@@ -182,6 +208,7 @@ export function DependentsStep({
     lookup.status !== "dob_mismatch" &&
     !!relationTypeId &&
     !!pendingDocument &&
+    (!genderNotaRequired || !!genderNota.trim()) &&
     (!needsName || (given.trim() && family.trim()));
 
   return (
@@ -196,7 +223,8 @@ export function DependentsStep({
             <CardDescription>
               Optionally add dependents (spouse, children). Each dependent is
               matched by SSN and date of birth and requires a supporting
-              document.
+              document. Gender is optional; choosing “Specify Gender” requires
+              a description.
             </CardDescription>
           </div>
         </div>
@@ -240,7 +268,8 @@ export function DependentsStep({
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    SSN ***-**-{dep.ssnLast4} · DoB {dep.birthDate}
+                    SSN ***-**-{dep.ssnLast4} · DoB {dep.birthDate} · Gender{" "}
+                    {dep.genderCalc || "Not specified"}
                     {dep.documentFileName ? ` · ${dep.documentFileName}` : ""}
                   </div>
                 </div>
@@ -372,6 +401,15 @@ export function DependentsStep({
                   )}
                 </div>
               </div>
+              <DependentGenderFields
+                idPrefix="add-dependent"
+                gender={gender}
+                genderNota={genderNota}
+                currentDesignation={lookup.genderCalc}
+                showUnspecifiedCurrent={lookup.status === "matched"}
+                onGenderChange={setGender}
+                onGenderNotaChange={setGenderNota}
+              />
               <Button
                 onClick={() => addMutation.mutate()}
                 disabled={!canAdd || addMutation.isPending}
