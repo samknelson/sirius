@@ -24,6 +24,7 @@ const summary = {
   },
   balance: {
     available: true,
+    visibility: "shown",
     totals: [{ currency: "USD", amount: "-12.50", formatted: "-$12.50" }],
   },
   future: [
@@ -57,6 +58,7 @@ const server = await createServer({
     port: Number(process.env.BAO_COVERAGE_BROWSER_PORT || 5193),
     strictPort: true,
     hmr: false,
+    watch: { ignored: ["**/.local/**"] },
   },
 });
 
@@ -104,8 +106,9 @@ try {
       const footerRect = footer.getBoundingClientRect();
       const future = card.querySelector('[aria-label="Future coverage"]');
       const current = card.querySelector('[aria-label="Current coverage"]');
-      const metrics = card.querySelector(".bao-coverage-metrics");
-      const periods = card.querySelector(".bao-coverage-periods");
+      const metrics = card.querySelector(".coverage-first-details");
+      const periods = card.querySelector(".coverage-first-period");
+      const hoursRect = metrics.firstElementChild.getBoundingClientRect();
       const colors = [getComputedStyle(card).color, getComputedStyle(card).backgroundColor];
       return {
         viewportWidth: window.innerWidth,
@@ -120,10 +123,14 @@ try {
         footerText: footer.textContent?.trim(),
         footerNote: card.textContent?.trim(),
         futureLabels: [...future.querySelectorAll("article")].map(node => node.textContent.trim()),
-        currentText: current.textContent.trim(),
+        currentText: metrics.textContent.trim(),
+        detailsWidth: metrics.getBoundingClientRect().width,
+        hoursWidth: hoursRect.width,
+        hasBalance: metrics.textContent.includes("Account balance"),
+        hasPayAction: !!metrics.querySelector('[data-testid="link-bao-worker-coverage-pay-balance"]'),
         metricsColumns: getComputedStyle(metrics).gridTemplateColumns.split(" ").length,
         periodColumns: getComputedStyle(periods).gridTemplateColumns.split(" ").length,
-        blocking: [...current.querySelectorAll("[data-blocking]")].map(node => node.getAttribute("data-blocking")),
+        blocking: [...metrics.querySelectorAll("[data-blocking]")].map(node => node.getAttribute("data-blocking")),
         colors,
         widestChild: Math.max(...[...card.querySelectorAll("section, article, [data-blocking]")].map(node => node.getBoundingClientRect().right)),
       };
@@ -135,21 +142,32 @@ try {
     assert.ok(values.footerVisible, `footer link is not visible at ${values.viewportWidth}px`);
     assert.equal(values.statusLabel, "Not covered");
     assert.equal(values.footerHref, "/workers/fixture-worker/benefits/summary#monthly-coverage-history");
-    assert.equal(values.footerText, "View your full monthly hours breakdown");
-    assert.ok(values.footerNote.includes("Contact the fund with any questions or concerns."));
+    assert.equal(values.footerText, "View full monthly hours breakdown");
+    assert.ok(values.footerNote.includes("Questions? Contact the fund."));
     assert.ok(values.currentText.includes("99.75 hrs"));
     assert.ok(values.currentText.includes("100 hrs"));
-    assert.ok(values.currentText.includes("-$12.50"));
+    const hidden = summary.balance.visibility === "hidden";
+    assert.equal(values.hasBalance, !hidden);
+    assert.equal(values.hasPayAction, !hidden);
+    if (hidden) assert.ok(Math.abs(values.hoursWidth - values.detailsWidth) < 1, "hours should occupy the full details width");
+    else assert.ok(values.currentText.includes("-$12.50"));
     assert.deepEqual(values.blocking, ["hours"]);
     assert.equal(values.futureLabels.length, 2);
-    assert.ok(values.futureLabels[0].includes("Hours threshold met"));
+    assert.ok(values.futureLabels[0].includes("Threshold met"));
     assert.ok(values.futureLabels[0].includes("125.25 hrs / 100 hrs"));
-    assert.ok(values.futureLabels[1].includes("Hours threshold pending"));
-    assert.ok(values.futureLabels[1].includes("Coverage month"));
+    assert.ok(values.futureLabels[1].includes("Pending"));
+    assert.ok(values.futureLabels[1].includes("Hours grant coverage in"));
     assert.notEqual(values.colors[0], values.colors[1], `unreadable card in ${host}`);
     return values;
   };
 
+  for (const visibility of ["shown", "hidden"]) {
+    summary.balance.visibility = visibility;
+    summary.balance.totals = visibility === "hidden"
+      ? [{ currency: "USD", amount: "0.00", formatted: "$0.00" }]
+      : [{ currency: "USD", amount: "-12.50", formatted: "-$12.50" }];
+    await page.reload({ waitUntil: "networkidle0" });
+    await page.waitForFunction(() => document.querySelector('[aria-label="Not covered"]'));
   for (const theme of ["light", "dark"]) {
     await page.evaluate(theme => document.documentElement.classList.toggle("dark", theme === "dark"), theme);
     for (const host of ["dashboard", "staff"]) {
@@ -158,13 +176,15 @@ try {
         document.querySelector("main").style.maxWidth = host === "staff" ? "640px" : "";
       }, host);
       const desktop = await verifyVisibleCore(`${host} ${theme} desktop`);
-      assert.equal(desktop.metricsColumns, host === "staff" ? 2 : 3);
+      assert.equal(desktop.metricsColumns, visibility === "hidden" ? 1 : 2);
       assert.equal(desktop.periodColumns, 2);
       await page.setViewport({ width: 375, height: 812 });
       const mobile = await verifyVisibleCore(`${host} ${theme} phone`);
       assert.equal(mobile.periodColumns, 1);
+      assert.equal(mobile.metricsColumns, 1);
       assert.ok(mobile.cardWidth < 375);
     }
+  }
   }
   assert.deepEqual(failures, []);
   console.log("BAO worker coverage browser checks passed in dashboard/staff widths, light/dark, desktop/phone");

@@ -78,6 +78,10 @@
   gap: 0.6rem;
 }
 
+.coverage-first-details--hours-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .coverage-first-detail {
   min-width: 0;
   border: 1px solid hsl(39 22% 87%);

@@ -38,6 +38,8 @@ export interface WorkerCoverageSummary {
   };
   balance: {
     available: boolean;
+    /** Unknown evidence keeps the block visible; only confirmed never-used hides it. */
+    visibility: "shown" | "hidden" | "unknown";
     totals: Array<{ currency: string; amount: string; formatted: string }>;
     /** Accounts excluded rather than misinterpreted as monetary balances. */
     omittedAccounts: Array<{ accountId: string; unit: string }>;
@@ -248,6 +250,7 @@ export async function buildWorkerCoverageSummary(
 
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   const balancesByCurrency = new Map<string, string[]>();
+  let hasCurrentAccountBalance = false;
   const omittedAccounts: Array<{ accountId: string; unit: string }> = [];
   for (const entry of balances) {
     const account = accountById.get(entry.accountId);
@@ -264,6 +267,7 @@ export async function buildWorkerCoverageSummary(
       continue;
     }
     const currency = account.currencyCode || "USD";
+    if (/[1-9]/.test(entry.balance || "0")) hasCurrentAccountBalance = true;
     const values = balancesByCurrency.get(currency) ?? [];
     values.push(entry.balance || "0.00");
     balancesByCurrency.set(currency, values);
@@ -282,6 +286,21 @@ export async function buildWorkerCoverageSummary(
     const amount = sumMoneyAmounts([], precision);
     balanceTotals.push({ currency: "USD", amount, formatted: formatAmount(0, "USD") });
   }
+
+  let historicalBalance: boolean | null = null;
+  try {
+    historicalBalance = await storage.ledger.entries.hasNonzeroBalanceHistory(
+      "worker", workerId, accounts.filter(accountIsFinancial).map((account) => account.id),
+    );
+  } catch {
+    // Failure is not proof of never having a balance. Preserve the current
+    // totals and payment action while the historical evidence is unknown.
+  }
+  const balanceVisibility = hasCurrentAccountBalance || causes.balance === true || historicalBalance === true
+    ? "shown"
+    : historicalBalance === false && !omittedAccounts.some((account) => account.unit === "unresolved")
+      ? "hidden"
+      : "unknown";
 
   const future: FutureCoverageRow[] = [];
   for (const delta of [1, 2]) {
@@ -316,7 +335,7 @@ export async function buildWorkerCoverageSummary(
       coverage: currentCoverage,
       causes,
     },
-    balance: { available: true, totals: balanceTotals, omittedAccounts },
+    balance: { available: true, visibility: balanceVisibility, totals: balanceTotals, omittedAccounts },
     future,
   };
 }

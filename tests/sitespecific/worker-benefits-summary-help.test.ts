@@ -13,6 +13,12 @@ describe("Benefits Summary built-in help", () => {
     expect(help.details).toContain("Each dependent appears once");
     expect(help.details).toContain("scanned in the previous system");
     expect(help.details).toContain("Scan pending");
+    expect(help.details).toContain("<strong>Account balance</strong>");
+    expect(help.details).toContain("<strong>Pay Balance</strong>");
+    expect(help.details).toContain("never had a nonzero balance");
+    expect(help.details).toContain("including charges paid in the same month");
+    expect(help.details).toContain("work-hours accounts do not count");
+    expect(help.details).toContain("unavailable balance history keeps the block visible");
     expect(help.details).toContain("Coverage unavailable");
     expect(help.details).toContain("<strong>Unreported</strong>");
     expect(help.details).toContain("no employer hours records exist for that work month");

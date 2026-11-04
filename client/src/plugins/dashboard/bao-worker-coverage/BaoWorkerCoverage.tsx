@@ -19,6 +19,8 @@ export interface BaoCoverageSummary {
   };
   balance: {
     available: boolean;
+    /** Missing on older responses: keep the block visible, never infer absence. */
+    visibility?: "shown" | "hidden" | "unknown";
     totals: Array<{ currency: string; amount: string; formatted: string }>;
   };
   future: Array<{
@@ -120,6 +122,8 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
   const balanceNonZero = data.balance.available && data.balance.totals.some(
     (entry) => Number.isFinite(Number(entry.amount)) && Number(entry.amount) !== 0,
   );
+  const showBalance = data.balance.visibility !== "hidden" ||
+    !data.balance.available || balanceNonZero || balanceHighlight;
   const status = currentStatus[data.current.coverage];
   const StatusIcon = status.Icon;
   const hoursMet = data.current.hours?.thresholdMet;
@@ -150,7 +154,7 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
         </section>
 
         <section aria-label="Current coverage supporting details">
-          <div className="coverage-first-details">
+          <div className={`coverage-first-details${showBalance ? "" : " coverage-first-details--hours-only"}`}>
             <div className={`coverage-first-detail ${hoursHighlight ? "coverage-first-detail--attention" : ""}`} data-blocking={hoursHighlight ? "hours" : undefined} aria-label={hoursHighlight ? "Hours are blocking current coverage" : undefined}>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock3 className="h-4 w-4" aria-hidden="true" />
@@ -165,7 +169,7 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
               </div>
               {hoursHighlight && <p className="mt-1 text-xs font-medium text-[hsl(8_58%_43%)]">Blocking coverage</p>}
             </div>
-            <div
+            {showBalance && <div
               className={`coverage-first-detail ${balanceHighlight || balanceNonZero ? "coverage-first-detail--attention" : ""}`}
               data-blocking={balanceHighlight ? "balance" : undefined}
               aria-label={balanceHighlight ? "Balance is blocking current coverage" : balanceNonZero ? "Account balance is non-zero" : undefined}
@@ -183,7 +187,7 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
                   <Link href={paymentHref} data-testid="link-bao-worker-coverage-pay-balance">Pay Balance</Link>
                 </Button>
               </div>
-            </div>
+            </div>}
           </div>
         </section>
 

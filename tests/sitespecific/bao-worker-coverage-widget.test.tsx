@@ -69,6 +69,46 @@ function renderWidget(data: BaoCoverageSummary) {
 }
 
 describe("BAO worker coverage dashboard widget", () => {
+  it("removes the entire never-used balance block in both entry points and expands hours", () => {
+    const base = summary();
+    const data = summary({ balance: { ...base.balance, visibility: "hidden" } });
+    const member = renderWidget(data);
+    dashboardContent.result = { data, isLoading: false, isError: false };
+    const staff = renderToStaticMarkup(<Router hook={() => ["/", () => {}]}><WorkerBenefitsSummary /></Router>);
+    for (const html of [member, staff]) {
+      expect(html).not.toContain("Account balance");
+      expect(html).not.toContain("Pay Balance");
+      expect(html).not.toContain("/ledger/pay");
+      expect(html).toContain("coverage-first-details--hours-only");
+      expect(html).toContain("Work hours");
+      expect(html).toContain("February 2027");
+      expect(html).toContain("Looking ahead");
+    }
+  });
+
+  it.each(["shown", "unknown", undefined] as const)("keeps paid-off or unknown balances visible (%s)", (visibility) => {
+    const base = summary();
+    const html = renderWidget(summary({ balance: { ...base.balance, visibility } }));
+    expect(html).toContain("Account balance");
+    expect(html).toContain("Pay Balance");
+    expect(html).toContain("$0.00");
+    expect(html).not.toContain("coverage-first-details--hours-only");
+  });
+
+  it("does not hide current nonzero, unavailable or blocking balance evidence", () => {
+    const base = summary();
+    for (const balance of [
+      { available: false, totals: [] },
+      { available: true, totals: [{ currency: "EUR", amount: "-1.00", formatted: "-€1.00" }] },
+    ]) {
+      expect(renderWidget(summary({ balance: { ...balance, visibility: "hidden" } }))).toContain("Pay Balance");
+    }
+    expect(renderWidget(summary({
+      balance: { ...base.balance, visibility: "hidden" },
+      current: { ...base.current, coverage: "not-covered", causes: { hours: null, balance: true } },
+    }))).toContain('data-blocking="balance"');
+  });
+
   beforeEach(() => {
     dashboardContent.result = { data: null, isLoading: false, isError: false };
     dashboardContent.calls = [];

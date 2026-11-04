@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { IStorage } from "../../server/storage";
 import {
   accountIsFinancial,
@@ -13,6 +13,62 @@ import {
 } from "../../server/services/sitespecific/bao/worker-coverage-dashboard";
 
 describe("BAO worker coverage dashboard server summary", () => {
+  it.each([
+    ["empty history", false, [], "hidden"],
+    ["zero-only history", false, [{ accountId: "usd", balance: "0.00" }], "hidden"],
+    ["paid-off debt", true, [{ accountId: "usd", balance: "0.00" }], "shown"],
+    ["past credit", true, [], "shown"],
+    ["same-month settlement", true, [], "shown"],
+    ["current amount", false, [{ accountId: "usd", balance: "12.00" }], "shown"],
+    ["offsetting accounts", false, [{ accountId: "usd", balance: "12.00" }, { accountId: "credit", balance: "-12.00" }], "shown"],
+    ["hours only", false, [{ accountId: "hours", balance: "100.00" }], "hidden"],
+    ["unresolved account", false, [{ accountId: "missing", balance: "0.00" }], "unknown"],
+    ["failed history", null, [], "unknown"],
+  ] as const)("%s preserves the correct balance visibility", async (_label, history, balances, visibility) => {
+    const historyRead = vi.fn(async () => {
+      if (history === null) throw new Error("history unavailable");
+      return history;
+    });
+    const storage = {
+      workerTrustElections: { listByWorker: async () => [] },
+      workers: { getWorker: async () => ({ denormHomeEmployerId: null }) },
+      variables: { getByName: async () => undefined },
+      pluginConfigs: { search: async () => [] },
+      wmbScanQueue: { getWorkerQueueEntry: async () => undefined },
+      trust: { wmb: { getWorkerBenefitPresence: async () => [] } },
+      ledger: {
+        ea: { getByEntityWithBalance: async () => balances },
+        accounts: { getAll: async () => [
+          { id: "usd", currencyCode: "USD", data: null },
+          { id: "credit", currencyCode: "USD", data: null },
+          { id: "eur", currencyCode: "EUR", data: null },
+          { id: "hours", currencyCode: "USD", data: { unit: "hours" } },
+        ] },
+        entries: { hasNonzeroBalanceHistory: historyRead },
+      },
+    } as unknown as IStorage;
+    const threshold = vi.fn(async () => ({
+      success: true, reason: "", threshold: 100, thresholdResolved: true,
+      asofMonth: 1, asofYear: 2027, targetMonth: 10, targetYear: 2026, hours: 100,
+    }));
+    const build = () => buildWorkerCoverageSummary(storage, "selected-worker", new Date("2027-01-15T12:00:00Z"), "UTC", threshold);
+    const result = await build();
+    expect(result.balance.visibility).toBe(visibility);
+    expect(historyRead).toHaveBeenCalledWith("worker", "selected-worker", ["usd", "credit", "eur"]);
+    expect(result.future).toHaveLength(2);
+    // A recorded coverage blocker must override even confirmed empty history.
+    storage.wmbScanQueue.getWorkerQueueEntry = async () => ({
+      status: "success", completedAt: new Date(), resultSummary: { actions: [
+        { eligible: false, action: "none", pluginResults: [
+          { pluginKey: "sitespecific-bao-ee-contributions", eligible: false },
+        ] },
+      ] },
+    }) as any;
+    const blocked = await build();
+    expect(blocked.balance.visibility).toBe("shown");
+    expect(blocked.current.causes.balance).toBe(true);
+  });
+
   it("maps work and coverage months across year boundaries and applies the inclusive deadline", () => {
     expect(shiftCoverageMonth(1, 2027, -3)).toEqual({ month: 10, year: 2026 });
     expect(reportingDeadline(monthView(12, 2026))).toBe("2027-01-20");

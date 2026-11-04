@@ -124,6 +124,8 @@ export interface LedgerEntryFilter {
 }
 
 export interface LedgerEntryStorage {
+  /** Exact, per-EA running balance evidence; rejects failed or unreadable reads. */
+  hasNonzeroBalanceHistory(entityType: string, entityId: string, accountIds: string[]): Promise<boolean>;
   getCobraLifecycleEvidence(workerId: string, accountId: string, caseId: string): Promise<import("@shared/schema/sitespecific/bao/cobra-lifecycle").CobraMonthEvidence[]>;
   /** Zero-sum statement credit attribution, atomic and keyed to the immutable attempt. */
   applyCheckoutCreditTransfers(attemptId: string, eaId: string, transfers: CheckoutCreditTransfer[]): Promise<void>;
@@ -327,6 +329,27 @@ export interface LedgerStorage {
   invoices: LedgerInvoiceStorage;
   paymentBatches: LedgerPaymentBatchStorage;
   paymentBatchAssignments: LedgerPaymentBatchAssignmentStorage;
+}
+
+/** Shared by monthly history and the lightweight summary visibility read. */
+async function hasNonzeroBalanceHistory(entityType: string, entityId: string, accountIds: string[]): Promise<boolean> {
+  if (accountIds.length === 0) return false;
+  const result = await getClient().execute(sqlRaw`
+    SELECT EXISTS (
+      SELECT 1 FROM (
+        SELECT SUM(l.amount) OVER (
+          PARTITION BY l.ea_id ORDER BY l.date, l.id ROWS UNBOUNDED PRECEDING
+        ) AS running_balance
+        FROM ledger l
+        JOIN ledger_ea ea ON ea.id = l.ea_id
+        WHERE ea.entity_type = ${entityType} AND ea.entity_id = ${entityId}
+          AND ea.account_id IN (${sqlRaw.join(accountIds.map((id) => sqlRaw`${id}`), sqlRaw`, `)})
+      ) history WHERE running_balance <> 0::numeric
+    ) AS had_balance
+  `);
+  const evidence = (result.rows[0] as { had_balance?: unknown } | undefined)?.had_balance;
+  if (typeof evidence !== "boolean") throw new Error("Ledger balance history evidence is unavailable");
+  return evidence;
 }
 
 export function createLedgerPaymentTypeStorage(): LedgerPaymentTypeStorage {
@@ -1334,6 +1357,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return rows.map((row) => row.accountId);
     },
 
+    hasNonzeroBalanceHistory,
+
     async getMonthlyAccountHistoryByEntityAndAccount(entityType: string, entityId: string, accountIds: string[], chargeConfigIds: string[]): Promise<Array<{ accountId: string; ym: string; balanceDelta: string; chargeTotal: string; hadNonzeroBalance: boolean }>> {
       if (accountIds.length === 0) return [];
       const client = getClient();
@@ -1365,20 +1390,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         .groupBy(ledgerEa.accountId, ymExpr);
       // A charge paid in the same statement month still created a nonzero
       // balance at one point. Monthly netting alone loses that evidence.
-      const balanceHistory = await client.execute(sqlRaw`
-        SELECT EXISTS (
-          SELECT 1 FROM (
-            SELECT SUM(l.amount) OVER (
-              PARTITION BY l.ea_id ORDER BY l.date, l.id ROWS UNBOUNDED PRECEDING
-            ) AS running_balance
-            FROM ledger l
-            JOIN ledger_ea ea ON ea.id = l.ea_id
-            WHERE ea.entity_type = ${entityType} AND ea.entity_id = ${entityId}
-              AND ea.account_id IN (${sqlRaw.join(accountIds.map((id) => sqlRaw`${id}`), sqlRaw`, `)})
-          ) history WHERE running_balance <> 0::numeric
-        ) AS had_balance
-      `);
-      const hadNonzeroBalance = (balanceHistory.rows[0] as { had_balance: boolean } | undefined)?.had_balance === true;
+      const hadNonzeroBalance = await hasNonzeroBalanceHistory(entityType, entityId, accountIds);
       return rows.map((row) => ({
         accountId: row.accountId,
         ym: row.ym,
