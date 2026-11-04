@@ -1217,10 +1217,15 @@ export function createEnrollmentFoundation(
           data.workerId as string,
           data.policyId as string,
         );
+        const currentElection =
+          await ctx.storage.workerTrustElections.getActiveByWorker(
+            data.workerId as string,
+          );
         // Ineligible benefits are not offered at all — only eligible ones
         // are surfaced for selection.
         return {
           records: rows.filter((r) => r.eligible),
+          currentlyElectedBenefitIds: currentElection?.benefitIds ?? [],
           ineligibleCount: rows.filter((r) => !r.eligible).length,
         };
       },

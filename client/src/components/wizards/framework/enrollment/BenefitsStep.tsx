@@ -94,6 +94,7 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
 
   const { data: stepData, isLoading } = useQuery<{
     records: EligibleBenefitRow[];
+    currentlyElectedBenefitIds?: string[];
     ineligibleCount?: number;
     message?: string;
   }>({
@@ -103,6 +104,9 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
 
   // The server only offers eligible benefits; ineligible ones are never shown.
   const rows = stepData?.records ?? [];
+  const currentlyElectedBenefitIds = new Set(
+    stepData?.currentlyElectedBenefitIds ?? [],
+  );
   const groups = groupByType(rows);
   const ineligibleCount = stepData?.ineligibleCount ?? 0;
 
@@ -226,6 +230,15 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
                         <Badge variant="secondary" className="gap-1">
                           <CheckCircle2 size={12} /> Eligible
                         </Badge>
+                        {currentlyElectedBenefitIds.has(row.benefitId) && (
+                          <Badge
+                            variant="outline"
+                            aria-label="Currently elected"
+                            data-testid={`badge-currently-elected-${row.benefitId}`}
+                          >
+                            Currently elected
+                          </Badge>
+                        )}
                       </span>
                     </Label>
                   </div>
