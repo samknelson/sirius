@@ -2,6 +2,7 @@ import { readMaskState } from "@shared/privacy/mask-mode";
 import type { AdvisoryLockHandle } from "../storage/advisory-lock";
 
 interface DeliveryDependencies {
+  component?(): Promise<{ enabled: boolean; epoch: string | null }>;
   acquire(sid: string): Promise<AdvisoryLockHandle | null>;
   read(sid: string): Promise<any>;
 }
@@ -12,14 +13,19 @@ export async function guardedPresentationDelivery(
 ): Promise<boolean> {
   let lease: AdvisoryLockHandle | null = null;
   try {
-    lease = await deps.acquire(sid);
-    if (!lease?.isHeld?.()) return false;
+    const component = await deps.component?.();
+    if (component?.enabled !== false) {
+      lease = await deps.acquire(sid);
+      if (!lease?.isHeld?.()) return false;
+    }
     const session = await deps.read(sid);
     const actor = session?.masqueradeUserId ?? session?.passport?.user?.dbUser?.id;
-    if (readMaskState(session?.maskMode).mode !== "off" ||
-        actor !== effectiveUserId || !lease.isHeld?.()) return false;
+    if (session?.maskModeRevoked || actor !== effectiveUserId ||
+        (component?.enabled === false
+          ? readMaskState(session?.maskMode).mode === "on"
+          : readMaskState(session?.maskMode).mode !== "off" || !lease?.isHeld?.())) return false;
     await send();
-    return Boolean(lease.isHeld?.());
+    return component?.enabled === false || Boolean(lease?.isHeld?.());
   } catch {
     return false;
   } finally {

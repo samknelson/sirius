@@ -382,18 +382,14 @@ export const db = dbInstance;
  * waiting for a domain query. Reuse the already-resolved driver/TLS/IAM options;
  * this pool only takes advisory locks and never reads application tables.
  */
-export const presentationLeasePool = new (poolInstance.constructor as typeof pg.Pool)({
-  ...pool.options,
-  max: 4,
-  connectionTimeoutMillis: 2500,
-  idleTimeoutMillis: 5000,
-  allowExitOnIdle: true,
-});
-presentationLeasePool.on("error", () => {
-  // Per-lease error listeners fence and destroy affected HTTP responses.
-  // Do not log a connection string or any driver-supplied credential text.
-  console.error("[mask-mode] Presentation coordination connection unavailable");
-});
+let presentationLeasePool: pg.Pool | undefined;
+export function getPresentationLeasePool(): pg.Pool {
+  // Reuse the driver-aware factory, not Pool.options (which can lose the
+  // IAM password provider). Disabled installations never instantiate this.
+  return presentationLeasePool ??= createInfrastructurePool({
+    max: 4, connectionTimeoutMillis: 2500, idleTimeoutMillis: 5000,
+  });
+}
 
 /**
  * Create a small, independent pool for infrastructure protocols that must
@@ -401,13 +397,14 @@ presentationLeasePool.on("error", () => {
  * work. Keeping these clients out of the main storage pool prevents a set of
  * long-lived leases from consuming every connection handlers need to finish.
  */
-export function createInfrastructurePool(options: { max: number }): pg.Pool {
+export function createInfrastructurePool(options: { max: number; connectionTimeoutMillis?: number; idleTimeoutMillis?: number }): pg.Pool {
   let infrastructurePool: NeonPool | pg.Pool;
   if (driverKind === "neon") {
     infrastructurePool = new NeonPool({
       connectionString: effectiveDatabaseUrl,
       max: options.max,
-      connectionTimeoutMillis,
+      connectionTimeoutMillis: options.connectionTimeoutMillis ?? connectionTimeoutMillis,
+      idleTimeoutMillis: options.idleTimeoutMillis,
     });
   } else {
     const infrastructureIamAuth = isIamAuth();
@@ -420,7 +417,8 @@ export function createInfrastructurePool(options: { max: number }): pg.Pool {
         stripSslParams,
       ),
       max: options.max,
-      connectionTimeoutMillis,
+      connectionTimeoutMillis: options.connectionTimeoutMillis ?? connectionTimeoutMillis,
+      idleTimeoutMillis: options.idleTimeoutMillis,
     });
   }
   infrastructurePool.on("error", (err: Error) => {

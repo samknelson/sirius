@@ -111,6 +111,11 @@ export const integrationsAppearanceHelp: SystemHelpEntry[] = [
     details: `
       <h3>Purpose</h3><p>Control which optional application components are enabled.</p>
       <h3>Before you start</h3><p>Administrator access is required. This is not merely a cosmetic switch: schema-managing components can need database setup and may refuse changes when prerequisites are not satisfied.</p>
+      <p><strong>Mask Mode</strong> is disabled by default, including upgrades.
+      Enable it here, reload open normal pages, and sign out and in again before
+      using its session toggle. Disabling it permanently ends protected sessions;
+      stop recording before signing out and returning to normal content.
+      Re-enabling does not restore ended sessions. No server restart is required.</p>
       <h3>How to use this page</h3><ol><li>Read the component description, dependencies, and current state.</li><li>Before changing state, review users, workflows, and plugin configurations that rely on it.</li><li>Apply the intended change and inspect the returned result before assuming the feature is available.</li></ol>
       <h3>Limitations and common problems</h3><p>Disabling a component can hide tabs and refuse related routes or actions; it does not prove all pending work or retained data were deleted. If setup fails, investigate the stated blocker rather than repeatedly toggling the component.</p>`,
   },

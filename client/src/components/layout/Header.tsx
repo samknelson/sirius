@@ -134,6 +134,16 @@ export default function Header() {
 
   const settings = useSiteSettings();
   const systemMode = useSystemMode();
+  const { data: presentation } = useQuery<{ maskModeEnabled: boolean }>({
+    queryKey: ["/api/components/presentation"],
+    enabled: !!user,
+    staleTime: 0,
+  });
+  const { data: maskRights } = useQuery<{ canToggle: boolean; canManage: boolean }>({
+    queryKey: ["/api/mask-mode/state"],
+    enabled: !!user && presentation?.maskModeEnabled === true,
+    staleTime: 0,
+  });
 
   // Server-resolved main navigation (selected menu plugin, per-user gated)
   const { data: menu } = useQuery<ResolvedMenu>({
@@ -418,7 +428,7 @@ export default function Header() {
 
         {/* User menu - right side of row 1 */}
         <div className="flex shrink-0 items-center gap-1 md:gap-2">
-          {user && (
+          {user && presentation?.maskModeEnabled && maskRights?.canManage && (
             <a href="/mask-mode" className={buttonVariants({ variant: "outline", size: "sm" })}
               data-testid="link-mask-mode">
               Mask Mode

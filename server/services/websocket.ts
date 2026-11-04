@@ -5,6 +5,7 @@ import { parse as parseCookie } from "cookie";
 import { logger } from "../logger";
 import { readMaskState } from "@shared/privacy/mask-mode";
 import { guardedPresentationDelivery } from "../privacy/socket";
+import { readMaskComponent } from "../storage/system/mask-component";
 
 interface UserConnection {
   userId: string;
@@ -230,9 +231,12 @@ function authenticateConnection(
       end: () => {},
     };
 
-    sessionMiddleware(req, mockRes, () => {
+    sessionMiddleware(req, mockRes, async () => {
       const session = (req as any).session;
-      if (readMaskState(session?.maskMode).mode !== "off") {
+      let component;
+      try { component = await readMaskComponent(); } catch { resolve(null); return; }
+      const mode = readMaskState(session?.maskMode).mode;
+      if (session?.maskModeRevoked || mode === "on" || (component.enabled && mode !== "off")) {
         resolve(null);
         return;
       }
@@ -296,6 +300,7 @@ export function broadcastToUser(userId: string, message: WebSocketMessage): bool
             if (connection.ws.readyState !== WebSocket.OPEN) { reject(new Error("Closed")); return; }
             connection.ws.send(messageStr, error => error ? reject(error) : resolve());
           }), {
+            component: readMaskComponent,
             acquire: async sid => (await import("../storage")).storage.sessions.acquirePresentationLease(sid, false),
             read: async sid => (await import("../storage")).storage.sessions.getSessionData(sid),
           }).then(sent => {

@@ -137,9 +137,40 @@ try {
   await legacy.waitForFunction(() => document.querySelector("#veil")?.textContent.includes("could not be confirmed"));
   assert.equal(await legacy.$eval("#veil", el => el.hidden), false, "failure must not uncover a ready view");
   assert.ok(!(await legacy.content()).includes(CANARY), "server exceptions may not be relayed");
+  await legacy.close();
   f.controls.failRead = false;
   assert.ok(errors.length === 0, errors.join("\n"));
-  console.log("PASS authorized in-memory browser: ON/OFF/unknown, network/DOM/attributes, actual clipboard copy, old cache/blob teardown, cross-tab transition, independent session, permissions, no third-party requests, no live effects.");
+  // A disabled installation must mount normal content without installing
+  // fetch interception, state polling or mask-specific browser listeners.
+  f.controls.enabled = false;
+  const disabledContext = await browser.createBrowserContext();
+  const disabledPage = await disabledContext.newPage();
+  await disabledPage.setCookie({ name:"fixture", value:"presenter", url:f.origin });
+  let stateRequests = 0;
+  disabledPage.on("request", request => {
+    if (new URL(request.url()).pathname === "/api/mask-mode/state") stateRequests++;
+  });
+  await disabledPage.evaluateOnNewDocument(() => { window.originalFixtureFetch = window.fetch; });
+  await disabledPage.goto(`${f.origin}/normal`);
+  await disabledPage.waitForFunction(canary => document.body.textContent.includes(canary), {}, CANARY);
+  assert.equal(await disabledPage.evaluate(() => window.fetch === window.originalFixtureFetch), true);
+  await new Promise(resolve => setTimeout(resolve, 5500));
+  assert.equal(stateRequests, 0, "disabled startup must not call or poll the Mask Mode state endpoint");
+
+  // Disable while ON, then re-enable. The same SID must never resume normal
+  // content or revive an old protected session.
+  const protectedRow = f.rows.get("presenter");
+  protectedRow.maskMode.mode = "on";
+  protectedRow.maskModeRevoked = true;
+  await disabledPage.goto(`${f.origin}/normal`);
+  await disabledPage.waitForFunction(() => document.body.textContent.includes("Protected session ended"));
+  assert.ok(!(await disabledPage.content()).includes(CANARY));
+  f.controls.enabled = true;
+  f.controls.epoch = "re-enabled-generation";
+  await disabledPage.goto(`${f.origin}/normal`);
+  assert.ok((await disabledPage.content()).includes("Protected session ended"));
+  assert.ok(!(await disabledPage.content()).includes(CANARY));
+  console.log("PASS authorized in-memory browser: strict ON/OFF/unknown coverage, disabled startup without fetch interception/state polling, disable/re-enable revocation, clipboard/cache isolation, permissions and no live effects.");
 } finally {
   await browser?.close();
   await f.close();

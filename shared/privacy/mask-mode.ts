@@ -19,8 +19,11 @@ export function readMaskState(value: unknown): MaskState {
 
 /** Ordinary whole-session saves cannot introduce, erase or roll back policy. */
 export function preserveMaskState(incoming: unknown, existing: unknown): Record<string, unknown> {
-  const { maskMode: _ignored, ...rest } = incoming as Record<string, unknown>;
+  const { maskMode: _ignored, maskModeEpoch: _epoch, maskModeRevoked: _revoked, ...rest } = incoming as Record<string, unknown>;
   const prior = existing as Record<string, unknown>;
+  // Lifecycle fields can only be minted at login or by component revocation.
+  if (prior.maskModeEpoch !== undefined) rest.maskModeEpoch = prior.maskModeEpoch;
+  if (prior.maskModeRevoked !== undefined) rest.maskModeRevoked = prior.maskModeRevoked;
   const actor = (session: any) => session.masqueradeUserId ?? session.passport?.user?.dbUser?.id;
   const policy = readMaskState(prior.maskMode);
   // An effective-actor change is another presentation generation. Never let

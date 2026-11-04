@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { maskModePage, maskModeScript } from "./page";
 
 export interface MaskModeDependencies {
+  component(): Promise<{ enabled: boolean; epoch: string | null }>;
   acquire(sid: string, exclusive: boolean): Promise<AdvisoryLockHandle | null>;
   read(sid: string): Promise<unknown>;
   transition(sid: string, expected: number, mode: "on" | "off"): Promise<MaskPolicy | null>;
@@ -18,6 +19,8 @@ const LOGOUT = "/api/mask-mode/logout";
 const CONTROL_PATHS = new Set(["/mask-mode", "/mask-mode/client.js", STATE, PEOPLE, LOGOUT]);
 const READ_METHODS = new Set(["GET", "HEAD"]);
 const REFUSAL = { code: "mask_mode_refused", message: "Unavailable in strict Mask Mode. Normal content and actions are blocked." };
+export const PRESENTATION_BOOTSTRAP = "/api/components/presentation";
+const REAUTH_PAGE = '<!doctype html><html><head><title>Sign in again</title></head><body><h1>Protected session ended</h1><p>Stop recording. Mask Mode was disabled or its configuration changed. Sign out, then sign in again before using normal content.</p><a href="/api/logout">Sign out</a></body></html>';
 
 function hasSessionIdentity(req: Request): boolean {
   return Boolean(req.user || (req.session as any)?.passport?.user);
@@ -39,8 +42,10 @@ export function createMaskModeMiddleware(deps: MaskModeDependencies): RequestHan
     const loadedPolicy = (req.session as any)?.maskMode;
     // Anonymous/no-cookie links are outside session protection. Never claim
     // this middleware revokes previously issued public URLs.
-    if (!identity && loadedPolicy === undefined && !control) return next();
-    if (!control && isOffCodeAsset(req) && readMaskState(loadedPolicy).mode === "off") return next();
+    const bootstrap = req.path === PRESENTATION_BOOTSTRAP && req.method === "GET";
+    const maskPath = req.path === "/mask-mode" || req.path.startsWith("/mask-mode/") ||
+      req.path.startsWith("/api/mask-mode/");
+    if (!identity && loadedPolicy === undefined && !maskPath && !bootstrap) return next();
 
     res.setHeader("Cache-Control", "no-store, private, max-age=0");
     res.setHeader("Pragma", "no-cache");
@@ -49,6 +54,38 @@ export function createMaskModeMiddleware(deps: MaskModeDependencies): RequestHan
     let lease: AdvisoryLockHandle | null = null;
     const refuse = (status = 423) => res.status(status).json(REFUSAL);
     try {
+      let component = await deps.component();
+      const needsReauthentication = (session: any) => session?.maskModeRevoked === true ||
+        (readMaskState(session?.maskMode).mode === "on" &&
+          (!component.enabled || session?.maskModeEpoch !== component.epoch));
+      const reauthenticate = () => {
+        res.setHeader("X-Mask-Mode", "unknown");
+        if (req.path === "/api/logout") {
+          return req.session.destroy(error => {
+            if (error) { refuse(503); return; }
+            res.clearCookie("connect.sid", { path: "/" });
+            res.redirect(303, "/");
+          });
+        }
+        return READ_METHODS.has(req.method) && !req.path.startsWith("/api/")
+          ? res.status(401).type("html").send(REAUTH_PAGE)
+          : res.status(401).json({ code: "reauth_required", message: "Protected session ended. Stop recording, sign out and sign in again." });
+      };
+      // No presentation leases or guard headers on ordinary disabled sessions.
+      // The authoritative reread is the minimal revocation fence for a request
+      // whose session middleware loaded before a concurrent disable committed.
+      if (!component.enabled) {
+        const current = identity || loadedPolicy !== undefined ? await deps.read(req.sessionID) : undefined;
+        if (needsReauthentication(current) || needsReauthentication(req.session)) return reauthenticate();
+        if (bootstrap) return res.json({ maskModeEnabled: false });
+        if (req.path === "/mask-mode") return res.status(404).type("html").send(
+          '<!doctype html><html><head><title>Mask Mode unavailable</title></head><body><h1>Mask Mode is disabled</h1><p>An administrator must enable the Mask Mode component before this feature is available. Stop recording before returning to the application.</p><a href="/">Return to the application</a></body></html>');
+        if (maskPath) return res.status(404).json({ code: "component_disabled", componentId: "system.mask_mode" });
+        if (identity && !(current as any)?.passport?.user) return refuse(401);
+        return next();
+      }
+      if (needsReauthentication(req.session)) return reauthenticate();
+      if (!control && !bootstrap && isOffCodeAsset(req) && readMaskState(loadedPolicy).mode === "off") return next();
       const exclusive = (control && req.method === "POST") ||
         req.path.startsWith("/api/auth/masquerade") || req.path === "/api/logout";
       // Authenticated requests are held through FINAL HTTP delivery, not only
@@ -84,12 +121,20 @@ export function createMaskModeMiddleware(deps: MaskModeDependencies): RequestHan
       }
       const payload = identity || loadedPolicy !== undefined
         ? await deps.read(req.sessionID) : undefined;
+      component = await deps.component();
+      if (needsReauthentication(payload)) return reauthenticate();
+      if (!component.enabled) {
+        if (bootstrap) return res.json({ maskModeEnabled: false });
+        if (maskPath) return res.status(404).json({ code: "component_disabled", componentId: "system.mask_mode" });
+        return next();
+      }
       if (lease && !lease.isHeld?.()) { res.destroy(); return; }
       const state = readMaskState((payload as any)?.maskMode);
       const authenticated = identity && Boolean((payload as any)?.passport?.user);
       if (identity && !authenticated) return refuse(401);
       res.setHeader("X-Mask-Revision", String(state.revision));
       res.setHeader("X-Mask-Mode", authenticated ? state.mode : "anonymous");
+      if (bootstrap) return res.json({ maskModeEnabled: true });
 
       // A standalone, code-owned document. It never embeds raw state, a
       // requested URL, configured branding, stored help or a provider identity.
@@ -104,7 +149,9 @@ export function createMaskModeMiddleware(deps: MaskModeDependencies): RequestHan
       if (req.path === STATE && req.method === "GET") {
         const rights = authenticated
           ? await deps.permissions(req, payload) : { canToggle: false, canRead: false };
-        return res.json({ ...state, mode: authenticated ? state.mode : "anonymous", ...rights });
+        const reauthRequired = authenticated && (payload as any)?.maskModeEpoch !== component.epoch;
+        return res.json({ ...state, mode: authenticated ? state.mode : "anonymous",
+          ...rights, canManage: rights.canToggle, canToggle: rights.canToggle && !reauthRequired, reauthRequired });
       }
       if (control) {
         // No form submissions, cross-origin writes or unacknowledged toggles.

@@ -63,23 +63,11 @@ export async function updateComponentCache(componentId: string, enabled: boolean
     await loadComponentCache();
   }
   
-  cachedComponentState = cachedComponentState || {};
-  cachedComponentState[componentId] = enabled;
+  const saved = await storage.variables.setComponentEnabled(componentId, enabled);
+  // Publish only committed settings. A failed revocation/configuration write
+  // must not leave the UI claiming a different state from the database.
+  cachedComponentState = saved.value as ComponentEnabledMap;
   cacheRevision++;
-  
-  const existingVariable = await storage.variables.getByName(COMPONENTS_VARIABLE_NAME);
-  
-  if (existingVariable) {
-    await storage.variables.update(existingVariable.id, {
-      name: COMPONENTS_VARIABLE_NAME,
-      value: cachedComponentState
-    });
-  } else {
-    await storage.variables.create({
-      name: COMPONENTS_VARIABLE_NAME,
-      value: cachedComponentState
-    });
-  }
   
   logger.debug("Component cache updated", { 
     service: "component-cache",

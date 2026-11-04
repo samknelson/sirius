@@ -4,7 +4,8 @@ import { storageLogger } from "../../logger";
 import { allowInMaintenanceMode } from '../maintenance';
 import { sessions, workers, contacts } from "@shared/schema";
 import { readMaskState, preserveMaskState, type MaskPolicy } from "@shared/privacy/mask-mode";
-import { presentationLeasePool } from "../db";
+import { getPresentationLeasePool } from "../db";
+import { lockMaskComponent, readMaskComponent } from "./mask-component";
 import { createAdvisoryLockStorage, type AdvisoryLockHandle } from "../advisory-lock";
 import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
@@ -74,9 +75,10 @@ export interface SessionStorage {
 }
 
 export function createSessionStorage(): SessionStorage {
-  const presentationLocks = createAdvisoryLockStorage(presentationLeasePool);
+  let presentationLocks: ReturnType<typeof createAdvisoryLockStorage> | undefined;
   const storage: SessionStorage = {
     acquirePresentationLease(sid, exclusive) {
+      presentationLocks ??= createAdvisoryLockStorage(getPresentationLeasePool());
       return presentationLocks.tryAcquireSession(`presentation:${sid}`, {
         timeoutMs: 2500, pollIntervalMs: 25, shared: !exclusive,
       });
@@ -89,13 +91,17 @@ export function createSessionStorage(): SessionStorage {
 
     async transitionMaskMode(sid, expectedRevision, mode) {
       return allowInMaintenanceMode(() => runInTransaction(async () => {
+        await lockMaskComponent();
+        const component = await readMaskComponent();
+        if (!component.enabled || !component.epoch) return null;
         const client = getClient();
         const rows = await client.execute(sql`
           SELECT sess FROM sessions
           WHERE sid = ${sid} AND expire > now() FOR UPDATE
         `);
-        const row = rows.rows[0] as { sess: { maskMode?: unknown } } | undefined;
+        const row = rows.rows[0] as { sess: { maskMode?: unknown; maskModeEpoch?: string; maskModeRevoked?: boolean } } | undefined;
         if (!row) return null;
+        if (row.sess.maskModeRevoked || row.sess.maskModeEpoch !== component.epoch) return null;
         const before = readMaskState(row.sess.maskMode);
         if (before.revision !== expectedRevision || before.revision >= Number.MAX_SAFE_INTEGER) return null;
         const after: MaskPolicy = { version: 1, revision: before.revision + 1, mode };
@@ -215,6 +221,7 @@ export function createSessionStorage(): SessionStorage {
             };
           }
           if (existingOnly) throw new Error("Session ended before it could be saved");
+          const component = await readMaskComponent();
           const inserted = await client
             .insert(sessions)
             .values({
@@ -222,7 +229,8 @@ export function createSessionStorage(): SessionStorage {
               // Only creation of a newly authenticated SID establishes OFF.
               // Existing/legacy rows without policy remain UNKNOWN.
               sess: newUserId
-                ? { ...(sess as object), maskMode: { version: 1, mode: "off", revision: 1 } }
+                ? { ...preserveMaskState(sess, {}), maskMode: { version: 1, mode: "off", revision: 1 },
+                    ...(component.enabled && component.epoch ? { maskModeEpoch: component.epoch } : {}) }
                 : preserveMaskState(sess, {}),
               expire,
             })

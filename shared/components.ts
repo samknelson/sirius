@@ -139,6 +139,13 @@ export interface ComponentSchemaState {
 // Central registry of all available components
 export const componentRegistry: ComponentDefinition[] = [
   {
+    id: "system.mask_mode",
+    name: "Mask Mode",
+    description: "Optional strict, read-only training view. Disabled by default, including upgrades. Enabling requires a fresh sign-in before masking; disabling ends protected sessions. No restart is required; reload open normal pages after enabling.",
+    enabledByDefault: false,
+    category: "core",
+  },
+  {
     id: "worker.comms_compliance",
     name: "Worker Comms Compliance",
     description: "Report on worker populations and qualifying tagged communications",

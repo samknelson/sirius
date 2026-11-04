@@ -7,7 +7,11 @@ const fake = vi.hoisted(() => ({
   callbacks: [] as Array<() => void>, tail: Promise.resolve(), client: undefined as any,
 }));
 vi.mock("../../server/storage/db", () => ({
-  pool: {}, presentationLeasePool: {},
+  pool: {}, getPresentationLeasePool: () => ({}),
+}));
+vi.mock("../../server/storage/system/mask-component", () => ({
+  lockMaskComponent: async () => {},
+  readMaskComponent: async () => ({ enabled: true, epoch: "fixture-epoch" }),
 }));
 vi.mock("../../server/logger", () => ({
   storageLogger: { info: (...args: any[]) => fake.audit.push(args) },

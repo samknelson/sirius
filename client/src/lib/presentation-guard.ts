@@ -4,6 +4,20 @@
  */
 export async function installPresentationGuard(): Promise<boolean> {
   const nativeFetch = window.fetch.bind(window);
+  // General component bootstrap, not the Mask Mode state endpoint. With the
+  // component disabled no interception, listeners or polling are installed.
+  try {
+    const response = await nativeFetch("/api/components/presentation", {
+      credentials: "same-origin", cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Component availability unavailable");
+    const availability = await response.json();
+    if (availability.maskModeEnabled === false) return true;
+    if (availability.maskModeEnabled !== true) throw new Error("Invalid component availability");
+  } catch {
+    window.location.replace("/mask-mode");
+    return false;
+  }
   let blocked = false;
   let revision = "";
   const cover = () => {
@@ -20,6 +34,12 @@ export async function installPresentationGuard(): Promise<boolean> {
       const response = await nativeFetch("/api/mask-mode/state", {
         credentials: "same-origin", cache: "no-store",
       });
+      if (response.status === 404 && (await response.json()).code === "component_disabled") {
+        blocked = true;
+        document.documentElement.style.visibility = "hidden";
+        window.location.replace("/");
+        return false;
+      }
       if (!response.ok) throw new Error("Presentation state unavailable");
       const state = await response.json();
       if (!["off", "anonymous"].includes(state.mode)) { cover(); return false; }

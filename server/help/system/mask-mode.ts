@@ -5,6 +5,17 @@ export const maskModeHelp: SystemHelpEntry = {
   paths: ["/mask-mode"],
   summary: "Strict Mask Mode replaces the normal application with a restricted, read-only training view; it does not certify HIPAA compliance.",
   details: `
+    <h3>Component prerequisite</h3>
+    <p>An administrator must enable <strong>Mask Mode</strong> in Components.
+    It is disabled by default on new installations and upgrades; existing
+    installations must explicitly opt in. No server restart is required.
+    Reload open normal pages after enabling. Sign out and sign in again before
+    using the session toggle if this login predates the component change.</p>
+    <p>When the component is disabled, its button, protected sample, polling and
+    presentation locks are unavailable. Disabling permanently ends sessions
+    that were protected: stop recording, select Sign out and sign in again.
+    Re-enabling the component does not restore those sessions. Previously
+    delivered content and sleeping tabs cannot be erased.</p>
     <h3>Before recording</h3>
     <p>Use a fresh browser session and one active tab. Close previous tabs.
     Do not show browser history, developer tools, clipboard history, downloads

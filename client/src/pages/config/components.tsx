@@ -88,6 +88,8 @@ export default function ComponentsConfigPage() {
     onSuccess: (_, variables) => {
       setLastError(null);
       queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/components/presentation"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/mask-mode/state"] });
       toast({
         title: "Component Updated",
         description: `Component ${variables.enabled ? "enabled" : "disabled"} successfully.`,

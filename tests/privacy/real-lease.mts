@@ -7,13 +7,14 @@ import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { pool, presentationLeasePool } from "../../server/storage/db";
+import { pool, getPresentationLeasePool } from "../../server/storage/db";
 import { createAdvisoryLockStorage } from "../../server/storage/advisory-lock";
 
+const presentationLeasePool = getPresentationLeasePool();
 const locks = createAdvisoryLockStorage(presentationLeasePool);
 if (process.argv[2] === "--reader") {
   const handle = await locks.tryAcquireSession(process.argv[3], { timeoutMs: 1000, shared: true });
-  assert.ok(handle?.isHeld?.());
+  assert.ok(handle && handle.isHeld?.());
   process.send?.({ ready: true, pid: handle.backendPid });
   await new Promise<void>(resolve => process.once("message", () => resolve()));
   await handle.release();
@@ -39,7 +40,7 @@ if (process.argv[2] === "--reader") {
       child.once("exit", code => { if (code) reject(new Error(`Reader exited ${code}: ${childError}`)); });
     });
     reader = await locks.tryAcquireSession(name, { timeoutMs: 1000, shared: true });
-    assert.ok(reader?.isHeld?.());
+    assert.ok(reader && reader.isHeld?.());
     assert.notEqual(reader.backendPid, remote.pid, "independent PostgreSQL backends");
     const refused = await locks.tryAcquireSession(name, { timeoutMs: 60, pollIntervalMs: 10 });
     assert.equal(refused, null, "exclusive transition must refuse while either reader is active");
@@ -52,7 +53,7 @@ if (process.argv[2] === "--reader") {
     child.send({ release: true });
     await childExit;
     writer = await locks.tryAcquireSession(name, { timeoutMs: 1000 });
-    assert.ok(writer?.isHeld?.());
+    assert.ok(writer && writer.isHeld?.());
     const blockedReader = await locks.tryAcquireSession(name, { timeoutMs: 50, pollIntervalMs: 10, shared: true });
     assert.equal(blockedReader, null);
     await writer.release();

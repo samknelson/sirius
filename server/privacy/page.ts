@@ -81,7 +81,9 @@ export const maskModeScript = `"use strict";
       $("status").textContent = state.mode === "on" ? "MASK MODE ON — restricted read-only view"
         : state.mode === "off" ? "MASK MODE OFF — do not record live data"
         : state.mode === "anonymous" ? "Signed out" : "Protection state unknown — normal content blocked";
-      $("explanation").textContent = state.canToggle
+      $("explanation").textContent = state.reauthRequired
+        ? "Mask Mode was enabled after this login. Stop recording, sign out and sign in again before enabling protection."
+        : state.canToggle
         ? "Only this login session is affected. No stored records are changed. Entering or leaving discards unsaved browser work."
         : "An active original presenter with admin permission is required to toggle. Unknown state does not allow normal content.";
       $("signin").hidden = state.mode !== "anonymous";

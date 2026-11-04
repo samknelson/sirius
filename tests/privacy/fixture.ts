@@ -23,9 +23,11 @@ export async function startPrivacyFixture() {
       maskMode: { version: 1, mode: "on", revision: 1 } }],
   ]);
   const controls = {
+    enabled: true, epoch: "fixture-epoch", failComponent: false, acquisitions: 0,
     failRead: false, failTransition: false, failPermissions: false, loseLease: false,
     effects: 0, reads: 0, targetCanRead: true, pending: 0,
   };
+  for (const row of rows.values()) row.maskModeEpoch = controls.epoch;
   const locks = new Map<string, { readers: number; writer: boolean }>();
   const app = express();
   app.use(express.json());
@@ -40,7 +42,12 @@ export async function startPrivacyFixture() {
     next();
   });
   app.use(createMaskModeMiddleware({
+    async component() {
+      if (controls.failComponent) throw new Error(CANARY);
+      return { enabled: controls.enabled, epoch: controls.epoch };
+    },
     async acquire(sid, exclusive) {
+      controls.acquisitions++;
       const key = `presentation:${sid}`;
       const lock = locks.get(key) ?? { readers: 0, writer: false };
       locks.set(key, lock);
@@ -68,6 +75,7 @@ export async function startPrivacyFixture() {
     async transition(sid, expected, mode) {
       if (controls.failTransition) throw new Error(CANARY);
       const row = rows.get(sid);
+      if (!controls.enabled || row?.maskModeRevoked || row?.maskModeEpoch !== controls.epoch) return null;
       if (!row || readMaskState(row.maskMode).revision !== expected) return null;
       row.maskMode = { version: 1, mode, revision: expected + 1 };
       return { ...row.maskMode };

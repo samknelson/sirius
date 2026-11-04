@@ -1,8 +1,9 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
-import { eq, like } from "drizzle-orm";
+import { eq, like, sql } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
+import { withMaskComponentChange } from "./mask-component";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -25,13 +26,22 @@ export interface VariableStorage {
   getByNamePrefix(prefix: string): Promise<Variable[]>;
   create(variable: InsertVariable): Promise<Variable>;
   setByName(name: string, value: unknown): Promise<Variable>;
+  setComponentEnabled(componentId: string, enabled: boolean): Promise<Variable>;
   update(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByNamePrefix(prefix: string): Promise<number>;
 }
 
 export function createVariableStorage(): VariableStorage {
-  return {
+  const implementation: VariableStorage = {
+    async setComponentEnabled(componentId, enabled) {
+      const patch = { [componentId]: enabled };
+      const [row] = await getClient().insert(variables).values({ name: "components", value: patch })
+        .onConflictDoUpdate({ target: variables.name, set: {
+          value: sql`${variables.value} || ${JSON.stringify(patch)}::jsonb`,
+        } }).returning();
+      return row;
+    },
     async setByName(name: string, value: unknown): Promise<Variable> {
       const [row] = await getClient().insert(variables).values({ name, value })
         .onConflictDoUpdate({ target: variables.name, set: { value } }).returning();
@@ -97,12 +107,23 @@ export function createVariableStorage(): VariableStorage {
       return result.length;
     }
   };
+  // Cover generic config writes and imports as well as the Components UI.
+  for (const method of ["create", "setByName", "setComponentEnabled", "update", "delete", "deleteByNamePrefix"] as const) {
+    const original = implementation[method].bind(implementation) as (...args: any[]) => Promise<any>;
+    // A pre-read of the variable name is insufficient: a concurrent rename
+    // could otherwise turn an ordinary update into an unguarded components
+    // write. Config writes are rare; serialize them before inspecting state.
+    (implementation as any)[method] = (...args: any[]) =>
+      withMaskComponentChange(() => original(...args));
+  }
+  return implementation;
 }
 
 export const variableLoggingConfig = defineLoggingConfig<VariableStorage>({
   module: 'variables',
   table: 'variables',
   methods: {
+    setComponentEnabled: { getEntityId: () => "components" },
     setByName: { getEntityId: (args) => args[0] },
     create: { getEntityId: (args) => args[0]?.name },
     update: {},
