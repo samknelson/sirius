@@ -25,6 +25,11 @@ const validator = customizeValidator({
   ajvOptionsOverrides: { $data: true },
 });
 
+/** Use the same validation rules for an opt-in external submit control. */
+export function isSchemaFormValid(schema: RJSFSchema, data: Record<string, unknown>) {
+  return validator.validateFormData(data, schema).errors.length === 0;
+}
+
 /**
  * Form context payload that custom widgets can read. Pass anything
  * widgets need (e.g. the list of sibling rows for the self-options

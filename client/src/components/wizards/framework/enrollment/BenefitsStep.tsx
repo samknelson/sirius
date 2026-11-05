@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -7,14 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { HeartPulse, CheckCircle2, XCircle } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { HeartPulse, CheckCircle2 } from "lucide-react";
+import { useNextSubmission } from "../NextSubmission";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 
 interface EligibleBenefitRow {
@@ -82,17 +81,12 @@ function groupByType(rows: EligibleBenefitRow[]): BenefitTypeGroup[] {
  * cannot be selected (the server re-validates on submit anyway).
  */
 export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps) {
-  const { toast } = useToast();
   const savedIds: string[] = Array.isArray(data?.benefitIds)
     ? (data.benefitIds as string[])
     : [];
   const [selected, setSelected] = useState<string[]>(savedIds);
-  useEffect(() => {
-    setSelected(savedIds);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(savedIds)]);
 
-  const { data: stepData, isLoading } = useQuery<{
+  const { data: stepData, isLoading, isError } = useQuery<{
     records: EligibleBenefitRow[];
     currentlyElectedBenefitIds?: string[];
     ineligibleCount?: number;
@@ -110,23 +104,19 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
   const groups = groupByType(rows);
   const ineligibleCount = stepData?.ineligibleCount ?? 0;
 
-  const saveMutation = useMutation({
-    mutationFn: async (benefitIds: string[]) =>
-      apiRequest(
+  const ready = !!data?.policyId && !isLoading && !isError && selected.length > 0
+    && selected.every(id => rows.some(row => row.benefitId === id && row.eligible))
+    && groups.every(group => !group.onlyOne || group.rows.filter(row => selected.includes(row.benefitId)).length <= 1);
+  const busy = useNextSubmission({
+    ready,
+    guidance: isError ? "Benefits could not load. Reload this page to retry." : "Select at least one eligible benefit. Next saves your selection before continuing.",
+    submit: async () => {
+      if (!ready) throw new Error("Select an eligible benefit before continuing.");
+      return apiRequest(
         "POST",
         `/api/wizards/${wizardId}/dispatch/${step.id}/submit`,
-        { input: { benefitIds } },
-      ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-      toast({ title: "Benefits saved" });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+        { input: { benefitIds: selected } },
+      );
     },
   });
 
@@ -198,7 +188,7 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
                     <Checkbox
                       id={`benefit-${row.benefitId}`}
                       checked={selected.includes(row.benefitId)}
-                      disabled={saveMutation.isPending}
+                        disabled={busy || !row.eligible}
                       onCheckedChange={(checked) => {
                         setSelected((prev) => {
                           if (!checked) {
@@ -247,17 +237,7 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
             ))}
           </div>
         )}
-        {rows.length > 0 && (
-          <div className="flex justify-end">
-            <Button
-              onClick={() => saveMutation.mutate(selected)}
-              disabled={selected.length === 0 || saveMutation.isPending}
-              data-testid="button-save-benefits"
-            >
-              {saveMutation.isPending ? "Saving…" : "Save Selection"}
-            </Button>
-          </div>
-        )}
+        <p className="text-sm text-muted-foreground">Next saves your selection before continuing.</p>
       </CardContent>
     </Card>
   );

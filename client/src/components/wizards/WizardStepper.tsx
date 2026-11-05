@@ -13,6 +13,7 @@ interface WizardStepperProps {
   onPrevious?: () => void;
   isLoading?: boolean;
   canProceed?: boolean;
+  guidance?: string;
 }
 
 export function WizardStepper({ 
@@ -23,6 +24,7 @@ export function WizardStepper({
   onPrevious,
   isLoading = false,
   canProceed = true,
+  guidance,
 }: WizardStepperProps) {
   const currentIndex = steps.findIndex(s => s.id === currentStep);
   const isFirstStep = currentIndex === 0;
@@ -35,7 +37,7 @@ export function WizardStepper({
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Please complete all required items in this step before proceeding to the next step.
+            {guidance || "Please complete all required items in this step before proceeding to the next step."}
           </AlertDescription>
         </Alert>
       )}

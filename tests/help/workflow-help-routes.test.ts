@@ -69,6 +69,7 @@ describe("backfilled guidance through existing authenticated read handlers", () 
     ["/edls/sheet/example/manage", "system:edls-scheduling"],
     ["/admin/denorm/example", "system:denorm-maintenance"],
     ["/config/helps", "system:help-text-listing"],
+    ["/wizards/example", "system:enrollment-next"],
   ])("returns inline summary and expanded details for %s", async (path, id) => {
     const response = await read(`/api/helps/lookup?path=${encodeURIComponent(path)}`);
     expect(response.status).toBe(200);
@@ -79,5 +80,17 @@ describe("backfilled guidance through existing authenticated read handlers", () 
     expect(entry.source).toBe("system");
     expect(matches.some((item: { id: string }) => item.id === localHelp.id))
       .toBe(path === "/workers/example/benefits/scan");
+  });
+});
+
+describe("enrollment Next help boundaries", () => {
+  it("is conditional on enrollment and matches generic wizard paths only", () => {
+    const help = getAllSystemHelps().find(entry => entry.id === "system:enrollment-next")!;
+    expect(help.details).toBe(sanitizeHtml(help.details!, "rich-document"));
+    expect(help.details).toContain("applies only");
+    expect(help.details).toContain("does not post");
+    for (const path of ["/wizards", "/workers/example", "/trust/enrollment-queue", "/config/wizards", "/__mockup/"]) {
+      expect(help.paths.some(pattern => likePatternMatches(pattern, path))).toBe(false);
+    }
   });
 });

@@ -532,6 +532,11 @@ export function registerWizardDispatcherRoutes(
         const direction = req.body?.direction;
         const steps = plugin.steps;
         const currentId = wizard.currentStep || steps[0]?.id;
+        // Opt-in clients name the step they saved. A retried navigation must
+        // never skip a second step if the first response was lost.
+        if (req.body?.expectedStep && req.body.expectedStep !== currentId) {
+          return res.status(409).json({ message: "The wizard has already changed steps. Reload to see the saved position." });
+        }
         const idx = steps.findIndex((s) => s.id === currentId);
         if (idx === -1) {
           return res

@@ -61,7 +61,7 @@ Evidence abbreviations:
 | F11 | Source complete | /ea/example/invoices/10/2026 | entity-account-statements, ledger-accounts | /ledger/accounts/example/summary | P ea-invoices.tsx and ea statement/payment/transaction views; ledger account views and ledger storage consumers | Pass | B0 |
 | F12 | Source complete | /ledger/payment/example/edit | staff-payment-entry, payment-batches | /ledger/payment-batch/example/edit | P payment-edit.tsx, payment-create.tsx, ea-payment-create.tsx; PaymentForm; S ledger payment and batch validation, provider-managed refusal | Pass | B0 |
 | F13 | Source complete | /employers/compliance | employer-compliance-monitor, monthly-upload-monitor, employer-upload-launcher | /employers/monthly-uploads | P employer-compliance-dashboard.tsx, employers-monthly-uploads.tsx, employers/wizards.tsx; W monthly employer upload plugins | Pass | B0 |
-| F14 | Source complete | /wizards/example | shared-wizard-runner | /reports | P wizard runner and wizard step components; S plugins/wizards/dispatcher.ts, entity-access.ts, feed processing lifecycle | Pass | B0 |
+| F14 | Source complete | /wizards/example | shared-wizard-runner, enrollment-next | /reports | P wizard runner and wizard step components; S plugins/wizards/dispatcher.ts, entity-access.ts, feed processing lifecycle | Pass | B0 |
 | F15 | Source complete; compliance retained | /workers/example/comm/send-sms | direct-communications, communication-history, worker-comms-compliance | /workers/example/comm/history | CommSendWrapper and channel composers; S comm sending and token rendering; existing compliance help and tests | Pass | B0 |
 | F16 | Source complete | /bulk/example/deliver | bulk-message-delivery, bulk-message-preparation | /bulk/example/message | P bulk delivery, testing, recipient and message tabs; S modules/bulk/deliver.ts and participant processing checks | Pass | B0 |
 | F17 | Source complete; defaults retained | /admin/letter-templates/example | letter-template-studio, compose-message-defaults, email-message-defaults, postal-message-defaults | /admin/plugin-configs/event-notifier | P letter template editor and Studio hosts; S template preview/token context policies; existing message-defaults.ts | Pass | B0 |
@@ -193,3 +193,21 @@ IDs remain unchanged.
   auth checks answered; that log is not evidence about signed-in help rendering.
 - `git diff --check` passed. The configured lint, typecheck, and migration
   gates run through task completion; they are separate from the results above.
+
+### Enrollment Next guidance verification, 2026-11-05
+
+- `system:enrollment-next` shares `/wizards/%` with the generic runner help.
+  Because these URLs do not identify wizard type or step, its summary and
+  details explicitly limit the single-Next workflow to enrollment Benefits,
+  Effective Date, and Signature. Other steps retain their own controls.
+- `tests/help/workflow-help-routes.test.ts` checks authenticated lookup,
+  registration, sanitization, unrelated-path exclusion, and untouched local help.
+- `tests/wizards/enrollment-next-dispatch.test.ts` opens the shipped Help dialog
+  in Chromium using an isolated cookie-authenticated fixture. It verifies the
+  inline summary, expanded content, and distinction from posting while running
+  real enrollment components and dispatcher handlers. Storage, eligibility,
+  authorization decisions, and attachment I/O are test doubles; no live
+  development or production enrollment records are changed.
+- The running application's protected preview still presents sign-in. Live
+  signed-in Help Text listing and enrollment UI remain unverified; the fixture
+  result does not supersede B0 for other guidance or optional workflows.

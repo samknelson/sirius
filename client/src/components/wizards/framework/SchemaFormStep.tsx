@@ -6,6 +6,7 @@ import { SchemaForm, type IChangeEvent } from "@/components/json-schema-form/Sch
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { WizardStepManifest } from "./types";
+import { EnrollmentDateStep } from "./enrollment/EnrollmentDateStep";
 
 interface SchemaFormStepProps {
   wizardId: string;
@@ -20,6 +21,13 @@ interface SchemaFormStepProps {
  * through the fixed dispatcher route.
  */
 export function SchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {
+  if (step.submitOnNext) {
+    return <EnrollmentDateStep wizardId={wizardId} step={step} data={data} />;
+  }
+  return <SavedSchemaFormStep wizardId={wizardId} step={step} data={data} />;
+}
+
+function SavedSchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {
   const { toast } = useToast();
   const [formData, setFormData] = useState<Record<string, unknown>>(
     (data?.config as Record<string, unknown>) ?? {},

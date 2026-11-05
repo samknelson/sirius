@@ -9,6 +9,8 @@ export interface WizardStepManifest {
   name: string;
   description?: string;
   kind: string;
+  /** Explicit server opt-in to save the active draft through Next. */
+  submitOnNext?: boolean;
   schema?: any;
   uiSchema?: Record<string, unknown>;
   /** Fully-qualified "<wizardType>:<ComponentName>" for the escape hatch. */

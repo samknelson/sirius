@@ -90,6 +90,8 @@ export interface WizardStepHandler {
   name: string;
   description?: string;
   kind: WizardStepKind;
+  /** The shell awaits the active draft submission before navigating. */
+  submitOnNext?: boolean;
   /** Step-level component gate (on top of the plugin-level gate). */
   requiredComponent?: string;
   /** Step-level access-policy gate (on top of the plugin-level gate). */
@@ -262,6 +264,7 @@ export interface WizardStepManifestEntry {
   name: string;
   description?: string;
   kind: WizardStepKind;
+  submitOnNext?: boolean;
   schema?: JsonSchema;
   uiSchema?: Record<string, unknown>;
   /** Fully-qualified "<wizardType>:<ComponentName>" for the escape hatch. */

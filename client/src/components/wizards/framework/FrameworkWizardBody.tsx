@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useCallback, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { WizardStepper } from "@/components/wizards/WizardStepper";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { wizardComponentRegistry } from "@/plugins/wizards/registry";
 import { SchemaFormStep } from "./SchemaFormStep";
 import type { WizardManifest, WizardStepManifest } from "./types";
+import { NextSubmissionContext, type NextSubmission } from "./NextSubmission";
 
 interface FrameworkWizardBodyProps {
   wizardId: string;
@@ -28,24 +29,23 @@ export function FrameworkWizardBody({
   data,
   manifest,
 }: FrameworkWizardBodyProps) {
-  const { toast } = useToast();
+  // Both draft state and registrations belong to one record/active step.
+  return <ActiveWizardBody key={`${wizardId}:${manifest.currentStep}`}
+    wizardId={wizardId} wizardType={wizardType} data={data} manifest={manifest} />;
+}
 
-  const navigateMutation = useMutation({
-    mutationFn: async (direction: "next" | "previous") =>
-      apiRequest("POST", `/api/wizards/${wizardId}/dispatch/navigate`, {
-        direction,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-    },
-    onError: (err: Error) => {
-      toast({
-        title: "Error",
-        description: err.message || "Failed to change step",
-        variant: "destructive",
-      });
-    },
-  });
+function ActiveWizardBody({
+  wizardId,
+  wizardType,
+  data,
+  manifest,
+}: FrameworkWizardBodyProps) {
+  const { toast } = useToast();
+  const [submission, register] = useState<NextSubmission | null>(null);
+  const [navigating, setNavigating] = useState(false);
+  const [error, setError] = useState("");
+  const locked = useRef(false);
+  const registerSubmission = useCallback((value: NextSubmission | null) => register(value), []);
 
   const currentStep =
     manifest.steps.find((s) => s.id === manifest.currentStep) ??
@@ -59,10 +59,37 @@ export function FrameworkWizardBody({
     ]),
   ) as any;
 
-  const canProceed = currentStep?.state === "completed";
+  const canProceed = currentStep?.submitOnNext
+    ? !!submission?.ready && !submission.busy
+    : currentStep?.state === "completed";
+  const navigate = async (direction: "next" | "previous") => {
+    if (locked.current || submission?.busy || (direction === "next" && !canProceed)) return;
+    locked.current = true;
+    setNavigating(true);
+    setError("");
+    let saved = false;
+    try {
+      if (direction === "next" && currentStep?.submitOnNext) {
+        await submission!.submit();
+        saved = true;
+      }
+      await apiRequest("POST", `/api/wizards/${wizardId}/dispatch/navigate`, {
+        direction,
+        ...(currentStep?.submitOnNext ? { expectedStep: currentStep.id } : {}),
+      });
+      await queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+    } catch (err) {
+      const message = `${saved ? "Your entry was saved, but the step could not change." : "Could not continue."} ${err instanceof Error ? err.message : "Request failed."} Check your entry and connection, then try Next again.`;
+      setError(message);
+      toast({ title: "Unable to continue", description: message, variant: "destructive" });
+    } finally {
+      locked.current = false;
+      setNavigating(false);
+    }
+  };
 
   return (
-    <>
+    <NextSubmissionContext.Provider value={{ register: registerSubmission, navigating }}>
       {manifest.steps.length > 0 && (
         <Card className="mb-6">
           <CardContent className="pt-6">
@@ -74,15 +101,17 @@ export function FrameworkWizardBody({
               }))}
               currentStep={currentStep?.id ?? manifest.steps[0].id}
               progress={progress}
-              onNext={() => navigateMutation.mutate("next")}
-              onPrevious={() => navigateMutation.mutate("previous")}
-              isLoading={navigateMutation.isPending}
+              onNext={() => void navigate("next")}
+              onPrevious={() => void navigate("previous")}
+              isLoading={navigating || submission?.busy}
               canProceed={canProceed}
+              guidance={currentStep?.submitOnNext ? submission?.guidance : undefined}
             />
           </CardContent>
         </Card>
       )}
 
+      {error && <p role="alert" className="mb-4 text-destructive">{error}</p>}
       {currentStep && (
         <StepBody
           wizardId={wizardId}
@@ -91,7 +120,7 @@ export function FrameworkWizardBody({
           step={currentStep}
         />
       )}
-    </>
+    </NextSubmissionContext.Provider>
   );
 }
 

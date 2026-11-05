@@ -141,6 +141,7 @@ export class WizardPluginRegistry extends PluginRegistry<
         kind: step.kind,
         schema: step.getSchema ? step.getSchema(wizard) : step.schema,
         uiSchema: step.uiSchema,
+        submitOnNext: step.submitOnNext,
         component: step.component
           ? `${plugin.id}:${step.component}`
           : undefined,

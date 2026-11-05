@@ -2,6 +2,17 @@ import type { SystemHelpEntry } from "./index";
 
 export const benefitsWorkflowHelp: SystemHelpEntry[] = [
   {
+    id: "system:enrollment-next",
+    paths: ["/wizards/%"],
+    summary: "In enrollment Benefits, Effective Date, and Signature steps, Next saves valid entries before continuing; other wizard steps keep their existing controls.",
+    details: `
+      <h3>Purpose</h3><p>This guidance applies only to Benefits, Effective Date, and Signature in enrollment wizards, including the shared Signature step in COBRA. Other wizard steps may still require Save or their own action.</p>
+      <h3>Before you start</h3><p>Use an enrollment draft you are authorized to access. Eligibility, enrollment windows, date rules, and signature requirements still apply.</p>
+      <h3>How to use this page</h3><ol><li>In Benefits, select at least one eligible benefit. A type marked <strong>Choose one</strong> allows one selection. <strong>Currently elected</strong> is informational, not a selection.</li><li>In Effective Date, check the displayed date. Only administrators may override the computed date. Open Enrollment's January 1 date is fixed and read-only.</li><li>In Signature, type the full name, draw a signature, or choose a file. Next uploads the chosen file. An unchanged captured signature needs no recapture.</li><li>Select <strong>Next</strong> to save the displayed entry and move one step forward. Wait for the request to finish before navigating again.</li></ol>
+      <h3>Results and status meanings</h3><p>Next remains disabled while required entries are missing or invalid, including edits to a completed step. Returning to a step displays its saved choices or date. Starting a replacement signature requires completing it; an older signature cannot stand in for an incomplete replacement. Saving these steps does not post an election. Final review and posting retain their separate actions.</p>
+      <h3>Limitations and common problems</h3><p>If saving, uploading, or changing steps fails, remain on the step, read the error, correct the entry or connection, and try Next again. Your current draft remains available on the page, but unsaved changes can be lost by reloading or leaving it. If the error says the wizard already changed steps, reload to confirm its saved position rather than submitting repeatedly.</p>`,
+  },
+  {
     id: "system:benefits-recorded-coverage",
     paths: ["/workers/%/benefits/current", "/workers/%/benefits/history", "/workers/%/benefits/eligibility"],
     summary: "Compare recorded benefit coverage with eligibility evidence, keeping subscriber coverage separate from benefits provided through another worker.",

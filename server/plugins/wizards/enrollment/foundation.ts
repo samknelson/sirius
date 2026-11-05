@@ -761,6 +761,7 @@ export async function handleSignatureSubmit(
 export function buildEffectiveDateStep(): WizardStepHandler {
   return {
     id: "effective_date",
+    submitOnNext: true,
     name: "Effective Date",
     description: "Confirm when the election takes effect",
     kind: "form",
@@ -815,6 +816,7 @@ export function buildEffectiveDateStep(): WizardStepHandler {
 export function buildSignatureStep(wizardType: string): WizardStepHandler {
   return {
     id: "signature",
+    submitOnNext: true,
     name: "Signature",
     description: "Capture the worker's signature",
     kind: "custom",
@@ -1223,6 +1225,7 @@ export function createEnrollmentFoundation(
     {
       id: "benefits",
       name: "Benefits",
+      submitOnNext: true,
       description: "Select from the benefits the worker is eligible for",
       kind: "custom",
       component: "BenefitsStep",

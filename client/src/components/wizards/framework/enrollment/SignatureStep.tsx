@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -11,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import { useNextSubmission } from "../NextSubmission";
 import { PenLine, CheckCircle2 } from "lucide-react";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 
@@ -23,17 +22,45 @@ type Mode = "typed" | "drawn" | "upload";
  * or an uploaded signature image/document. Posting is gated on this.
  */
 export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps) {
-  const { toast } = useToast();
   const signature = data?.signature as
     | { type: string; value?: string; fileName?: string; signedAt: string }
     | undefined;
 
   const [mode, setMode] = useState<Mode>("typed");
   const [typedName, setTypedName] = useState("");
+  const [replacement, setReplacement] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
   const [hasDrawn, setHasDrawn] = useState(false);
+  const draftValid = mode === "typed" ? !!typedName.trim()
+    : mode === "drawn" ? hasDrawn : !!file;
+  const ready = replacement ? draftValid : !!signature || draftValid;
+  const busy = useNextSubmission({
+    ready,
+    guidance: "Type a full name, draw a signature, or choose a signature file. Next saves it before continuing.",
+    submit: async () => {
+      if (!ready) throw new Error("Complete the replacement signature before continuing.");
+      if (!replacement && signature) return;
+      if (mode === "upload") {
+        if (!file) throw new Error("Choose a signature file.");
+        const body = new FormData();
+        body.append("file", file);
+        const res = await fetch(`/api/wizards/${wizardId}/dispatch/${step.id}/upload`,
+          { method: "POST", body, credentials: "include" });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.message || "Upload failed. Choose a supported file and try again.");
+        }
+        return;
+      }
+      const value = mode === "typed" ? typedName.trim() : canvasRef.current?.toDataURL("image/png");
+      if (!value) throw new Error("Draw a signature before continuing.");
+      await apiRequest("POST", `/api/wizards/${wizardId}/dispatch/${step.id}/submit`,
+        { input: { signature: { type: mode, value } } });
+    },
+  });
 
   const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -78,7 +105,7 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
   const draw = (
     e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
   ) => {
-    if (!isDrawingRef.current) return;
+    if (busy || !isDrawingRef.current) return;
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
     const pos = getPos(e);
@@ -88,47 +115,8 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
     ctx.stroke();
     lastPosRef.current = pos;
     setHasDrawn(true);
+    setReplacement(true);
   };
-
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-  const onError = (error: Error) =>
-    toast({ title: "Error", description: error.message, variant: "destructive" });
-
-  const submitMutation = useMutation({
-    mutationFn: async (sig: { type: "typed" | "drawn"; value: string }) =>
-      apiRequest(
-        "POST",
-        `/api/wizards/${wizardId}/dispatch/${step.id}/submit`,
-        { input: { signature: sig } },
-      ),
-    onSuccess: () => {
-      invalidate();
-      toast({ title: "Signature captured" });
-    },
-    onError,
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch(
-        `/api/wizards/${wizardId}/dispatch/${step.id}/upload`,
-        { method: "POST", body: formData, credentials: "include" },
-      );
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.message || "Upload failed");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidate();
-      toast({ title: "Signature uploaded" });
-    },
-    onError,
-  });
 
   return (
     <Card>
@@ -147,7 +135,7 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {signature && (
+        {signature && !replacement && (
           <Alert data-testid="alert-signature-captured">
             <CheckCircle2 className="h-4 w-4" />
             <AlertDescription>
@@ -165,7 +153,16 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
               key={m}
               variant={mode === m ? "default" : "outline"}
               size="sm"
-              onClick={() => setMode(m)}
+              disabled={busy}
+              onClick={() => {
+                if (mode !== m) {
+                  setMode(m);
+                  setReplacement(true);
+                  setTypedName("");
+                  setFile(null);
+                  setHasDrawn(false);
+                }
+              }}
               data-testid={`button-signature-mode-${m}`}
             >
               {m === "typed" ? "Type" : m === "drawn" ? "Draw" : "Upload"}
@@ -180,21 +177,13 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
               <Input
                 id="typed-signature"
                 value={typedName}
-                onChange={(e) => setTypedName(e.target.value)}
+                disabled={busy}
+                onChange={(e) => { setTypedName(e.target.value); setReplacement(true); }}
                 placeholder="Type the worker's full name…"
                 className="font-serif italic text-lg"
                 data-testid="input-typed-signature"
               />
             </div>
-            <Button
-              onClick={() =>
-                submitMutation.mutate({ type: "typed", value: typedName.trim() })
-              }
-              disabled={!typedName.trim() || submitMutation.isPending}
-              data-testid="button-save-typed-signature"
-            >
-              {submitMutation.isPending ? "Saving…" : "Save Signature"}
-            </Button>
           </div>
         )}
 
@@ -206,6 +195,8 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
               height={160}
               className="border rounded-md w-full max-w-lg touch-none bg-white"
               onMouseDown={(e) => {
+                if (busy) return;
+                setReplacement(true);
                 isDrawingRef.current = true;
                 lastPosRef.current = getPos(e);
               }}
@@ -213,6 +204,8 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
               onMouseUp={() => (isDrawingRef.current = false)}
               onMouseLeave={() => (isDrawingRef.current = false)}
               onTouchStart={(e) => {
+                if (busy) return;
+                setReplacement(true);
                 isDrawingRef.current = true;
                 lastPosRef.current = getPos(e);
               }}
@@ -223,27 +216,15 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
             <div className="flex gap-2">
               <Button
                 variant="outline"
+                disabled={busy}
                 onClick={() => {
                   initCanvas();
                   setHasDrawn(false);
+                  setReplacement(true);
                 }}
                 data-testid="button-clear-signature"
               >
                 Clear
-              </Button>
-              <Button
-                onClick={() => {
-                  const canvas = canvasRef.current;
-                  if (!canvas) return;
-                  submitMutation.mutate({
-                    type: "drawn",
-                    value: canvas.toDataURL("image/png"),
-                  });
-                }}
-                disabled={!hasDrawn || submitMutation.isPending}
-                data-testid="button-save-drawn-signature"
-              >
-                {submitMutation.isPending ? "Saving…" : "Save Signature"}
               </Button>
             </div>
           </div>
@@ -256,19 +237,20 @@ export function SignatureStep({ wizardId, step, data }: WizardStepComponentProps
               <Input
                 id="signature-file"
                 type="file"
+                disabled={busy}
                 accept=".pdf,.png,.jpg,.jpeg,.gif,.webp"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadMutation.mutate(file);
+                  setFile(e.target.files?.[0] ?? null);
+                  setReplacement(true);
                 }}
                 data-testid="input-signature-file"
               />
             </div>
-            {uploadMutation.isPending && (
-              <p className="text-sm text-muted-foreground">Uploading…</p>
-            )}
+            {file && <p className="text-sm text-muted-foreground">{file.name} — ready to upload with Next.</p>}
+            {busy && <p className="text-sm text-muted-foreground">Uploading or continuing…</p>}
           </div>
         )}
+        <p className="text-sm text-muted-foreground">Next saves your signature before continuing. It does not post the election.</p>
       </CardContent>
     </Card>
   );
