@@ -148,7 +148,7 @@ export function WmbScanStatus(_props: DashboardPluginProps) {
             return (
               <Link
                 key={scan.id}
-                href={`/admin/wmb-scan-detail/${scan.id}`}
+                href={`/admin/wmb-scan/${scan.id}`}
                 data-testid={`scan-link-${scan.id}`}
               >
                 <div className="p-3 rounded-md border hover-elevate active-elevate-2 cursor-pointer space-y-2">
