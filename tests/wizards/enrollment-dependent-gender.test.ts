@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { handleDependentsSubmit } from "../../server/plugins/wizards/enrollment/foundation";
 import { lifeEventEnrollmentPlugin } from "../../server/plugins/wizards/plugins/life-event-enrollment";
 
+vi.mock("../../server/storage/unified-options", () => ({
+  createUnifiedOptionsStorage: () => ({
+    get: async () => ({ id: "spouse", name: "Spouse" }),
+  }),
+}));
+
 const existingContact = {
   id: "contact-existing",
   displayName: "Jordan Example",
@@ -72,7 +78,7 @@ const addInput = {
   birthDate: "1990-02-03",
   given: "Jordan",
   family: "Example",
-  relationTypeId: "child",
+  relationTypeId: "spouse",
   documentFileId: "document-1",
 };
 

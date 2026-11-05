@@ -23,6 +23,11 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { DependentGenderFields } from "./DependentGenderFields";
 import {
+  ADULT_RELATIONSHIP_GUIDANCE,
+  classifyEnrollmentRelationship,
+  evaluateEnrollmentDependentAge,
+} from "@shared/utils/enrollment-dependent-age";
+import {
   Users,
   Search,
   Trash2,
@@ -100,6 +105,7 @@ export function DependentsStep({
   const [relationTypeId, setRelationTypeId] = useState("");
   const [gender, setGender] = useState("");
   const [genderNota, setGenderNota] = useState("");
+  const [checkedIdentity, setCheckedIdentity] = useState<{ ssn: string; birthDate: string } | null>(null);
 
   const { data: genderOptions = [] } = useQuery<GenderOption[]>({
     queryKey: ["/api/options/gender"],
@@ -117,10 +123,20 @@ export function DependentsStep({
   // user fills in the rest of the wizard.
   const stepDataKey = `/api/wizards/${wizardId}/dispatch/${step.id}/data`;
   const { data: stepData } = useQuery<{
+    applicationToday?: string;
     dualCoverageConflicts?: DualCoverageConflict[];
   }>({
     queryKey: [stepDataKey],
+    // Refresh across application midnight, independent of the viewer's zone.
+    refetchInterval: 30_000,
   });
+  const selectedRelationship = relationTypes?.find(option => option.id === relationTypeId);
+  const age = stepData?.applicationToday
+    ? evaluateEnrollmentDependentAge(birthDate, selectedRelationship?.name, stepData.applicationToday)
+    : null;
+  const identityChecked = checkedIdentity?.ssn === ssn && checkedIdentity?.birthDate === birthDate;
+  const relationshipError = relationTypeId && relationTypes && !selectedRelationship
+    ? "Choose an existing relationship type." : null;
   const conflicts: DualCoverageConflict[] =
     stepData?.dualCoverageConflicts ??
     ((data?.dualCoverageConflicts as DualCoverageConflict[] | undefined) ?? []);
@@ -134,15 +150,19 @@ export function DependentsStep({
     toast({ title: "Error", description: error.message, variant: "destructive" });
 
   const lookupMutation = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (identity: { ssn: string; birthDate: string }) =>
       apiRequest("POST", submitUrl, {
-        input: { action: "lookup", ssn, birthDate },
+        input: { action: "lookup", ...identity },
       }),
     onMutate: () => {
+      setCheckedIdentity(null);
       setGender("");
       setGenderNota("");
     },
-    onSuccess: invalidate,
+    onSuccess: (_response, identity) => {
+      setCheckedIdentity(identity);
+      invalidate();
+    },
     onError,
   });
 
@@ -187,6 +207,7 @@ export function DependentsStep({
       setRelationTypeId("");
       setGender("");
       setGenderNota("");
+      setCheckedIdentity(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       toast({ title: "Dependent added" });
     },
@@ -206,6 +227,10 @@ export function DependentsStep({
   const canAdd =
     !!lookup &&
     lookup.status !== "dob_mismatch" &&
+    identityChecked &&
+    !lookupMutation.isPending &&
+    !!age && !age.error && !relationshipError &&
+    !!selectedRelationship &&
     !!relationTypeId &&
     !!pendingDocument &&
     (!genderNotaRequired || !!genderNota.trim()) &&
@@ -305,6 +330,7 @@ export function DependentsStep({
               <Input
                 id="dep-dob"
                 type="date"
+                max={stepData?.applicationToday}
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
                 data-testid="input-dependent-dob"
@@ -313,13 +339,30 @@ export function DependentsStep({
           </div>
           <Button
             variant="outline"
-            onClick={() => lookupMutation.mutate()}
-            disabled={!ssn || !birthDate || lookupMutation.isPending}
+            onClick={() => lookupMutation.mutate({ ssn, birthDate })}
+            disabled={!ssn || !birthDate || !age || (!!age.error && !age.adultOnly) || lookupMutation.isPending}
             data-testid="button-lookup-dependent"
           >
             <Search size={16} className="mr-2" />
             {lookupMutation.isPending ? "Checking…" : "Check for existing record"}
           </Button>
+          {((birthDate && age?.error) || relationshipError) && (
+            <Alert variant="destructive" data-testid="alert-dependent-age-error">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{relationshipError || age?.error}</AlertDescription>
+            </Alert>
+          )}
+          {age?.warning && (
+            <Alert className="border-primary" data-testid="alert-dependent-age-warning">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription><strong>Upcoming 26th birthday.</strong> {age.warning}</AlertDescription>
+            </Alert>
+          )}
+          {lookup && !identityChecked && !lookupMutation.isPending && (
+            <p data-testid="text-dependent-recheck" className="text-sm text-muted-foreground">
+              Check for existing record again to verify this SSN and date of birth before adding.
+            </p>
+          )}
 
           {lookup && (
             <Alert
@@ -363,17 +406,23 @@ export function DependentsStep({
                 <div>
                   <Label>Relationship</Label>
                   <Select value={relationTypeId} onValueChange={setRelationTypeId}>
-                    <SelectTrigger data-testid="select-relation-type">
+                    <SelectTrigger data-testid="select-relation-type" aria-invalid={!!age?.error || !!relationshipError}>
                       <SelectValue placeholder="Select relationship…" />
                     </SelectTrigger>
                     <SelectContent>
                       {(relationTypes ?? []).map((rt) => (
-                        <SelectItem key={rt.id} value={rt.id}>
-                          {rt.name}
+                        <SelectItem key={rt.id} value={rt.id}
+                          disabled={age?.adultOnly && classifyEnrollmentRelationship(rt.name) !== "adult"}>
+                          {rt.name}{age?.adultOnly && classifyEnrollmentRelationship(rt.name) !== "adult" ? " — unavailable at age 26+" : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {age?.adultOnly && (
+                    <p className="text-sm text-muted-foreground" data-testid="text-adult-relationships">
+                      At age 26 or older, only adult relationships are available. {ADULT_RELATIONSHIP_GUIDANCE}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="dep-doc">Supporting document</Label>

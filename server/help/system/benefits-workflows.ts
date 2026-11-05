@@ -1,15 +1,21 @@
 import type { SystemHelpEntry } from "./index";
 
+const dependentAgeHelp = `
+      <p>When adding a dependent in First-time Enrollment, Open Enrollment, or Life Event, age is based on the dependent's date of birth and today's application calendar date, not the subscriber's age or the plan effective date. From the 25th birthday until the day before the 26th birthday, Parent, Parent of Adopted Child, Parent of Handicapped Child, QMSCO Child, and Step Parent show a nonblocking warning with the upcoming 26th birthday. You can still add the dependent during this warning period.</p>
+      <p>Starting on the dependent's 26th birthday, only Domestic Partner, Ex Spouse, Guardian, Responsible Party, and Spouse can be added. Other choices are unavailable, including Parent of Handicapped Child; there is no exception in this add flow. A February 29 birthday is treated as March 1 in non-leap years. These checks do not remove existing dependents or change eligibility or coverage termination rules.</p>
+      <p>If a combination is refused, correct the date of birth or choose the accurate permitted relationship; do not misstate the relationship to bypass the rule. Changing the date of birth or SSN requires <strong>Check for existing record</strong> again. Other entered information stays available for correction. A supporting document is still required. <strong>Add Dependent</strong> immediately creates or links real records, even before posting the enrollment.</p>`;
+
 export const benefitsWorkflowHelp: SystemHelpEntry[] = [
   {
     id: "system:enrollment-next",
     paths: ["/wizards/%"],
-    summary: "In enrollment Benefits, Effective Date, and Signature steps, Next saves valid entries before continuing; other wizard steps keep their existing controls.",
+    summary: "In enrollment, check dependent ages before adding; Next saves valid Benefits, Effective Date, and Signature entries before continuing.",
     details: `
-      <h3>Purpose</h3><p>This guidance applies only to Benefits, Effective Date, and Signature in enrollment wizards, including the shared Signature step in COBRA. Other wizard steps may still require Save or their own action.</p>
+      <h3>Purpose</h3><p>This guidance applies only to enrollment wizards: dependent additions in First-time Enrollment, Open Enrollment, and Life Event, plus Benefits, Effective Date, and Signature (including the shared Signature step in COBRA). Other wizard steps may still require Save or their own action.</p>
       <h3>Before you start</h3><p>Use an enrollment draft you are authorized to access. Eligibility, enrollment windows, date rules, and signature requirements still apply.</p>
       <h3>How to use this page</h3><ol><li>In Benefits, select at least one eligible benefit. A type marked <strong>Choose one</strong> allows one selection. <strong>Currently elected</strong> is informational, not a selection.</li><li>In Effective Date, check the displayed date. Only administrators may override the computed date. Open Enrollment's January 1 date is fixed and read-only.</li><li>In Signature, type the full name, draw a signature, or choose a file. Next uploads the chosen file. An unchanged captured signature needs no recapture.</li><li>Select <strong>Next</strong> to save the displayed entry and move one step forward. Wait for the request to finish before navigating again.</li></ol>
       <h3>Results and status meanings</h3><p>Next remains disabled while required entries are missing or invalid, including edits to a completed step. Returning to a step displays its saved choices or date. Starting a replacement signature requires completing it; an older signature cannot stand in for an incomplete replacement. Saving these steps does not post an election. Final review and posting retain their separate actions.</p>
+      ${dependentAgeHelp}
       <h3>Limitations and common problems</h3><p>If saving, uploading, or changing steps fails, remain on the step, read the error, correct the entry or connection, and try Next again. Your current draft remains available on the page, but unsaved changes can be lost by reloading or leaving it. If the error says the wizard already changed steps, reload to confirm its saved position rather than submitting repeatedly.</p>`,
   },
   {
@@ -63,6 +69,7 @@ export const benefitsWorkflowHelp: SystemHelpEntry[] = [
       <h3>Before you start</h3><p>Staff access and elections configuration are required. First-time enrollment, Open Enrollment, Life Event, and COBRA have different launch guards and date requirements; only offered actions are available for this worker.</p>
       <h3>How to use this page</h3><ol><li>Find the worker or filter the queue for the enrollment type and state you need.</li><li>Open the record and check employer, effective dates, benefits, and dependent selections.</li><li>In the Benefits step, compare offered choices with the worker's current election.</li><li>Gender is optional in the Dependents step. Choose an option only when the information is known; leave it blank to keep an existing designation unchanged. “Specify Gender” requires a description.</li><li>Complete the offered review and signature steps before posting.</li></ol>
       <h3>Results and status meanings</h3><p><strong>Currently elected</strong> marks an offered benefit included in the worker's current election, when one exists. It is informational only: it does not select the checkbox or change eligibility. A draft or unfinished wizard is not a posted election. Posting makes the election available to downstream eligibility and billing; it does not by itself create every coverage month or collect premiums.</p>
+      ${dependentAgeHelp}
       <h3>Limitations and common problems</h3><p>Check an existing draft before starting another enrollment. A disabled launch may indicate an existing election or an unavailable enrollment window. Correct date and relationship validation errors rather than changing the enrollment type to bypass them. Editing consequential dates or selections can affect downstream coverage and charges.</p>`,
   },
   {

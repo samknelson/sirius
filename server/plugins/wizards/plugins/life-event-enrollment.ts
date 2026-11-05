@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import {
   assertDraft,
+  todayYmd,
   wizardData,
   handleDependentsSubmit,
   computeDualCoverageConflicts,
@@ -323,6 +324,7 @@ const dependentsStep: WizardStepHandler = {
       ? data.dependents
       : [];
     return {
+      applicationToday: todayYmd(),
       currentRelationships: await loadCurrentRelationshipsWithGender(
         ctx.storage,
         data,

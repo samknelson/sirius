@@ -62,6 +62,21 @@ const browserPaths = [...app.matchAll(/<(?:ProtectedRoute|Route)\b[^>]*?path="([
   .flatMap(match => concretePaths(match[1]));
 
 describe("audited authenticated workflow help", () => {
+  it("documents dependent birthday checks on enrollment help without changing local entries or unrelated routes", () => {
+    for (const id of ["system:enrollment-next", "system:enrollment-review"]) {
+      const help = getSystemHelp(id)!;
+      for (const text of ["dependent's date of birth", "25th birthday", "26th birthday",
+        "Parent of Handicapped Child", "Domestic Partner", "Ex Spouse", "Guardian",
+        "Responsible Party", "Spouse", "March 1", "Check for existing record"]) {
+        expect(help.details).toContain(text);
+      }
+      expect(sanitizeHtml(help.details!, "rich-document")).toBe(help.details);
+      expect(idsFor("/__mockup/")).not.toContain(id);
+      expect(idsFor("/workers/example/relations")).not.toContain(id);
+    }
+    expect(idsFor("/wizards/fictional")).toContain("system:enrollment-next");
+    expect(idsFor("/wizards")).not.toContain("system:enrollment-next");
+  });
   it("documents dependent gender only on the existing enrollment review help", () => {
     const enrollmentHelp = getSystemHelp("system:enrollment-review")!;
     expect(enrollmentHelp.details).toContain("Gender is optional");

@@ -11,6 +11,8 @@ import type {
 import type { Wizard } from "@shared/schema";
 import type { EnrollmentType } from "@shared/schema";
 import { parseSSN } from "@shared/utils/ssn";
+import { evaluateEnrollmentDependentAge } from "@shared/utils/enrollment-dependent-age";
+import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import {
   evaluateBenefitEligibility,
   pluginConfigToEligibilityRule,
@@ -321,6 +323,8 @@ export async function lookupDependent(
   genderCalc?: string | null;
   message: string;
 }> {
+  const age = evaluateEnrollmentDependentAge(birthDate, undefined, todayYmd());
+  if (age.error) throw new Error(age.error);
   const cleaned = parseSSN(ssn);
   const existing = await storage.workers.getWorkerBySSN(cleaned);
   if (!existing) {
@@ -505,6 +509,15 @@ export async function handleDependentsSubmit(
     if (!input.relationTypeId) {
       throw new Error("Relationship type is required");
     }
+    // Resolve the configured option ourselves; labels/classifications submitted
+    // by a caller are never authority. Refuse before ANY dependent mutation,
+    // including gender/contact updates on an SSN-matched worker.
+    const relationship = typeof input.relationTypeId === "string"
+      ? await createUnifiedOptionsStorage().get("worker-relation-type", input.relationTypeId)
+      : undefined;
+    if (!relationship) throw new Error("Choose an existing relationship type.");
+    const age = evaluateEnrollmentDependentAge(input.birthDate, relationship.name, todayYmd());
+    if (age.error) throw new Error(age.error);
     if (!input.documentFileId) {
       throw new Error(
         "A supporting document (marriage certificate, birth certificate, etc.) is required for every dependent",
@@ -1279,6 +1292,7 @@ export function createEnrollmentFoundation(
           ? data.dependents
           : [];
         return {
+          applicationToday: todayYmd(),
           dualCoverageConflicts: await computeDualCoverageConflicts(
             ctx.storage,
             data,

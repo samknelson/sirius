@@ -15,6 +15,12 @@ const state = vi.hoisted(() => ({
   rows: new Map<string, any>(), events: [] as string[], admin: false,
   failSave: false, failNavigation: false, release: undefined as (() => void) | undefined,
   holdSave: undefined as Promise<void> | undefined,
+  matched: false, dependentDob: "", relationOptions: [] as Array<{ id: string; name: string }>,
+}));
+vi.mock("../../server/storage/unified-options", () => ({
+  createUnifiedOptionsStorage: () => ({
+    get: async (_type: string, id: string) => state.relationOptions.find(option => option.id === id),
+  }),
 }));
 vi.mock("../../server/plugins/_core", async original => ({
   ...await original<any>(), enforcePluginGating: async () => ({ ok: true }),
@@ -40,7 +46,8 @@ import { benefitElectionEnrollmentPlugin } from "../../server/plugins/wizards/pl
 import { openEnrollmentEnrollmentPlugin } from "../../server/plugins/wizards/plugins/open-enrollment-enrollment";
 import { lifeEventEnrollmentPlugin } from "../../server/plugins/wizards/plugins/life-event-enrollment";
 import { baoCobraEnrollmentPlugin } from "../../server/plugins/wizards/plugins/bao-cobra-enrollment";
-import { computeDefaultEffectiveDate } from "../../server/plugins/wizards/enrollment/foundation";
+import { computeDefaultEffectiveDate, todayYmd } from "../../server/plugins/wizards/enrollment/foundation";
+import { CHILD_ENROLLMENT_RELATIONSHIPS, ADULT_ENROLLMENT_RELATIONSHIPS } from "@shared/utils/enrollment-dependent-age";
 import { findSystemHelpsForPath } from "../../server/help/system";
 
 const plugins = [benefitElectionEnrollmentPlugin, openEnrollmentEnrollmentPlugin,
@@ -67,6 +74,8 @@ const post = async (suffix: string, input: any) => {
 };
 
 beforeAll(async () => {
+  state.relationOptions = [...CHILD_ENROLLMENT_RELATIONSHIPS, ...ADULT_ENROLLMENT_RELATIONSHIPS]
+    .map((name, i) => ({ id: `configured-${i}`, name }));
   vi.spyOn(storage.wizards, "getById").mockImplementation(async id => structuredClone(state.rows.get(id)));
   vi.spyOn(storage.wizards, "update").mockImplementation(async (id, updates) => {
     const saving = !(updates as any).currentStep;
@@ -80,6 +89,18 @@ beforeAll(async () => {
     return structuredClone(row);
   });
   vi.spyOn(storage.workers, "getWorker").mockResolvedValue({ id: "worker-fixture" } as any);
+  vi.spyOn(storage.workers, "getWorkerBySSN").mockImplementation(async () =>
+    state.matched ? { id: "dependent-fixture", contactId: "dependent-contact" } as any : undefined);
+  vi.spyOn(storage.contacts, "getContact").mockImplementation(async () =>
+    ({ id: "dependent-contact", birthDate: state.dependentDob, displayName: "Fictional Dependent" }) as any);
+  vi.spyOn(storage.workers, "createWorker").mockResolvedValue({ id: "dependent-fixture" } as any);
+  vi.spyOn(storage.workers, "updateWorkerSSN").mockResolvedValue(undefined as any);
+  vi.spyOn(storage.workers, "updateWorkerContactBirthDate").mockResolvedValue(undefined as any);
+  vi.spyOn(storage.workers, "updateWorkerContactGender").mockResolvedValue(undefined as any);
+  vi.spyOn(storage.workerRelations, "searchWorkerRelations").mockResolvedValue([]);
+  vi.spyOn(storage.workerRelations, "create").mockResolvedValue({ id: "dependent-relation" } as any);
+  vi.spyOn(storage.workerRelations, "delete").mockResolvedValue(true);
+  vi.spyOn(storage.workerTrustElections, "checkDualCoverage").mockResolvedValue([]);
   vi.spyOn(storage.policies, "getPolicyById").mockResolvedValue({ id: "policy-fixture", data: { benefitIds: ["medical", "medical-alt"] } } as any);
   vi.spyOn(storage.pluginConfigs, "search").mockResolvedValue([]);
   vi.spyOn(storage.trustBenefits, "getAllTrustBenefits").mockResolvedValue(
@@ -107,6 +128,10 @@ beforeAll(async () => {
     res.json({ ...row, manifest: wizardPluginRegistry.computeManifest(plugin, row) });
   });
   app.get("/api/helps/lookup", requireAuth, (req, res) => res.json(findSystemHelpsForPath(String(req.query.path))));
+  app.get("/api/options/worker-relation-type", requireAuth, (_req, res) => res.json(state.relationOptions));
+  app.get("/api/options/gender", requireAuth, (_req, res) => res.json([
+    { id: "gender-nota", name: "Specify Gender", nota: true },
+  ]));
   registerWizardDispatcherRoutes(app, requireAuth);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
@@ -117,6 +142,7 @@ beforeAll(async () => {
 beforeEach(() => {
   state.rows.clear(); state.events = []; state.admin = false; state.failSave = false;
   state.failNavigation = false; state.release = undefined; state.holdSave = undefined;
+  state.matched = false;
 });
 afterEach(() => state.release?.());
 afterAll(async () => {
@@ -353,6 +379,145 @@ describe("authenticated Chromium enrollment workflow", () => {
       expect(await disabled(next)).toBe(false);
       expect(errors).toEqual([]);
       await page.screenshot({ path: "generated-artifacts/enrollment-next/authenticated-flow.png", fullPage: true });
+
+      // Exercise the shipped dependent form and the real dispatcher with an
+      // authenticated cookie. Only persistence/vendor boundaries are doubles.
+      const setInput = async (id: string, value: string) => {
+        await page.$eval(sel(id), (node, text) => {
+          const input = node as HTMLInputElement;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }, value);
+      };
+      const choose = async (label: string) => {
+        await page.click(sel("select-relation-type"));
+        await page.waitForSelector('[role="option"]');
+        const options = await page.$$('[role="option"]');
+        for (const option of options) {
+          if (await option.evaluate(node => node.textContent) === label) {
+            await option.click();
+            return;
+          }
+        }
+        throw new Error(`Relationship not offered: ${label}`);
+      };
+      const [year, monthDay] = [Number(todayYmd().slice(0, 4)), todayYmd().slice(5)];
+      const under25 = `${year - 24}-${monthDay}`;
+      const age25 = `${year - 25}-${monthDay}`;
+      const age26 = `${year - 26}-${monthDay}`;
+      const addButton = sel("button-add-dependent");
+      for (const plugin of plugins.slice(0, 3)) {
+        state.matched = false;
+        seed(plugin, "dependents", { eventType: "birth", eventAction: "add" });
+        await page.goto(`${base}/wizards/enrollment-fixture`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(sel("input-dependent-dob"));
+        await setInput("input-dependent-ssn", "123-45-6789");
+        await setInput("input-dependent-dob", under25);
+        await page.waitForFunction(() => !(document.querySelector('[data-testid="button-lookup-dependent"]') as HTMLButtonElement).disabled);
+        await page.click(sel("button-lookup-dependent"));
+        await page.waitForSelector(sel("input-dependent-given"));
+        await setInput("input-dependent-given", "Fictional");
+        await setInput("input-dependent-family", "Dependent");
+        await choose("Parent");
+        expect(await page.$(sel("alert-dependent-age-warning"))).toBeNull();
+        expect(await disabled(addButton)).toBe(true); // required document
+        await page.$eval(sel("input-dependent-document"), node => {
+          const files = new DataTransfer();
+          files.items.add(new File(["%PDF-1.4\nfictional evidence"], "birth.pdf", { type: "application/pdf" }));
+          (node as HTMLInputElement).files = files.files;
+          node.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        await page.waitForSelector(sel("text-pending-document"));
+        await page.waitForFunction(() => !(document.querySelector('[data-testid="button-add-dependent"]') as HTMLButtonElement).disabled);
+        await setInput("input-dependent-dob", age25);
+        await page.waitForSelector(sel("alert-dependent-age-warning"));
+        expect(await disabled(addButton)).toBe(true); // changed identity requires recheck
+        await page.click(sel("button-lookup-dependent"));
+        await page.waitForFunction(() => !(document.querySelector('[data-testid="button-add-dependent"]') as HTMLButtonElement).disabled);
+        expect(await page.$eval(sel("alert-dependent-age-warning"), node => node.textContent)).toContain(String(year + 1));
+
+        await setInput("input-dependent-dob", age26);
+        await page.waitForSelector(sel("alert-dependent-age-error"));
+        expect(await disabled(addButton)).toBe(true);
+        expect(await page.$eval(sel("input-dependent-given"), node => (node as HTMLInputElement).value)).toBe("Fictional");
+        expect(await page.$eval(sel("select-relation-type"), node => node.textContent)).toContain("Parent");
+        await page.click(sel("select-relation-type"));
+        await page.waitForSelector('[role="option"]');
+        expect(await page.$$eval('[role="option"]', nodes => nodes.filter(
+          node => node.getAttribute("aria-disabled") === "true").length)).toBe(5);
+        await page.keyboard.press("Escape");
+
+        // UI bypass: neither client-supplied labels nor made-up IDs authorize
+        // writes or wizard data changes. Test both matched and new workers.
+        for (const matched of [false, true]) {
+          state.matched = matched; state.dependentDob = age26;
+          for (const relationTypeId of ["configured-0", "forged-spouse"]) {
+            state.events = [];
+            const writesBefore = [storage.workers.createWorker, storage.workers.updateWorkerContactGender,
+              storage.workers.updateWorkerContactBirthDate, storage.workerRelations.create]
+              .map(fn => vi.mocked(fn).mock.calls.length);
+            const refused = await post("dependents/submit", { action: "add", ssn: "123-45-6789",
+              birthDate: age26, given: "Fictional", family: "Dependent", relationTypeId,
+              relationshipName: "Spouse", documentFileId: "signature-file", gender: "gender-nota" });
+            expect(refused.status).toBe(500);
+            expect(state.events).toEqual([]);
+            expect([storage.workers.createWorker, storage.workers.updateWorkerContactGender,
+              storage.workers.updateWorkerContactBirthDate, storage.workerRelations.create]
+              .map(fn => vi.mocked(fn).mock.calls.length)).toEqual(writesBefore);
+            expect(state.rows.get("enrollment-fixture").data.dependents ?? []).toEqual([]);
+          }
+        }
+        // The same retained entry can be corrected to an allowed adult choice.
+        state.matched = true;
+        await choose("Spouse");
+        await page.waitForSelector(sel("alert-dependent-age-error"), { hidden: true });
+        await page.click(sel("button-lookup-dependent"));
+        await page.waitForFunction(() => !(document.querySelector('[data-testid="button-add-dependent"]') as HTMLButtonElement).disabled);
+        await page.click(addButton);
+        await page.waitForSelector(sel("row-dependent-dependent-relation"));
+        expect(state.rows.get("enrollment-fixture").data.dependents[0]).toMatchObject({
+          matchedExisting: true, birthDate: age26, relationTypeId: "configured-9",
+        });
+        await page.click(sel("button-remove-dependent-dependent-relation"));
+        await page.waitForSelector(sel("row-dependent-dependent-relation"), { hidden: true });
+        expect(state.rows.get("enrollment-fixture").data.dependents).toEqual([]);
+
+        // A warning does not prevent a real new-child add.
+        state.matched = false;
+        await setInput("input-dependent-ssn", "123-45-6789");
+        await setInput("input-dependent-dob", age25);
+        await page.click(sel("button-lookup-dependent"));
+        await page.waitForSelector(sel("input-dependent-given"));
+        await setInput("input-dependent-given", "Fictional");
+        await setInput("input-dependent-family", "Child");
+        await choose("Parent of Handicapped Child");
+        await page.$eval(sel("input-dependent-document"), node => {
+          const files = new DataTransfer();
+          files.items.add(new File(["%PDF-1.4\nfictional evidence"], "birth.pdf", { type: "application/pdf" }));
+          (node as HTMLInputElement).files = files.files;
+          node.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        await page.waitForFunction(() => !(document.querySelector('[data-testid="button-add-dependent"]') as HTMLButtonElement).disabled);
+        await page.click(addButton);
+        await page.waitForSelector(sel("row-dependent-dependent-relation"));
+        expect(state.rows.get("enrollment-fixture").data.dependents[0]).toMatchObject({
+          matchedExisting: false, birthDate: age25, relationTypeId: "configured-2",
+        });
+      }
+      await page.click(sel("button-help-more-system:enrollment-next"));
+      await page.waitForSelector('[role="dialog"]');
+      expect(await page.$eval('[role="dialog"]', node => node.textContent)).toContain("26th birthday");
+      expect(await page.$eval('[role="dialog"]', node => node.textContent)).toContain("Responsible Party");
+      await page.$eval('[role="dialog"]', node => {
+        const paragraphs = Array.from(node.querySelectorAll("p"));
+        paragraphs.find(paragraph => paragraph.textContent?.includes("Starting on the dependent's 26th birthday"))
+          ?.scrollIntoView({ block: "center" });
+      });
+      await page.screenshot({ path: "generated-artifacts/enrollment-next/dependent-age-help.png" });
+      await page.keyboard.press("Escape");
+      await page.waitForSelector('[role="dialog"]', { hidden: true });
+      expect(errors).toEqual([]);
     } catch (error) {
       console.error("Enrollment browser verification failed:", error);
       throw error;
