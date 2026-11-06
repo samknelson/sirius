@@ -19,10 +19,10 @@ export function CobraStatusReconciliation({ caseId }: { caseId: string }) {
   const [applied, setApplied] = useState(false);
   const request = useMutation({
     mutationFn: async (mode: "test" | "live") => {
-      const response = await apiRequest("POST", "/api/sitespecific/bao/cobra/status-reconcile", {
+      const report: { results: Result[] } = await apiRequest("POST", "/api/sitespecific/bao/cobra/status-reconcile", {
         mode, caseIds: [caseId],
       });
-      return { mode, report: await response.json() as { results: Result[] } };
+      return { mode, report };
     },
     onSuccess: async ({ mode, report }) => {
       setPreview(report.results[0]);
