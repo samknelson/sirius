@@ -342,6 +342,8 @@ export interface BaoDisabilityCreditStorage {
     workerId: string,
     workMonthYmd: string,
   ): Promise<BaoDcCaseMonth | undefined>;
+  /** All historical rows for a work month; removal never implies permission to revive. */
+  listMonthsForWorkerMonth(workerId: string, workMonthYmd: string): Promise<BaoDcCaseMonth[]>;
   /** All queued months across workers, oldest work month first. */
   listQueuedMonths(): Promise<BaoDcCaseMonth[]>;
   /**
@@ -1475,6 +1477,14 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
           ),
         );
       return rows[0];
+    },
+
+    async listMonthsForWorkerMonth(workerId: string, workMonthYmd: string): Promise<BaoDcCaseMonth[]> {
+      await requireTables(this);
+      return getClient().select().from(monthsTable).where(and(
+        eq(monthsTable.workerId, workerId),
+        eq(monthsTable.workMonthYmd, workMonthYmd),
+      ));
     },
 
     async listQueuedMonths(): Promise<BaoDcCaseMonth[]> {

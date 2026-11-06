@@ -188,7 +188,9 @@ export function isDcRemovalEvent(event: DcGrantActivityEventLike): boolean {
 }
 
 export function isDcGrantEvent(event: DcGrantActivityEventLike): boolean {
-  return (BAO_DC_GRANT_EVENT_TYPES as readonly string[]).includes(event.eventType);
+  return (BAO_DC_GRANT_EVENT_TYPES as readonly string[]).includes(event.eventType) ||
+    (event.eventType === "case_month_reconciled" &&
+      (event.payload as Record<string, unknown> | null)?.restored === true);
 }
 
 /**

@@ -152,3 +152,4 @@
 - [Mask Mode approval boundary](mask-mode-approval-boundary.md) — approved screen-only masking supersedes strict refusals; admin toggle, unchanged canonical data and unstructured content; no compliance claim.
 - [Enrollment dependent-age scope](enrollment-dependent-age-boundary.md) — dependent's 26th birthday, add-only; no handicapped-child exception or monthly eligibility policy change.
 - [Enrollment self-service authority](enrollment-self-service-authority.md) — worker scope limits worker accounts; staff may still complete guided enrollment for any worker without their own worker link.
+- [DC correction authority](disability-credit-correction-authority.md) — a threshold-only removal releases capacity, not reserves it; restoration uses the saved threshold and never displaces other months.

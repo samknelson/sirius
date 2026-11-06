@@ -1,7 +1,7 @@
 /**
  * Disability Credit grant + reconcile (task: fund-attributed shortfall hours
- * through the canonical worker-hours path, reconciled downward as employer
- * reporting arrives).
+ * through the canonical worker-hours path, reconciled in both directions as
+ * employer reporting and corrections arrive).
  *
  * DB-backed: builds an isolated fixture graph (worker, employer, policy,
  * benefit, trust-eligibility rule, WMB history, hours) and drives the grant
@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../server/db";
+import { databaseSourceInfo } from "../../server/storage/db";
 import { storage } from "../../server/storage";
 import {
   employers,
@@ -27,6 +28,7 @@ import {
   sitespecificBaoDcEvents,
   BAO_DC_FUND_EMPLOYER_SIRIUS_ID,
   BAO_DC_EMPLOYMENT_STATUS_CODE,
+  users, roles, userRoles, rolePermissions,
 } from "@shared/schema";
 import { pluginConfigsBenefitEligibility } from "@shared/schema";
 import { ensureBaoDcSchema } from "./fixtures/bao-schema";
@@ -90,6 +92,8 @@ let activeStatusId = "";
 let fmlaStatusId = "";
 let dcEmployerId = "";
 let dcStatusId = "";
+let fixtureRoleId = "";
+let fixtureUserId = "";
 
 async function createRuleConfig(pluginId: string, data: Record<string, unknown>): Promise<string> {
   const [row] = await db
@@ -167,6 +171,14 @@ beforeAll(async () => {
   await ensureBaoDcSchema();
   await updateComponentCache("sitespecific.bao", true);
 
+  if (String(databaseSourceInfo.source) === "isolated-test") {
+    const [user] = await db.insert(users).values({ email: `${run}@example.invalid` }).returning();
+    const [role] = await db.insert(roles).values({ name: run }).returning();
+    fixtureUserId = user.id;
+    fixtureRoleId = role.id;
+    await db.insert(userRoles).values({ userId: user.id, roleId: role.id });
+    await db.insert(rolePermissions).values({ roleId: role.id, permissionKey: "staff" });
+  }
   const assignees = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
   if (!assignees[0]) throw new Error("DC grant tests require one staff user");
   userId = assignees[0].id;
@@ -308,6 +320,12 @@ afterAll(async () => {
   await db.delete(trustBenefits).where(eq(trustBenefits.id, benefitId));
   const { workers } = await import("@shared/schema");
   await db.delete(workers).where(inArray(workers.id, [workerId, worker2Id, worker3Id, worker4Id].filter(Boolean)));
+  if (fixtureRoleId) {
+    await db.delete(userRoles).where(eq(userRoles.roleId, fixtureRoleId));
+    await db.delete(rolePermissions).where(eq(rolePermissions.roleId, fixtureRoleId));
+    await db.delete(roles).where(eq(roles.id, fixtureRoleId));
+    await db.delete(users).where(eq(users.id, fixtureUserId));
+  }
 });
 
 describe("fund/DC pseudo-employer identity", () => {
@@ -612,11 +630,11 @@ describe("employer-hours reconciliation", () => {
     }
   });
 
-  it("never grows DC back when employer hours shrink", async () => {
+  it("grows DC to the saved shortfall when employer hours shrink", async () => {
     await setEmployerHours(10); // qualifying 30 ⇒ shortfall 90 > current 5
     const result = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
-    expect(result.action).toBe("unchanged");
-    expect(await dcHoursTotal(monthA)).toBe(5);
+    expect(result.action).toBe("increased");
+    expect(await dcHoursTotal(monthA)).toBe(90);
   });
 
   it("removes DC entirely at threshold, marks the month removed, restores capacity", async () => {
@@ -641,11 +659,13 @@ describe("employer-hours reconciliation", () => {
     );
     expect(after).toBe(before - 1); // annual capacity restored
 
-    // Removed month never comes back even if hours drop again.
+    // A proven threshold-only removal can return, consuming capacity again.
     await setEmployerHours(0);
     const again = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
-    expect(again.action).toBe("not_granted");
-    expect(await dcHoursTotal(monthA)).toBe(0);
+    expect(again.action).toBe("restored");
+    expect(await dcHoursTotal(monthA)).toBe(100);
+    await setEmployerHours(100);
+    expect((await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA))).action).toBe("removed");
   });
 
   it("also removes a granted month when qualifying hours exceed the threshold", async () => {
@@ -695,8 +715,8 @@ describe("employer-hours reconciliation", () => {
     // monthA was granted then reconciled away — same-period pair nets to zero.
     const monthARow = activity.find((r) => r.workMonthYmd === ymd(monthA));
     expect(monthARow).toBeDefined();
-    expect(monthARow!.grants).toBe(1);
-    expect(monthARow!.removals).toBe(1);
+    expect(monthARow!.grants).toBe(2);
+    expect(monthARow!.removals).toBe(2);
     expect(monthARow!.net).toBe(0);
   });
 });
@@ -1119,6 +1139,7 @@ describe("pseudo-employer cache priming (charge-guard staleness)", () => {
 
     // Grant a fresh queued month; grantMonth primes the cache from
     // ensureDcFundIdentities BEFORE writing the fund hours.
+    await setEmployerHours(0); // the earlier correction cycle ended at threshold
     const monthE = addM(curYear, curMonth, -1); // work month with prior WMB anchor
     // monthA (cur−1) was removed by reconciliation — the partial unique index
     // (status ≠ removed) allows re-adding it as queued.

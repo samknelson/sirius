@@ -23,10 +23,9 @@
  *    annual capacity — usage is derived from non-removed months).
  *
  * Reconciliation: as later employer reporting lands (HOURS_SAVED for any
- * non-DC employer), a granted month's DC hours are reduced to the NEW
- * shortfall — never increased — and removed entirely at zero (month marked
- * removed, capacity restored, typed event logged). Downward employer
- * corrections therefore never grow DC back.
+ * non-DC employer), DC hours converge to the current shortfall against the
+ * saved threshold. Threshold-only removals can be restored while the case
+ * remains approved and annual capacity is available.
  *
  * Everything runs under the per-worker DC advisory lock and is idempotent:
  * repeating an approval, release, or reconciliation converges without
@@ -59,6 +58,7 @@ import {
 } from "../../../plugins/trust/eligibility/plugins/bao-shared";
 import {
   BAO_DC_FUND_EMPLOYER_SIRIUS_ID,
+  BAO_DC_ANNUAL_MONTH_LIMIT,
   type BaoDcCaseMonth,
   type Worker,
   type WorkerTrustElection,
@@ -675,21 +675,44 @@ export async function releaseDueQueuedMonthsForWorker(
 }
 
 /**
- * Reconcile one granted month against the latest employer reporting: reduce
- * the DC hours row to the new (smaller) shortfall, or remove it at zero —
- * marking the month removed (restores annual capacity) and logging why. DC
- * hours are NEVER increased here, so downward employer corrections cannot
- * grow a grant back. The single hours write/delete triggers the standard
- * rescan. Runs under the worker's DC lock; idempotent.
+ * Converge an approved month's canonical DC hours to its saved threshold's
+ * current shortfall. Only proven hours-only removals may be revived, under
+ * the same worker lock and annual-capacity accounting as month selection.
  */
 export async function reconcileDcGrantForWorkerMonth(
   workerId: string,
   workMonthYmd: string,
-): Promise<{ action: "reduced" | "removed" | "unchanged" | "not_granted"; dcHours?: number }> {
+): Promise<{ action: "reduced" | "increased" | "restored" | "removed" | "unchanged" | "not_granted" | "capacity_blocked"; dcHours?: number }> {
   const dc = storage.baoDisabilityCredit;
   return dc.withWorkerSerialization(workerId, async () => {
-    const month = await dc.getApplicableMonthForWorkerMonth(workerId, workMonthYmd);
-    if (!month || month.status !== "granted") return { action: "not_granted" as const };
+    const months = await dc.listMonthsForWorkerMonth(workerId, workMonthYmd);
+    let month = months.find(m => m.status !== "removed");
+    // A newer applicable selection owns the month; never revive an older case
+    // behind it. Ambiguous historical approvals also require staff review.
+    if (!month) {
+      const candidates: BaoDcCaseMonth[] = [];
+      for (const candidate of months) {
+        if ((await dc.getCase(candidate.caseId))?.status !== "approved") continue;
+        const noShortfall = candidate.voidReason ===
+          "No shortfall — qualifying employer hours already meet the continuation threshold";
+        const reconciledAway = candidate.voidReason ===
+          "Reconciled away — later employer hours reached the continuation threshold";
+        if (!noShortfall && !reconciledAway) continue;
+        const events = (await dc.listEventsForCase(candidate.caseId)).filter(e => {
+          const p = e.payload as Record<string, unknown> | null;
+          return p?.monthId === candidate.id || e.dedupeKey === `case_month_voided:${candidate.id}`;
+        }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        const last = events[0];
+        const payload = last?.payload as Record<string, unknown> | null;
+        if ((noShortfall && last?.eventType === "case_month_voided" && payload?.reason === "no_shortfall") ||
+            (reconciledAway && last?.eventType === "case_month_reconciled" &&
+             payload?.removed === true && payload?.dcHours === 0)) candidates.push(candidate);
+      }
+      if (candidates.length === 1) month = candidates[0];
+    }
+    if (!month || !["granted", "removed"].includes(month.status) ||
+        (await dc.getCase(month.caseId))?.status !== "approved") return { action: "not_granted" as const };
+    const restoring = month.status === "removed";
 
     const data = (month.data ?? {}) as Record<string, unknown>;
     const threshold = Number(data.threshold);
@@ -708,7 +731,6 @@ export async function reconcileDcGrantForWorkerMonth(
     const { year, month: m } = ymdToParts(workMonthYmd);
     const dcRows = await dc.getHoursRowsForWorkerEmployerMonth(workerId, employerId, year, m);
     const currentDcHours = dcRows.reduce((sum, r) => sum + (r.hours ?? 0), 0);
-    if (dcRows.length === 0 || currentDcHours <= 0) return { action: "unchanged" as const };
 
     const qualifyingHours = await dc.getQualifyingHoursForWorkerMonth(
       workerId,
@@ -717,29 +739,48 @@ export async function reconcileDcGrantForWorkerMonth(
       employerId,
     );
     const newShortfall = Math.max(0, threshold - qualifyingHours);
-    // Downward only — a shrinking employer report never grows DC back.
-    const target = Math.min(currentDcHours, newShortfall);
-    if (target === currentDcHours) return { action: "unchanged" as const };
+    const target = newShortfall;
+    if (restoring && target === 0) return { action: "unchanged" as const };
+    if (!restoring && target === currentDcHours && dcRows.length === 1 && dcRows[0].day === 1) {
+      return { action: "unchanged" as const };
+    }
+    if (restoring && await dc.countApplicableMonthsForWorkerYear(workerId, year) >= BAO_DC_ANNUAL_MONTH_LIMIT) {
+      logger.warn("DC restoration blocked by annual month limit", { service: SERVICE_NAME, workerId, workMonthYmd, monthId: month.id });
+      return { action: "capacity_blocked" as const };
+    }
+    // A monotone per-month revision distinguishes real repeated correction
+    // cycles (40→0→40→0) while no-op delivery never writes history.
+    const priorRevision = Number(data.reconciliationRevision ?? 0);
+    if (!Number.isSafeInteger(priorRevision) || priorRevision < 0) {
+      throw new Error("DC reconcile: invalid reconciliation revision");
+    }
+    const revision = priorRevision + 1;
+    const dedupeKey = `case_month_reconciled:${month.id}:revision:${revision}`;
 
     if (target > 0) {
-      await storage.workerHours.upsertWorkerHours({
+      for (const row of dcRows.filter(r => r.day !== 1)) {
+        await storage.workerHours.deleteWorkerHours(row.id);
+      }
+      const result = await storage.workerHours.upsertWorkerHours({
         workerId,
         year,
         month: m,
-        day: dcRows[0].day,
+        day: 1,
         employerId,
         employmentStatusId,
         hours: target,
       });
       await dc.applyMonthGrantTransition(month.id, {
-        data: { grantedHours: target, qualifyingHoursAtReconcile: qualifyingHours },
+        status: "granted",
+        voidReason: null,
+        data: { grantedHours: target, hoursId: result.data?.id ?? null, qualifyingHoursAtReconcile: qualifyingHours, reconciliationRevision: revision },
         event: {
           type: "case_month_reconciled",
-          dedupeKey: `case_month_reconciled:${month.id}:${target}`,
-          payload: { threshold, qualifyingHours, previousDcHours: currentDcHours, dcHours: target },
+          dedupeKey,
+          payload: { threshold, qualifyingHours, previousDcHours: currentDcHours, dcHours: target, restored: restoring },
         },
       });
-      return { action: "reduced" as const, dcHours: target };
+      return { action: restoring ? "restored" as const : target > currentDcHours ? "increased" as const : "reduced" as const, dcHours: target };
     }
 
     for (const row of dcRows) {
@@ -748,10 +789,10 @@ export async function reconcileDcGrantForWorkerMonth(
     await dc.applyMonthGrantTransition(month.id, {
       status: "removed",
       voidReason: "Reconciled away — later employer hours reached the continuation threshold",
-      data: { grantedHours: 0, qualifyingHoursAtReconcile: qualifyingHours },
+      data: { grantedHours: 0, qualifyingHoursAtReconcile: qualifyingHours, reconciliationRevision: revision },
       event: {
         type: "case_month_reconciled",
-        dedupeKey: `case_month_reconciled:${month.id}:0`,
+        dedupeKey,
         payload: {
           threshold,
           qualifyingHours,
@@ -766,7 +807,7 @@ export async function reconcileDcGrantForWorkerMonth(
 }
 
 // ---------------------------------------------------------------------------
-// Reconciliation listener — later employer reporting reduces DC grants.
+// Reconciliation listener — later employer reporting recalculates DC grants.
 // ---------------------------------------------------------------------------
 
 let dcFundEmployerIdCache: { id: string | null; at: number } | null = null;
@@ -821,11 +862,10 @@ async function handleHoursSaved(payload: HoursSavedPayload): Promise<void> {
         // — never reconcile against them (no feedback loop).
         if (await isDcFundEmployer(payload.employerId)) return;
         const workMonthYmd = partsToYmd(payload.year, payload.month);
-        const month = await storage.baoDisabilityCredit.getApplicableMonthForWorkerMonth(
-          payload.workerId,
-          workMonthYmd,
-        );
-        if (!month || month.status !== "granted") return;
+        // Most upload rows have no DC history. Avoid taking a transaction and
+        // worker lock for those; the service re-reads under lock before writing.
+        const months = await storage.baoDisabilityCredit.listMonthsForWorkerMonth(payload.workerId, workMonthYmd);
+        if (!months.some(m => m.status === "granted" || m.status === "removed")) return;
         const result = await reconcileDcGrantForWorkerMonth(payload.workerId, workMonthYmd);
         if (result.action !== "unchanged" && result.action !== "not_granted") {
           logger.info("DC grant reconciled after employer hours change", {
@@ -857,7 +897,7 @@ export function initDcGrantReconciliation(): void {
   reconciliationHandlerId = eventBus.on({
     name: "bao-dc-grant-reconcile",
     description:
-      "Reconciles a granted Disability Credit month downward when later employer hours arrive for the same work month — reduces the fund-attributed DC hours to the new shortfall or removes them at zero (restoring annual capacity). Never increases DC hours.",
+      "Recalculates approved Disability Credit against the saved threshold after employer-hours changes, including eligible threshold-only restorations within annual capacity.",
     event: EventType.HOURS_SAVED,
     handler: handleHoursSaved,
   });

@@ -94,3 +94,29 @@ describe("enrollment Next help boundaries", () => {
     }
   });
 });
+
+describe("Disability Credit correction guidance", () => {
+  it.each([
+    ["system:disability-credit-worker", "/workers/example/sitespecific/bao/disability-credit",
+      ["/workers/example/sitespecific/bao/dp", "/workers/example/sitespecific/bao/disability-credit/extra", "/bao/dc/queue"]],
+    ["system:disability-credit-staff", "/bao/dc/cases/example",
+      ["/bao/dc", "/bao/dc/queue/extra", "/workers/example/benefits/current"]],
+    ["system:employer-upload-launcher", "/employers/example/wizards",
+      ["/employers/example/wizards/extra", "/employers/monthly-uploads", "/workers/example/wizards"]],
+    ["system:shared-wizard-runner", "/wizards/example",
+      ["/wizards", "/config/wizards", "/workers/example"]],
+  ])("registers, sanitizes and scopes %s", async (id, intended, misses) => {
+    const response = await read(`/api/helps/lookup?path=${encodeURIComponent(intended as string)}`);
+    const entry = (await response.json()).find((e: { id: string }) => e.id === id);
+    expect(entry.source).toBe("system");
+    expect(entry.details).toContain("saved");
+    expect(entry.details).toMatch(/annual/i);
+    expect(entry.details).toMatch(/other removals|Other removals|Administrative/i);
+    expect(entry.details).toBe(sanitizeHtml(entry.details, "rich-document"));
+    for (const path of misses) {
+      const matches = await (await read(`/api/helps/lookup?path=${encodeURIComponent(path)}`)).json();
+      expect(matches.some((e: { id: string }) => e.id === id)).toBe(false);
+    }
+    expect(JSON.stringify(localHelp)).toBe(before);
+  });
+});
