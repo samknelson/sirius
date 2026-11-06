@@ -19,6 +19,7 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
 fi
 
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/samknelson/sirius.git"
+
 MIRROR="bao-replit-main"
 TRACKING_NAMESPACE="refs/remotes/push-workflow"
 WORKFLOW_GIT_NAME="Sirius Deployment Workflow"
@@ -197,7 +198,7 @@ echo "Pushing main ($HEAD_SHA) -> origin/$TARGET and origin/$MIRROR"
 
 # GitHub supports atomic pushes. This prevents the target from updating while
 # the mirror fails (or vice versa), which otherwise leaves them out of sync.
-git push --atomic "$REMOTE" \
+GIT_TERMINAL_PROMPT=0 git push --atomic "$REMOTE" \
   "main:refs/heads/$TARGET" \
   "main:refs/heads/$MIRROR"
 
