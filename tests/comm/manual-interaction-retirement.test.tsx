@@ -7,10 +7,37 @@ import { Router } from "wouter";
 import { workerTabTree, userTabTree } from "@shared/tabRegistry";
 import { CommList } from "@/components/worker/CommList";
 import { registerCommRoutes } from "../../server/modules/comm";
+import { workerRecordHelp } from "../../server/help/system/worker-records";
 
 const appSource = readFileSync(new URL("../../client/src/App.tsx", import.meta.url), "utf8");
 
 describe("manual interaction retirement", () => {
+  it("places Relations under worker Identity without changing its route or access gates", () => {
+    const identity = workerTabTree.find((tab) => tab.id === "identity");
+    const contact = workerTabTree.find((tab) => tab.id === "contact");
+    const comm = workerTabTree.find((tab) => tab.id === "comm");
+    const relations = identity?.children?.find((tab) => tab.id === "relations");
+
+    expect(relations).toMatchObject({
+      id: "relations",
+      label: "Relations",
+      hrefTemplate: "/workers/{id}/relations",
+      policyId: "worker.view",
+      component: "worker.relations",
+    });
+    expect(contact?.children?.some((tab) => tab.id === "relations")).toBe(false);
+    expect(comm?.children?.some((tab) => tab.id === "relations")).toBe(false);
+
+    const route = appSource.match(
+      /<Route path="\/workers\/:id\/relations">([\s\S]*?)<\/Route>/,
+    )?.[1];
+    expect(route).toContain('<ProtectedRoute tabId="relations" entityType="worker">');
+    expect(route).toContain("<WorkerRelations />");
+
+    const help = workerRecordHelp.find((entry) => entry.id === "system:worker-relationships");
+    expect(help?.paths).toContain("/workers/%/relations");
+  });
+
   it.each([
     ["worker", workerTabTree, "/workers"],
     ["user", userTabTree, "/users"],

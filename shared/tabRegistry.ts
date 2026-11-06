@@ -162,6 +162,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
       { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
       { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
+      { id: 'relations', label: 'Relations', hrefTemplate: '/workers/{id}/relations', policyId: 'worker.view', component: 'worker.relations' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
       { id: 'aat', label: 'Access Tokens', hrefTemplate: '/workers/{id}/aat', policyId: 'worker.mine', component: 'worker.aat' },
     ]
@@ -172,7 +173,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'email', label: 'Email', hrefTemplate: '/workers/{id}/email', permission: 'staff' },
       { id: 'addresses', label: 'Addresses', hrefTemplate: '/workers/{id}/addresses', policyId: 'worker.view' },
       { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/workers/{id}/phone-numbers', policyId: 'worker.view' },
-      { id: 'relations', label: 'Relations', hrefTemplate: '/workers/{id}/relations', policyId: 'worker.view', component: 'worker.relations' },
     ]
   },
   { 
