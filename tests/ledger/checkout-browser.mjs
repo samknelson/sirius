@@ -70,18 +70,19 @@ try {
     entityType: "worker", entityId: "fixture-worker", eaId: "fixture-ea",
     account: { name: "COBRA account", currency: "USD", gatewayConfigId: "fixture-gateway" },
     balance: "307.35", available: "307.35", invoices: selectionInput.invoices,
-    paymentTypes: ["card", "us_bank_account"], payComponentId: "fixture:pay", reusableMethodsSupported: false,
+    paymentTypes: ["card", "us_bank_account"], payComponentId: "fixture:pay", reusableMethodsSupported: true,
     settings: { allowPartial: true, minAmount: 1 },
     authorization: { version: "fixture-v1", text: "I authorize this payment." },
     readiness: {
       paymentAuthorization: "ready", methodPermission: "allowed",
-      reusableMethods: "unsupported", saveMethod: "provider_unsupported",
+      reusableMethods: "supported", saveMethod: "ready",
     },
     selectionInput, quote,
   };
   let activeCheckout = checkout;
   let rejectInitiation = false;
   let submittedPayments = 0;
+  const submittedBodies = [];
   const origin = `http://127.0.0.1:${server.config.server.port}`;
   const failures = [];
   browser = await puppeteer.launch({
@@ -122,6 +123,11 @@ try {
       if (rejectInitiation) return request.respond({ status: 409, contentType: "application/json",
         body: JSON.stringify({ message: "Ask an administrator to enable card payments. No payment was initiated." }) });
       const body = JSON.parse(request.postData());
+      submittedBodies.push(body);
+      if (body.saveMethod && (!body.saveMethodConsent?.accepted || !body.saveMethodConsent?.version ||
+          !body.saveMethodConsent?.text.includes("does not authorize future charges"))) {
+        failures.push(`Missing separate save consent: ${JSON.stringify(body)}`);
+      }
       if (!["card", "us_bank_account"].includes(body.paymentMethodType) || body.paymentMethodId) {
         failures.push(`Wrong provider selection: ${JSON.stringify(body)}`);
       }
@@ -223,8 +229,9 @@ try {
    await clickLabel("New US bank transfer");
    assert.equal(await reviewDisabled(), true, "method switch requires renewed consent");
    await clickLabel("I authorize this payment.");
+   await clickLabel("Save this payment method for future payments");
    await clickButton("Review payment");
-   await page.waitForFunction(() => document.body.textContent.includes("using a new US bank transfer"));
+   await page.waitForFunction(() => document.body.textContent.includes("using a new US bank transfer (save for future use)"));
    await clickButton("Continue to secure confirmation");
    await page.waitForSelector('[data-testid="fixture-provider"]');
    assert.ok((await page.$eval('[data-testid="fixture-provider"]', node => node.textContent)).includes("Secure us_bank_account entry"));
@@ -236,6 +243,7 @@ try {
    await page.waitForSelector('main[aria-label="Checkout"]');
    await clickLabel("New credit/debit card");
    await clickLabel("I authorize this payment.");
+   await clickLabel("Save this payment method for future payments");
    await clickButton("Review payment");
    await clickButton("Continue to secure confirmation");
    await page.waitForSelector('[data-testid="fixture-provider"]');
@@ -302,6 +310,8 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes("Payment pending"));
   assert.ok(!(await page.$eval("main", node => node.textContent)).includes("Abandon this payment"));
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
+  assert.deepEqual(submittedBodies.filter(body => body.saveMethod).map(body => body.paymentMethodType),
+    ["us_bank_account", "card"], "browser submits the explicit save choice for both new method types");
   console.log(`Checkout browser fixture passed; screenshot: ${screenshotPath}`);
 } finally {
   await browser?.close();

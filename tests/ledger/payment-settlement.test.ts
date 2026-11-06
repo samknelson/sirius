@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
+import { CHECKOUT_SAVE_METHOD_CONSENT } from "../../shared/ledger/checkout-save-consent";
 
 let attempt: any;
 let ledgerPayment: any;
@@ -105,7 +106,11 @@ describe("online settlement", () => {
       metadata: { source: "online_checkout", invoicePeriods: [
         { invoiceNumber: "INV-JAN", statementYmd: "2026-01-01" },
         { invoiceNumber: "INV-FEB", statementYmd: "2026-02-01" },
-      ] }, statementSelection: [
+      ],
+        saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true,
+          acceptedAt: "2026-01-01T00:00:00.000Z", textVersion: CHECKOUT_SAVE_METHOD_CONSENT.version,
+          authorizationType: "save_payment_method" },
+      }, statementSelection: [
         { invoiceNumber: "INV-JAN", amount: "60.00" },
         { invoiceNumber: "INV-FEB", amount: "40.00" },
       ],
@@ -152,6 +157,9 @@ describe("online settlement", () => {
     attempt.amount = "267.35";
     attempt.statementSelection = [{ invoiceNumber: "2163-COBRA-202609", amount: "267.35" }];
     attempt.metadata = {
+      saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true,
+        acceptedAt: "2026-01-01T00:00:00.000Z", textVersion: CHECKOUT_SAVE_METHOD_CONSENT.version,
+        authorizationType: "save_payment_method" },
       invoicePeriods: [{ invoiceNumber: "2163-COBRA-202609", statementYmd: "2026-09-01" }],
       checkoutQuote: { unstatementedAmount: "0.00" },
     };
@@ -191,10 +199,12 @@ describe("online settlement", () => {
 
   it("records processing without credit then clears the same payment on success", async () => {
     attempt.status = "requires_action";
+    attempt.saveMethod = true;
     await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
     const received = ledgerPayment.dateReceived;
     expect(ledgerPayment).toMatchObject({ status: "pending", dateCleared: null });
     expect(allocation).not.toHaveBeenCalled();
+    expect(methodUpsert).not.toHaveBeenCalled();
     await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
     await processPaymentEvidence("attempt-1", "gateway-1", success());
     expect(paymentCreate).toHaveBeenCalledOnce();
@@ -202,6 +212,15 @@ describe("online settlement", () => {
     expect(ledgerPayment.dateReceived).toEqual(received);
     expect(ledgerPayment.dateCleared).toBeInstanceOf(Date);
     expect(allocation).toHaveBeenCalledOnce();
+    expect(methodUpsert).toHaveBeenCalledOnce();
+    expect(methodUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "worker", entityId: "worker-1",
+      consent: expect.objectContaining({
+        authorizationType: "save_payment_method",
+        textVersion: CHECKOUT_SAVE_METHOD_CONSENT.version,
+        text: CHECKOUT_SAVE_METHOD_CONSENT.text,
+      }),
+    }));
     expect(allocation.mock.calls[0][0].dateReceived).toEqual(received);
     await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
     await processPaymentEvidence("attempt-1", "gateway-1", success());
@@ -222,11 +241,13 @@ describe("online settlement", () => {
   it.each(["payment.failed", "payment.canceled"] as const)(
     "closes pending without allocating on %s", async type => {
       attempt.status = "requires_action";
+      attempt.saveMethod = true;
       await processPaymentEvidence("attempt-1", "gateway-1", success({ type: "payment.processing", providerCreated: 90 }));
       await processPaymentEvidence("attempt-1", "gateway-1", success({ type }));
       expect(ledgerPayment.status).toBe(type === "payment.failed" ? "error" : "canceled");
       expect(ledgerPayment.dateCleared).toBeNull();
       expect(allocation).not.toHaveBeenCalled();
+      expect(methodUpsert).not.toHaveBeenCalled();
       expect(attempt.status).toBe(type === "payment.failed" ? "failed" : "canceled");
     },
   );
@@ -261,7 +282,11 @@ describe("online settlement", () => {
     expect(paymentCreate).toHaveBeenCalledOnce();
     expect(methodUpsert).toHaveBeenCalledTimes(2);
     expect(methodUpsert.mock.calls[1][0]).toMatchObject({
-      entityType: "worker", entityId: "worker-1", consent: attempt.consent,
+      entityType: "worker", entityId: "worker-1",
+      consent: expect.objectContaining({
+        authorizationType: "save_payment_method",
+        text: CHECKOUT_SAVE_METHOD_CONSENT.text,
+      }),
     });
     expect(events.setDefaultIfAbsent).toHaveBeenCalledOnce();
   });
@@ -322,6 +347,29 @@ describe("online settlement", () => {
     expect(attempt.status).toBe("failed");
     expect(ledgerPayment.status).toBe("error");
     expect(allocation).not.toHaveBeenCalled();
+  });
+
+  it("saves a bank method only when ACH recovery later confirms success", async () => {
+    attempt.saveMethod = true;
+    retrieve.mockResolvedValueOnce({ providerRef: "ref-1", status: "processing", amountMinor: 10000, currency: "USD" })
+      .mockResolvedValueOnce({ providerRef: "ref-1", status: "processing", amountMinor: 10000, currency: "USD" });
+    await recoverOnlinePayments();
+    expect(attempt.status).toBe("processing");
+    expect(methodUpsert).not.toHaveBeenCalled();
+
+    retrieve.mockResolvedValue({ providerRef: "ref-1", status: "succeeded", amountMinor: 10000,
+      currency: "USD", methodRef: "pm-ach", methodType: "us_bank_account" });
+    await recoverOnlinePayments();
+    expect(attempt.status).toBe("succeeded");
+    expect(ledgerPayment.status).toBe("cleared");
+    expect(methodUpsert).toHaveBeenCalledOnce();
+    expect(methodUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "worker", entityId: "worker-1", providerMethodRef: "pm-ach",
+      consent: expect.objectContaining({
+        authorizationType: "save_payment_method",
+        textVersion: CHECKOUT_SAVE_METHOD_CONSENT.version,
+      }),
+    }));
   });
 
   it("does not release an old created payment when cancellation loses a race", async () => {

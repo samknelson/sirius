@@ -96,7 +96,9 @@ describe("online payment help content safety", () => {
   it("keeps consequential warnings before instructions and checkout-only procedures off receipts", () => {
     const checkoutDetails = getSystemHelp(checkout)!.details!;
     expect(checkoutDetails.indexOf("can charge")).toBeLessThan(checkoutDetails.indexOf("<ol>"));
-    expect(checkoutDetails).toContain("for this payment only");
+    expect(checkoutDetails).toContain("only for this payment");
+    expect(checkoutDetails).toContain("not added while a transfer is processing");
+    expect(checkoutDetails).toContain("does not authorize future charges or enable automatic payments");
     expect(checkoutDetails).toContain("unknown pending allocation blocks checkout");
     const receiptDetails = getSystemHelp(receipt)!.details!;
     expect(receiptDetails.indexOf("Do not pay again")).toBeLessThan(receiptDetails.indexOf("<ol>"));

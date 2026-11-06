@@ -196,6 +196,28 @@ describe("payment gateway provider contract", () => {
     }
   });
 
+  it.each(["card", "us_bank_account"] as const)("requests Stripe future-use setup for an opted-in %s", async paymentType => {
+    const testContext = {
+      apiKey: "sk_test_not_a_real_key",
+      config: { id: "stripe-test", data: {
+        publishableKey: "pk_test_not_a_real_key", paymentTypes: ["card", "us_bank_account"],
+      } },
+    } as PaymentGatewayContext;
+    stripeCreate.mockResolvedValueOnce({
+      id: `pi_saved_${paymentType}`, status: "requires_payment_method", amount: 1234,
+      currency: "usd", client_secret: "cs_test", payment_method: null, last_payment_error: null,
+    });
+    await stripePaymentGatewayPlugin.createPaymentSession!(testContext, {
+      sessionId: `checkout-save-${paymentType}`, amountMinor: 1234, currency: "USD",
+      customerRef: "cus_test", saveMethod: true, paymentTypes: [paymentType],
+      description: "Account payment", metadata: {},
+    });
+    expect(stripeCreate).toHaveBeenLastCalledWith(expect.objectContaining({
+      customer: "cus_test", payment_method_types: [paymentType],
+      setup_future_usage: "off_session",
+    }), { idempotencyKey: `checkout-save-${paymentType}` });
+  });
+
   it("refuses to create live Stripe charges", async () => {
     const liveContext = {
       apiKey: "sk_live_not_a_real_key",

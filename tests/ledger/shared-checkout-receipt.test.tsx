@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
+import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 
 const { apiRequest, navigate, route, payEnabled } = vi.hoisted(() => ({
   apiRequest: vi.fn(),
@@ -74,7 +75,7 @@ function response(method: string, url: string, body?: any): unknown {
   const entityId = employerFixture ? "employer-1" : "worker-1";
   if (method === "GET" && url === "/api/ledger/ea/ea-1") return { entityType, entityId };
   if (method === "GET" && url.includes(`/checkout/${entityType}/${entityId}/ea-1`)) return employerFixture ?? workerFixture;
-  if (method === "GET" && url === `/api/ledger/payment-methods/${entityType}/${entityId}`) return methods;
+  if (method === "GET" && url === `/api/ledger/payment-methods/${entityType}/${entityId}`) return methodsFixture;
   if (method === "GET" && url === `/api/ledger/payment-methods/${entityType}/${entityId}/authorization`) {
     if (employerFixture) throw new Error("No method-management grant");
     return { authorization: { version: "v1", text: "I authorize this payment." } };
@@ -86,6 +87,7 @@ function response(method: string, url: string, body?: any): unknown {
 }
 let employerFixture: typeof checkout | null = null;
 let workerFixture: typeof checkout = checkout;
+let methodsFixture = methods;
 
 async function render(page: "checkout" | "receipt" = "checkout") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -147,6 +149,7 @@ beforeEach(() => {
   navigate.mockReset();
   payEnabled.value = true;
   workerFixture = checkout;
+  methodsFixture = methods;
   vi.stubGlobal("crypto", { randomUUID: () => "idempotency-1" });
   apiRequest.mockImplementation((method: string, url: string, body?: unknown) => Promise.resolve(response(method, url, body)));
 });
@@ -279,6 +282,41 @@ describe("shared checkout", () => {
      await submit();
      expect(postBody().paymentMethodType).toBe("card");
      expect(text()).toContain("New card entry");
+   });
+
+   it.each([
+     ["card", "New credit/debit card"],
+     ["us_bank_account", "New US bank transfer"],
+   ] as const)("offers and submits separate save consent for a new %s", async (paymentType, label) => {
+     await render();
+     const checkboxLabel = CHECKOUT_SAVE_METHOD_CONSENT.text;
+     expect(text()).toContain(checkboxLabel);
+     const consentControl = Array.from(container!.querySelectorAll("label"))
+       .find(node => node.textContent?.includes(checkboxLabel))!
+       .querySelector('[role="checkbox"]') as HTMLElement;
+     expect(consentControl.getAttribute("aria-checked")).toBe("false");
+     if (paymentType === "us_bank_account") await selectRadio(label);
+     await clickCheckboxContaining("I authorize");
+     await clickCheckboxContaining(checkboxLabel);
+     await submit();
+     expect(postBody()).toMatchObject({
+       paymentMethodType: paymentType,
+       saveMethod: true,
+       saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true },
+     });
+   });
+
+   it("clears save consent and omits it after switching to a saved method", async () => {
+     await render();
+     await clickCheckboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text);
+     await selectRadio("Visa");
+     expect(text()).not.toContain(CHECKOUT_SAVE_METHOD_CONSENT.text);
+     await clickCheckboxContaining("I authorize");
+     await submit();
+     expect(postBody()).toEqual(expect.objectContaining({
+       paymentMethodId: "pm-card", saveMethod: false,
+     }));
+     expect(postBody()).not.toHaveProperty("saveMethodConsent");
    });
 
    it.each([
@@ -540,7 +578,7 @@ describe("shared checkout", () => {
       readiness: { ...checkout.readiness, paymentAuthorization: "configuration_required", saveMethod: "configuration_required" } };
     await render();
     expect(text()).toContain("Payment authorization wording has not been configured");
-     expect(text()).toContain("used for this payment only");
+     expect(text()).toContain("for this payment only");
     expect(button("Review payment").disabled).toBe(true);
     noPost();
   });
@@ -597,6 +635,25 @@ describe("shared checkout", () => {
       saveMethod: false, consent: { version: "v1", text: "I authorize this payment.", accepted: true },
       idempotencyKey: "idempotency-1",
     }));
+    expect(postBody()).not.toHaveProperty("saveMethodConsent");
+  });
+
+  it("shows a provider-confirmed method in the next checkout after it is saved", async () => {
+    methodsFixture = [];
+    await render();
+    expect(text()).toContain("No saved methods for this payer yet");
+    await clickCheckboxContaining("I authorize");
+    await clickCheckboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text);
+    await submit();
+    expect(postBody().saveMethod).toBe(true);
+    await act(async () => { root?.unmount(); });
+    root = null;
+    container?.remove();
+    container = null;
+    methodsFixture = [{ id: "pm-new", gatewayConfigId: "stripe", isActive: true,
+      providerDetails: { card: { brand: "Visa", last4: "1111" } } }];
+    await render();
+    expect(text()).toContain("Visa •••• 1111");
   });
 
   it("submits a saved ACH selection and completes provider action before receipt", async () => {
