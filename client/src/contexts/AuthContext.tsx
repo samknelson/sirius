@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useLayoutEffect, useCal
 import { useQuery } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { User } from '@/lib/user-types';
+import type { ResolvedMenu } from '@shared/menu-types';
 import {
   DEFAULT_TIMEZONE_POLICY,
   resolveEffectiveTimeZone,
@@ -167,7 +168,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           key.startsWith('/api/ledger/payment-methods')
         );
       } });
+      // Do not keep showing navigation resolved for the masqueraded account
+      // while the restored session's menu is being fetched.
+      queryClient.setQueryData<ResolvedMenu>(['/api/menu'], (menu) =>
+        menu ? { ...menu, items: [] } : menu,
+      );
       await queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      // Resolve the server-gated menu only after the auth query has picked up
+      // the restored account.
+      await queryClient.invalidateQueries({ queryKey: ['/api/menu'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/access/policies/staff'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/my-employers'] });
       queryClient.invalidateQueries({ predicate: (query) => {
