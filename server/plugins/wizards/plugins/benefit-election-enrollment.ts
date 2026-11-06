@@ -49,7 +49,8 @@ export const benefitElectionEnrollmentPlugin: WizardPlugin = {
   description:
     "Enroll a worker in trust benefits for the first time: pick the employer/policy, select eligible benefits, add dependents with supporting documents, capture a signature, and post the election. Only available when the worker has no active medical or dental election.",
   requiredComponent: "trust.benefits",
-  requiredPolicy: "staff",
+  entityType: "worker",
+  entityAccessPolicy: "worker.mine",
   category: "enrollment",
   launchSchema: {
     type: "object",

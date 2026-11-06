@@ -19,9 +19,10 @@ import {
 } from "../../trust/eligibility/executor";
 import type { EligibilityRule } from "../../trust/eligibility/types";
 import { checkAccessInline } from "../../../services/access-policy-evaluator";
-import { createWizardAttachment } from "../attachments";
+import { createWizardAttachment, listWizardAttachments } from "../attachments";
 import { logger } from "../../../logger";
 import type { storage as StorageType } from "../../../storage";
+import { wizardPluginRegistry } from "../registry";
 
 type IStorage = typeof StorageType;
 
@@ -499,7 +500,21 @@ export async function handleDependentsSubmit(
       throw new Error("SSN and date of birth are required");
     }
     const result = await lookupDependent(ctx.storage, input.ssn, input.birthDate);
-    return { data: { dependentLookup: result } };
+    const staff = (await checkAccessInline(ctx.req, "staff")).granted;
+    if (!staff && result.status === "matched") {
+      const established = await ctx.storage.workerRelations.searchWorkerRelations({
+        workerId: subscriberId, role: "worker_1", activeAt: new Date(),
+      });
+      if (!established.some(relation => relation.worker1 === subscriberId && relation.worker2 === result.workerId)) {
+        return { data: { dependentLookup: {
+          status: "requires_staff",
+          message: "Staff must review this person's dependent relationship before you can add them. No personal details have been disclosed.",
+        } } };
+      }
+    }
+    return { data: { dependentLookup: staff || result.status !== "matched" ? result : {
+      status: "matched", message: "Existing dependent identity verified. Choose the established relationship type to continue.",
+    } } };
   }
 
   if (input.action === "add") {
@@ -523,10 +538,33 @@ export async function handleDependentsSubmit(
         "A supporting document (marriage certificate, birth certificate, etc.) is required for every dependent",
       );
     }
+    const attachments = await listWizardAttachments(ctx.wizardId);
+    if (!attachments.some(file => file.id === input.documentFileId)) {
+      throw new Error("The supporting document must belong to this enrollment");
+    }
 
     const lookup = await lookupDependent(ctx.storage, input.ssn, input.birthDate);
     if (lookup.status === "dob_mismatch") {
       throw new Error(lookup.message);
+    }
+
+    // Knowing an existing person's SSN and birth date is not authority to
+    // disclose their record, link them, or change their contact. Worker
+    // self-service may reuse only an already-established active relationship
+    // of the requested type. Staff retain on-behalf-of-worker linking.
+    const existingRels = await ctx.storage.workerRelations.searchWorkerRelations({
+      workerId: subscriberId,
+      role: "worker_1",
+      relationTypeId: input.relationTypeId,
+      activeAt: new Date(),
+    });
+    const reused = lookup.status === "matched"
+      ? existingRels.find(relation => relation.worker1 === subscriberId &&
+          relation.worker2 === lookup.workerId && relation.relationType === input.relationTypeId)
+      : undefined;
+    if (lookup.status === "matched" && !reused &&
+        !(await checkAccessInline(ctx.req, "staff")).granted) {
+      throw new Error("Staff must review this person's dependent relationship before you can add them.");
     }
 
     const cleaned = parseSSN(input.ssn);
@@ -582,14 +620,6 @@ export async function handleDependentsSubmit(
     // subscriber and this dependent, if there is one — repeated enrollment
     // attempts must not pile up duplicate relationship rows (storage also
     // rejects overlapping duplicates outright).
-    const existingRels = await ctx.storage.workerRelations.searchWorkerRelations({
-      workerId: subscriberId,
-      role: "worker_1",
-      relationTypeId: input.relationTypeId,
-      activeAt: new Date(),
-    });
-    const reused = existingRels.find((r) => r.worker2 === dependentWorkerId);
-
     // Real records on purpose: dependent workers and relationships
     // persist regardless of whether the wizard is later posted.
     const relation =
@@ -763,6 +793,27 @@ export async function handleSignatureSubmit(
   };
 }
 
+/** Attachment references must still belong to this draft at posting time. */
+export async function assertEnrollmentEvidence(ctx: WizardStepContext): Promise<void> {
+  const data = wizardData(ctx.wizard);
+  const signature = data.signature;
+  if (!signature || !["typed", "drawn", "upload"].includes(signature.type)) {
+    throw new Error("The worker's signature is required before posting");
+  }
+  if (signature.type !== "upload" && (typeof signature.value !== "string" || !signature.value.trim())) {
+    throw new Error("Signature is required");
+  }
+  const dependents: DependentEntry[] = Array.isArray(data.dependents) ? data.dependents : [];
+  const needed = dependents.map(dependent => dependent.documentFileId);
+  if (signature.type === "upload") needed.push(signature.fileId);
+  if (needed.length) {
+    const attached = new Set((await listWizardAttachments(ctx.wizardId)).map(file => file.id));
+    if (needed.some(id => !id || !attached.has(id))) {
+      throw new Error("Required evidence or signature is no longer attached to this enrollment. Upload it again before posting.");
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Shared step-builder factories                                       */
 /* ------------------------------------------------------------------ */
@@ -899,14 +950,6 @@ export async function runEnrollmentCreate(
       storage: IStorage,
       workerId: string,
     ) => Promise<Record<string, unknown>>;
-    /**
-     * Entity-scoped wizards (plugins declaring `entityType: "worker"`, e.g.
-     * COBRA enrollment) persist the covered worker as `entityId` so the
-     * entity-access checks on the wizard routes (list/get/patch/delete and
-     * step dispatch) can scope the instance to that worker's users.
-     * Staff-only enrollment wizards leave this off and keep `entityId: null`.
-     */
-    entityScoped?: boolean;
   },
 ): Promise<WizardCreateResult> {
   const launchArgs =
@@ -917,6 +960,12 @@ export async function runEnrollmentCreate(
   if (!workerId) {
     return { error: "workerId is required", status: 400 };
   }
+  if (typeof workerId !== "string" || !ctx.input.entityId || ctx.input.entityId !== workerId ||
+      ((ctx.input.data as any)?.workerId !== undefined && (ctx.input.data as any).workerId !== workerId)) {
+    return { error: "Enrollment worker must match the authorized entity scope", status: 400 };
+  }
+  const access = await checkAccessInline(ctx.req, "worker.mine", workerId);
+  if (!access.granted) return { error: "Access denied", status: 403 };
   const worker = await ctx.storage.workers.getWorker(workerId);
   if (!worker) {
     return { error: "Worker not found", status: 404 };
@@ -945,9 +994,11 @@ export async function runEnrollmentCreate(
   }
   const wizard = await ctx.storage.wizards.create({
     ...(ctx.input as any),
-    entityId: opts.entityScoped ? workerId : null,
+    status: "draft",
+    currentStep: wizardPluginRegistry.get(ctx.input.type)?.steps[0]?.id ?? null,
+    entityId: workerId,
     data: {
-      ...((ctx.input.data as Record<string, unknown>) ?? {}),
+      launchArguments: { workerId },
       workerId,
       workerName: await ctx.storage.workers.getWorkerDisplayName(workerId),
       ...seedData,
@@ -970,7 +1021,7 @@ export function enrollmentPrepareUpdate(
       status: 400,
     };
   }
-  return { data: ctx.merged };
+  return { error: "Use the enrollment steps to change this draft", status: 400 };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1138,6 +1189,25 @@ export function createEnrollmentFoundation(
     if (!data.signature) {
       throw new Error("The worker's signature is required before posting");
     }
+    await assertEnrollmentEvidence(ctx);
+    if (guardWorker) {
+      const reason = await guardWorker(ctx.storage, data.workerId);
+      if (reason) throw new Error(reason);
+    }
+    if (prepareCreateData) {
+      const current = await prepareCreateData(ctx.storage, data.workerId);
+      if (current.error) throw new Error(current.error);
+      if (current.data?.openEnrollmentWindowId !== data.openEnrollmentWindowId ||
+          current.data?.forcedStartYmd !== data.startYmd) {
+        throw new Error("The enrollment window changed. Start a new enrollment.");
+      }
+    }
+    // Selections must still be valid when posting, not just when saved.
+    const employer = await submitEmployerPolicy({ ...ctx, input: { employerId: data.employerId } });
+    if (employer.data?.policyId !== data.policyId) {
+      throw new Error("The employer's policy changed. Review the employer and benefits again.");
+    }
+    await submitBenefits({ ...ctx, input: { benefitIds: data.benefitIds } });
 
     const relationshipIds = (
       (data.dependents as DependentEntry[] | undefined) ?? []

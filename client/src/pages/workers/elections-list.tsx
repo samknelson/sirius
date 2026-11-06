@@ -1,6 +1,6 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+import { EnrollmentLaunchers } from "@/components/trust/EnrollmentLaunchers";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
 import type { WorkerTrustElectionView } from "@shared/schema";
 import { getDateRangeStatus } from "@shared/utils";
@@ -25,60 +25,6 @@ function ElectionsListContent() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission("staff");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [, navigate] = useLocation();
-  const { toast } = useToast();
-
-  const enrollMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/wizards", {
-        type: "benefit_election_enrollment",
-        status: "draft",
-        data: { launchArguments: { workerId: worker.id } },
-      });
-    },
-    onSuccess: (wizard: { id: string }) => {
-      navigate(`/wizards/${wizard.id}`);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const openEnrollmentMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/wizards", {
-        type: "open_enrollment_enrollment",
-        status: "draft",
-        data: { launchArguments: { workerId: worker.id } },
-      });
-    },
-    onSuccess: (wizard: { id: string }) => {
-      navigate(`/wizards/${wizard.id}`);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Open Enrollment is only offered while an admin-configured window is open.
-  // The wizard's create hook enforces the same gate server-side; this just
-  // controls whether the launch button is shown at all.
-  const { data: openWindow } = useQuery<{
-    active: { id: string; planYear: number } | null;
-    today: string;
-  }>({
-    queryKey: ["/api/trust/open-enrollment-windows/active"],
-    enabled: canEdit,
-  });
-  const activeWindow = openWindow?.active ?? null;
 
   const { data: rows = [], isLoading } = useQuery<WorkerTrustElectionView[]>({
     queryKey: ["/api/workers", worker.id, "trust-elections"],
@@ -90,52 +36,15 @@ function ElectionsListContent() {
   });
   const latestElection = rows[0] ?? null;
 
-  // First-time enrollment is only offered when the worker has no active
-  // medical or dental election. The wizard's create hook enforces the same
-  // gate server-side; this just reflects it in the button's enabled state.
-  const { data: firstTimeEligibility } = useQuery<{ eligible: boolean; reason?: string }>({
-    queryKey: ["/api/workers", worker.id, "trust-elections", "first-time-eligibility"],
-    queryFn: async () => {
-      const res = await fetch(`/api/workers/${worker.id}/trust-elections/first-time-eligibility`);
-      if (!res.ok) throw new Error("Failed to load");
-      return res.json();
-    },
-    enabled: canEdit,
-  });
-  const firstTimeBlocked = firstTimeEligibility ? !firstTimeEligibility.eligible : false;
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <CardTitle>All Trust Elections</CardTitle>
+          <EnrollmentLaunchers workerId={worker.id} />
           {canEdit && (
             <div className="flex gap-2">
-              <span
-                className="inline-flex"
-                title={firstTimeBlocked ? firstTimeEligibility?.reason : undefined}
-              >
-                <Button
-                  variant="outline"
-                  onClick={() => enrollMutation.mutate()}
-                  disabled={enrollMutation.isPending || firstTimeBlocked}
-                  data-testid="button-enrollment-wizard"
-                >
-                  {enrollMutation.isPending ? "Starting…" : "First-time Enrollment"}
-                </Button>
-              </span>
-              {activeWindow && (
-                <Button
-                  variant="outline"
-                  onClick={() => openEnrollmentMutation.mutate()}
-                  disabled={openEnrollmentMutation.isPending}
-                  data-testid="button-open-enrollment-wizard"
-                >
-                  {openEnrollmentMutation.isPending
-                    ? "Starting…"
-                    : `Open Enrollment ${activeWindow.planYear}`}
-                </Button>
-              )}
               <Button
                 onClick={() => setIsModalOpen(true)}
                 disabled={isLoading}

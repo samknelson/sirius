@@ -6,7 +6,8 @@ import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import { enforcePluginGating } from "../_core";
 import { wizardPluginRegistry } from "./registry";
 import { buildContentDisposition } from "../../utils/content-disposition";
-import { enforceWizardEntityAccess } from "./entity-access";
+import { enforceWizardEntityAccess, enforceWizardRecordAccess } from "./entity-access";
+import { isEnrollmentWizard } from "./enrollment/identity";
 import { WorkerTrustElectionValidationError } from "../../storage/trust/elections";
 import type {
   WizardPlugin,
@@ -71,7 +72,9 @@ async function loadRegisteredWizard(
   // to the owning entity's users — the plugin-level gate above does not do
   // this. Non-entity wizards skip it and keep their plugin-level gating.
   if (plugin.entityType) {
-    const entityGate = await enforceWizardEntityAccess(
+    const entityGate = isEnrollmentWizard(wizard.type)
+      ? await enforceWizardRecordAccess(wizard.id, req)
+      : await enforceWizardEntityAccess(
       plugin,
       wizard.entityId,
       req,
@@ -245,11 +248,20 @@ export function registerWizardDispatcherRoutes(
   app.post(
     "/api/wizards/:id/dispatch/:stepId/upload",
     requireAuth,
-    upload.single("file"),
-    async (req, res) => {
+    async (req, res, next) => {
       try {
         const loaded = await loadRegisteredWizard(req, res);
         if (!loaded) return;
+        res.locals.uploadWizard = loaded;
+        next();
+      } catch {
+        res.status(500).json({ message: "Failed to check wizard access" });
+      }
+    },
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        const loaded = res.locals.uploadWizard as { wizard: Wizard; plugin: WizardPlugin };
         const step = await resolveStep(
           loaded.plugin,
           req.params.stepId,

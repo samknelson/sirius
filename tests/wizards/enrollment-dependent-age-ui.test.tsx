@@ -156,6 +156,18 @@ describe("immediate dependent DOB form feedback", () => {
     expect(text("alert-dependent-age-error")).toContain("existing relationship");
     expect(add().disabled).toBe(true);
   });
+  it("requires staff assistance for an unrelated existing person and offers no add controls", async () => {
+    await act(async () => root.render(
+      <QueryClientProvider client={queryClient}><DependentsStep {...props} data={{
+        ...props.data, dependentLookup: { status: "requires_staff", message: "Staff must review this relationship." },
+      }} /></QueryClientProvider>,
+    ));
+    expect(text("alert-dependent-lookup")).toContain("Staff must review this relationship");
+    expect(container.querySelector('[data-testid="button-add-dependent"]')).toBeNull();
+    expect(container.querySelector('[data-testid="input-dependent-document"]')).toBeNull();
+    expect(container.querySelector('[data-testid="select-relation-type"]')).toBeNull();
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
   it("changes leap-day availability on March 1 using only the server's date", async () => {
     await date("2026-02-28");
     await input("input-dependent-dob", "2000-02-29");

@@ -9,6 +9,7 @@ import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
 import { deleteWizardWithAttachments, listWizardAttachments } from "../plugins/wizards/attachments";
+import { isEnrollmentWizard } from "../plugins/wizards/enrollment/identity";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -111,7 +112,7 @@ export function registerWizardRoutes(
     try {
       const laCtx = await buildContext(req as any);
       const laAdmin = await checkAccess('admin', laCtx.user);
-      if (!laAdmin.granted) {
+      if (!laAdmin.granted && !isEnrollmentWizard(req.params.typeName)) {
         if (!laCtx.user || !await getAccessStorage()!.hasPermission(laCtx.user.id, 'employer')) {
           res.status(403).json({ message: "Access denied" });
           return;
@@ -205,7 +206,14 @@ export function registerWizardRoutes(
       if (entityId) filters.entityId = entityId as string;
 
       const wizards = await storage.wizards.list(filters);
-      res.json(wizards);
+      const visible = [];
+      for (const wizard of wizards) {
+        if (!isEnrollmentWizard(wizard.type) ||
+            (await enforceWizardRecordAccess(wizard.id, req as any)).ok) {
+          visible.push(wizard);
+        }
+      }
+      res.json(visible);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizards" });
     }
@@ -287,6 +295,12 @@ export function registerWizardRoutes(
       // access policy) is enforced here from the plugin declaration alone.
       const frameworkPlugin = wizardPluginRegistry.get(validatedData.type);
       if (frameworkPlugin) {
+        // Compatibility for existing staff launchers only. Workers must send
+        // explicit scope; ownership is still checked below.
+        if (isEnrollmentWizard(validatedData.type) && !validatedData.entityId &&
+            (await checkAccess('staff', (await buildContext(req as any)).user)).granted) {
+          validatedData.entityId = (validatedData.data as any)?.launchArguments?.workerId;
+        }
         const gate = await enforcePluginGating(
           wizardPluginRegistry.getMetadata(frameworkPlugin),
           req as any,
@@ -393,6 +407,9 @@ export function registerWizardRoutes(
       }
 
       const validatedData = insertWizardSchema.partial().parse(req.body);
+      if (isEnrollmentWizard(existing.type) || (validatedData.type && isEnrollmentWizard(validatedData.type))) {
+        return res.status(400).json({ message: "Enrollment identity and state are server-owned. Use the enrollment steps to make changes." });
+      }
       
       if (validatedData.type) {
         if (!wizardPluginRegistry.get(validatedData.type)) {

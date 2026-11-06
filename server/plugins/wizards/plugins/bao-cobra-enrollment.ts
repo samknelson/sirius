@@ -10,6 +10,7 @@ import {
   wizardData,
   todayYmd,
   buildSignatureStep,
+  assertEnrollmentEvidence,
   runEnrollmentCreate,
   enrollmentPrepareUpdate,
 } from "../enrollment/foundation";
@@ -406,6 +407,7 @@ async function submitReview(
   if (!data.signature) {
     throw new Error("The signature is required before posting");
   }
+  await assertEnrollmentEvidence(ctx);
   const benefits = selectedBenefits(data);
   if (benefits.length === 0) {
     throw new Error("The selected coverage is not available on this case");
@@ -415,6 +417,10 @@ async function submitReview(
   // election window at the moment of posting.
   const theCase = await ctx.storage.baoCobraCases.getRaw(data.caseId as string);
   if (!theCase) throw new Error("The COBRA case no longer exists");
+    if (theCase.coveredPersonWorkerId !== data.workerId ||
+        theCase.subscriberWorkerId !== data.subscriberWorkerId) {
+      throw new Error("The COBRA case no longer matches this enrollment");
+    }
   if (theCase.electionMadeYmd) {
     throw new Error("An election has already been made on this COBRA case");
   }
@@ -471,7 +477,9 @@ async function submitReview(
     // Serialize with staff closure and other election posts. The validation
     // above is only a preview; it cannot authorize a stale write.
     const lockedCase = await ctx.storage.baoCobraCases.getForUpdate(theCase.id);
-    if (!lockedCase || lockedCase.electionMadeYmd) throw new Error("This case no longer permits an election");
+    if (!lockedCase || lockedCase.electionMadeYmd ||
+        lockedCase.coveredPersonWorkerId !== data.workerId ||
+        lockedCase.subscriberWorkerId !== data.subscriberWorkerId) throw new Error("This case no longer permits an election");
     const lockedStatus = await unifiedOptions.get("bao-cobra-status", lockedCase.statusId);
     if (!lockedStatus || lockedStatus.closed) throw new Error("This COBRA case is closed and can no longer be elected");
     if (lockedCase.cobraEffectiveYmd !== theCase.cobraEffectiveYmd ||
@@ -579,9 +587,6 @@ export const baoCobraEnrollmentPlugin: WizardPlugin = {
   // provided.
   create: (ctx) =>
     runEnrollmentCreate(ctx, {
-      // Persist the covered worker as the wizard's entityId so the
-      // worker.cobra entity-access checks apply to the saved instance.
-      entityScoped: true,
       // Only offered when this person has an open, un-elected COBRA case
       // still inside its election window. Enforced server-side.
       guardWorker: async (storage, workerId) => {

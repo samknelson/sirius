@@ -10,6 +10,13 @@ import { openEnrollmentEnrollmentPlugin } from "../../server/plugins/wizards/plu
 import { lifeEventEnrollmentPlugin } from "../../server/plugins/wizards/plugins/life-event-enrollment";
 
 const options = vi.hoisted(() => new Map<string, { id: string; name: string }>());
+vi.mock("../../server/plugins/wizards/attachments", () => ({
+  listWizardAttachments: async () => [{ id: "doc" }],
+}));
+// These pre-existing cases exercise the original staff-assisted add flow.
+vi.mock("../../server/services/access-policy-evaluator", () => ({
+  checkAccessInline: async () => ({ granted: true }),
+}));
 vi.mock("../../server/storage/unified-options", () => ({
   createUnifiedOptionsStorage: () => ({
     get: async (type: string, id: string) => type === "worker-relation-type" ? options.get(id) : undefined,
@@ -156,7 +163,8 @@ describe.each(plugins)("authoritative dependent add: $id", plugin => {
     ctx.wizard.data.dependents = [{ workerId: "dependent" }];
     await expect(step.submit!(ctx)).rejects.toThrow("already been added");
     ctx.wizard.data.dependents = [];
-    storage.workerRelations.searchWorkerRelations.mockResolvedValue([{ id: "existing", worker2: "dependent" }]);
+    storage.workerRelations.searchWorkerRelations.mockResolvedValue([{ id: "existing",
+      worker1: "subscriber", worker2: "dependent", relationType: ctx.input.relationTypeId }]);
     const result = await step.submit!(ctx);
     expect(storage.workerRelations.create).not.toHaveBeenCalled();
     expect(result.data?.dependents).toMatchObject([{ createdByWizard: false, relationId: "existing" }]);

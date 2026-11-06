@@ -151,3 +151,4 @@
 - [COBRA initial obligation](cobra-initial-obligation.md) — initial payment covers every month from coverage start through election month; later premiums are separate.
 - [Mask Mode approval boundary](mask-mode-approval-boundary.md) — approved screen-only masking supersedes strict refusals; admin toggle, unchanged canonical data and unstructured content; no compliance claim.
 - [Enrollment dependent-age scope](enrollment-dependent-age-boundary.md) — dependent's 26th birthday, add-only; no handicapped-child exception or monthly eligibility policy change.
+- [Enrollment self-service authority](enrollment-self-service-authority.md) — worker scope limits worker accounts; staff may still complete guided enrollment for any worker without their own worker link.

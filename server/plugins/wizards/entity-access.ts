@@ -3,6 +3,7 @@ import { checkAccessInline } from "../../services/access-policy-evaluator";
 import type { WizardPlugin } from "./types";
 import { wizardPluginRegistry } from "./registry";
 import { storage } from "../../storage";
+import { enrollmentIdentityError, isEnrollmentWizard } from "./enrollment/identity";
 
 /**
  * Maps a wizard plugin's `entityType` to the "*.mine" access policy that
@@ -13,6 +14,7 @@ import { storage } from "../../storage";
  */
 const ENTITY_MINE_POLICY: Record<string, string> = {
   employer: "employer.mine",
+  worker: "worker.mine",
 };
 
 export type WizardAccessDecision =
@@ -38,6 +40,13 @@ export async function checkWizardRecordAccess(
   if (plugin.requiredComponent &&
       !(await componentEnabled(plugin.requiredComponent))) {
     return { ok: false, status: 403, message: "Access denied" };
+  }
+  const identityError = enrollmentIdentityError(wizard);
+  if (identityError) return { ok: false, status: 403, message: identityError };
+  if (isEnrollmentWizard(wizard.type) && !wizard.entityId) {
+    return await check("staff")
+      ? { ok: true }
+      : { ok: false, status: 403, message: "Legacy enrollment drafts require staff access" };
   }
   if (await check("admin")) return { ok: true };
 

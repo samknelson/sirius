@@ -67,12 +67,12 @@ export function registerWorkerTrustElectionsRoutes(
 ) {
   const electionsComponent = requireComponent("trust.elections");
 
-  // List elections for a worker (staff-only)
+  // Read the linked worker's elections; manual writes remain staff-only.
   app.get(
     "/api/workers/:id/trust-elections",
     requireAuth,
     electionsComponent,
-    requireAccess('staff'),
+    requireAccess('worker.mine', (req) => req.params.id),
     async (req: Request, res: Response) => {
       try {
         const activeOnly = req.query.activeOnly === 'true' || req.query.activeOnly === '1';
@@ -109,7 +109,7 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
-  // First-time enrollment eligibility for a worker (staff-only).
+  // First-time enrollment availability for staff or the linked worker.
   // First-time enrollment is only offered when the worker has NO current
   // election covering a Medical or Dental benefit. Baseline AD&D/Life-only
   // workers still qualify. The wizard's create hook enforces the same gate
@@ -118,7 +118,7 @@ export function registerWorkerTrustElectionsRoutes(
     "/api/workers/:id/trust-elections/first-time-eligibility",
     requireAuth,
     electionsComponent,
-    requireAccess('staff'),
+    requireAccess('worker.mine', (req) => req.params.id),
     async (req: Request, res: Response) => {
       try {
         const cobraBlock = await guardNoActiveCobraCase(
@@ -145,7 +145,7 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
-  // Life-event eligibility for a worker (staff-only). A life event change is
+  // Life-event availability for staff or the linked worker. A life event change is
   // only offered when the worker HAS a current election (the inverse of
   // first-time enrollment). The wizard's create hook enforces the same gate
   // server-side; this endpoint drives the launch button's enabled state.
@@ -153,9 +153,11 @@ export function registerWorkerTrustElectionsRoutes(
     "/api/workers/:id/trust-elections/life-event-eligibility",
     requireAuth,
     electionsComponent,
-    requireAccess('staff'),
+    requireAccess('worker.mine', (req) => req.params.id),
     async (req: Request, res: Response) => {
       try {
+        const cobraBlock = await guardNoActiveCobraCase(storage, req.params.id);
+        if (cobraBlock) return void res.json({ eligible: false, reason: cobraBlock });
         const active = await storage.workerTrustElections.getActiveByWorker(
           req.params.id,
         );
@@ -167,6 +169,30 @@ export function registerWorkerTrustElectionsRoutes(
         });
       } catch (error) {
         handleError(res, error, "Failed to check life event eligibility");
+      }
+    },
+  );
+
+  // Only the selected worker's launch availability, not window administration.
+  app.get(
+    "/api/workers/:id/trust-elections/open-enrollment-eligibility",
+    requireAuth,
+    electionsComponent,
+    requireAccess('worker.mine', (req) => req.params.id),
+    async (req: Request, res: Response) => {
+      try {
+        const cobraBlock = await guardNoActiveCobraCase(storage, req.params.id);
+        if (cobraBlock) return void res.json({ eligible: false, reason: cobraBlock });
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const window = await storage.openEnrollmentWindows.getActiveWindow(today);
+        res.json({
+          eligible: !!window,
+          planYear: window?.planYear,
+          reason: window ? undefined : "Open Enrollment is not currently open.",
+        });
+      } catch (error) {
+        handleError(res, error, "Failed to check Open Enrollment eligibility");
       }
     },
   );

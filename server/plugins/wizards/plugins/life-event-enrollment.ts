@@ -13,6 +13,7 @@ import {
   computeDualCoverageConflicts,
   buildEffectiveDateStep,
   buildSignatureStep,
+  assertEnrollmentEvidence,
   runEnrollmentCreate,
   enrollmentPrepareUpdate,
   guardNoActiveCobraCase,
@@ -375,6 +376,13 @@ async function submitReview(
   if (!data.signature) {
     throw new Error("The worker's signature is required before posting");
   }
+  await assertEnrollmentEvidence(ctx);
+  const cobraBlock = await guardNoActiveCobraCase(ctx.storage, data.workerId);
+  if (cobraBlock) throw new Error(cobraBlock);
+  const activeElection = await ctx.storage.workerTrustElections.getActiveByWorker(data.workerId);
+  if (!activeElection || activeElection.id !== data.sourceElectionId) {
+    throw new Error("The current election changed. Start a new Life Event enrollment.");
+  }
 
   const action = eventActionOf(data);
   if (!action) throw new Error("Choose a life event before posting");
@@ -460,7 +468,8 @@ export const lifeEventEnrollmentPlugin: WizardPlugin = {
   description:
     "Update the dependents on a worker's active trust election after a life event: birth or marriage adds a dependent, divorce or death removes one. The employer, policy, and benefits are carried forward from the current election. Only available when the worker has an active election.",
   requiredComponent: "trust.benefits",
-  requiredPolicy: "staff",
+  entityType: "worker",
+  entityAccessPolicy: "worker.mine",
   category: "enrollment",
   launchSchema: {
     type: "object",

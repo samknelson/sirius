@@ -1,4 +1,5 @@
 import { useParams, useLocation, Link } from "wouter";
+import { isEnrollmentWizard } from "@shared/enrollment-wizards";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { BAO_PROCESS_DELETE_REFUSAL, isBaoProcessAdmitted } from "@shared/wizard-process-lifecycle";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -39,7 +40,7 @@ export default function WizardView() {
 
   const { data: allWizardTypes } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
-    enabled: !!wizard,
+    enabled: !!wizard && !isEnrollmentWizard(wizard.type),
   });
 
   const wizardType = allWizardTypes?.find(t => t.name === wizard?.type);
@@ -137,7 +138,7 @@ export default function WizardView() {
             </div>
             <div>
               <h1 className="text-xl md:text-2xl font-semibold text-foreground" data-testid="text-wizard-title">
-                {wizardType?.displayName || wizard.type}
+                {manifest?.displayName || wizardType?.displayName || wizard.type}
               </h1>
               <p className="text-sm text-muted-foreground">
                 Created {format(new Date(wizard.date), 'PPP')}

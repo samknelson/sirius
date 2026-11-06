@@ -133,7 +133,7 @@ export function CobraReviewPostStep({
           </p>
           {data?.electionId ? (
             <Link
-              href={`/trust/election/${data.electionId as string}`}
+              href={`/workers/${data.workerId as string}/sitespecific/bao/cobra`}
               className="text-primary underline-offset-2 hover:underline"
               data-testid="link-posted-election"
             >

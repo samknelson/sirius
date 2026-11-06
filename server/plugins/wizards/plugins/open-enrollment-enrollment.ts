@@ -72,7 +72,8 @@ export const openEnrollmentEnrollmentPlugin: WizardPlugin = {
   description:
     "Run Open Enrollment for a worker while an enrollment window is open: pick the employer/policy, select from every benefit the worker currently qualifies for, add dependents, capture a signature, and post the election. The effective date is fixed to January 1 of the plan year.",
   requiredComponent: "trust.benefits",
-  requiredPolicy: "staff",
+  entityType: "worker",
+  entityAccessPolicy: "worker.mine",
   category: "enrollment",
   launchSchema: {
     type: "object",

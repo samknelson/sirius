@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleDependentsSubmit } from "../../server/plugins/wizards/enrollment/foundation";
 import { lifeEventEnrollmentPlugin } from "../../server/plugins/wizards/plugins/life-event-enrollment";
+vi.mock("../../server/plugins/wizards/attachments", () => ({
+  listWizardAttachments: async () => [{ id: "document-1" }],
+}));
+// Staff can establish relationships while assisting an enrollment.
+vi.mock("../../server/services/access-policy-evaluator", () => ({
+  checkAccessInline: async () => ({ granted: true }),
+}));
 
 vi.mock("../../server/storage/unified-options", () => ({
   createUnifiedOptionsStorage: () => ({

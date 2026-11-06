@@ -27,6 +27,7 @@ vi.mock("../../server/plugins/_core", async original => ({
 }));
 vi.mock("../../server/plugins/wizards/entity-access", () => ({
   enforceWizardEntityAccess: async () => ({ ok: true }),
+  enforceWizardRecordAccess: async () => ({ ok: true }),
 }));
 vi.mock("../../server/services/access-policy-evaluator", async original => ({
   ...await original<any>(), checkAccessInline: async () => ({ granted: state.admin }),
@@ -37,6 +38,7 @@ vi.mock("../../server/trust/eligibility/executor", () => ({
 }));
 vi.mock("../../server/plugins/wizards/attachments", () => ({
   createWizardAttachment: async (input: any) => ({ id: "signature-file", fileName: input.fileName }),
+  listWizardAttachments: async () => [{ id: "signature-file" }, { id: "document-file" }],
 }));
 
 import { storage } from "../../server/storage";
@@ -97,7 +99,9 @@ beforeAll(async () => {
   vi.spyOn(storage.workers, "updateWorkerSSN").mockResolvedValue(undefined as any);
   vi.spyOn(storage.workers, "updateWorkerContactBirthDate").mockResolvedValue(undefined as any);
   vi.spyOn(storage.workers, "updateWorkerContactGender").mockResolvedValue(undefined as any);
-  vi.spyOn(storage.workerRelations, "searchWorkerRelations").mockResolvedValue([]);
+  vi.spyOn(storage.workerRelations, "searchWorkerRelations").mockImplementation(async params =>
+    state.matched ? [{ id: "dependent-relation", worker1: params.workerId,
+      worker2: "dependent-fixture", relationType: params.relationTypeId ?? state.relationOptions[0].id }] as any : []);
   vi.spyOn(storage.workerRelations, "create").mockResolvedValue({ id: "dependent-relation" } as any);
   vi.spyOn(storage.workerRelations, "delete").mockResolvedValue(true);
   vi.spyOn(storage.workerTrustElections, "checkDualCoverage").mockResolvedValue([]);
@@ -213,7 +217,7 @@ describe("authenticated Chromium enrollment workflow", () => {
               _res.end("<!doctype html><title>Enrollment fixture sign-in</title>");
               return;
             }
-            if (req.url?.startsWith("/wizards/")) req.url = "/tests/wizards/enrollment-browser.html";
+            if (req.url?.startsWith("/wizards/") || req.url?.startsWith("/workers/")) req.url = "/tests/wizards/enrollment-browser.html";
             next();
           });
         },
@@ -518,6 +522,22 @@ describe("authenticated Chromium enrollment workflow", () => {
       await page.keyboard.press("Escape");
       await page.waitForSelector('[role="dialog"]', { hidden: true });
       expect(errors).toEqual([]);
+      // Exercise worker-page help with authenticated fixture cookies and the
+      // actual HelpDisplay. No application authentication bypass is added.
+      const helpFixture = state.rows.get("enrollment-fixture");
+      for (const [path, helpId, text] of [
+        ["/workers/fixture/elections/current", "system:elections-current", "own linked worker"],
+        ["/workers/fixture/elections/list", "system:elections-current", "New Election"],
+        ["/workers/fixture/sitespecific/bao/cobra", "system:bao-cobra-lifecycle", "Worker self-service"],
+      ]) {
+        const recordId = path.split("/").at(-1)!;
+        state.rows.set(recordId, { ...helpFixture, id: recordId });
+        await page.goto(`${base}${path}`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(sel(`button-help-more-${helpId}`));
+        await page.click(sel(`button-help-more-${helpId}`));
+        await page.waitForSelector('[role="dialog"]');
+        expect(await page.$eval('[role="dialog"]', node => node.textContent)).toContain(text);
+      }
     } catch (error) {
       console.error("Enrollment browser verification failed:", error);
       throw error;

@@ -5,6 +5,8 @@ export const baoCobraHelp: SystemHelpEntry = {
   paths: ["/workers/%/sitespecific/bao/cobra", "/cobra/cases", "/cobra/cases/%"],
   summary: "COBRA case status tracks election and payment progress; monthly benefit coverage requires its own paid statement-month evidence.",
   details: `
+    <h3>Worker self-service</h3>
+    <p>Staff and workers viewing their own linked worker can start <strong>Elect COBRA Coverage</strong> from the worker's COBRA tab when an open, unelected case is within its election deadline. Wait for case loading to finish; a lookup error is not permission to elect. Choose the available lost coverage, confirm covered people, sign, review the premium, and post. Posting records the election and initial payment deadline; it does not make a payment. Closed, already elected, or expired cases cannot be elected. Staff case administration and manual New Election are not worker self-service actions.</p>
     <h3>Status meanings</h3>
     <ul>
       <li><strong>New</strong>: no election is recorded. Posting a COBRA election normally moves the case to <strong>Pending First Payment</strong>.</li>

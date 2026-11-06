@@ -108,6 +108,7 @@ function DetailRow({ label, value, testId }: { label: string; value: string; tes
 
 function isElectable(view: CobraCaseView): boolean {
   const c = view.case;
+  if (c.statusClosed || !view.asOfYmd) return false;
   if (c.electionMadeYmd) return false;
   if (c.lastDayToElectYmd && view.asOfYmd > c.lastDayToElectYmd) return false;
   return true;

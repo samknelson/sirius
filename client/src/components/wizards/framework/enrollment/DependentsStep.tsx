@@ -52,7 +52,7 @@ interface DependentEntry {
 }
 
 interface LookupResult {
-  status: "matched" | "dob_mismatch" | "no_match";
+  status: "matched" | "dob_mismatch" | "no_match" | "requires_staff";
   workerId?: string;
   name?: string;
   gender?: string | null;
@@ -227,7 +227,7 @@ export function DependentsStep({
   const needsName = lookup?.status === "no_match";
   const canAdd =
     !!lookup &&
-    lookup.status !== "dob_mismatch" &&
+    (lookup.status === "matched" || lookup.status === "no_match") &&
     identityChecked &&
     !lookupMutation.isPending &&
     !!age && !age.error && !relationshipError &&
@@ -367,10 +367,10 @@ export function DependentsStep({
 
           {lookup && (
             <Alert
-              variant={lookup.status === "dob_mismatch" ? "destructive" : "default"}
+              variant={lookup.status === "dob_mismatch" || lookup.status === "requires_staff" ? "destructive" : "default"}
               data-testid="alert-dependent-lookup"
             >
-              {lookup.status === "dob_mismatch" ? (
+              {lookup.status === "dob_mismatch" || lookup.status === "requires_staff" ? (
                 <AlertTriangle className="h-4 w-4" />
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
@@ -379,7 +379,7 @@ export function DependentsStep({
             </Alert>
           )}
 
-          {lookup && lookup.status !== "dob_mismatch" && (
+          {lookup && (lookup.status === "matched" || lookup.status === "no_match") && (
             <div className="space-y-4">
               {needsName && (
                 <div className="grid gap-4 sm:grid-cols-2">

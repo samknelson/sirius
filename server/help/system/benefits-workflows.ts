@@ -63,17 +63,21 @@ export const benefitsWorkflowHelp: SystemHelpEntry[] = [
   },
   {
     id: "system:elections-current",
-    paths: ["/workers/%/elections/current"],
+    paths: ["/workers/%/elections/current", "/workers/%/elections/list"],
     summary: "Review the worker's current benefit election, selected benefits, dependents, and effective dates without confusing enrollment with recorded coverage.",
     details: `
       <h3>Purpose</h3><p>Review the election currently applicable to this worker.</p>
-      <h3>Before you start</h3><p>The elections feature and worker access are required. Staff review and enrollment launch actions are separate from permission to read Current.</p>
+      <h3>Before you start</h3><p>The elections feature and worker access are required. Staff can enroll workers; worker accounts can complete eligible guided enrollment only for their own linked worker. <strong>New Election</strong> and manual election editing and review remain staff-only.</p>
+      <h3>Guided enrollment</h3><p><strong>First-time Enrollment</strong> requires no active medical or dental election. <strong>Life Event</strong> requires a current election and changes dependents while carrying benefits forward. Both, and <strong>Open Enrollment</strong>, are unavailable during an active COBRA case. Open Enrollment also requires an active configured window and fixes the effective date to January 1 of its plan year. Use the worker's COBRA tab for an eligible COBRA election instead.</p>
+      <p>Wait for availability checks to finish. A failed check does not authorize starting an enrollment: reload to try again or ask staff for help. Complete the offered steps, supporting documents, signature, and review before posting. Posting creates an election and can affect later coverage and billing; it does not collect premiums. Only administrators can override the regular computed effective date. Older unscoped drafts must be completed by staff.</p>
+      <p>When adding dependents, provide accurate identity information and upload evidence to this enrollment. If the person already has a worker record, self-service can reuse only an established active dependent relationship of the same type. Otherwise, ask staff to review and link the person; an uploaded document alone does not authorize linking an existing person or changing their contact. Gender is optional; leaving it blank keeps an existing designation. Do not use another person's identity to search for records.</p>
+      ${dependentAgeHelp}
       <h3>How to use this page</h3><ol><li>Check effective dates, employer, selected benefits, and dependent relationships.</li><li>Report incorrect relationships or dates to staff before signing or submitting another enrollment.</li><li>Use Benefits to check actual recorded coverage.</li></ol>
       <h3>Limitations and common problems</h3><p>An election expresses selections; it does not establish eligibility, paid premiums, or coverage by itself. No current election may reflect dates or unfinished processing rather than a lost record.</p>`,
   },
   {
     id: "system:enrollment-review",
-    paths: ["/workers/%/elections/list", "/trust/enrollment-queue", "/trust/election/%", "/trust/election/%/edit"],
+    paths: ["/trust/enrollment-queue", "/trust/election/%", "/trust/election/%/edit"],
     summary: "Review enrollment work and election dates, distinguish drafts from posted elections, and check dependents before completing staff actions.",
     details: `
       <h3>Purpose</h3><p>Use the worker election list and enrollment queue to find and review enrollment work.</p>
