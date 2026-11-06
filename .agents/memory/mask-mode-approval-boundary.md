@@ -33,3 +33,14 @@ strict protection later.
 **How to apply:** Leave excluded content and original exports/clipboard
 behavior alone. Preserve legacy-session recovery, normal authorized actions
 and the user's explicit display-only limitations in guidance.
+
+Structured worker identity on BAO cases is included, as are COBRA people
+and worker entity labels on ledger rows; case narratives remain excluded.
+Do not treat polymorphic organization labels as personal names.
+
+**Why:** The user explicitly expanded the earlier case exclusion to include
+structured worker identity, not the case's unstructured content.
+
+**How to apply:** Classify the displayed identity by its person/entity type,
+not by whether the containing page is a case or ledger screen. Preserve
+organization names and identifier fallbacks.

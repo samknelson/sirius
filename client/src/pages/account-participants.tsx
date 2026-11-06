@@ -1,4 +1,5 @@
 import { LedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
+import { useWorkerEntityDisplay } from "@/privacy/MaskMode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ const ITEMS_PER_PAGE = 20;
 
 function AccountParticipantsContent() {
   const { id } = useParams<{ id: string }>();
+  const entityDisplay = useWorkerEntityDisplay();
   const { toast } = useToast();
   const [page, setPage] = useState(0);
 
@@ -177,7 +179,7 @@ function AccountParticipantsContent() {
                           {participant.entityType}
                         </TableCell>
                         <TableCell data-testid={`cell-entity-name-${participant.eaId}`}>
-                          {participant.entityName || "—"}
+                          {entityDisplay(participant.entityType, participant.entityName || null, "—")}
                         </TableCell>
                         <TableCell
                           className={`text-right ${participant.totalBalance < 0 ? "text-red-600 dark:text-red-400" : ""}`}

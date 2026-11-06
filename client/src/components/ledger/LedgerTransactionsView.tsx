@@ -1,4 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useWorkerEntityDisplay } from "@/privacy/MaskMode";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,7 @@ export function LedgerTransactionsView({
   pageSize = 50,
 }: LedgerTransactionsViewProps) {
   const { toast } = useToast();
+  const entityDisplay = useWorkerEntityDisplay();
   
   // Modal state for viewing transaction details
   const [selectedTransaction, setSelectedTransaction] = useState<LedgerEntryWithDetails | null>(null);
@@ -585,7 +587,7 @@ export function LedgerTransactionsView({
                     )}
                     {showEntityName && (
                       <TableCell data-testid={`cell-entity-name-${transaction.id}`}>
-                        {transaction.entityName || "—"}
+                        {entityDisplay(transaction.entityType, transaction.entityName || null, "—")}
                       </TableCell>
                     )}
                     <TableCell data-testid={`cell-memo-${transaction.id}`}>
@@ -770,7 +772,7 @@ export function LedgerTransactionsView({
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Entity Name</label>
                   <p className="mt-1" data-testid="modal-transaction-entity-name">
-                    {selectedTransaction.entityName || "—"}
+                    {entityDisplay(selectedTransaction.entityType, selectedTransaction.entityName || null, "—")}
                   </p>
                 </div>
                 

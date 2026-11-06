@@ -38,6 +38,30 @@ describe("semantic JSX integration (same compiler in dev and production)", () =>
     expect(personalField("formatYmd(contact.birthDate)", "worker-view.tsx")).toBe("dob");
     expect(personalField("record.medium === 'email' ? record.emailDetails.subject : record.smsDetails.body", "CommList.tsx")).toBeUndefined();
   });
+  it("leaves generic props and polymorphic labels to explicit display boundaries", () => {
+    const source = `<><Field value={c.coveredPersonName} /><span>{item.entityName ?? item.entityId}</span><p>{transaction.memo}</p><p>{note.body}</p></>`;
+    const result = transformPersonalDisplays(source, "/client/src/example.tsx").code;
+    expect(result).toBe(source);
+    for (const file of [
+      "client/src/components/sitespecific/bao/CaseListPanel.tsx",
+      "client/src/pages/sitespecific/bao/case-detail.tsx",
+      "client/src/pages/account-participants.tsx",
+      "client/src/components/ledger/LedgerTransactionsView.tsx",
+    ]) {
+      const code = readFileSync(file, "utf8");
+      expect(code).toContain("useWorkerEntityDisplay");
+      const transformed = transformPersonalDisplays(code, file).code;
+      // Never infer personhood from generic name/value props or the entity formatter.
+      expect(transformed).not.toMatch(/mask\(entityDisplay/);
+      expect(transformed).not.toMatch(/mask\([^)]*\.(?:memo|body|subject)\b/);
+    }
+    const detail = readFileSync("client/src/pages/sitespecific/bao/cobra-case-view.tsx", "utf8");
+    expect(detail).toContain("personalName ? <PersonalText>{value}</PersonalText> : value");
+    expect(detail.match(/\n\s+personalName\n/g)).toHaveLength(2);
+    const layout = readFileSync("client/src/components/layouts/BaoCobraCaseLayout.tsx", "utf8");
+    expect(layout).toContain("personal(cobraCase.coveredPersonName)");
+    expect(layout).toContain("usePageTitle(title)");
+  });
   it("covers representative production surfaces, including labels handed through shared hosts", () => {
     const surfaces: Record<string, string> = {
       "client/src/components/workers/workers-table.tsx": "worker.contactName",
@@ -64,6 +88,8 @@ describe("semantic JSX integration (same compiler in dev and production)", () =>
     for (const path of ["/mask-mode", "/config/components"]) expect(maskModeHelp.paths.some(pattern => likePatternMatches(pattern, path))).toBe(true);
     for (const path of ["/mask-mode-other", "/config/components/extra", "/workers", "/config/helps"]) expect(maskModeHelp.paths.some(pattern => likePatternMatches(pattern, path))).toBe(false);
     const html = sanitizeHtml(maskModeHelp.details!, "rich-document");
-    for (const text of ["API responses", "clipboard", "Notes, documents/files", "keyboard", "HIPAA", "administrator", "Mask Mode ON"]) expect(html).toContain(text);
+    for (const text of ["API responses", "clipboard", "Notes, documents/files", "keyboard", "HIPAA", "administrator", "Mask Mode ON",
+      "Covered Person", "Subscriber", "BAO case", "Participants", "transaction details", "transaction memos remain unchanged",
+      "organization names are not masked"]) expect(html).toContain(text);
   });
 });

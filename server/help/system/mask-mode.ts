@@ -25,6 +25,10 @@ export const maskModeHelp: SystemHelpEntry = {
     DOB keeps its normal date display and only its first digit; other date digits become asterisks.
     Structured personal addresses and identifiers keep the first character and separators.
     Empty values and no-data labels remain unchanged. Nonpersonal statuses, benefits, hours, balances, organization names and other dates are unchanged.</p>
+    <p>Structured identities include COBRA Covered Person and Subscriber names, person-bearing COBRA case titles,
+    worker names on BAO case lists and headings, and worker entity names in ledger account Participants,
+    Transactions and transaction details. Employer and provider organization names are not masked.
+    Case narratives, notes and letters and transaction memos remain unchanged, even when they name a worker.</p>
     <p>Forms keep real values separately from the masked display. Focusing a personal input does not reveal the original;
     you can select or replace its value normally. Edit masked date controls using the keyboard;
     the native date popup is hidden while masking is ON so it does not reveal the selected birthday.

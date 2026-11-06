@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBaoCobraCaseTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import type { BaoCobraCaseWithDetails } from "@shared/schema/sitespecific/bao/schema";
 
 interface BaoCobraCaseLayoutContextValue {
@@ -25,8 +26,8 @@ export function useBaoCobraCaseLayout() {
   return context;
 }
 
-function caseTitle(cobraCase: BaoCobraCaseWithDetails): string {
-  if (cobraCase.coveredPersonName) return `COBRA: ${cobraCase.coveredPersonName}`;
+function caseTitle(cobraCase: BaoCobraCaseWithDetails, personal: (name: string) => string): string {
+  if (cobraCase.coveredPersonName) return `COBRA: ${personal(cobraCase.coveredPersonName)}`;
   return `COBRA Case ${cobraCase.id.slice(0, 8)}`;
 }
 
@@ -37,6 +38,7 @@ interface BaoCobraCaseLayoutProps {
 
 export function BaoCobraCaseLayout({ activeTab, children }: BaoCobraCaseLayoutProps) {
   const { id } = useParams<{ id: string }>();
+  const personal = usePersonalDisplay();
 
   const {
     data: cobraCase,
@@ -56,7 +58,8 @@ export function BaoCobraCaseLayout({ activeTab, children }: BaoCobraCaseLayoutPr
   const { tabs, getActiveRoot } = useBaoCobraCaseTabAccess(id || "");
   const activeRoot = getActiveRoot(activeTab);
 
-  usePageTitle(cobraCase ? caseTitle(cobraCase) : undefined);
+  const title = cobraCase ? caseTitle(cobraCase, personal) : undefined;
+  usePageTitle(title);
 
   const header = (subtitle?: string) => (
     <header className="bg-card border-b border-border">
@@ -76,7 +79,7 @@ export function BaoCobraCaseLayout({ activeTab, children }: BaoCobraCaseLayoutPr
                 className="text-xl font-semibold text-foreground"
                 data-testid={`text-cobra-case-title-${cobraCase.id}`}
               >
-                {caseTitle(cobraCase)}
+                {title}
               </h1>
             ) : (
               <Skeleton className="h-6 w-48" />

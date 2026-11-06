@@ -9,12 +9,14 @@ import { startPrivacyFixture } from "./fixture.ts";
 import { personalDisplaysPlugin, transformPersonalDisplays } from "../../scripts/build/personal-displays.ts";
 import { getSystemHelp } from "../../server/help/system/index.ts";
 import { likePatternMatches } from "../../server/help/path-match.ts";
+import { registerCaseLedgerFixture, verifyCaseLedgerScreens } from "./case-ledger-browser.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 console.log("Starting fictional screen masking browser fixture");
 const executablePath = ["/repl/tools/bin/chromium", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find(existsSync);
 assert.ok(executablePath, "Chromium is required for this fictional browser fixture.");
 const fixture = await startPrivacyFixture();
+const caseLedgerRequests = registerCaseLedgerFixture(fixture.app);
 const saved = [];
 const contact = { id: "contact-fixture", given: "Morgan", family: "Lancaster", displayName: "Morgan Lancaster",
   title: "", middle: "", generational: "", credentials: "" };
@@ -32,6 +34,17 @@ const vite = await createServer({
   configFile: false, envFile: false, root, cacheDir: path.join(root, "node_modules/.vite-mask-browser"),
   optimizeDeps: { entries: [path.join(root, "tests/privacy/browser.html")], holdUntilCrawlEnd: false },
   plugins: [personalDisplaysPlugin(), {
+    name: "fixture-only-tab-access",
+    enforce: "pre",
+    transform(_code, id) {
+      if (!id.endsWith("/client/src/hooks/useTabAccess.ts")) return null;
+      // Normal auth/policy is NOT bypassed in the app. Only this isolated,
+      // fictional fixture avoids requiring the full application's auth shell.
+      return { code: `const tabs = () => ({ tabs: [], getActiveRoot: () => undefined });
+        export const useBaoCobraCaseTabAccess = tabs;
+        export const useLedgerAccountTabAccess = tabs;`, map: null };
+    },
+  }, {
     name: "mask-fictional-display-slots",
     enforce: "pre",
     transform(code, id) {
@@ -44,7 +57,9 @@ const vite = await createServer({
     watch: { ignored: ["**/.local/**", "**/artifacts/**", "**/generated-artifacts/**"] } },
 });
 console.log("Isolated Vite fixture ready");
-for (const route of ["/screen", "/config/components", "/config/helps", "/config/components/near-miss"]) {
+for (const route of ["/screen", "/config/components", "/config/helps", "/config/components/near-miss",
+  "/cobra/cases", "/cobra/cases/:id", "/bao/cases", "/bao/cases/:id",
+  "/ledger/accounts/:id/participants", "/ledger/accounts/:id/transactions", "/shared-cases", "/shared-transactions"]) {
   fixture.app.get(route, async (_req, res) => res.type("html").send(await vite.transformIndexHtml(route,
     readFileSync(path.join(root, "tests/privacy/browser.html"), "utf8"))));
 }
@@ -58,9 +73,15 @@ async function until(page, selector, expected) {
 }
 async function toggle(page) {
   await page.bringToFront();
+  // A closing Radix portal can remain over the header during its exit animation.
+  await page.waitForFunction(() => getComputedStyle(document.body).pointerEvents !== "none" &&
+    !document.querySelector('[role="dialog"]') &&
+    !document.querySelector('[data-testid="button-mask-mode"]')?.disabled);
+  const wasOn = (await text(page, '[data-testid="button-mask-mode"]')).includes("ON");
   console.log("Toggling screen preference");
   page.once("dialog", dialog => dialog.accept());
   await page.click('[data-testid="button-mask-mode"]');
+  await until(page, '[data-testid="button-mask-mode"]', wasOn ? "Mask Mode OFF" : "Mask Mode ON — screen only");
 }
 try {
   browser = await puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
@@ -140,6 +161,8 @@ try {
   assert.match(await page.$eval("body", el => el.innerText), /Local administrator procedure/);
   await page.goto(`${fixture.origin}/config/components/near-miss`, { waitUntil: "networkidle0" });
   assert.equal(await page.$('[data-testid="help-summary-system:mask-mode"]'), null);
+  await verifyCaseLedgerScreens({ page, fixture, toggle, until, requests: caseLedgerRequests });
+  await page.goto(`${fixture.origin}/config/components/near-miss`, { waitUntil: "networkidle0" });
   fixture.controls.enabled = false;
   // Real lifecycle resets mode to OFF. Simulate the same transaction result here.
   fixture.rows.get("presenter").maskMode = { version: 1, mode: "off", revision: 99 };
@@ -156,6 +179,10 @@ try {
   assert.deepEqual(errors, []);
   console.log("PASS screen masking, raw HTTP/WebSocket/downloads, actual name edit integrity, exclusions, ON/OFF, reload/tab sync, component transitions, error recovery, built-in/local help listing and dialog.");
 } catch (error) {
+  console.error("Browser page errors:", errors);
+  for (const page of await browser?.pages() ?? []) {
+    console.error("Failed page:", page.url(), await page.$eval("body", el => el.innerText).catch(() => ""));
+  }
   console.error(error.stack || error);
   throw error;
 } finally {

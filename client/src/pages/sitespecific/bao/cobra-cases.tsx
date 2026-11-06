@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PersonalText } from "@/privacy/MaskMode";
 import { ShieldPlus, Plus, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -237,7 +238,7 @@ export default function BaoCobraCases() {
                             className="text-primary hover:underline"
                             data-testid={`link-case-covered-cobra-${c.id}`}
                           >
-                            {c.coveredPersonName}
+                            <PersonalText>{c.coveredPersonName}</PersonalText>
                           </Link>
                         ) : (
                           "—"
@@ -250,7 +251,7 @@ export default function BaoCobraCases() {
                             className="text-primary hover:underline"
                             data-testid={`link-case-subscriber-${c.id}`}
                           >
-                            {c.subscriberName}
+                            <PersonalText>{c.subscriberName}</PersonalText>
                           </Link>
                         ) : (
                           "—"

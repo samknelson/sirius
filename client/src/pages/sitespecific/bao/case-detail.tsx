@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useWorkerEntityDisplay } from "@/privacy/MaskMode";
 import { useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
@@ -95,6 +96,7 @@ function AppealFactsCard({ record }: { record: CaseDetail }) {
 
 export default function BaoCaseDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const entityDisplay = useWorkerEntityDisplay();
   const { toast } = useToast();
   const key = ["/api/sitespecific/bao/cases", id];
   const { data: record } = useQuery<CaseDetail>({ queryKey: key });
@@ -175,7 +177,7 @@ export default function BaoCaseDetailPage() {
     (canOverrideWorkflow || s.id === record.statusId || !isAppeal || !OUTCOME_STEPS.includes(s.workflowStep ?? "")));
   return (
     <div>
-      <PageHeader title={`Case · ${record.entityName ?? record.entityId}`} />
+      <PageHeader title={`Case · ${entityDisplay(record.entityType, record.entityName, record.entityId)}`} />
       <main className="mx-auto max-w-4xl space-y-6 p-6">
         {record.denialNoticeMailAlert && (
           <Alert variant="destructive" data-testid="alert-denial-mail-failure">

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useWorkerEntityDisplay } from "@/privacy/MaskMode";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export default function CaseListPanel({
   entityId?: string;
 }) {
   const entityScoped = Boolean(entityType && entityId);
+  const entityDisplay = useWorkerEntityDisplay();
   const [view, setView] = useState<"active" | "historical">("active");
   const [scope, setScope] = useState<"my" | "all">("my");
   const [page, setPage] = useState(1);
@@ -99,7 +101,7 @@ export default function CaseListPanel({
             {items.map((item) => (
               <Link key={item.id} href={`/bao/cases/${item.id}`}>
                 <div className="grid cursor-pointer gap-2 py-3 hover:bg-muted/50 md:grid-cols-6" data-testid={`row-bao-case-${item.id}`}>
-                  {!entityScoped && <span className="font-medium">{item.entityName ?? item.entityId}</span>}
+                  {!entityScoped && <span className="font-medium">{entityDisplay(item.entityType, item.entityName, item.entityId)}</span>}
                   <Badge variant={item.statusClosed ? "outline" : "secondary"}>{item.statusName}</Badge>
                   <Badge variant="outline">{item.caseTypeName}</Badge>
                   {caseTypes.find((caseType) => caseType.id === item.caseTypeId)?.workflowCode === "benefit_appeal" && (

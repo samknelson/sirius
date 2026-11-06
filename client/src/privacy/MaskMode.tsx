@@ -106,6 +106,13 @@ export function usePersonalDisplay() {
   return (value: string, kind: PersonalField = "name") => mode === "on" ? maskPersonal(value, kind) : value;
 }
 
+/** Polymorphic entity labels: only workers are people. Pass fallbacks separately. */
+export function useWorkerEntityDisplay() {
+  const personal = usePersonalDisplay();
+  return (entityType: string, name: string | null | undefined, fallback: string) =>
+    name == null ? fallback : (entityType === "worker" ? personal(name) : name);
+}
+
 export type PersonalFormatter = (value: any, kind: PersonalField) => any;
 export function PersonalValue({ render }: { render: (mask: PersonalFormatter) => ReactNode }) {
   const { mode } = useMaskMode();

@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PersonalText } from "@/privacy/MaskMode";
 import { Badge } from "@/components/ui/badge";
 import {
   BaoCobraCaseLayout,
@@ -15,12 +16,12 @@ function formatYmd(value: string | null | undefined): string {
   return `${parseInt(m[2])}/${parseInt(m[3])}/${m[1]}`;
 }
 
-function Field({ label, value, testId }: { label: string; value: string; testId: string }) {
+function Field({ label, value, testId, personalName = false }: { label: string; value: string; testId: string; personalName?: boolean }) {
   return (
     <div>
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="font-medium" data-testid={testId}>
-        {value}
+        {personalName ? <PersonalText>{value}</PersonalText> : value}
       </p>
     </div>
   );
@@ -67,11 +68,13 @@ function CaseDetails() {
         <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <Field
             label="Covered Person"
+            personalName
             value={c.coveredPersonName ?? "—"}
             testId="text-case-covered-person"
           />
           <Field
             label="Subscriber"
+            personalName
             value={c.subscriberName ?? "—"}
             testId="text-case-subscriber"
           />

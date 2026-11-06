@@ -12,7 +12,7 @@ export const PersonalSurface = forwardRef<unknown, {
   if (mode === "on") {
     const mask: PersonalFormatter = (value, kind) =>
       typeof value === "string" || typeof value === "number" ? maskPersonal(value, kind) : value;
-    for (const [key, render] of Object.entries(personalFields)) {
+    for (const [key, render] of Object.entries<(mask: PersonalFormatter) => unknown>(personalFields)) {
       props[key] = render(mask);
     }
   }

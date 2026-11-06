@@ -6,6 +6,7 @@ import NameManagement from "@/components/worker/NameManagement";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import HelpTextConfig from "@/pages/config/helps";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { CaseLedgerFixture } from "./case-ledger-fixture";
 import "@/index.css";
 
 const worker = { id: "worker-fixture", contactName: "Morgan Lancaster", email: "morgan@gmail.com",
@@ -16,7 +17,7 @@ const contact = { displayName: "Drew Ramirez", email: "drew@example.invalid", ph
 const organization = { name: "Fictional Employer", benefit: "Medical", balance: "$200.00", coverageDate: "12/01/2026" };
 const body = "Morgan Lancaster 123-45-6789: unstructured content remains unchanged.";
 const qc = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: async ({ queryKey }) => {
-  const response = await fetch(String(queryKey[0]));
+  const response = await fetch(queryKey.join("/"));
   if (!response.ok) throw new Error("Fixture request failed");
   return response.json();
 } } } });
@@ -60,5 +61,7 @@ function Fixture() {
   </main>;
 }
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={qc}><MaskModeProvider><Fixture /></MaskModeProvider></QueryClientProvider>,
+  <QueryClientProvider client={qc}><MaskModeProvider>
+    {/^\/(?:cobra|bao|ledger|shared-)/.test(location.pathname) ? <CaseLedgerFixture /> : <Fixture />}
+  </MaskModeProvider></QueryClientProvider>,
 );

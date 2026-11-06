@@ -59,6 +59,9 @@ The implementation inventory covers:
 | Search / pickers | Worker quick-search results, worker/user/contact options and selected labels, staff recipient selections |
 | Other person-bearing screens | Dispatch/EDLS workers and staff, stewards, event rosters, duplicate-SSN reports, user administration, active sessions, structured note-author identity, worker bookmarks and worker account headings |
 | Communications | Structured recipients / postal fields, separate from unchanged message subjects, bodies and previews |
+| COBRA cases | Covered Person and Subscriber names in lists and People fields; person-bearing case heading and browser title; missing-name and case-ID fallbacks remain ordinary |
+| BAO cases (shared lists and details) | Worker entity names and repeated worker headings only; employer/provider organization names, case types, statuses, narratives, notes, documents and letters remain unchanged |
+| Ledger account Participants and Transactions | Worker entity names in rows and the shared transaction detail dialog; organizations, missing-name placeholders, transaction memos, balances, filters, sort keys and CSV originals remain unchanged |
 | Generic hosts | Personal input overlays and native controls; avatar fallback initials (not photographs) |
 
 Focused source-inventory tests assert representative real call sites and
@@ -111,6 +114,12 @@ even when they identify people. No extra reveal step is introduced.
 * `npm run test:browser:mask-mode` — fictional HTTP/WebSocket data; actual
   NameManagement edits, structured displays, exclusions, tab/reload sync,
   component transitions, errors and real built-in-help listing/dialog.
+  Real COBRA and BAO case pages, account Participants/Transactions and their
+  shared hosts run against fictional data for ON/OFF/disabled restoration,
+  computed titles, generic detail fields, mixed entity types, missing names,
+  unchanged notes/memos, raw-name sorting, filters, pagination and CSV integrity.
+  Only tab-access chrome is stubbed in this isolated case/ledger fixture;
+  it does not verify application authorization.
 * `node --import tsx tests/privacy/component-storage.mts` — temporary shadow
   tables inside an intentionally rolled-back transaction; no public data
   or schema changes.
