@@ -105,6 +105,7 @@ beforeAll(async () => {
   vi.spyOn(storage.workerRelations, "create").mockResolvedValue({ id: "dependent-relation" } as any);
   vi.spyOn(storage.workerRelations, "delete").mockResolvedValue(true);
   vi.spyOn(storage.workerTrustElections, "checkDualCoverage").mockResolvedValue([]);
+  vi.spyOn(storage.baoCobraRates, "tableExists").mockResolvedValue(false);
   vi.spyOn(storage.policies, "getPolicyById").mockResolvedValue({ id: "policy-fixture", data: { benefitIds: ["medical", "medical-alt"] } } as any);
   vi.spyOn(storage.pluginConfigs, "search").mockResolvedValue([]);
   vi.spyOn(storage.trustBenefits, "getAllTrustBenefits").mockResolvedValue(
@@ -161,9 +162,128 @@ describe("real enrollment dispatcher and manifest contract", () => {
   it.each(plugins)("opts in only the affected steps for $id", plugin => {
     const row = seed(plugin, "signature");
     const manifest = wizardPluginRegistry.computeManifest(plugin, row as any);
+    const expected = plugin.id === "life_event_enrollment"
+      ? ["event_type", "dependents", "effective_date", "signature"]
+      : plugin.id === "bao_cobra_enrollment"
+        ? ["coverage", "covered_people", "signature"]
+        : ["benefits", "effective_date", "signature"];
     for (const step of manifest.steps) {
-      expect(!!step.submitOnNext).toBe(["benefits", "effective_date", "signature"].includes(step.id));
+      expect(!!step.submitOnNext).toBe(expected.includes(step.id));
     }
+  });
+
+  it("audits every active step and component in all four guided election wizards", () => {
+    const expected: Record<string, Array<[string, string, boolean]>> = {
+      benefit_election_enrollment: [
+        ["employer_policy", "EmployerPolicyStep", false],
+        ["benefits", "BenefitsStep", true],
+        ["dependents", "DependentsStep", false],
+        ["effective_date", "", true],
+        ["signature", "SignatureStep", true],
+        ["review", "ReviewPostStep", false],
+      ],
+      open_enrollment_enrollment: [
+        ["employer_policy", "EmployerPolicyStep", false],
+        ["benefits", "BenefitsStep", true],
+        ["dependents", "DependentsStep", false],
+        ["effective_date", "", true],
+        ["signature", "SignatureStep", true],
+        ["review", "ReviewPostStep", false],
+      ],
+      life_event_enrollment: [
+        ["event_type", "", true],
+        ["dependents", "LifeEventDependentsStep", true],
+        ["effective_date", "", true],
+        ["signature", "SignatureStep", true],
+        ["review", "LifeEventReviewPostStep", false],
+      ],
+      bao_cobra_enrollment: [
+        ["coverage", "", true],
+        ["covered_people", "CobraCoveredPeopleStep", true],
+        ["signature", "SignatureStep", true],
+        ["review", "CobraReviewPostStep", false],
+      ],
+    };
+    for (const plugin of plugins) {
+      expect(plugin.steps.map(step => [
+        step.id,
+        step.component ?? "",
+        !!step.submitOnNext,
+      ])).toEqual(expected[plugin.id]);
+    }
+  });
+
+  it("builds COBRA coverage choices from the case and restores the saved choice", async () => {
+    const row = seed(plugins[3], "coverage", {
+      coverageOptions: [{ kind: "medical", benefitId: "medical", benefitName: "Medical" }],
+      coverageChoice: "medical",
+    });
+    const coverage = wizardPluginRegistry.computeManifest(plugins[3], row as any).steps[0];
+    expect(coverage.schema!.properties!.coverageChoice.oneOf).toEqual([
+      { const: "medical", title: "Medical only (Medical)" },
+    ]);
+    expect(coverage.schema!.properties!.coverageChoice.default).toBe("medical");
+    expect((await post("coverage/submit", { coverageChoice: "dental" })).status).toBeGreaterThanOrEqual(400);
+    expect((await post("coverage/submit", { coverageChoice: "medical" })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").data.coverageChoice).toBe("medical");
+    expect((await send("navigate", { direction: "next", expectedStep: "coverage" })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").currentStep).toBe("covered_people");
+  });
+
+  it("saves Life Event through Next and invalidates staged dependent changes when the event changes", async () => {
+    const row = seed(plugins[2], "event_type", {
+      eventType: "birth",
+      eventAction: "add",
+      dependents: [{ relationId: "staged-dependent" }],
+      removedRelationshipIds: ["staged-relation"],
+      pendingDocument: { fileId: "document-file", fileName: "birth.pdf" },
+      dependentLookup: { status: "matched" },
+    });
+    const step = wizardPluginRegistry.computeManifest(plugins[2], row as any).steps[0];
+    expect(step.submitOnNext).toBe(true);
+    expect((await post("event_type/submit", { eventType: "divorce" })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").data).toMatchObject({
+      eventType: "divorce",
+      eventAction: "remove",
+      dependents: [],
+      removedRelationshipIds: [],
+      pendingDocument: null,
+      dependentLookup: null,
+    });
+    expect((await send("navigate", { direction: "next", expectedStep: "event_type" })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").currentStep).toBe("dependents");
+    expect(wizardPluginRegistry.computeManifest(plugins[2], state.rows.get("enrollment-fixture")).steps[0]
+      .state).toBe("completed");
+  });
+
+  it("validates COBRA covered people against loaded relations and handles dependent-owned cases", async () => {
+    state.matched = true;
+    seed(plugins[3], "covered_people", {
+      isSubscriberCase: true,
+      subscriberWorkerId: "subscriber-fixture",
+      selectedRelationIds: [],
+    });
+    expect((await post("covered_people/submit", { relationIds: ["not-active"] })).status).toBe(500);
+    expect((await post("covered_people/submit", { relationIds: ["dependent-relation", "dependent-relation"] })).status).toBe(500);
+    expect((await post("covered_people/submit", { relationIds: ["dependent-relation"] })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").data).toMatchObject({
+      selectedRelationIds: ["dependent-relation"],
+      coveredPeopleConfirmed: true,
+    });
+
+    state.matched = false;
+    seed(plugins[3], "covered_people", {
+      isSubscriberCase: false,
+      subscriberWorkerId: "subscriber-fixture",
+      selectedRelationIds: [],
+    });
+    expect((await post("covered_people/submit", { relationIds: [] })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").data).toMatchObject({
+      selectedRelationIds: [],
+      coveredPeopleConfirmed: true,
+    });
+    expect((await send("navigate", { direction: "next", expectedStep: "covered_people" })).status).toBe(200);
+    expect(state.rows.get("enrollment-fixture").currentStep).toBe("signature");
   });
 
   it("requires authentication and refuses incomplete, ineligible, and conflicting benefits", async () => {
@@ -264,6 +384,8 @@ describe("authenticated Chromium enrollment workflow", () => {
       await page.click(sel("button-help-more-system:enrollment-next"));
       await page.waitForSelector('[role="dialog"]');
       expect(await page.$eval('[role="dialog"]', node => node.textContent)).toContain("does not post");
+      expect(await page.$eval('[role="dialog"]', node => node.textContent)).toContain("COBRA Election");
+      expect(await page.$eval('[role="dialog"]', node => node.textContent)).toContain("worker contact record");
       await page.keyboard.press("Escape");
       await page.waitForSelector('[role="dialog"]', { hidden: true });
       await page.click(sel("checkbox-benefit-medical"));
@@ -386,6 +508,160 @@ describe("authenticated Chromium enrollment workflow", () => {
       expect(await disabled(next)).toBe(false);
       expect(errors).toEqual([]);
       await page.screenshot({ path: "generated-artifacts/enrollment-next/authenticated-flow.png", fullPage: true });
+
+      const chooseEnum = async (selector: string, label: string) => {
+        await page.click(selector);
+        await page.waitForSelector('[role="option"]');
+        const options = await page.$$('[role="option"]');
+        for (const option of options) {
+          if ((await option.evaluate(node => node.textContent))?.includes(label)) {
+            await option.click();
+            return;
+          }
+        }
+        const offered = await page.$$eval('[role="option"]', nodes => nodes.map(node => node.textContent?.trim()));
+        throw new Error(`Choice not offered: ${label}; offered: ${offered.join(" | ")}`);
+      };
+
+      // COBRA: coverage choices reflect the case, Next saves them, and the
+      // covered-people price is explicitly marked as saved vs pending.
+      state.matched = true;
+      seed(plugins[3], "coverage", {
+        workerName: "Fictional Subscriber",
+        caseId: "cobra-case-fixture",
+        subscriberWorkerId: "worker-fixture",
+        coveredPersonWorkerId: "worker-fixture",
+        isSubscriberCase: true,
+        coverageOptions: [
+          { kind: "medical", benefitId: "medical", benefitName: "Medical" },
+          { kind: "dental", benefitId: "dental", benefitName: "Dental" },
+        ],
+        coverageChoice: "medical",
+      });
+      await page.goto(`${base}/wizards/enrollment-fixture`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector('[data-testid="select-root_coverageChoice"]');
+      await chooseEnum('[data-testid="select-root_coverageChoice"]', "Both medical and dental");
+      await page.click(next);
+      await active("covered_people");
+      expect(state.rows.get("enrollment-fixture").data.coverageChoice).toBe("both");
+      await page.click(previous);
+      await active("coverage");
+      expect(await page.$eval('[data-testid="select-root_coverageChoice"]', node => node.textContent))
+        .toContain("Both medical and dental");
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector('[data-testid="select-root_coverageChoice"]');
+      expect(await page.$eval('[data-testid="select-root_coverageChoice"]', node => node.textContent))
+        .toContain("Both medical and dental");
+      await page.click(next);
+      await active("covered_people");
+      await page.waitForSelector(sel("checkbox-dependent-dependent-relation"));
+      await page.click(sel("checkbox-dependent-dependent-relation"));
+      expect(await page.$(sel("button-save-covered-people"))).toBeNull();
+      expect(await page.$eval(sel("text-pending-covered-people-price"), node => node.textContent))
+        .toContain("not saved yet");
+      expect(await page.$eval(sel("alert-covered-lives"), node => node.textContent))
+        .toContain("Saved selection price (1 covered, tier 1)");
+      await page.click(next);
+      await active("signature");
+      expect(state.rows.get("enrollment-fixture").data.selectedRelationIds).toEqual(["dependent-relation"]);
+      await page.click(previous);
+      await active("covered_people");
+      await page.waitForFunction(() => document.querySelector('[data-testid="checkbox-dependent-dependent-relation"]')?.getAttribute("aria-checked") === "true");
+      expect(await page.$eval(sel("alert-covered-lives"), node => node.textContent))
+        .toContain("Current saved selection price");
+      expect(await page.$eval(sel("alert-covered-lives"), node => node.textContent))
+        .toContain("Covered lives: 2");
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => document.querySelector('[data-testid="checkbox-dependent-dependent-relation"]')?.getAttribute("aria-checked") === "true");
+      await page.click(next);
+      await active("signature");
+      await page.type("#typed-signature", "Fictional Subscriber");
+      await page.click(next);
+      await active("review");
+      expect(await page.$eval(sel("text-review-coverage"), node => node.textContent)).toContain("Medical and dental");
+      expect(await page.$eval(sel("text-price-total"), node => node.textContent)).toBe("—");
+      expect(await page.$eval(sel("section-pricing"), node => node.textContent)).toContain("Total (2 covered, tier 2)");
+      expect(state.rows.get("enrollment-fixture").data.selectedRelationIds).toEqual(["dependent-relation"]);
+
+      // Dependent-owned case: the case subject is already covered, so Next
+      // confirms the fixed one-person selection without a confirmation button.
+      state.matched = false;
+      seed(plugins[3], "covered_people", {
+        workerName: "Fictional Dependent",
+        caseId: "cobra-dependent-case-fixture",
+        subscriberWorkerId: "subscriber-fixture",
+        coveredPersonWorkerId: "worker-fixture",
+        isSubscriberCase: false,
+        coverageOptions: [{ kind: "dental", benefitId: "dental", benefitName: "Dental" }],
+        coverageChoice: "dental",
+      });
+      await page.goto(`${base}/wizards/enrollment-fixture`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector(sel("row-covered-self"));
+      expect(await disabled(next)).toBe(false);
+      expect(await page.$(sel("checkbox-dependent-dependent-relation"))).toBeNull();
+      await page.click(next);
+      await active("signature");
+      expect(state.rows.get("enrollment-fixture").data).toMatchObject({
+        coveredPeopleConfirmed: true, selectedRelationIds: [],
+      });
+
+      // Life Event: change the saved event, discard its staged add selection,
+      // remove a current dependent, and save the linked contact gender on Next.
+      const sourceElection = {
+        id: "source-election-fixture",
+        workerId: "worker-fixture",
+        relationshipIds: ["relation-1"],
+        relationships: [{ id: "relation-1", coveredWorkerId: "dependent-fixture" }],
+      };
+      vi.spyOn(storage.workerTrustElections, "getViewById").mockResolvedValue(sourceElection as any);
+      vi.spyOn(storage.workerTrustElections, "getActiveViewByWorker").mockResolvedValue(sourceElection as any);
+      vi.mocked(storage.workers.getWorker).mockImplementation(async id =>
+        ({ id, contactId: id === "dependent-fixture" ? "contact-dependent" : "contact-worker" }) as any);
+      let savedGenderCalc = "Current designation";
+      vi.mocked(storage.contacts.getContact).mockImplementation(async () => ({
+        id: "contact-dependent", birthDate: state.dependentDob,
+        genderCalc: savedGenderCalc,
+      } as any));
+      const genderWrite = vi.mocked(storage.workers.updateWorkerContactGender);
+      genderWrite.mockClear();
+      genderWrite.mockImplementation(async (_workerId, gender, genderNota) => {
+        savedGenderCalc = gender === "gender-nota" ? genderNota || "" : "Female";
+        return undefined as any;
+      });
+      seed(plugins[2], "event_type", {
+        workerId: "worker-fixture",
+        sourceElectionId: "source-election-fixture",
+        eventType: "birth",
+        eventAction: "add",
+        dependents: [{ relationId: "staged-add" }],
+        currentRelationshipIds: ["relation-1"],
+        currentRelationships: [{ relationId: "relation-1", label: "Fictional Dependent" }],
+        removedRelationshipIds: [],
+      });
+      await page.goto(`${base}/wizards/enrollment-fixture`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector('[data-testid="select-root_eventType"]');
+      await chooseEnum('[data-testid="select-root_eventType"]', "Divorce");
+      await page.click(next);
+      await active("dependents");
+      expect(state.rows.get("enrollment-fixture").data).toMatchObject({
+        eventType: "divorce", eventAction: "remove", dependents: [],
+      });
+      await page.waitForSelector(sel("row-current-dependent-relation-1"));
+      await chooseEnum(sel("row-current-dependent-relation-1") + " [data-testid='select-dependent-gender']", "Specify Gender");
+      await page.type(sel("input-dependent-gender-nota"), "Nonbinary");
+      await page.click(sel("button-remove-dependent-relation-1"));
+      await page.waitForFunction(() => !(document.querySelector('[data-testid="button-next-step"]') as HTMLButtonElement).disabled);
+      await page.click(next);
+      await active("effective_date");
+      expect(genderWrite).toHaveBeenCalledWith("dependent-fixture", "gender-nota", "Nonbinary");
+      await page.click(previous);
+      await active("dependents");
+      expect(await page.$eval(sel("row-current-dependent-relation-1"), node => node.textContent))
+        .toContain("Current designation: Nonbinary");
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector(sel("row-current-dependent-relation-1"));
+      expect(await page.$eval(sel("row-current-dependent-relation-1"), node => node.textContent))
+        .toContain("Current designation: Nonbinary");
 
       // Exercise the shipped dependent form and the real dispatcher with an
       // authenticated cookie. Only persistence/vendor boundaries are doubles.

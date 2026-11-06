@@ -2,14 +2,18 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { SchemaForm, type IChangeEvent } from "@/components/json-schema-form/SchemaForm";
+import {
+  SchemaForm,
+  type IChangeEvent,
+} from "@/components/json-schema-form/SchemaForm";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { WizardStepManifest } from "./types";
-import { EnrollmentDateStep } from "./enrollment/EnrollmentDateStep";
+import { EnrollmentSubmitOnNextStep } from "./enrollment/EnrollmentDateStep";
 
 interface SchemaFormStepProps {
   wizardId: string;
+  wizardType: string;
   step: WizardStepManifest;
   data?: any;
 }
@@ -20,11 +24,11 @@ interface SchemaFormStepProps {
  * the server declares the schema and this component renders + submits it
  * through the fixed dispatcher route.
  */
-export function SchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {
+export function SchemaFormStep({ wizardId, wizardType, step, data }: SchemaFormStepProps) {
   if (step.submitOnNext) {
-    return <EnrollmentDateStep wizardId={wizardId} step={step} data={data} />;
+    return <EnrollmentSubmitOnNextStep wizardId={wizardId} wizardType={wizardType} step={step} data={data} />;
   }
-  return <SavedSchemaFormStep wizardId={wizardId} step={step} data={data} />;
+  return <SavedSchemaFormStep wizardId={wizardId} wizardType={wizardType} step={step} data={data} />;
 }
 
 function SavedSchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {

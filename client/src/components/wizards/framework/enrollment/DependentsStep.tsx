@@ -90,11 +90,25 @@ export function DependentsStep({
   wizardId,
   step,
   data,
-}: WizardStepComponentProps) {
+  activityLocked = false,
+  onActivityChange,
+}: WizardStepComponentProps & {
+  activityLocked?: boolean;
+  onActivityChange?: (busy: boolean) => void;
+}) {
   const { toast } = useToast();
   const { hasPermission } = useAuth();
   const isStaff = hasPermission("staff");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingActivity = useRef(0);
+  const beginActivity = () => {
+    pendingActivity.current += 1;
+    onActivityChange?.(true);
+  };
+  const endActivity = () => {
+    pendingActivity.current = Math.max(0, pendingActivity.current - 1);
+    onActivityChange?.(pendingActivity.current > 0);
+  };
 
   const dependents: DependentEntry[] = Array.isArray(data?.dependents)
     ? (data.dependents as DependentEntry[])
@@ -164,6 +178,7 @@ export function DependentsStep({
         input: { action: "lookup", ...identity },
       }),
     onMutate: () => {
+      beginActivity();
       setCheckedIdentity(null);
       setGender("");
       setGenderNota("");
@@ -173,9 +188,11 @@ export function DependentsStep({
       invalidate();
     },
     onError,
+    onSettled: endActivity,
   });
 
   const uploadMutation = useMutation({
+    onMutate: beginActivity,
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
@@ -191,9 +208,11 @@ export function DependentsStep({
     },
     onSuccess: invalidate,
     onError,
+    onSettled: endActivity,
   });
 
   const addMutation = useMutation({
+    onMutate: beginActivity,
     mutationFn: async () =>
       apiRequest("POST", submitUrl, {
         input: {
@@ -221,15 +240,18 @@ export function DependentsStep({
       toast({ title: "Dependent added" });
     },
     onError,
+    onSettled: endActivity,
   });
 
   const removeMutation = useMutation({
+    onMutate: beginActivity,
     mutationFn: async (relationId: string) =>
       apiRequest("POST", submitUrl, {
         input: { action: "remove", relationId },
       }),
     onSuccess: invalidate,
     onError,
+    onSettled: endActivity,
   });
 
   const needsName = lookup?.status === "no_match";
@@ -311,7 +333,7 @@ export function DependentsStep({
                   variant="ghost"
                   size="icon"
                   onClick={() => removeMutation.mutate(dep.relationId)}
-                  disabled={removeMutation.isPending}
+                   disabled={activityLocked || removeMutation.isPending}
                   data-testid={`button-remove-dependent-${dep.relationId}`}
                 >
                   <Trash2 size={16} />
@@ -329,6 +351,7 @@ export function DependentsStep({
               <Input
                 id="dep-ssn"
                 value={ssn}
+                disabled={activityLocked}
                 onChange={(e) => setSsn(e.target.value)}
                 placeholder="123-45-6789"
                 data-testid="input-dependent-ssn"
@@ -341,6 +364,7 @@ export function DependentsStep({
                 type="date"
                 max={stepData?.applicationToday}
                 value={birthDate}
+                disabled={activityLocked}
                 onChange={(e) => setBirthDate(e.target.value)}
                 data-testid="input-dependent-dob"
               />
@@ -349,7 +373,7 @@ export function DependentsStep({
           <Button
             variant="outline"
             onClick={() => lookupMutation.mutate({ ssn, birthDate })}
-            disabled={!ssn || !birthDate || !age || (!!age.error && !age.adultOnly) || lookupMutation.isPending}
+            disabled={activityLocked || !ssn || !birthDate || !age || (!!age.error && !age.adultOnly) || lookupMutation.isPending}
             data-testid="button-lookup-dependent"
           >
             <Search size={16} className="mr-2" />
@@ -396,6 +420,7 @@ export function DependentsStep({
                     <Input
                       id="dep-given"
                       value={given}
+                      disabled={activityLocked}
                       onChange={(e) => setGiven(e.target.value)}
                       data-testid="input-dependent-given"
                     />
@@ -405,6 +430,7 @@ export function DependentsStep({
                     <Input
                       id="dep-family"
                       value={family}
+                      disabled={activityLocked}
                       onChange={(e) => setFamily(e.target.value)}
                       data-testid="input-dependent-family"
                     />
@@ -414,7 +440,7 @@ export function DependentsStep({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label>Relationship</Label>
-                  <Select value={relationTypeId} onValueChange={setRelationTypeId}>
+                    <Select value={relationTypeId} onValueChange={setRelationTypeId} disabled={activityLocked}>
                     <SelectTrigger data-testid="select-relation-type" aria-invalid={!!age?.error || !!relationshipError}>
                       <SelectValue placeholder="Select relationship…" />
                     </SelectTrigger>
@@ -439,6 +465,7 @@ export function DependentsStep({
                     id="dep-doc"
                     type="file"
                     ref={fileInputRef}
+                    disabled={activityLocked}
                     accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -463,6 +490,7 @@ export function DependentsStep({
                 idPrefix="add-dependent"
                 gender={gender}
                 genderNota={genderNota}
+                disabled={activityLocked}
                 currentDesignation={lookup.genderCalc}
                 showUnspecifiedCurrent={lookup.status === "matched"}
                 onGenderChange={setGender}
@@ -470,7 +498,7 @@ export function DependentsStep({
               />
               <Button
                 onClick={() => addMutation.mutate()}
-                disabled={!canAdd || addMutation.isPending}
+                disabled={activityLocked || !canAdd || addMutation.isPending}
                 data-testid="button-add-dependent"
               >
                 {addMutation.isPending ? "Adding…" : "Add Dependent"}

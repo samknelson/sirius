@@ -22,6 +22,7 @@ interface DependentGenderFieldsProps {
   genderNota: string;
   currentDesignation?: string | null;
   showUnspecifiedCurrent?: boolean;
+  disabled?: boolean;
   onGenderChange: (gender: string) => void;
   onGenderNotaChange: (genderNota: string) => void;
 }
@@ -38,6 +39,7 @@ export function DependentGenderFields({
   genderNota,
   currentDesignation,
   showUnspecifiedCurrent = false,
+  disabled = false,
   onGenderChange,
   onGenderNotaChange,
 }: DependentGenderFieldsProps) {
@@ -55,6 +57,7 @@ export function DependentGenderFields({
         <Label htmlFor={`${idPrefix}-gender`}>Gender</Label>
         <Select
           value={gender}
+          disabled={disabled}
           onValueChange={(value) => {
             const nextGender =
               value === UNSPECIFIED_VALUE ? "" : value;
@@ -94,6 +97,7 @@ export function DependentGenderFields({
           <Input
             id={`${idPrefix}-gender-nota`}
             value={genderNota}
+            disabled={disabled}
             onChange={(event) => onGenderNotaChange(event.target.value)}
             placeholder="Enter gender…"
             required

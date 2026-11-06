@@ -15,11 +15,20 @@ vi.mock("@/lib/queryClient", async importOriginal => ({
 vi.mock("@/plugins/wizards/registry", async () => {
   const { BenefitsStep } = await import("@/components/wizards/framework/enrollment/BenefitsStep");
   const { SignatureStep } = await import("@/components/wizards/framework/enrollment/SignatureStep");
-  return { wizardComponentRegistry: { resolve: (name: string) => name === "BenefitsStep" ? BenefitsStep : SignatureStep } };
+  const { CobraCoveredPeopleStep } = await import("@/plugins/wizards/bao_cobra_enrollment/CobraCoveredPeopleStep");
+  const { LifeEventDependentsStep } = await import("@/plugins/wizards/life_event_enrollment/LifeEventDependentsStep");
+  return { wizardComponentRegistry: { resolve: (name: string) => {
+    if (name.endsWith("BenefitsStep")) return BenefitsStep;
+    if (name.endsWith("SignatureStep")) return SignatureStep;
+    if (name.endsWith("CobraCoveredPeopleStep")) return CobraCoveredPeopleStep;
+    if (name.endsWith("LifeEventDependentsStep")) return LifeEventDependentsStep;
+    return () => null;
+  } } };
 });
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const request = vi.mocked(apiRequest);
+const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
 const benefit = (id: string) => ({
   benefitId: id, benefitName: id, benefitTypeId: "medical", benefitTypeName: "Medical",
   benefitTypeSequence: 1, benefitTypeOnlyOne: true, eligible: true, reasons: [],
@@ -63,14 +72,15 @@ describe("enrollment Next submits the live draft before navigation", () => {
       element.dispatchEvent(new Event("change", { bubbles: true }));
     });
   }
-  async function render(step: WizardStepManifest, data: any = {}, wizardId = "wizard-1") {
+  async function render(step: WizardStepManifest, data: any = {}, wizardId = "wizard-1", wizardType = "enrollment") {
     await act(async () => {
       root.render(<QueryClientProvider client={queryClient}>
-        <FrameworkWizardBody wizardId={wizardId} wizardType="enrollment" manifest={manifest(step)} data={data} />
+        <FrameworkWizardBody wizardId={wizardId} wizardType={wizardType} manifest={manifest(step)} data={data} />
       </QueryClientProvider>);
     });
   }
   beforeEach(() => {
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     queryClient.clear();
     vi.clearAllMocks();
     request.mockResolvedValue(new Response("{}"));
@@ -92,6 +102,8 @@ describe("enrollment Next submits the live draft before navigation", () => {
     queryClient.clear();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    if (scrollIntoViewDescriptor) Object.defineProperty(Element.prototype, "scrollIntoView", scrollIntoViewDescriptor);
+    else delete (Element.prototype as any).scrollIntoView;
   });
 
   it("ignores old completion when Benefits is cleared, preserves markers, and enforces choose-one", async () => {
@@ -153,6 +165,145 @@ describe("enrollment Next submits the live draft before navigation", () => {
     expect(next().disabled).toBe(false);
     await click(next());
     expect(request.mock.calls[0][2]).toEqual({ input: { startYmd: "2027-02-01" } });
+  });
+
+  it("hydrates and saves generic opted-in schema choices through Next", async () => {
+    const cobraCoverage: WizardStepManifest = {
+      id: "coverage", name: "Coverage", kind: "form", state: "completed", submitOnNext: true,
+      schema: { type: "object", properties: {
+        coverageChoice: { type: "string", oneOf: [{ const: "medical", title: "Medical only" }] },
+      }, required: ["coverageChoice"] },
+    };
+    await render(cobraCoverage, {}, "cobra-empty-choice", "bao_cobra_enrollment");
+    expect(next().disabled).toBe(true);
+    await render(cobraCoverage, { coverageChoice: "medical" }, "cobra-wizard", "bao_cobra_enrollment");
+    expect(next().disabled).toBe(false);
+    expect(container.textContent).toContain("Medical only");
+    expect(container.textContent).not.toContain("Save");
+    await click(next());
+    expect(request.mock.calls[0][1]).toContain("/coverage/submit");
+    expect(request.mock.calls[0][2]).toEqual({ input: { coverageChoice: "medical" } });
+    expect(request.mock.calls[1][1]).toContain("/navigate");
+    request.mockClear();
+
+    const eventType: WizardStepManifest = {
+      id: "event_type", name: "Life Event", kind: "form", state: "completed", submitOnNext: true,
+      schema: { type: "object", properties: {
+        eventType: { type: "string", oneOf: [
+          { const: "birth", title: "Birth" }, { const: "marriage", title: "Marriage" },
+          { const: "divorce", title: "Divorce" }, { const: "death", title: "Death" },
+        ] },
+      }, required: ["eventType"] },
+    };
+    await render(eventType, { eventType: "divorce" }, "life-event-wizard", "life_event_enrollment");
+    expect(next().disabled).toBe(false);
+    expect(container.textContent).toContain("Divorce");
+    await click(next());
+    expect(request.mock.calls[0][1]).toContain("/event_type/submit");
+    expect(request.mock.calls[0][2]).toEqual({ input: { eventType: "divorce" } });
+  });
+
+  it("saves COBRA covered people through Next and does not trust missing data as an empty list", async () => {
+    const step = custom("covered_people", "bao_cobra_enrollment:CobraCoveredPeopleStep");
+    await render(step, {
+      workerName: "Fictional Subscriber", isSubscriberCase: true, selectedRelationIds: [],
+    }, "cobra-missing-people", "bao_cobra_enrollment");
+    expect(next().disabled).toBe(true);
+    queryClient.setQueryData(["/api/wizards/cobra-people/dispatch/covered_people/data"], {
+      records: [{ relationId: "relation-1", name: "Fictional Dependent", relationTypeName: "Spouse" }],
+      pricing: { coveredLives: 1, tier: "1", lines: [], monthlyTotal: null },
+    });
+    await render(step, {
+      workerName: "Fictional Subscriber", isSubscriberCase: true, selectedRelationIds: [],
+    }, "cobra-people", "bao_cobra_enrollment");
+    expect(next().disabled).toBe(false);
+    await click(button("checkbox-dependent-relation-1"));
+    expect(container.querySelector('[data-testid="text-pending-covered-people-price"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="button-save-covered-people"]')).toBeNull();
+    await click(next());
+    expect(request.mock.calls[0][1]).toContain("/covered_people/submit");
+    expect(request.mock.calls[0][2]).toEqual({ input: { relationIds: ["relation-1"] } });
+    expect(request.mock.calls[1][1]).toContain("/navigate");
+  });
+
+  it("validates gender specification and persists Life Event gender drafts on Next", async () => {
+    const step = custom("dependents", "life_event_enrollment:LifeEventDependentsStep");
+    queryClient.setQueryData(["/api/wizards/gender-wizard/dispatch/dependents/data"], {
+      currentRelationships: [
+        { relationId: "relation-1", label: "Fictional One", genderCalc: "Current" },
+        { relationId: "relation-2", label: "Fictional Two", genderCalc: "Current" },
+      ],
+    });
+    queryClient.setQueryData(["/api/options/gender"], [
+      { id: "gender-female", name: "Female", nota: false, sequence: 1 },
+      { id: "gender-nota", name: "Specify Gender", nota: true, sequence: 2 },
+    ]);
+    await render(step, {
+      eventAction: "remove",
+      removedRelationshipIds: ["relation-1"],
+    }, "gender-wizard", "life_event_enrollment");
+    expect(next().disabled).toBe(false);
+    expect(container.querySelector('[data-testid="button-save-dependent-gender-relation-1"]')).toBeNull();
+
+    const firstGender = container.querySelector<HTMLButtonElement>('[data-testid="select-dependent-gender"]')!;
+    await click(firstGender);
+    const option = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+      .find(node => node.textContent === "Specify Gender")!;
+    await click(option);
+    expect(next().disabled).toBe(true);
+    await input('[data-testid="input-dependent-gender-nota"]', "Nonbinary");
+    expect(next().disabled).toBe(false);
+    await click(next());
+    expect(request.mock.calls.slice(0, 3).map(call => call[2])).toEqual([
+      { input: { action: "setCurrentGender", relationId: "relation-1", gender: "gender-nota", genderNota: "Nonbinary" } },
+      { input: { action: "continue" } },
+      { direction: "next", expectedStep: "dependents" },
+    ]);
+  });
+
+  it("reports partial Life Event gender saves and retries only edits not confirmed", async () => {
+    const step = custom("dependents", "life_event_enrollment:LifeEventDependentsStep");
+    queryClient.setQueryData(["/api/wizards/partial-gender/dispatch/dependents/data"], {
+      currentRelationships: [
+        { relationId: "relation-1", label: "Fictional One", genderCalc: "Current" },
+        { relationId: "relation-2", label: "Fictional Two", genderCalc: "Current" },
+      ],
+    });
+    queryClient.setQueryData(["/api/options/gender"], [
+      { id: "gender-female", name: "Female", nota: false, sequence: 1 },
+    ]);
+    await render(step, {
+      eventAction: "remove",
+      removedRelationshipIds: ["relation-1"],
+    }, "partial-gender", "life_event_enrollment");
+    const chooseGender = async (relationId: string) => {
+      const row = container.querySelector(`[data-testid="row-current-dependent-${relationId}"]`)!;
+      await click(row.querySelector('[data-testid="select-dependent-gender"]')!);
+      const option = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+        .find(node => node.textContent === "Female")!;
+      await click(option);
+    };
+    await chooseGender("relation-1");
+    await chooseGender("relation-2");
+    request.mockResolvedValueOnce(new Response("{}"));
+    request.mockRejectedValueOnce(new Error("Second contact update failed"));
+    await click(next());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Saved 1 of 2 gender changes");
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[0][2]).toMatchObject({
+      input: { action: "setCurrentGender", relationId: "relation-1", gender: "gender-female" },
+    });
+    expect(request.mock.calls[1][2]).toMatchObject({
+      input: { action: "setCurrentGender", relationId: "relation-2", gender: "gender-female" },
+    });
+    expect(request.mock.calls.some(call => String(call[1]).includes("/navigate"))).toBe(false);
+
+    await click(next());
+    expect(request.mock.calls.slice(2).map(call => call[2])).toEqual([
+      { input: { action: "setCurrentGender", relationId: "relation-2", gender: "gender-female", genderNota: "" } },
+      { input: { action: "continue" } },
+      { direction: "next", expectedStep: "dependents" },
+    ]);
   });
 
   it("can use the default immediately and keeps Open Enrollment's fixed date read-only", async () => {

@@ -143,6 +143,7 @@ async function submitEventType(
 
 const eventTypeStep: WizardStepHandler = {
   id: "event_type",
+  submitOnNext: true,
   name: "Life Event",
   description: "What happened?",
   kind: "form",
@@ -155,12 +156,11 @@ const eventTypeStep: WizardStepHandler = {
       eventType: {
         type: "string",
         title: "Life event",
-        enum: ["birth", "marriage", "divorce", "death"],
-        enumNames: [
-          "Birth (add a dependent)",
-          "Marriage (add a dependent)",
-          "Divorce (remove a dependent)",
-          "Death (remove a dependent)",
+        oneOf: [
+          { const: "birth", title: "Birth (add a dependent)" },
+          { const: "marriage", title: "Marriage (add a dependent)" },
+          { const: "divorce", title: "Divorce (remove a dependent)" },
+          { const: "death", title: "Death (remove a dependent)" },
         ],
       },
     },
@@ -185,6 +185,28 @@ async function submitDependents(
   const data = wizardData(ctx.wizard);
   const action = eventActionOf(data);
   if (!action) throw new Error("Choose a life event first");
+  const input = ctx.input as {
+    action?: string;
+    relationId?: string;
+    gender?: unknown;
+    genderNota?: unknown;
+  };
+
+  if (input.action === "continue") {
+    const dependents: DependentEntry[] = Array.isArray(data.dependents)
+      ? data.dependents
+      : [];
+    const removed: string[] = Array.isArray(data.removedRelationshipIds)
+      ? data.removedRelationshipIds
+      : [];
+    if (action === "add" && dependents.length === 0) {
+      throw new Error("Add the dependent before continuing");
+    }
+    if (action === "remove" && removed.length === 0) {
+      throw new Error("Select the dependent to remove before continuing");
+    }
+    return { data: {} };
+  }
 
   if (action === "add") {
     // Reuse the shared add-a-dependent flow verbatim (lookup → upload →
@@ -196,12 +218,6 @@ async function submitDependents(
   // Remove flow: mark/unmark one of the CURRENT relationships for removal.
   // Nothing is deleted — the relationship simply won't carry forward onto
   // the new election.
-  const input = ctx.input as {
-    action?: string;
-    relationId?: string;
-    gender?: unknown;
-    genderNota?: unknown;
-  };
   const current: CurrentRelationship[] = Array.isArray(data.currentRelationships)
     ? data.currentRelationships
     : [];
@@ -299,6 +315,7 @@ async function submitDependents(
 
 const dependentsStep: WizardStepHandler = {
   id: "dependents",
+  submitOnNext: true,
   name: "Dependents",
   description: "Add or remove the dependent affected by the life event",
   kind: "custom",

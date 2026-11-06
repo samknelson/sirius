@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -7,14 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Users } from "lucide-react";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
+import { useNextSubmission } from "@/components/wizards/framework/NextSubmission";
 
 interface DependentOption {
   relationId: string;
@@ -55,7 +54,6 @@ export function CobraCoveredPeopleStep({
   step,
   data,
 }: WizardStepComponentProps) {
-  const { toast } = useToast();
   const isSubscriberCase = Boolean(data?.isSubscriberCase);
   const savedSelection: string[] = Array.isArray(data?.selectedRelationIds)
     ? (data.selectedRelationIds as string[])
@@ -66,37 +64,56 @@ export function CobraCoveredPeopleStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(savedSelection)]);
 
-  const { data: stepData, isLoading } = useQuery<{
+  const { data: stepData, isLoading, isError, isSuccess } = useQuery<{
     records: DependentOption[];
     pricing: Pricing;
   }>({
     queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`],
   });
 
-  const submitMutation = useMutation({
-    mutationFn: async (relationIds: string[]) =>
-      apiRequest("POST", `/api/wizards/${wizardId}/dispatch/${step.id}/submit`, {
-        input: { relationIds },
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-      queryClient.invalidateQueries({
-        queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`],
-      });
-      toast({ title: "Covered people saved" });
-    },
-    onError: (error: Error) =>
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      }),
-  });
+  const records = isSuccess && Array.isArray(stepData?.records)
+    ? stepData.records
+    : [];
+  const savedIds = new Set(savedSelection);
+  const selectedIds = new Set(selected);
+  const selectionIsAvailable = isSuccess &&
+    selected.length === selectedIds.size &&
+    selected.every(id => records.some(record => record.relationId === id));
+  useEffect(() => {
+    if (!isSuccess) return;
+    const available = new Set(records.map(record => record.relationId));
+    setSelected(savedSelection.filter(id => available.has(id)));
+    // Hydrate from persisted state after the available relationship list loads.
+    // Local edits do not change either dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, JSON.stringify(savedSelection), records]);
 
-  const records = stepData?.records ?? [];
+  const ready = isSuccess && selectionIsAvailable &&
+    (isSubscriberCase || selected.length === 0);
+  const navigating = useNextSubmission({
+    ready,
+    guidance: isError
+      ? "Covered people could not load. Reload this step before continuing."
+      : isLoading
+        ? "Wait for the available covered people to load."
+        : "Choose only from the loaded covered people. Next saves the selection before continuing.",
+    submit: async () => {
+      if (!ready) throw new Error("Choose valid covered people before continuing.");
+      await apiRequest("POST", `/api/wizards/${wizardId}/dispatch/${step.id}/submit`, {
+        input: { relationIds: isSubscriberCase ? selected : [] },
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}/dispatch/review/data`] }),
+      ]);
+    },
+  });
   const pricing = stepData?.pricing;
   const previewLives = 1 + (isSubscriberCase ? selected.length : 0);
   const previewTier = previewLives <= 1 ? "1" : previewLives === 2 ? "2" : "3+";
+  const sameSelection = selected.length === savedIds.size &&
+    selected.every(id => savedIds.has(id));
 
   return (
     <Card>
@@ -118,6 +135,12 @@ export function CobraCoveredPeopleStep({
       <CardContent className="space-y-4">
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
+        ) : isError ? (
+          <Alert variant="destructive" data-testid="alert-covered-people-load-error">
+            <AlertDescription>
+              Available covered people could not be loaded. Reload this step before continuing.
+            </AlertDescription>
+          </Alert>
         ) : (
           <>
             <div className="space-y-2">
@@ -137,10 +160,11 @@ export function CobraCoveredPeopleStep({
                   >
                     <Checkbox
                       checked={selected.includes(r.relationId)}
+                      disabled={navigating}
                       onCheckedChange={(checked) =>
                         setSelected((prev) =>
                           checked
-                            ? [...prev, r.relationId]
+                            ? prev.includes(r.relationId) ? prev : [...prev, r.relationId]
                             : prev.filter((id) => id !== r.relationId),
                         )
                       }
@@ -171,25 +195,22 @@ export function CobraCoveredPeopleStep({
                 <strong>{previewTier}</strong>)
                 {pricing?.lines?.length ? (
                   <span className="block mt-1">
-                    Current saved selection prices at{" "}
+                    {sameSelection
+                      ? "Current saved selection price"
+                      : `Saved selection price (${pricing.coveredLives} covered, tier ${pricing.tier})`}{" "}
                     {pricing.monthlyTotal !== null
                       ? `$${Number(pricing.monthlyTotal).toFixed(2)}/mo (includes $${Number(pricing.adminFee ?? 0).toFixed(2)} COBRA administration fee, 2%)`
                       : "— (missing rate)"}{" "}
                     ({pricing.lines.map((l) => `${l.benefitName}: ${money(l.rate)}`).join(", ")})
                   </span>
                 ) : null}
+                {!sameSelection && (
+                  <span className="block mt-1" data-testid="text-pending-covered-people-price">
+                    The displayed selection is not saved yet; its price will be refreshed after Next saves it.
+                  </span>
+                )}
               </AlertDescription>
             </Alert>
-
-            <div className="flex justify-end">
-              <Button
-                onClick={() => submitMutation.mutate(isSubscriberCase ? selected : [])}
-                disabled={submitMutation.isPending}
-                data-testid="button-save-covered-people"
-              >
-                {submitMutation.isPending ? "Saving…" : "Save & Continue"}
-              </Button>
-            </div>
           </>
         )}
       </CardContent>

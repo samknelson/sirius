@@ -232,6 +232,7 @@ async function submitCoverage(
 
 const coverageStep: WizardStepHandler = {
   id: "coverage",
+  submitOnNext: true,
   name: "Coverage",
   description: "Choose which lost coverage to continue under COBRA",
   kind: "form",
@@ -241,21 +242,18 @@ const coverageStep: WizardStepHandler = {
     const medical = options.find((o) => o.kind === "medical");
     const dental = options.find((o) => o.kind === "dental");
 
-    const enumValues: string[] = [];
-    const enumNames: string[] = [];
+    const choices: Array<{ const: CoverageChoice; title: string }> = [];
     if (medical) {
-      enumValues.push("medical");
-      enumNames.push(`Medical only (${medical.benefitName})`);
+      choices.push({ const: "medical", title: `Medical only (${medical.benefitName})` });
     }
     if (dental) {
-      enumValues.push("dental");
-      enumNames.push(`Dental only (${dental.benefitName})`);
+      choices.push({ const: "dental", title: `Dental only (${dental.benefitName})` });
     }
     if (medical && dental) {
-      enumValues.push("both");
-      enumNames.push(
-        `Both medical and dental (${medical.benefitName} + ${dental.benefitName})`,
-      );
+      choices.push({
+        const: "both",
+        title: `Both medical and dental (${medical.benefitName} + ${dental.benefitName})`,
+      });
     }
     return {
       type: "object",
@@ -266,8 +264,7 @@ const coverageStep: WizardStepHandler = {
         coverageChoice: {
           type: "string",
           title: "Coverage to continue",
-          enum: enumValues,
-          enumNames,
+          oneOf: choices,
           ...(data.coverageChoice
             ? { default: data.coverageChoice as string }
             : {}),
@@ -320,7 +317,12 @@ async function submitCoveredPeople(
     return { data: { selectedRelationIds: [], coveredPeopleConfirmed: true } };
   }
 
-  const requested = Array.isArray(input.relationIds) ? input.relationIds : [];
+  if (!Array.isArray(input.relationIds) ||
+      input.relationIds.some((id) => typeof id !== "string") ||
+      new Set(input.relationIds).size !== input.relationIds.length) {
+    throw new Error("Choose valid covered people");
+  }
+  const requested = input.relationIds;
   const available = await listDependentOptions(
     ctx.storage,
     data.subscriberWorkerId as string,
@@ -346,6 +348,7 @@ async function submitCoveredPeople(
 
 const coveredPeopleStep: WizardStepHandler = {
   id: "covered_people",
+  submitOnNext: true,
   name: "Covered People",
   description: "Choose who the continued coverage applies to",
   kind: "custom",

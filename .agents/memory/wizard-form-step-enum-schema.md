@@ -1,21 +1,22 @@
 ---
 name: Wizard form-step enum schema shape
-description: How to declare a single-select dropdown on a wizard "form" step's JsonSchema
+description: Render readable wizard choices with oneOf titles without accidentally selecting the first value
 ---
 
-Wizard `form`-kind step schemas use the app's own `JsonSchema` type from
-`@shared/json-schema-form`, NOT full JSON Schema. For a single-select
-dropdown, declare the choices with `enum: [...]` plus a parallel
-`enumNames: [...]` for the human labels.
+For wizard `form`-kind single-select choices that need user-facing labels,
+use `oneOf: [{ const, title }]` in the app's `JsonSchema`. `const` is now
+part of that type, and the RJSF select renders the titles; `enumNames` may
+instead leave raw enum values visible.
 
-**Do NOT use `oneOf: [{ const, title }]`** — `JsonSchema` has no `const`
-key, so tsc fails with "Object literal may only specify known properties,
-and 'const' does not exist in type 'JsonSchema'". `oneOf` exists on the
-type but its members are `JsonSchema` (no `const`), so it's not the enum
-mechanism here.
+Required `oneOf` fields can default to the first `const` when the form has
+no saved value. For a form where the user must make an explicit choice,
+pass `experimental_defaultFormStateBehavior` with `constAsDefaults:
+"skipOneOf"` and validate the live value before Next.
 
-**Why:** the in-house form renderer reads `enum`/`enumNames`; the RJSF
-`oneOf/const` idiom is a different library's convention and isn't wired up.
+**Why:** a completed older step with an unavailable or missing selection
+must not become actionable through an implicit first choice, and raw ids
+are not clear user-facing labels.
 
-**How to apply:** any new wizard step of `kind: "form"` that needs a
-picker — use `enum` + `enumNames`, indexes aligned.
+**How to apply:** use `oneOf` titles for labeled wizard choices, opt out of
+implicit `const` defaults on required user decisions, and keep server
+validation as the final authority.

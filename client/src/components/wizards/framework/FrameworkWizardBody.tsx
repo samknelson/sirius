@@ -150,7 +150,7 @@ function StepBody({
     );
   }
   if (step.schema) {
-    return <SchemaFormStep wizardId={wizardId} step={step} data={data} />;
+    return <SchemaFormStep wizardId={wizardId} wizardType={wizardType} step={step} data={data} />;
   }
   return (
     <Card>

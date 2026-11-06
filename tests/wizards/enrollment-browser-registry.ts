@@ -4,6 +4,8 @@ import { BenefitsStep } from "@/components/wizards/framework/enrollment/Benefits
 import { SignatureStep } from "@/components/wizards/framework/enrollment/SignatureStep";
 import { DependentsStep } from "@/components/wizards/framework/enrollment/DependentsStep";
 import { LifeEventDependentsStep } from "@/plugins/wizards/life_event_enrollment/LifeEventDependentsStep";
+import { CobraCoveredPeopleStep } from "@/plugins/wizards/bao_cobra_enrollment/CobraCoveredPeopleStep";
+import { CobraReviewPostStep } from "@/plugins/wizards/bao_cobra_enrollment/CobraReviewPostStep";
 
 export const wizardComponentRegistry = {
   resolve(name: string) {
@@ -11,6 +13,8 @@ export const wizardComponentRegistry = {
     if (name.endsWith(":SignatureStep")) return SignatureStep;
     if (name.endsWith(":DependentsStep")) return DependentsStep;
     if (name.endsWith(":LifeEventDependentsStep")) return LifeEventDependentsStep;
+    if (name.endsWith(":CobraCoveredPeopleStep")) return CobraCoveredPeopleStep;
+    if (name.endsWith(":CobraReviewPostStep")) return CobraReviewPostStep;
     // Navigation targets outside the changed steps are intentionally inert:
     // no final posting occurs in this browser fixture.
     return () => "Unchanged enrollment step";

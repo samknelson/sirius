@@ -56,6 +56,7 @@ export type JsonSchema = {
   type?: JsonSchemaTypeName | JsonSchemaTypeName[];
   title?: string;
   description?: string;
+  const?: unknown;
   properties?: Record<string, JsonSchema>;
   required?: string[];
   enum?: unknown[];
