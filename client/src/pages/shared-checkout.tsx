@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { hasPaymentGatewayPayComponent, resolvePaymentGatewayPayComponent } from "@/plugins/payment-gateway/registry";
 import { calculateCheckoutSelection, type CheckoutQuote, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
+import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Statement = { invoiceNumber: string; month: number; year: number; invoiceBalance: string };
@@ -41,6 +42,7 @@ export default function SharedCheckoutPage() {
   const [method, setMethod] = useState("");
   const [newType, setNewType] = useState<"card" | "us_bank_account" | null>(null);
   const [accepted, setAccepted] = useState(false);
+  const [saveMethodAccepted, setSaveMethodAccepted] = useState(false);
   const [review, setReview] = useState(false);
   const [session, setSession] = useState<Session>();
   const [lockedQuote, setLockedQuote] = useState<CheckoutQuote>();
@@ -78,6 +80,9 @@ export default function SharedCheckoutPage() {
     : selectedNewType === "card" ? "new credit/debit card" : "new US bank transfer";
   const authReady = data?.readiness ? data.readiness.paymentAuthorization === "ready" : !!data?.authorization;
   const canManageMethods = data?.readiness?.methodPermission === "allowed" && data.reusableMethodsSupported;
+  const canSaveMethod = !!data && !method && !!selectedNewType && data.paymentTypes.includes(selectedNewType) &&
+    data.readiness?.saveMethod === "ready" && canManageMethods &&
+    ["card", "us_bank_account"].includes(selectedNewType);
   const managementUrl = data?.entityType === "worker" ? `/workers/${data.entityId}/ledger/payment-methods` : `/employers/${data?.entityId}/ledger/payment_methods`;
   const Pay = data?.payComponentId && hasPaymentGatewayPayComponent(data.payComponentId) ? resolvePaymentGatewayPayComponent(data.payComponentId) : null;
   const frozen = !!session || submitting.current;
@@ -86,11 +91,12 @@ export default function SharedCheckoutPage() {
     generation.current++;
     setReview(false);
     setAccepted(false);
+    setSaveMethodAccepted(false);
     setError("");
     update();
   };
   useEffect(() => {
-    seeded.current = false; generation.current++; setChoice("full"); setStatementIds([]); setMethod(""); setNewType(null); setAccepted(false); setReview(false); setSession(undefined); setLockedQuote(undefined); setError("");
+    seeded.current = false; generation.current++; setChoice("full"); setStatementIds([]); setMethod(""); setNewType(null); setAccepted(false); setSaveMethodAccepted(false); setReview(false); setSession(undefined); setLockedQuote(undefined); setError("");
   }, [eaId]);
   useEffect(() => {
     if (session) {
@@ -137,7 +143,10 @@ export default function SharedCheckoutPage() {
         selection: { mode: choice, invoiceNumbers: choice === "full" ? [] : statementIds },
         amount: breakdown.amount, statementSelection: breakdown.statementSelection,
         creditTransfers: breakdown.creditTransfers,
-         paymentMethodId: method || undefined, paymentMethodType: method ? undefined : selectedNewType, saveMethod: false, consent: { ...data.authorization, accepted: true }, idempotencyKey: crypto.randomUUID(),
+         paymentMethodId: method || undefined, paymentMethodType: method ? undefined : selectedNewType,
+         saveMethod: !!(canSaveMethod && saveMethodAccepted),
+         ...(canSaveMethod && saveMethodAccepted ? { saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true } } : {}),
+         consent: { ...data.authorization, accepted: true }, idempotencyKey: crypto.randomUUID(),
       });
       if (current !== generation.current || !["created", "requires_action"].includes(created.status)) navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
       else if (created.clientSecret && Pay) { setLockedQuote(breakdown); setSession(created); }
@@ -183,14 +192,15 @@ export default function SharedCheckoutPage() {
           {data.paymentTypes.includes("us_bank_account") && <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method && selectedNewType === "us_bank_account"} disabled={frozen} onChange={() => change(() => { setMethod(""); setNewType("us_bank_account"); })} />New US bank transfer</label>}
          {compatibleMethods.map(item => <label key={item.id} className="flex items-center gap-2 break-words"><input type="radio" name="method" checked={method === item.id} disabled={frozen} onChange={() => change(() => setMethod(item.id))} />{item.providerDetails?.card ? `${item.providerDetails.card.brand} •••• ${item.providerDetails.card.last4}` : `${item.providerDetails?.us_bank_account?.bank_name || "Bank"} •••• ${item.providerDetails?.us_bank_account?.last4}`}</label>)}
          {canManageMethods && <Link href={managementUrl} className="inline-block text-sm underline">Manage saved payment methods</Link>}
-         {!method && <p className="text-sm text-muted-foreground">A new method here is used for this payment only. To add or remove a reusable method, use payment method management.</p>}
+          {!method && <p className="text-sm text-muted-foreground">{canSaveMethod ? "Saving is optional; leave the separate checkbox unchecked to use this method for this payment only." : "A new method here is used for this payment only. To add or remove a reusable method, use payment method management."}</p>}
+          {canSaveMethod && <label className="flex items-start gap-2 text-sm"><Checkbox checked={saveMethodAccepted} disabled={frozen} onCheckedChange={value => { if (!frozen) { setReview(false); setSaveMethodAccepted(value === true); } }} /><span><span className="block font-medium">{CHECKOUT_SAVE_METHOD_CONSENT.text}</span><span className="mt-1 block text-muted-foreground">This is separate from the required authorization for the payment above. Saving does not authorize a later charge or enable automatic payments.</span></span></label>}
          {!method && selectedNewType && <p className="text-sm text-muted-foreground">After you review and start this payment, securely {selectedNewType === "card" ? "enter your card details" : "link or enter your US bank account with the payment provider"} and confirm there. Your payment is not complete yet.</p>}
          {!data.paymentTypes.length && <Alert variant="destructive"><AlertDescription>No payment types are available for this account. Ask an administrator to enable a compatible card or bank account type under Gateway Payment Types and ledger online payment settings.</AlertDescription></Alert>}
         {!method && !Pay && <Alert variant="destructive"><AlertDescription>Secure payment entry is unavailable for this account. Contact support before starting a new payment.</AlertDescription></Alert>}
       </CardContent></Card>
       <Card><CardContent className="space-y-4 pt-6">
         {!authReady ? <Alert variant="destructive"><AlertDescription>Payment authorization wording has not been configured. An administrator must finish ledger payment settings before online payments can be made.{isAdmin && <> <Link href="/config/ledger/settings#payment-authorization" className="font-medium underline">Open payment authorization settings</Link></>}</AlertDescription></Alert> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>{data.authorization?.text}</span></label>}
-          {review ? <div className="space-y-3"><h2 className="font-semibold">Review payment</h2><p className="text-sm">{shownBreakdown && `${money(shownBreakdown.amount, currency)} to ${data.account.name}`} using a {methodDescription}.</p><p className="text-sm text-muted-foreground">Starting the secure step does not complete your payment. Confirm it with the payment provider next.</p><div className="flex flex-col gap-2 sm:flex-row"><Button onClick={() => void submit()} disabled={busy || frozen || !canReview || !accepted}>{busy ? "Starting…" : "Continue to secure confirmation"}</Button><Button variant="outline" onClick={() => setReview(false)} disabled={busy || frozen}>Edit</Button></div></div> : <Button onClick={() => setReview(true)} disabled={!canReview || !accepted}>Review payment</Button>}
+         {review ? <div className="space-y-3"><h2 className="font-semibold">Review payment</h2><p className="text-sm">{shownBreakdown && `${money(shownBreakdown.amount, currency)} to ${data.account.name}`} using a {methodDescription}{canSaveMethod && saveMethodAccepted ? " (save for future use)" : ""}.</p><p className="text-sm text-muted-foreground">Starting the secure step does not complete your payment. Confirm it with the payment provider next.</p><div className="flex flex-col gap-2 sm:flex-row"><Button onClick={() => void submit()} disabled={busy || frozen || !canReview || !accepted}>{busy ? "Starting…" : "Continue to secure confirmation"}</Button><Button variant="outline" onClick={() => setReview(false)} disabled={busy || frozen}>Edit</Button></div></div> : <Button onClick={() => setReview(true)} disabled={!canReview || !accepted}>Review payment</Button>}
          {error && !session && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       </CardContent></Card>
     </>}

@@ -9,6 +9,7 @@ import { createPaymentFromRequestBody, triggerPaymentChargePlugins } from "./pay
 import { paymentEventMatchesAmount, selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-attempt-state";
 import { storageLogger } from "../../logger";
 import { checkoutMinor, type CheckoutCreditTransfer } from "@shared/ledger/checkout-selection";
+import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 
 type Evidence = Omit<Pick<NormalizedGatewayEvent, "type" | "providerRef" | "amountMinor" | "currency" | "methodRef" | "methodSummary" | "providerCreated" | "failureCode">, "type"> & {
   type: NormalizedGatewayEvent["type"] | "payment.created" | "payment.requires_action";
@@ -177,10 +178,20 @@ export async function saveConfirmedMethod(attempt: LedgerPaymentAttempt, evidenc
   if (!ref || (confirmed.methodRef && evidence.methodRef && confirmed.methodRef !== evidence.methodRef)) {
     throw new SettlementRefusal("Provider did not confirm the requested saved payment method");
   }
+  const metadata = attempt.metadata as Record<string, unknown> | null;
+  const saveConsent = metadata?.saveMethodConsent as Record<string, unknown> | null | undefined;
+  if (!saveConsent || saveConsent.accepted !== true ||
+      saveConsent.version !== CHECKOUT_SAVE_METHOD_CONSENT.version ||
+      saveConsent.text !== CHECKOUT_SAVE_METHOD_CONSENT.text ||
+      saveConsent.textVersion !== CHECKOUT_SAVE_METHOD_CONSENT.version ||
+      saveConsent.authorizationType !== "save_payment_method" ||
+      typeof saveConsent.acceptedAt !== "string") {
+    throw new SettlementRefusal("Separate saved-method consent is unavailable");
+  }
   await runInTransaction(async () => {
     const method = await storage.ledger.paymentMethods.upsertProviderMethod({
       entityType: attempt.entityType, entityId: attempt.entityId, gatewayConfigId: attempt.gatewayConfigId,
-      providerMethodRef: ref, consent: attempt.consent,
+      providerMethodRef: ref, consent: saveConsent,
       data: { summary: confirmed.methodSummary ?? evidence.methodSummary, createdByUserId: attempt.createdByUserId },
     });
     await storage.ledger.paymentAttempts.setDefaultIfAbsent(method.id, attempt.entityType, attempt.entityId, attempt.gatewayConfigId);

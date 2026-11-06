@@ -18,6 +18,7 @@ import { PaymentCancellationError, PaymentInitiationRejected } from "../../plugi
 import { checkoutPaymentTypes, initiatePayment } from "./payment-initiation";
 import { ensureCustomer } from "./payment-methods";
 import { processPaymentEvidence, evidenceFromPayment, settlementError, logSettlementFailure, SettlementRefusal } from "./payment-settlement";
+import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 
 const options = createUnifiedOptionsStorage();
 const raw = (req: Request) => (req as Request & { rawBody?: Buffer }).rawBody;
@@ -359,6 +360,11 @@ export function registerLedgerPaymentAttemptRoutes(
     paymentMethodId: z.string().trim().min(1).optional(),
     paymentMethodType: z.enum(["card", "us_bank_account"]).optional(),
     saveMethod: z.boolean().default(false),
+    saveMethodConsent: z.object({
+      version: z.string().trim().min(1),
+      text: z.string().trim().min(1),
+      accepted: z.literal(true),
+    }).strict().optional(),
     consent: z.object({ version: z.string().trim().min(1), text: z.string().trim().min(1), accepted: z.literal(true) }).strict(),
     statementSelection: z.array(z.object({
       invoiceNumber: z.string().trim().min(1),
@@ -493,6 +499,13 @@ export function registerLedgerPaymentAttemptRoutes(
       if (body.paymentMethodId ? body.paymentMethodType !== undefined : !body.paymentMethodType) {
         return error(res, 400, "Choose exactly one saved method or new payment type");
       }
+      if (body.saveMethod !== !!body.saveMethodConsent ||
+          (body.saveMethodConsent && (body.saveMethodConsent.version !== CHECKOUT_SAVE_METHOD_CONSENT.version ||
+            body.saveMethodConsent.text !== CHECKOUT_SAVE_METHOD_CONSENT.text)) ||
+          (body.saveMethod && (body.paymentMethodId ||
+            !["card", "us_bank_account"].includes(body.paymentMethodType ?? "")))) {
+        return error(res, 400, "Saving a payment method requires separate save consent for a new card or US bank account");
+      }
       const amountText = String(body.amount);
       if (!/^\d+(?:\.\d{1,2})?$/.test(amountText)) return error(res, 400, "amount must be a currency value");
       const cents = Math.round(Number(amountText) * 100);
@@ -516,9 +529,14 @@ export function registerLedgerPaymentAttemptRoutes(
         }
         const existingConsent = existing.consent && typeof existing.consent === "object" ? existing.consent as Record<string, unknown> : {};
         const existingMetadata = existing.metadata && typeof existing.metadata === "object" ? existing.metadata as Record<string, unknown> : {};
+        const existingSaveConsent = existingMetadata.saveMethodConsent && typeof existingMetadata.saveMethodConsent === "object"
+          ? existingMetadata.saveMethodConsent as Record<string, unknown> : null;
         if (existing.entityType !== req.params.entityType || existing.entityId !== req.params.entityId ||
             existing.ledgerEaId !== req.params.eaId || Math.round(Number(existing.amount) * 100) !== cents ||
             existing.saveMethod !== body.saveMethod ||
+            (body.saveMethod && (existingSaveConsent?.version !== body.saveMethodConsent?.version ||
+              existingSaveConsent?.text !== body.saveMethodConsent?.text ||
+              existingSaveConsent?.accepted !== true)) ||
             existing.gatewayConfigId !== loaded.account.gatewayConfigId ||
             existing.createdByUserId !== userId ||
             existingMetadata.paymentMethodRef !== (body.paymentMethodId ? (await storage.ledger.paymentMethods.get(body.paymentMethodId))?.providerMethodRef : null) ||
@@ -557,9 +575,6 @@ export function registerLedgerPaymentAttemptRoutes(
            publicConfig: safePublicConfig({ publishableKey: (loaded.resolved.config.data as any)?.publishableKey, paymentTypes: existingMetadata.paymentTypes }),
            providerRef: existing.providerIntentRef }));
       }
-      // Reusable methods are created only by the separately authorized setup
-      // flow. Historical saved attempts remain replayable above this boundary.
-      if (body.saveMethod) return error(res, 400, "Save payment methods in payment method management, not checkout");
       try { await enforceFloodLimit(CHECKOUT_FLOOD_EVENT, { userId, eaId: loaded.ea.id }); }
       catch (e) { if (e instanceof FloodError) return error(res, 429, "Too many checkout attempts"); /* flood storage is advisory */ }
       let savedMethod: any;
@@ -636,6 +651,12 @@ export function registerLedgerPaymentAttemptRoutes(
           amount: quote.amount, currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null,
           failureCode: "creation_not_started",
            metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes: sessionTypes,
+            ...(body.saveMethodConsent ? { saveMethodConsent: {
+              ...body.saveMethodConsent,
+              acceptedAt: new Date().toISOString(),
+              textVersion: body.saveMethodConsent.version,
+              authorizationType: "save_payment_method",
+            } } : {}),
             checkoutSelection: { mode: body.selection.mode, invoiceNumbers: [...body.selection.invoiceNumbers].sort() },
             checkoutQuote: quote, invoicePeriods: quote.invoicePeriods },
         } as any);
