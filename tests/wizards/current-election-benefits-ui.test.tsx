@@ -60,8 +60,21 @@ describe("BenefitsStep currently elected indicator", () => {
     expect(html).toContain('aria-label="Currently elected"');
     expect(html).not.toContain('data-testid="badge-currently-elected-benefit-dental"');
     expect(html.match(/Currently elected/g)).toHaveLength(2);
+    expect(html).toContain("border-primary/60");
+    expect(html).toContain("bg-primary/10");
+    expect(html).toContain("dark:bg-primary/20");
+    expect(html).toContain("font-semibold");
+    expect(html).toContain("flex-wrap");
     expect(html).toContain('data-testid="checkbox-benefit-benefit-medical"');
     expect(html).toContain('data-testid="checkbox-benefit-benefit-dental"');
+    const medicalCheckbox = html.match(
+      /<button\b(?=[^>]*data-testid="checkbox-benefit-benefit-medical")[^>]*>/,
+    )?.[0];
+    const dentalCheckbox = html.match(
+      /<button\b(?=[^>]*data-testid="checkbox-benefit-benefit-dental")[^>]*>/,
+    )?.[0];
+    expect(medicalCheckbox).toContain('aria-checked="false"');
+    expect(dentalCheckbox).toContain('aria-checked="false"');
   });
 
   it("shows the unchanged choices without a current election", () => {
