@@ -22,6 +22,21 @@ const context = {
 } as PaymentGatewayContext;
 
 describe("payment gateway provider contract", () => {
+  it("requires matching provider-specific Stripe test-key signals", () => {
+    const testContext = {
+      apiKey: "sk_test_fixture",
+      config: { id: "stripe", data: { publishableKey: "pk_test_fixture" } },
+    } as PaymentGatewayContext;
+    expect(stripePaymentGatewayPlugin.isTestMode?.(testContext)).toBe(true);
+    expect(stripePaymentGatewayPlugin.isTestMode?.({
+      ...testContext, config: { ...testContext.config, data: { publishableKey: "pk_live_fixture" } },
+    })).toBe(false);
+    expect(stripePaymentGatewayPlugin.isTestMode?.({
+      ...testContext, apiKey: "sk_live_fixture",
+    })).toBe(false);
+    expect(dummyPaymentGatewayPlugin.isTestMode?.(testContext)).toBe(true);
+  });
+
   it.each([stripePaymentGatewayPlugin, dummyPaymentGatewayPlugin])("distinguishes absent from explicitly empty methods for $150 at $id", async plugin => {
     const ctx = { apiKey: "sk_test_fixture", config: { id: "fixture", data: { publishableKey: "pk_test_fixture" } } } as PaymentGatewayContext;
     expect(plugin.getCheckoutPaymentTypes!(ctx)).toContain("card");

@@ -58,15 +58,21 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
   for (const attempt of attempts) {
     try {
       const resolved = await resolveGateway(attempt.gatewayConfigId, { allowDisabled: true });
+      const metadata = attempt.metadata as Record<string, any> | null;
+      const isAdminTestSource = metadata?.source === "admin_test_checkout";
+      const hasAdminTestMarker = metadata?.adminTest?.isAdminTest === true;
+      if (isAdminTestSource !== hasAdminTestMarker ||
+          (hasAdminTestMarker && resolved.plugin.isTestMode?.(resolved.context) !== true)) {
+        throw new SettlementRefusal("Admin test gateway no longer confirms test mode");
+      }
       if (!resolved.plugin.retrievePayment) throw new SettlementRefusal("Payment retrieval is unavailable");
       let ref = attempt.providerIntentRef;
       if (!ref) {
         if (!resolved.plugin.createPaymentSession) throw new SettlementRefusal("Payment session recovery is unavailable");
-        const metadata = attempt.metadata as Record<string, unknown> | null;
         // Older worker intents used another provider creation contract and
         // idempotency key. Reissuing them as checkout sessions could charge
         // twice; leave them reserved for explicit provider investigation.
-        if (metadata?.source !== "online_checkout")
+        if (metadata?.source !== "online_checkout" && metadata?.source !== "admin_test_checkout")
           throw new SettlementRefusal("Legacy payment has no recoverable provider reference");
         const methodRef = typeof metadata?.paymentMethodRef === "string" ? metadata.paymentMethodRef : undefined;
         const customerRef = methodRef
@@ -78,8 +84,11 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
           currency: attempt.currency, customerRef, savedMethodRef: methodRef,
           saveMethod: attempt.saveMethod,
           paymentTypes: Array.isArray(metadata?.paymentTypes) ? metadata.paymentTypes.filter((v): v is string => typeof v === "string") : ["card"],
-          description: "Ledger payment",
-          metadata: { attemptId: attempt.id, entityType: attempt.entityType, entityId: attempt.entityId },
+          description: metadata?.source === "admin_test_checkout" ? "Admin test payment" : "Ledger payment",
+          metadata: {
+            attemptId: attempt.id, entityType: attempt.entityType, entityId: attempt.entityId,
+            ...(metadata?.source === "admin_test_checkout" ? { paymentPurpose: "admin_test" } : {}),
+          },
         });
         ref = session.providerRef;
         // Never overwrite a reference supplied concurrently by a webhook.

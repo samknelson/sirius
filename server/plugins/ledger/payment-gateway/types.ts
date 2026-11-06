@@ -275,6 +275,13 @@ export interface PaymentTypeOption {
 
 export interface PaymentGatewayPlugin extends BasePluginMetadata {
   /**
+   * Positive, provider-specific proof that this resolved gateway uses test
+   * credentials. Admin test checkout fails closed when this is absent or false.
+   * This check must be local and must not make provider-side changes.
+   */
+  isTestMode?(ctx: PaymentGatewayContext): boolean;
+
+  /**
    * Whether resolving this gateway requires the named credential secret to be
    * present in the environment. Defaults to `true` (the historical behaviour:
    * a missing secret yields a 503). A provider that needs no real credentials

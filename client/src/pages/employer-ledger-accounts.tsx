@@ -12,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, Trash2, Plus, ExternalLink } from "lucide-react";
 import {
   AlertDialog,
@@ -31,6 +32,8 @@ type FormData = z.infer<typeof formSchema>;
 export default function EmployerLedgerAccounts() {
   const { id: employerId } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission("admin");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
@@ -254,6 +257,11 @@ export default function EmployerLedgerAccounts() {
                     {Number(payable.data?.find(p => p.eaId === entry.id)?.available ?? 0) > 0 && (
                       <Button asChild size="sm"><Link href={`/pay/${encodeURIComponent(entry.id)}`}>Pay online</Link></Button>
                     )}
+                    {isAdmin && <Button asChild variant="outline" size="sm" data-testid={`button-admin-test-payment-${entry.id}`}>
+                      <Link href={`/admin-test-pay/employer/${encodeURIComponent(employerId)}/${encodeURIComponent(entry.id)}`}>
+                        Test payment
+                      </Link>
+                    </Button>}
                     <Button
                       variant="ghost"
                       size="icon"

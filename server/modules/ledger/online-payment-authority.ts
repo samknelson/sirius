@@ -10,6 +10,22 @@ export class OnlinePaymentAuthorityError extends Error {
 }
 
 /**
+ * Admin test payments are a separate authority path. They must be started by
+ * the authenticated administrator themselves, never through a masqueraded
+ * user's effective identity.
+ */
+export async function assertAdminTestPaymentAuthority(req: Request): Promise<string> {
+  if ((req as any).session?.masqueradeUserId) {
+    throw new OnlinePaymentAuthorityError("Stop masquerading before starting an admin test payment");
+  }
+  const context = await buildContext(req);
+  if (!context.user) throw new OnlinePaymentAuthorityError("Authentication required");
+  const admin = await checkAccessInline(req, "admin");
+  if (!admin.granted) throw new OnlinePaymentAuthorityError("Administrator access is required");
+  return context.user.id;
+}
+
+/**
  * Authorize a checkout or saved-method operation without relying on the
  * evaluator's entity cache. Employer grants are deliberately read from the
  * database on every call so revocation takes effect immediately.

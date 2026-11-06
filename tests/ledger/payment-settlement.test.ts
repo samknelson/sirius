@@ -77,7 +77,7 @@ vi.mock("../../server/modules/ledger/payments", () => ({
 }));
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({
   resolveGateway: vi.fn(async () => ({
-    context: {}, plugin: { retrievePayment: retrieve, cancelPayment: cancel, createPaymentSession: createSession },
+    context: {}, plugin: { retrievePayment: retrieve, cancelPayment: cancel, createPaymentSession: createSession, isTestMode: () => true },
   })),
 }));
 vi.mock("../../server/modules/ledger/payment-methods", () => ({
@@ -144,6 +144,49 @@ describe("online settlement", () => {
     });
     expect(allocation).toHaveBeenCalledOnce();
     expect(attempt.ledgerPaymentId).toBe("payment-1");
+  });
+
+  it("marks admin test settlement and retains the admin actor and purpose separately from payer consent", async () => {
+    attempt.metadata = {
+      source: "admin_test_checkout",
+      adminTest: { isAdminTest: true, actorUserId: "admin-1", purpose: "Verify gateway", confirmedAt: "2026-11-06T12:00:00Z" },
+      invoicePeriods: [{ invoiceNumber: "INV-JAN", statementYmd: "2026-01-01" }],
+    };
+    attempt.statementSelection = [{ invoiceNumber: "INV-JAN", amount: "100.00" }];
+    attempt.consent = null;
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    expect(paymentCreate.mock.calls[0][0]).toMatchObject({
+      memo: "Admin test payment",
+      details: {
+        adminTest: true, adminTestPurpose: "Verify gateway",
+        adminTestActorUserId: "admin-1", providerTestMode: true,
+      },
+    });
+    expect(attempt.consent).toBeNull();
+  });
+
+  it("refuses to settle an admin test attempt if its gateway no longer proves test mode", async () => {
+    attempt.metadata = {
+      source: "admin_test_checkout",
+      adminTest: { isAdminTest: true, actorUserId: "admin-1", purpose: "Verify gateway" },
+    };
+    const { resolveGateway } = await import("../../server/modules/ledger/payment-gateway-context");
+    vi.mocked(resolveGateway).mockResolvedValueOnce({
+      context: {}, plugin: { isTestMode: () => false },
+    } as any);
+    await expect(processPaymentEvidence("attempt-1", "gateway-1", success()))
+      .rejects.toThrow("no longer confirms test mode");
+    expect(paymentCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses settlement when admin-test source and marker do not match", async () => {
+    attempt.metadata = {
+      source: "admin_test_checkout",
+      adminTest: { isAdminTest: false, actorUserId: "admin-1", purpose: "Verify gateway" },
+    };
+    await expect(processPaymentEvidence("attempt-1", "gateway-1", success()))
+      .rejects.toThrow("provenance is invalid");
+    expect(paymentCreate).not.toHaveBeenCalled();
   });
 
   it("ignores a preferred charge-directed type when recording received funds", async () => {
@@ -395,6 +438,47 @@ describe("online settlement", () => {
     }));
     expect(attempt.providerIntentRef).toBe("ref-1");
     expect(paymentCreate).toHaveBeenCalledOnce();
+  });
+
+  it("recovers an admin test attempt using the same test-mode idempotency contract", async () => {
+    attempt.providerIntentRef = null;
+    attempt.status = "requires_action";
+    attempt.failureCode = "creation_uncertain";
+    attempt.metadata = {
+      source: "admin_test_checkout",
+      adminTest: { isAdminTest: true, actorUserId: "admin-1", purpose: "Verify gateway" },
+      paymentTypes: ["card"],
+      invoicePeriods: [{ invoiceNumber: "INV-JAN", statementYmd: "2026-01-01" }],
+    };
+    attempt.statementSelection = [{ invoiceNumber: "INV-JAN", amount: "100.00" }];
+    createSession.mockResolvedValue({ providerRef: "ref-1", status: "succeeded" });
+    await recoverOnlinePayments();
+    expect(createSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "attempt-1", description: "Admin test payment",
+      metadata: expect.objectContaining({ paymentPurpose: "admin_test" }),
+    }));
+    expect(paymentCreate.mock.calls[0][0]).toMatchObject({
+      memo: "Admin test payment", details: { adminTest: true, adminTestActorUserId: "admin-1" },
+    });
+  });
+
+  it("does not recover or create an admin test payment after test mode is no longer verified", async () => {
+    attempt.providerIntentRef = null;
+    attempt.status = "requires_action";
+    attempt.failureCode = "creation_uncertain";
+    attempt.metadata = {
+      source: "admin_test_checkout",
+      adminTest: { isAdminTest: true, actorUserId: "admin-1", purpose: "Verify gateway" },
+      paymentTypes: ["card"],
+    };
+    const { resolveGateway } = await import("../../server/modules/ledger/payment-gateway-context");
+    vi.mocked(resolveGateway).mockResolvedValueOnce({
+      context: {}, plugin: { retrievePayment: retrieve, createPaymentSession: createSession, isTestMode: () => false },
+    } as any);
+    expect((await recoverOnlinePayments()).failures).toBe(1);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(paymentCreate).not.toHaveBeenCalled();
   });
 
   it("does not release a lost create response when current gateway configuration rejects recovery", async () => {

@@ -11,6 +11,7 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
 }));
 
 import {
+  assertAdminTestPaymentAuthority,
   assertOnlinePaymentAuthority,
   OnlinePaymentAuthorityError,
 } from "../../server/modules/ledger/online-payment-authority";
@@ -75,5 +76,29 @@ describe("assertOnlinePaymentAuthority", () => {
       .resolves.toBe("user-1");
     expect(checkAccessInline).toHaveBeenCalledWith(request(), "employer.ledger.methods", "emp-1");
     expect(checkAccessInline).not.toHaveBeenCalledWith(expect.anything(), "employer.mine", expect.anything());
+  });
+});
+
+describe("assertAdminTestPaymentAuthority", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    buildContext.mockResolvedValue({ user: { id: "admin-1" } });
+    checkAccessInline.mockResolvedValue({ granted: true });
+  });
+
+  it("requires authenticated admin authority and returns the acting admin id", async () => {
+    await expect(assertAdminTestPaymentAuthority(request())).resolves.toBe("admin-1");
+    expect(checkAccessInline).toHaveBeenCalledWith(request(), "admin");
+  });
+
+  it("denies non-admin users", async () => {
+    checkAccessInline.mockResolvedValue({ granted: false });
+    await expect(assertAdminTestPaymentAuthority(request())).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+  });
+
+  it("refuses to use a masqueraded identity", async () => {
+    await expect(assertAdminTestPaymentAuthority(request({ masqueradeUserId: "worker-1" })))
+      .rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+    expect(buildContext).not.toHaveBeenCalled();
   });
 });

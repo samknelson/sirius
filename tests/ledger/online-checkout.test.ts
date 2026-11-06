@@ -7,6 +7,7 @@ import { PaymentInitiationRejected } from "../../server/plugins/ledger/payment-g
 
 const mocks = vi.hoisted(() => ({
   authority: vi.fn(),
+  adminAuthority: vi.fn(),
   access: vi.fn(),
   processPaymentEvidence: vi.fn(),
   createPaymentFromRequestBody: vi.fn(),
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../server/storage", () => ({ storage: mocks.storage }));
 vi.mock("../../server/modules/ledger/online-payment-authority", () => ({
+  assertAdminTestPaymentAuthority: mocks.adminAuthority,
   assertOnlinePaymentAuthority: mocks.authority,
   OnlinePaymentAuthorityError: mocks.AuthorityError,
 }));
@@ -65,12 +67,13 @@ let server: http.Server;
 let base: string;
 const liveAttempts = new Map<string, any>();
 const ea = { id: "ea-1", accountId: "acct-1", entityType: "worker", entityId: "worker-1" };
-const gateway = {
+const gateway: { config: any; context: any; plugin: Record<string, any> } = {
   config: { id: "gw-1", data: { paymentTypes: ["card"], publishableKey: "pk_test" } },
   context: { webhookSecret: "whsec" },
   plugin: {
     id: "fixture", payComponentId: "fixture:Pay", supportedPaymentTypes: [{ id: "card" }],
     constructWebhookEvent: vi.fn(), createPaymentSession: vi.fn(), createCustomer: vi.fn(),
+    isTestMode: vi.fn(() => true),
     retrievePayment: vi.fn(), cancelPayment: vi.fn(), getMethodSummary: vi.fn(), attachMethod: vi.fn(),
   },
 };
@@ -103,6 +106,8 @@ beforeEach(() => {
   mocks.processPaymentEvidence.mockReset();
   mocks.access.mockResolvedValue({ granted: false });
   mocks.authority.mockResolvedValue("user-1");
+  mocks.adminAuthority.mockResolvedValue("admin-1");
+  gateway.plugin.isTestMode = vi.fn(() => true);
   mocks.storage.ledger.ea.get.mockResolvedValue(ea);
   mocks.storage.ledger.accounts.get.mockResolvedValue({
     id: "acct-1", name: "Health", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
@@ -211,6 +216,108 @@ describe("online checkout HTTP contract", () => {
     selection: { mode: "statements", invoiceNumbers: ["INV-1"] },
     consent: { version: "v1", text: "Pay now", accepted: true },
     statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }], saveMethod: false, ...overrides,
+  });
+  const adminTestUrl = (entity = "worker/worker-1/ea-1") =>
+    `${base}/api/ledger/admin-test-checkout/${entity}`;
+  const adminTestBody = (preview: any, id = "admin-test-idem") => ({
+    amount: preview.quote.amount, idempotencyKey: id, paymentMethodType: "card",
+    selection: { mode: "full", invoiceNumbers: [] },
+    statementSelection: preview.quote.statementSelection,
+    creditTransfers: preview.quote.creditTransfers, saveMethod: false,
+    adminTestConfirmation: true, purpose: "Verify test payment setup",
+  });
+  const adminTestPost = (body: Record<string, unknown>, entity = "worker/worker-1/ea-1") =>
+    fetch(`${adminTestUrl(entity)}/sessions`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  it.each(["worker", "employer"])("creates a distinct admin test attempt for a %s ledger owner", async entityType => {
+    const entityId = `${entityType}-1`;
+    mocks.storage.ledger.ea.get.mockResolvedValue({ ...ea, entityType, entityId });
+    mocks.storage.ledger.accounts.get.mockResolvedValue({
+      id: "acct-1", name: "Health", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
+      data: { onlinePayments: { enabled: true, payerTypes: [entityType], allowPartial: true, minAmount: 1, paymentTypes: ["card"] } },
+    });
+    const previewResponse = await fetch(adminTestUrl(`${entityType}/${entityId}/ea-1`));
+    expect(previewResponse.status).toBe(200);
+    const preview = await previewResponse.json();
+    expect(preview).toMatchObject({ entityType, entityId, eaId: "ea-1", isAdminTest: true, testMode: true });
+    const response = await adminTestPost(adminTestBody(preview, `admin-${entityType}`), `${entityType}/${entityId}/ea-1`);
+    expect(response.status).toBe(201);
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(expect.objectContaining({
+      entityType, entityId, workerId: entityType === "worker" ? entityId : null,
+      accountId: "acct-1", ledgerEaId: "ea-1", createdByUserId: "admin-1",
+      consent: null,
+      metadata: expect.objectContaining({
+        source: "admin_test_checkout",
+        adminTest: expect.objectContaining({
+          isAdminTest: true, actorUserId: "admin-1", purpose: "Verify test payment setup",
+        }),
+      }),
+    }));
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        description: "Admin test payment",
+        metadata: expect.objectContaining({ paymentPurpose: "admin_test" }),
+      }),
+    );
+    expect(gateway.plugin.createCustomer).not.toHaveBeenCalled();
+  });
+
+  it("denies non-admins from both admin test checkout endpoints", async () => {
+    mocks.adminAuthority.mockRejectedValue(new mocks.AuthorityError("Administrator access is required"));
+    expect((await fetch(adminTestUrl())).status).toBe(403);
+    const response = await adminTestPost(adminTestBody({ quote: { amount: "12.34", statementSelection: [], creditTransfers: [] } }));
+    expect(response.status).toBe(403);
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary checkout subject to payer authorization even for an administrator", async () => {
+    mocks.authority.mockRejectedValue(new mocks.AuthorityError("Staff cannot perform online payment actions"));
+    const response = await checkout(valid());
+    expect(response.status).toBe(403);
+    expect(mocks.adminAuthority).not.toHaveBeenCalled();
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it("restricts admin test receipts to their recorded acting administrator", async () => {
+    const attempt = {
+      id: "admin-test-attempt", entityType: "employer", entityId: "employer-1",
+      ledgerEaId: "ea-1", gatewayConfigId: "gw-1", createdByUserId: "admin-1",
+      amount: "12.34", currency: "USD", status: "created", providerIntentRef: "pi-test",
+      metadata: { source: "admin_test_checkout", adminTest: {
+        isAdminTest: true, actorUserId: "admin-1", purpose: "Verify gateway",
+      } },
+    };
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    gateway.plugin.retrievePayment.mockResolvedValue({
+      providerRef: "pi-test", status: "created", amountMinor: 1234, currency: "USD",
+    });
+    const testReceipt = await fetch(`${base}/api/ledger/admin-test-checkout/sessions/${attempt.id}`);
+    expect(testReceipt.status).toBe(200);
+    expect(await testReceipt.json()).toMatchObject({
+      id: attempt.id, entityType: "employer", entityId: "employer-1",
+      isAdminTest: true, adminTestPurpose: "Verify gateway",
+    });
+    expect((await fetch(`${base}/api/ledger/checkout/sessions/${attempt.id}`)).status).toBe(403);
+  });
+
+  it.each([
+    ["live-mode signal", false],
+    ["missing test-mode signal", undefined],
+  ])("fails closed for a gateway with a %s before provider creation", async (_label, testMode) => {
+    if (testMode === undefined) delete gateway.plugin.isTestMode;
+    else gateway.plugin.isTestMode = vi.fn(() => testMode);
+    const preview = await fetch(adminTestUrl());
+    expect(preview.status).toBe(409);
+    const create = await adminTestPost(adminTestBody({ quote: { amount: "12.34", statementSelection: [], creditTransfers: [] } }));
+    expect(create.status).toBe(409);
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createCustomer).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
   });
 
   it.each(["worker", "employer"])("rejects disabled and incompatible gateway types for %s without reserving $150 or the later $387", async entityType => {

@@ -53,6 +53,17 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
     // Serialize posting/reservation release with checkout's balance quote.
     await storage.ledger.paymentAttempts.lockEa(attempt.ledgerEaId);
     if (attempt.gatewayConfigId !== gatewayId) throw new SettlementRefusal("Payment gateway mismatch");
+    const metadata = attempt.metadata as Record<string, any> | null;
+    const isAdminTestSource = metadata?.source === "admin_test_checkout";
+    const hasAdminTestMarker = metadata?.adminTest?.isAdminTest === true;
+    if (isAdminTestSource !== hasAdminTestMarker)
+      throw new SettlementRefusal("Admin test payment provenance is invalid");
+    const adminTest = hasAdminTestMarker;
+    if (adminTest) {
+      const resolved = await resolveGateway(gatewayId, { allowDisabled: true });
+      if (resolved.plugin.isTestMode?.(resolved.context) !== true)
+        throw new SettlementRefusal("Admin test gateway no longer confirms test mode");
+    }
     if (!evidence.providerRef || (attempt.providerIntentRef && attempt.providerIntentRef !== evidence.providerRef)) {
       throw new SettlementRefusal("Payment reference mismatch");
     }
@@ -128,11 +139,17 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
           paymentType: paymentType.id, ledgerEaId: attempt.ledgerEaId,
           dateReceived: now.toISOString(),
           dateCleared: status === "succeeded" ? now.toISOString() : null,
-          memo: "Online payment", details: {
+          memo: adminTest ? "Admin test payment" : "Online payment", details: {
             provider: gatewayId, paymentAttemptId: attempt.id,
             providerIntentRef: evidence.providerRef, proposedAllocation: allocations,
             statementSelection: selection ?? [],
             creditTransfers: quote?.creditTransfers ?? [],
+            ...(adminTest ? {
+              adminTest: true,
+              adminTestPurpose: metadata!.adminTest.purpose,
+              adminTestActorUserId: metadata!.adminTest.actorUserId,
+              providerTestMode: true,
+            } : {}),
           },
         }, { requireAccountId: attempt.accountId });
         if (!result.ok) throw new SettlementRefusal(result.message);

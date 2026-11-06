@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, ExternalLink } from "lucide-react";
 import { WorkerLayout } from "@/components/layouts/WorkerLayout";
+import { useAuth } from "@/contexts/AuthContext";
 
 const formSchema = insertLedgerEaSchema.omit({ data: true });
 
@@ -24,6 +25,8 @@ type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 function WorkerLedgerAccountsContent() {
   const { id: workerId } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission("admin");
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   const { data: entries = [], isLoading } = useQuery<LedgerEaWithBalance[]>({
@@ -238,6 +241,11 @@ function WorkerLedgerAccountsContent() {
                              Pay Balance
                           </Link>
                          </Button>}
+                          {isAdmin && <Button asChild variant="outline" size="sm" data-testid={`button-admin-test-payment-${entry.id}`}>
+                            <Link href={`/admin-test-pay/worker/${encodeURIComponent(workerId)}/${encodeURIComponent(entry.id)}`}>
+                              Test payment
+                            </Link>
+                          </Button>}
                       </div>
                     </div>
                   </div>

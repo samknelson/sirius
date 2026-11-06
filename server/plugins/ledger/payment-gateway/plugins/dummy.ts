@@ -269,6 +269,7 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
   name: "Dummy (Testing)",
   description:
     "A fake payment gateway for testing the full payment lifecycle without a real provider. Stores only the card brand, expiry, and last 4 digits.",
+  isTestMode: () => true,
   requiredComponent: "ledger.dummy_gateway",
   addComponentId: "dummy:DummyAddPaymentMethod",
   payComponentId: "dummy:DummyPayComponent",

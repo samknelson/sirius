@@ -114,6 +114,7 @@ function PaymentViewContent() {
                 <Badge variant={getStatusBadgeVariant(payment.status)} data-testid="badge-payment-status">
                   {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
                 </Badge>
+                {details.adminTest === true && <Badge className="ml-2" variant="outline" data-testid="badge-admin-test-payment">Admin test payment</Badge>}
               </div>
             </div>
 

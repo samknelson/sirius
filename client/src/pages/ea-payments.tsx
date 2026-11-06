@@ -625,7 +625,10 @@ function EAPaymentsContent() {
                         {formatAmount(parseFloat(payment.amount), currencyCode)}
                       </TableCell>
                       <TableCell data-testid={`text-payment-type-${payment.id}`}>
-                        {paymentType?.name || "-"}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{paymentType?.name || "-"}</span>
+                          {details?.adminTest === true && <Badge variant="outline" data-testid={`badge-admin-test-payment-${payment.id}`}>Admin test</Badge>}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>

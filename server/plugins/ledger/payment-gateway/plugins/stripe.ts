@@ -203,6 +203,13 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   supportedPaymentTypes: STRIPE_PAYMENT_TYPES,
   getCheckoutPaymentTypes: configuredPaymentTypes,
   validatePaymentSession,
+  isTestMode(ctx) {
+    const publishableKey =
+      typeof configData(ctx).publishableKey === "string"
+        ? String(configData(ctx).publishableKey)
+        : "";
+    return ctx.apiKey.startsWith("sk_test_") && publishableKey.startsWith("pk_test_");
+  },
 
   async createPaymentIntent(ctx, args): Promise<GatewayPaymentIntent> {
     assertOnlinePaymentTestCredentials(ctx);

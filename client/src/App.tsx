@@ -597,6 +597,20 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
+        <Route path="/admin-test-pay/receipt/:sessionId">
+          <ProtectedRoute permission="admin">
+            <AuthenticatedLayout>
+              <SharedPaymentReceipt />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        </Route>
+        <Route path="/admin-test-pay/:entityType/:entityId/:eaId">
+          <ProtectedRoute permission="admin">
+            <AuthenticatedLayout>
+              <SharedCheckoutPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        </Route>
         {/* Keep receipt ahead of the generic EA parameter route. */}
         <Route path="/pay/receipt/:sessionId">
           <ProtectedRoute component="ledger">

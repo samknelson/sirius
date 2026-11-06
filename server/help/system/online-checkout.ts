@@ -92,3 +92,35 @@ export const onlinePaymentReceiptHelp: SystemHelpEntry = {
     <p>Status updates may take time and no posting time is guaranteed. If a request fails, check this receipt again rather than using a new checkout to test the outcome. Give support the confirmation number and displayed status, never sensitive payment details or secure provider links.</p>
   `,
 };
+
+export const adminTestPaymentHelp: SystemHelpEntry = {
+  id: "system:admin-test-payment",
+  paths: [
+    "/workers/%/ledger/accounts",
+    "/employers/%/ledger/accounts",
+    "/admin-test-pay/%/%/%",
+    "/admin-test-pay/receipt/%",
+  ],
+  summary: "Admins can run a payment only through a gateway positively verified as test mode; successful tests post to the selected ledger.",
+  details: `
+    <h3>Purpose</h3>
+    <p>Use <strong>Test payment</strong> on a worker or employer ledger account to check its online payment setup without masquerading as that payer.</p>
+    <h3>Before you start</h3>
+    <p>Only an administrator who is not currently masquerading can start or manage this flow. The selected ledger account must have online payments enabled and its gateway must positively identify itself as test mode. Live-mode gateways and gateways without a reliable test-mode signal are refused before payment creation.</p>
+    <p><strong>A successful test payment is posted to the selected account's ledger</strong> and applies to the displayed balance and statement allocation. Review the amount and affected ledger allocation before continuing. This action cannot be used to charge a live account.</p>
+    <h3>How to use this page</h3>
+    <ol>
+      <li>Open the worker's or employer's <strong>Accounts</strong> page and select <strong>Test payment</strong> beside the intended ledger account.</li>
+      <li>Review the posted balance, pending payments, available amount, statement selection, credits, and total.</li>
+      <li>Enter a test purpose, select a new payment method, and confirm that you understand this test can post to the ledger.</li>
+      <li>Select <strong>Review test payment</strong>, verify the amount and allocation, then select <strong>Start test payment</strong>.</li>
+      <li>Complete any secure test-provider step and use the receipt to check the final status.</li>
+    </ol>
+    <h3>Results and status meanings</h3>
+    <p>The attempt and posted ledger payment retain the worker or employer as the account owner and record the acting administrator and test purpose separately. The attempt does not store payer authorization. Administrator confirmation is not the worker's or employer's legal payment consent.</p>
+    <p>A test-provider success can post a clearly labeled <strong>Admin test payment</strong> to the ledger, but it is not evidence of real funds or payer consent. Pending and processing states reserve the selected account amount until the existing payment lifecycle confirms an outcome.</p>
+    <h3>Limitations and common problems</h3>
+    <p>Admin test checkout uses a new payment method for one attempt; it does not use or save a payer's stored methods. A live or unknown gateway, disabled online payments, unsupported payment types, or missing secure payment entry prevents checkout. Do not use ordinary <strong>Pay online</strong> to perform an administrator test.</p>
+    <p>If a test attempt is unfinished or its status is uncertain, check the same receipt before starting another. Cancellation releases the reservation only after the provider confirms it. Never treat a test result as a real payment or evidence of payer approval.</p>
+  `,
+};

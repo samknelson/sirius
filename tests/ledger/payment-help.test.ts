@@ -5,17 +5,18 @@ import type { Server } from "node:http";
 import type { IStorage } from "../../server/storage";
 import { registerHelpRoutes } from "../../server/modules/helps";
 import { findSystemHelpsForPath, getAllSystemHelps, getSystemHelp } from "../../server/help/system";
-import { onlineCheckoutHelp, onlinePaymentReceiptHelp, workerPaymentChooserHelp } from "../../server/help/system/online-checkout";
+import { adminTestPaymentHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp, workerPaymentChooserHelp } from "../../server/help/system/online-checkout";
 import { workerPaymentMethodsHelp } from "../../server/help/system/worker-payment-methods";
 import { likePatternMatches } from "../../server/help/path-match";
 import { sanitizeHtml } from "@shared/utils/html";
 
-const authored = [workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp, workerPaymentMethodsHelp];
+const authored = [workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp, workerPaymentMethodsHelp, adminTestPaymentHelp];
 const ids = new Set<string>(authored.map(entry => entry.id));
 const chooser = workerPaymentChooserHelp.id;
 const checkout = onlineCheckoutHelp.id;
 const receipt = onlinePaymentReceiptHelp.id;
 const methods = workerPaymentMethodsHelp.id;
+const adminTest = adminTestPaymentHelp.id;
 const ea = "a0000000-0000-4000-8000-000000000000";
 const session = "b0000000-0000-4000-8000-000000000000";
 const matches = (path: string) => findSystemHelpsForPath(path).filter(entry => ids.has(entry.id)).map(entry => entry.id);
@@ -27,6 +28,16 @@ describe("online payment help route boundaries", () => {
     [`/pay/${ea}`, checkout],
     [`/pay/receipt/${session}`, receipt],
   ])("offers only the relevant payment entry on %s", (path, id) => {
+    expect(matches(path)).toEqual([id]);
+  });
+
+  it.each([
+    ["/workers/fictional/ledger/accounts", adminTest],
+    ["/employers/fictional/ledger/accounts", adminTest],
+    ["/admin-test-pay/worker/fictional/ea-1", adminTest],
+    ["/admin-test-pay/employer/fictional/ea-1", adminTest],
+    ["/admin-test-pay/receipt/session-1", adminTest],
+  ])("offers admin test guidance on %s", (path, id) => {
     expect(matches(path)).toEqual([id]);
   });
 
@@ -46,7 +57,7 @@ describe("online payment help route boundaries", () => {
   });
 
   it.each([
-    "/workers", "/workers/fictional", "/workers/fictional/ledger/accounts",
+    "/workers", "/workers/fictional",
     "/workers/fictional/ledger/pay/", "/workers/fictional/ledger/pay/extra",
     "/workers/fictional/ledger/pay-other", "/workers/fictional/ledger/payment-methods/",
     "/workers/fictional/ledger/payment-methods/extra", "/workers/fictional/ledger/payment_methods",
@@ -54,6 +65,7 @@ describe("online payment help route boundaries", () => {
     "/employers/fictional/ledger/payment_methods", "/ea/fictional/payments", "/ledger/payment/fictional",
     "/config/ledger/settings", "/config/helps", "/dashboard", "/__mockup/",
     "/pay", "/pay/receipt", "/pay/receipt-other/example", "/Pay/" + ea,
+    "/admin-test-pay", "/admin-test-pay/worker/fictional", "/admin-test-pay/receipt",
     "/api/ledger/checkout/worker/fictional/" + ea,
   ])("does not add payment help on a near miss or unrelated path: %s", path => {
     expect(matches(path)).toEqual([]);
@@ -149,7 +161,7 @@ describe("payment help through the existing help HTTP handlers", () => {
     const listing = await read("/api/helps");
     expect(listing.status).toBe(200);
     const entries = await listing.json();
-    expect(entries.filter((entry: { id: string }) => ids.has(entry.id))).toHaveLength(4);
+    expect(entries.filter((entry: { id: string }) => ids.has(entry.id))).toHaveLength(5);
     expect(entries.find((entry: { id: string }) => entry.id === local.id)).toEqual({ ...local, source: "config" });
     const lookup = await read("/api/helps/lookup?path=" + encodeURIComponent("/workers/fictional/ledger/pay"));
     expect((await lookup.json()).map((entry: { id: string }) => entry.id)).toEqual([local.id, chooser]);
