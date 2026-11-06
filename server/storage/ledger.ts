@@ -1836,7 +1836,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
       const bucketExpr = basis === 'cash'
         ? sqlRaw<string>`to_char(${ledger.date}, 'YYYY-MM')`
-        : sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
+        : sqlRaw<string>`to_char(${ledger.statementYmd}, 'YYYY-MM')`;
       // referenceType-first: migrated (s1-import) allocations reference a
       // payment without the payment-simple-allocation charge plugin.
       const isPaymentExpr = sqlRaw<boolean>`(${ledger.referenceType} = 'payment' OR ${ledger.chargePlugin} = 'payment-simple-allocation')`;
