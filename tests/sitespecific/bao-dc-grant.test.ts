@@ -14,6 +14,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../server/db";
 import { databaseSourceInfo } from "../../server/storage/db";
 import { storage } from "../../server/storage";
+import { runInTransaction } from "../../server/storage/transaction-context";
 import {
   employers,
   policies,
@@ -599,41 +600,136 @@ describe("queued release", () => {
 });
 
 describe("employer-hours reconciliation", () => {
-  it("the real hours-saved listener keeps a below-threshold month granted and reduces it to the shortfall", async () => {
-    // 95 employer + 20 FMLA = 115 against the snapshotted 120 threshold.
-    // upsertWorkerHours emits the production HOURS_SAVED event; the listener
-    // reconciles after commit and must leave a 5-hour granted month.
+  it("restores the saved shortfall through repeated worker-hours edits and the production listener", async () => {
+    // Reproduce the reported August 2026 state: 20 Active + 20 FMLA hours,
+    // an approved month's saved threshold of 120, and an 80-hour DC grant.
+    const editedMonth = { year: 2026, month: 8 };
+    const editedMonthYmd = ymd(editedMonth);
+    const approvedCase = await storage.baoDisabilityCredit.getCase(caseId);
+    expect(approvedCase?.status).toBe("approved");
+
+    const [activeRow] = await db
+      .insert(workerHours)
+      .values({
+        workerId,
+        year: editedMonth.year,
+        month: editedMonth.month,
+        day: 1,
+        employerId,
+        employmentStatusId: activeStatusId,
+        hours: 20,
+      })
+      .returning();
+    await db.insert(workerHours).values({
+      workerId,
+      year: editedMonth.year,
+      month: editedMonth.month,
+      day: 2,
+      employerId,
+      employmentStatusId: fmlaStatusId,
+      hours: 20,
+    });
+    const [dcRow] = await db
+      .insert(workerHours)
+      .values({
+        workerId,
+        year: editedMonth.year,
+        month: editedMonth.month,
+        day: 1,
+        employerId: dcEmployerId,
+        employmentStatusId: dcStatusId,
+        hours: 80,
+      })
+      .returning();
+    const [month] = await db
+      .insert(sitespecificBaoDcCaseMonths)
+      .values({ caseId, workerId, workMonthYmd: editedMonthYmd, status: "selected" })
+      .returning();
+    await storage.baoDisabilityCredit.applyMonthGrantTransition(month.id, {
+      status: "granted",
+      data: {
+        threshold: 120,
+        lagMonths: 1,
+        coverageMonthYmd: "2026-09-01",
+        qualifyingHoursAtGrant: 40,
+        grantedHours: 80,
+        hoursId: dcRow.id,
+      },
+      event: {
+        type: "case_month_granted",
+        dedupeKey: `case_month_granted:${month.id}`,
+        payload: {
+          threshold: 120,
+          qualifyingHours: 40,
+          grantedHours: 80,
+          coverageMonthYmd: "2026-09-01",
+        },
+      },
+    });
+
+    const reconciliationEvents = async () =>
+      (await eventsOfType("case_month_reconciled")).filter(
+        (event) =>
+          (event.payload as Record<string, unknown> | null)?.workMonthYmd === editedMonthYmd,
+      );
+    const dcHours = () => dcHoursTotal(editedMonth);
+    const qualifyingHours = () =>
+      storage.baoDisabilityCredit.getQualifyingHoursForWorkerMonth(
+        workerId,
+        editedMonth.year,
+        editedMonth.month,
+        dcEmployerId,
+      );
+    expect(await dcHours()).toBe(80);
+    expect(await qualifyingHours()).toBe(40);
+    expect((await qualifyingHours()) + (await dcHours())).toBe(120);
+
+    // The after-commit listener must not reuse a transaction from the save.
     initDcGrantReconciliation();
     try {
-      await setEmployerHours(95);
+      // This is the exact storage method used by PATCH /api/worker-hours/:id
+      // from the worker employment edit page, not the reconciliation helper.
+      await runInTransaction(() =>
+        storage.workerHours.updateWorkerHours(activeRow.id, { hours: 30 }),
+      );
       await waitFor(
-        () => eventsOfType("case_month_reconciled"),
+        reconciliationEvents,
         (events) => events.length === 1,
-        "hours-saved listener did not finish the reconciliation transition",
+        "hours-saved listener did not reduce DC after the 20-to-30 edit",
       );
-      expect(await dcHoursTotal(monthA)).toBe(5);
-      const month = await storage.baoDisabilityCredit.getApplicableMonthForWorkerMonth(
-        workerId,
-        ymd(monthA),
-      );
-      expect(month?.status).toBe("granted");
-      expect(await eventsOfType("case_month_reconciled")).toHaveLength(1);
+      expect(await dcHours()).toBe(70);
+      expect(await qualifyingHours()).toBe(50);
+      expect((await qualifyingHours()) + (await dcHours())).toBe(120);
 
-      // Repeating the same upload emits again, but reconciliation is a no-op and
-      // the deterministic event key prevents duplicate history.
-      await setEmployerHours(95);
-      await new Promise((resolve) => setTimeout(resolve, 75));
-      expect(await dcHoursTotal(monthA)).toBe(5);
-      expect(await eventsOfType("case_month_reconciled")).toHaveLength(1);
+      await runInTransaction(() =>
+        storage.workerHours.updateWorkerHours(activeRow.id, { hours: 10 }),
+      );
+      await waitFor(
+        reconciliationEvents,
+        (events) => events.length === 2,
+        "hours-saved listener did not restore DC after the 30-to-10 edit",
+      );
+      expect(await dcHours()).toBe(90);
+      expect(await qualifyingHours()).toBe(30);
+      expect((await qualifyingHours()) + (await dcHours())).toBe(120);
+
+      // Repeating the same edit emits HOURS_SAVED but does not create another
+      // reconciliation transition or change the converged hours.
+      await runInTransaction(() =>
+        storage.workerHours.updateWorkerHours(activeRow.id, { hours: 10 }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(await dcHours()).toBe(90);
+      expect(await reconciliationEvents()).toHaveLength(2);
     } finally {
       stopDcGrantReconciliation();
     }
   });
 
-  it("grows DC to the saved shortfall when employer hours shrink", async () => {
-    await setEmployerHours(10); // qualifying 30 ⇒ shortfall 90 > current 5
-    const result = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
-    expect(result.action).toBe("increased");
+  it("increases DC through the reconciliation helper when qualifying hours shrink", async () => {
+    await setEmployerHours(10); // qualifying 30 ⇒ shortfall 90 > current grant
+    const increased = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
+    expect(increased.action).toBe("increased");
     expect(await dcHoursTotal(monthA)).toBe(90);
   });
 
@@ -1070,11 +1166,11 @@ describe("scheduled release cron", () => {
 
   it("releases due queued months oldest work month first", async () => {
     // Two due queued months, deliberately inserted newest-first.
-    const monthD = addM(curYear, curMonth, -2);
-    const monthC = addM(curYear, curMonth, -3);
+    const monthD = addM(curYear, curMonth, -4);
+    const monthC = addM(curYear, curMonth, -5);
     // Continued-benefit anchor predating month C (the main fixture's WMB
-    // anchor sits at cur−2, which is not "prior coverage" for cur−3).
-    const anchor = addM(curYear, curMonth, -4);
+    // anchor sits at cur−2, which is not "prior coverage" for cur−5).
+    const anchor = addM(curYear, curMonth, -6);
     await db.insert(trustWmb).values({
       workerId,
       employerId,

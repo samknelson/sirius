@@ -38,7 +38,7 @@ import {
   EventType,
   type HoursSavedPayload,
 } from "../../event-bus";
-import { onAfterCommit } from "../../../storage/transaction-context";
+import { onAfterCommit, runOutsideTransaction } from "../../../storage/transaction-context";
 import {
   isCacheInitialized,
   isComponentEnabledSync,
@@ -856,7 +856,7 @@ function componentsActive(): boolean {
 async function handleHoursSaved(payload: HoursSavedPayload): Promise<void> {
   if (!componentsActive()) return;
   onAfterCommit(() => {
-    void (async () => {
+    void runOutsideTransaction(async () => {
       try {
         // DC's own writes (and deletes) are attributed to the pseudo-employer
         // — never reconcile against them (no feedback loop).
@@ -885,7 +885,7 @@ async function handleHoursSaved(payload: HoursSavedPayload): Promise<void> {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-    })();
+    });
   });
 }
 
