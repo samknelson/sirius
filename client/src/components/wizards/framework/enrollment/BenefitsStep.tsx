@@ -213,16 +213,17 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
                     />
                     <Label
                       htmlFor={`benefit-${row.benefitId}`}
-                      className="flex-1 space-y-1 cursor-pointer"
+                      className="min-w-0 flex-1 space-y-1 cursor-pointer"
                     >
-                      <span className="flex items-center gap-2 font-medium">
-                        {row.benefitName}
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+                        <span className="break-words">{row.benefitName}</span>
                         <Badge variant="secondary" className="gap-1">
                           <CheckCircle2 size={12} /> Eligible
                         </Badge>
                         {currentlyElectedBenefitIds.has(row.benefitId) && (
                           <Badge
                             variant="outline"
+                            className="border-primary/60 bg-primary/10 font-semibold text-primary dark:bg-primary/20"
                             aria-label="Currently elected"
                             data-testid={`badge-currently-elected-${row.benefitId}`}
                           >
