@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Building2, CreditCard, Loader2, Plus, Star, Trash2 } from "lucide-react";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
@@ -39,7 +39,10 @@ function WorkerPaymentMethodsContent() {
   const [gatewayId, setGatewayId] = useState<string>();
   const [setup, setSetup] = useState<Setup>();
   const [setupLoading, setSetupLoading] = useState(false);
-  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [setupError, setSetupError] = useState<unknown>();
+  const [acceptedConsentKey, setAcceptedConsentKey] = useState<string>();
+  const setupAttemptId = useRef(0);
+  const setupAttempt = useRef<{ id: number; key: string } | null>(null);
   const [deleteId, setDeleteId] = useState<string>();
 
   const methods = useQuery<PaymentMethod[]>({ queryKey: key, queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}`) });
@@ -55,12 +58,32 @@ function WorkerPaymentMethodsContent() {
     enabled: canManage,
   });
 
+  const currentConsent = authorization.data?.authorization;
+  const consentKey = currentConsent
+    ? JSON.stringify([currentConsent.version, currentConsent.text])
+    : undefined;
+  const consentAccepted = Boolean(consentKey && acceptedConsentKey === consentKey);
+
+  const invalidateSetup = () => {
+    setupAttemptId.current += 1;
+    setupAttempt.current = null;
+    setSetup(undefined);
+    setSetupLoading(false);
+    setSetupError(undefined);
+  };
+
+  useEffect(() => {
+    if (acceptedConsentKey && acceptedConsentKey !== consentKey) {
+      setAcceptedConsentKey(undefined);
+      invalidateSetup();
+    }
+  }, [acceptedConsentKey, consentKey]);
+
   const resetAdd = () => {
     setAddOpen(false);
     setGatewayId(undefined);
-    setSetup(undefined);
-    setSetupLoading(false);
-    setConsentAccepted(false);
+    invalidateSetup();
+    setAcceptedConsentKey(undefined);
   };
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `${BASE}/worker/${worker.id}/${id}`),
@@ -81,7 +104,7 @@ function WorkerPaymentMethodsContent() {
   });
   const attach = useMutation({
     mutationFn: (methodToken: string) => {
-      const consent = authorization.data?.authorization;
+      const consent = currentConsent;
       if (!gatewayId || !consent || !consentAccepted) throw new Error("Accept the payment authorization before saving.");
       return apiRequest("POST", `${BASE}/worker/${worker.id}`, { gatewayConfigId: gatewayId, methodToken, consent: { ...consent, accepted: true } });
     },
@@ -93,27 +116,51 @@ function WorkerPaymentMethodsContent() {
     onError: (error) => toast({ title: "Could not save payment method", description: getApiErrorMessage(error, "Please try again."), variant: "destructive" }),
   });
 
-  const startSetup = async (id: string) => {
-    const consent = authorization.data?.authorization;
-    if (!consent || !consentAccepted) {
-      toast({ title: "Authorization required", description: "Accept the payment authorization before continuing.", variant: "destructive" });
+  const startSetup = async (id: string, consent: Consent, newlyAccepted = false) => {
+    const acceptedKey = JSON.stringify([consent.version, consent.text]);
+    if (!consent || (!newlyAccepted && acceptedConsentKey !== acceptedKey)) {
       return;
     }
-    setGatewayId(id);
+    const requestKey = JSON.stringify([id, acceptedKey]);
+    if (setupAttempt.current?.key === requestKey || (setup && gatewayId === id)) return;
+    const requestId = ++setupAttemptId.current;
+    setupAttempt.current = { id: requestId, key: requestKey };
     setSetup(undefined);
+    setSetupError(undefined);
     setSetupLoading(true);
     try {
       const value = await apiRequest("POST", `${BASE}/worker/${worker.id}/setup`, { gatewayConfigId: id, consent: { ...consent, accepted: true } });
       if (!value || typeof value.clientSecret !== "string" || !value.clientSecret || (value.componentId !== null && typeof value.componentId !== "string")) {
         throw new Error("Payment method setup response is invalid.");
       }
+      if (setupAttempt.current?.id !== requestId) return;
       setSetup({ clientSecret: value.clientSecret, componentId: value.componentId, publicConfig: value.publicConfig ?? {} });
     } catch (error) {
+      if (setupAttempt.current?.id !== requestId) return;
+      setSetupError(error);
       toast({ title: "Could not start setup", description: getApiErrorMessage(error, "Please try again."), variant: "destructive" });
-      setGatewayId(undefined);
     } finally {
-      setSetupLoading(false);
+      if (setupAttempt.current?.id === requestId) {
+        setupAttempt.current = null;
+        setSetupLoading(false);
+      }
     }
+  };
+
+  const selectGateway = (id: string) => {
+    if (id === gatewayId) return;
+    invalidateSetup();
+    setGatewayId(id);
+    if (consentAccepted && currentConsent) void startSetup(id, currentConsent);
+  };
+
+  const changeConsent = (accepted: boolean) => {
+    if (!accepted || !consentKey || !currentConsent) {
+      setAcceptedConsentKey(undefined);
+      return;
+    }
+    setAcceptedConsentKey(consentKey);
+    if (gatewayId) void startSetup(gatewayId, currentConsent, true);
   };
 
   const AddComponent = setup?.componentId && hasPaymentGatewayComponent(setup.componentId)
@@ -160,13 +207,17 @@ function WorkerPaymentMethodsContent() {
          <DialogContent className="w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:w-full" data-testid="dialog-worker-add-payment-method">
           <DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Your sensitive payment details go directly to the payment provider.</DialogDescription></DialogHeader>
           <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} disabled={!authorization.data?.authorization} data-testid="checkbox-worker-method-consent" />
-            <span>{authorization.data?.authorization?.text || "Loading payment authorization…"}</span>
+            <input type="checkbox" checked={consentAccepted} onChange={(event) => changeConsent(event.target.checked)} disabled={!currentConsent} data-testid="checkbox-worker-method-consent" />
+            <span>{currentConsent?.text || "Loading payment authorization…"}</span>
           </label>
           {authorization.isError && <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(authorization.error, "You cannot save payment methods.")} <Button variant="link" onClick={() => void authorization.refetch()}>Retry</Button></AlertDescription></Alert>}
           {gateways.isLoading || setupLoading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading secure setup…</div> :
             gateways.isError ? <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(gateways.error, "Unable to load payment providers.")}</AlertDescription></Alert> :
-            !setup ? <Select value={gatewayId} onValueChange={(id) => void startSetup(id)}><SelectTrigger data-testid="select-worker-payment-gateway"><SelectValue placeholder="Select a payment provider" /></SelectTrigger><SelectContent>{(gateways.data ?? []).map((gateway) => <SelectItem key={gateway.id} value={gateway.id}>{gateway.name || gateway.pluginId}</SelectItem>)}</SelectContent></Select> :
+            !setup || !consentAccepted ? <>
+              <Select value={gatewayId} onValueChange={selectGateway}><SelectTrigger data-testid="select-worker-payment-gateway"><SelectValue placeholder="Select a payment provider" /></SelectTrigger><SelectContent>{(gateways.data ?? []).map((gateway) => <SelectItem key={gateway.id} value={gateway.id}>{gateway.name || gateway.pluginId}</SelectItem>)}</SelectContent></Select>
+              {gatewayId && !consentAccepted && <p className="text-sm text-muted-foreground">Accept the payment authorization to continue with this provider.</p>}
+              {setupError && <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(setupError, "Unable to start secure setup.")} <Button variant="link" disabled={!consentAccepted} onClick={() => currentConsent && consentAccepted && gatewayId && void startSetup(gatewayId, currentConsent)}>Retry setup</Button></AlertDescription></Alert>}
+            </> :
              AddComponent ? <AddComponent clientSecret={setup.clientSecret} publicConfig={setup.publicConfig} onSuccess={(token) => attach.mutateAsync(token).then(() => undefined)} onCancel={resetAdd} /> :
             <Alert variant="destructive"><AlertDescription>This payment provider is not available.</AlertDescription></Alert>}
         </DialogContent>
