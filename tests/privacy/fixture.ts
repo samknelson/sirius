@@ -20,7 +20,7 @@ export async function startPrivacyFixture() {
     ["nonadmin", { passport: { user: { dbUser: { id: "fixture-staff" } } }, maskMode: { version: 1, mode: "on", revision: 1 } }],
   ]);
   const controls = { enabled: true, epoch: "fixture", failComponent: false, failRead: false,
-    failTransition: false, failPermissions: false, effects: 0 };
+    failTransition: false, transitionDelayMs: 0, failPermissions: false, effects: 0 };
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -40,6 +40,9 @@ export async function startPrivacyFixture() {
       return structuredClone(rows.get(sid));
     },
     async transition(sid, revision, mode) {
+      if (controls.transitionDelayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, controls.transitionDelayMs));
+      }
       if (controls.failTransition) throw new Error(CANARY);
       const row = rows.get(sid);
       if (!row || readMaskState(row.maskMode).revision !== revision) return null;

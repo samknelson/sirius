@@ -1,5 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { maskPersonal, type PersonalField } from "@shared/privacy/mask-mode";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface State {
   enabled: boolean;
@@ -123,11 +126,37 @@ export function PersonalValue({ render }: { render: (mask: PersonalFormatter) =>
 
 export function MaskModeControl() {
   const { enabled, mode, canToggle, busy, toggle } = useMaskMode();
-  return <>
-    {enabled && (canToggle || mode === "on") && <button type="button"
-      className="rounded border px-2 py-1 text-sm font-semibold"
-      data-testid="button-mask-mode" disabled={busy || !canToggle} onClick={() => void toggle()}>
-      Mask Mode {mode === "on" ? "ON — screen only" : "OFF"}
-    </button>}
-  </>;
+  if (!enabled || (!canToggle && mode !== "on")) return null;
+
+  const isOn = mode === "on";
+  const label = isOn ? "Mask Mode ON — screen only" : "Mask Mode OFF";
+  const disabled = busy || !canToggle;
+  const Icon = isOn ? EyeOff : Eye;
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={`${isOn ? "text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" : "text-muted-foreground"} ${disabled ? "pointer-events-none" : ""}`}
+      data-testid="button-mask-mode"
+      aria-label={label}
+      aria-pressed={isOn}
+      aria-busy={busy || undefined}
+      disabled={disabled}
+      onClick={() => void toggle()}
+    >
+      <Icon className="h-5 w-5" aria-hidden="true" />
+    </Button>
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabled
+          ? <span role="group" tabIndex={0} aria-label={label} title={label} className="inline-flex">{button}</span>
+          : button}
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}{busy ? " — updating" : ""}</TooltipContent>
+    </Tooltip>
+  );
 }

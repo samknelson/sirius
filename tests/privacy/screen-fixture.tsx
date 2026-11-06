@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MaskModeProvider, MaskModeControl } from "@/privacy/MaskMode";
 import NameManagement from "@/components/worker/NameManagement";
 import { HelpDisplay } from "@/components/HelpDisplay";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import HelpTextConfig from "@/pages/config/helps";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CaseLedgerFixture } from "./case-ledger-fixture";
@@ -61,7 +62,7 @@ function Fixture() {
   </main>;
 }
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={qc}><MaskModeProvider>
+  <QueryClientProvider client={qc}><TooltipProvider><MaskModeProvider>
     {/^\/(?:cobra|bao|ledger|shared-)/.test(location.pathname) ? <CaseLedgerFixture /> : <Fixture />}
-  </MaskModeProvider></QueryClientProvider>,
+  </MaskModeProvider></TooltipProvider></QueryClientProvider>,
 );

@@ -15,8 +15,8 @@ export const maskModeHelp: SystemHelpEntry = {
     <h3>How to use this page</h3>
     <ol>
       <li>Enable <strong>Mask Mode</strong> in Components if needed.</li>
-      <li>Select <strong>Mask Mode OFF</strong> in the application header and confirm the screen-only limitations.</li>
-      <li>Check for <strong>Mask Mode ON — screen only</strong> before recording. Continue using normal pages, search, editing and authorized actions.</li>
+      <li>Use the eye icon in the application header to change the setting. A muted gray eye means <strong>Mask Mode OFF</strong>; select it and confirm the screen-only limitations.</li>
+      <li>A red eye with a slash means <strong>Mask Mode ON — screen only</strong>. Its tooltip and accessible name say the same status; also check the persistent screen-only indicator at the lower left before recording. Continue using normal pages, search, editing and authorized actions.</li>
       <li>Stop recording before turning the toggle OFF or disabling the component.</li>
     </ol>
     <h3>Results and status meanings</h3>

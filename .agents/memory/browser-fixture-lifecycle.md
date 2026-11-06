@@ -50,6 +50,12 @@ Standalone Vite browser fixtures rooted at the workspace may exhaust Linux file 
 
 **How to apply:** Scope or ignore hidden local dependency stores in new Vite fixture servers; when a cold compile is slow, wait for DOM readiness and the target element rather than requiring network-idle.
 
+Puppeteer's `browser.newPage()` pages share the default browser context and cookie jar.
+
+**Why:** Changing the fixture identity cookie for one page also changed the identity seen by existing pages, which invalidated later state assertions.
+
+**How to apply:** Use separate browser contexts for independent identities, or restore the original cookie before continuing tests on existing pages.
+
 Cold navigation to a full production page in an isolated Vite fixture can exceed the browser's default 30-second navigation timeout even while individual module requests answer.
 
 **Why:** A full Summary/layout fixture repeatedly timed out before HTML delivery but completed all interaction and layout checks with a bounded 120-second navigation budget; the app itself was healthy.

@@ -71,17 +71,42 @@ async function until(page, selector, expected) {
   await page.waitForFunction((selector, expected) => document.querySelector(selector)?.textContent === expected,
     { timeout: 15000 }, selector, expected);
 }
+async function untilAttribute(page, selector, name, expected) {
+  await page.waitForFunction((selector, name, expected) => document.querySelector(selector)?.getAttribute(name) === expected,
+    { timeout: 15000 }, selector, name, expected);
+}
+async function assertMaskControl(page, { label, icon, color, tooltip }) {
+  const selector = '[data-testid="button-mask-mode"]';
+  const attributes = await page.$eval(selector, (el, { icon, color }) => ({
+    label: el.getAttribute("aria-label"),
+    pressed: el.getAttribute("aria-pressed"),
+    hasIcon: !!el.querySelector("svg")?.classList.contains(`lucide-${icon}`),
+    hasColor: el.className.includes(color),
+  }), { icon, color });
+  assert.equal(attributes.label, label);
+  assert.equal(attributes.pressed, label.includes(" ON ") ? "true" : "false");
+  assert.ok(attributes.hasIcon);
+  assert.ok(attributes.hasColor);
+  await page.keyboard.press("Escape");
+  await page.$eval(selector, el => el.blur());
+  await page.mouse.move(0, 0);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await page.hover(selector);
+  await page.waitForFunction(expected => [...document.querySelectorAll('[role="tooltip"]')]
+    .some(el => el.textContent === expected), { timeout: 5000 }, tooltip);
+  await page.keyboard.press("Escape");
+}
 async function toggle(page) {
   await page.bringToFront();
   // A closing Radix portal can remain over the header during its exit animation.
   await page.waitForFunction(() => getComputedStyle(document.body).pointerEvents !== "none" &&
     !document.querySelector('[role="dialog"]') &&
     !document.querySelector('[data-testid="button-mask-mode"]')?.disabled);
-  const wasOn = (await text(page, '[data-testid="button-mask-mode"]')).includes("ON");
+  const wasOn = (await page.$eval('[data-testid="button-mask-mode"]', el => el.getAttribute("aria-pressed"))) === "true";
   console.log("Toggling screen preference");
   page.once("dialog", dialog => dialog.accept());
   await page.click('[data-testid="button-mask-mode"]');
-  await until(page, '[data-testid="button-mask-mode"]', wasOn ? "Mask Mode OFF" : "Mask Mode ON — screen only");
+  await untilAttribute(page, '[data-testid="button-mask-mode"]', "aria-label", wasOn ? "Mask Mode OFF" : "Mask Mode ON — screen only");
 }
 try {
   browser = await puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
@@ -93,12 +118,33 @@ try {
   await page.goto(`${fixture.origin}/screen`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await until(page, '[data-testid="worker-name"]', "Morgan Lancaster");
   console.log("Initial normal screen ready");
+  await assertMaskControl(page, { label: "Mask Mode OFF", icon: "eye", color: "text-muted-foreground", tooltip: "Mask Mode OFF" });
+  page.once("dialog", dialog => dialog.dismiss());
+  await page.click('[data-testid="button-mask-mode"]');
+  console.log("Confirmation cancel path checked");
+  assert.equal(await page.$eval('[data-testid="button-mask-mode"]', el => el.getAttribute("aria-label")), "Mask Mode OFF",
+    "Canceling confirmation leaves the mode unchanged");
+
   const second = await browser.newPage();
   console.log("Loading second login tab");
   await second.goto(`${fixture.origin}/screen`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await until(second, '[data-testid="worker-name"]', "Morgan Lancaster");
   console.log("Second tab ready");
-  await toggle(page);
+
+  fixture.controls.transitionDelayMs = 400;
+  await page.bringToFront();
+  page.once("dialog", dialog => dialog.accept());
+  await page.click('[data-testid="button-mask-mode"]');
+  console.log("Confirmation accepted for delayed transition");
+  await page.waitForFunction(() => document.querySelector('[data-testid="button-mask-mode"]')?.disabled);
+  console.log("Busy state observed");
+  assert.equal(await page.$eval('[data-testid="button-mask-mode"]', el => el.getAttribute("aria-busy")), "true");
+  assert.equal(await page.$eval('[data-testid="button-mask-mode"]', el => el.parentElement.title), "Mask Mode OFF");
+  fixture.controls.transitionDelayMs = 0;
+  await untilAttribute(page, '[data-testid="button-mask-mode"]', "aria-label", "Mask Mode ON — screen only");
+
+  await page.mouse.move(0, 0);
+  await assertMaskControl(page, { label: "Mask Mode ON — screen only", icon: "eye-off", color: "text-red-600", tooltip: "Mask Mode ON — screen only" });
   await until(page, '[data-testid="worker-name"]', "M***** L********");
   await until(second, '[data-testid="worker-name"]', "M***** L********");
   console.log("ON and same-login tab sync confirmed");
@@ -136,6 +182,13 @@ try {
   await page.focus("#given");
   await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
   await page.keyboard.type("Mavis");
+  fixture.controls.failTransition = true;
+  page.once("dialog", dialog => dialog.accept());
+  await page.click('[data-testid="button-mask-mode"]');
+  await page.waitForFunction(() => document.body.innerText.includes("Mask Mode change was not confirmed"));
+  assert.equal(await page.$eval('[data-testid="button-mask-mode"]', el => el.getAttribute("aria-label")), "Mask Mode ON — screen only",
+    "A failed transition leaves the confirmed ON state visible");
+  fixture.controls.failTransition = false;
   await toggle(page); // OFF without losing unsaved state
   assert.equal(await page.$eval('[data-testid="uncontrolled-name"]', el => el.value), "Moira");
   await page.waitForFunction(() => document.querySelector("#given")?.value === "Mavis" && !document.querySelector("#given")?.hasAttribute("data-screen-masked"));
@@ -154,6 +207,8 @@ try {
   await page.click('[data-testid="button-help-more-system:mask-mode"]');
   await page.waitForSelector('[data-testid="text-help-details"]');
   assert.match(await text(page, '[data-testid="text-help-details"]'), /API responses/);
+  assert.match(await text(page, '[data-testid="text-help-details"]'), /muted gray eye means/);
+  assert.match(await text(page, '[data-testid="text-help-details"]'), /red eye with a slash means/);
   await page.keyboard.press("Escape");
   await page.goto(`${fixture.origin}/config/helps`, { waitUntil: "networkidle0" });
   assert.match(await page.$eval("body", el => el.innerText), /System/);
@@ -163,21 +218,35 @@ try {
   assert.equal(await page.$('[data-testid="help-summary-system:mask-mode"]'), null);
   await verifyCaseLedgerScreens({ page, fixture, toggle, until, requests: caseLedgerRequests });
   await page.goto(`${fixture.origin}/config/components/near-miss`, { waitUntil: "networkidle0" });
+
+  const restricted = await browser.newPage();
+  await restricted.setCookie({ name: "fixture", value: "nonadmin", url: fixture.origin });
+  await restricted.goto(`${fixture.origin}/screen`, { waitUntil: "domcontentloaded", timeout: 120000 });
+  await restricted.waitForSelector('[data-testid="button-mask-mode"]');
+  assert.equal(await restricted.$eval('[data-testid="button-mask-mode"]', el => el.disabled), true,
+    "A non-admin can see the active state but cannot toggle it");
+  assert.equal(await restricted.$eval('[data-testid="button-mask-mode"]', el => el.getAttribute("aria-label")), "Mask Mode ON — screen only");
+  assert.equal(await restricted.$eval('[data-testid="button-mask-mode"]', el => el.parentElement.title), "Mask Mode ON — screen only");
+  await restricted.close();
+  await page.setCookie({ name: "fixture", value: "presenter", url: fixture.origin });
+
   fixture.controls.enabled = false;
   // Real lifecycle resets mode to OFF. Simulate the same transaction result here.
   fixture.rows.get("presenter").maskMode = { version: 1, mode: "off", revision: 99 };
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await until(page, '[data-testid="worker-name"]', "Morgan Lancaster");
   assert.equal(await page.$('[data-testid="mask-mode-on-indicator"]'), null);
+  assert.equal(await page.$('[data-testid="button-mask-mode"]'), null, "OFF control is hidden when the component is unavailable");
   fixture.controls.enabled = true;
   await page.reload({ waitUntil: "networkidle0" });
   await until(page, '[data-testid="worker-name"]', "Morgan Lancaster");
   fixture.controls.failComponent = true;
+  await page.bringToFront();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page.waitForFunction(() => document.body.innerText.includes("Mask Mode state unavailable"));
   assert.ok(page.url().endsWith("/config/components/near-miss"));
   assert.deepEqual(errors, []);
-  console.log("PASS screen masking, raw HTTP/WebSocket/downloads, actual name edit integrity, exclusions, ON/OFF, reload/tab sync, component transitions, error recovery, built-in/local help listing and dialog.");
+  console.log("PASS screen masking, raw HTTP/WebSocket/downloads, actual name edit integrity, exclusions, header icon/tooltip/accessibility states, ON/OFF, reload/tab sync, component transitions, error recovery, built-in/local help listing and dialog.");
 } catch (error) {
   console.error("Browser page errors:", errors);
   for (const page of await browser?.pages() ?? []) {
