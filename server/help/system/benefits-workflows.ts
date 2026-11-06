@@ -20,7 +20,7 @@ export const benefitsWorkflowHelp: SystemHelpEntry[] = [
   },
   {
     id: "system:benefits-recorded-coverage",
-    paths: ["/workers/%/benefits/current", "/workers/%/benefits/history", "/workers/%/benefits/eligibility"],
+    paths: ["/workers/%/benefits/current", "/workers/%/benefits/history"],
     summary: "Compare recorded benefit coverage with eligibility evidence, keeping subscriber coverage separate from benefits provided through another worker.",
     details: `
       <h3>Purpose</h3><p>Use Current and History to review benefit records; use Eligibility to understand the rules and evidence used to assess coverage.</p>
@@ -28,6 +28,17 @@ export const benefitsWorkflowHelp: SystemHelpEntry[] = [
       <h3>How to use this page</h3><ol><li>Check the benefit and its recorded dates.</li><li>Distinguish benefits held by this worker from dependent coverage supplied through someone else.</li><li>Compare the relevant month with Eligibility and, where available, the Benefits Summary.</li></ol>
       <h3>Results and status meanings</h3><p>An eligibility result is not an election, payment, or guarantee of coverage. Work months and coverage months can differ; use the month identified by the rule rather than assuming hours grant coverage in the same month.</p>
       <h3>Limitations and common problems</h3><p>No records is not proof of a completed negative coverage decision. Missing hours, unavailable evidence, and pending scans need review. Ask authorized staff to review source records before requesting a scan; do not treat a reload as recalculation.</p>`,
+  },
+  {
+    id: "system:benefits-eligibility-test",
+    paths: ["/workers/%/benefits/eligibility"],
+    summary: "Test a worker's benefit eligibility using the policy, benefit, month, and subscriber or dependent context you choose.",
+    details: `
+      <h3>Purpose</h3><p>Use this page to evaluate configured eligibility rules for a worker or one of their dependents.</p>
+      <h3>Before you start</h3><p>Check the selected policy, benefit, month, scan type, and dependent before evaluating. An eligibility result is not an election, payment, or guarantee of coverage.</p>
+      <h3>How to use this page</h3><ol><li>The Policy selector defaults to the effective policy for the worker's most recent election, based on that election's employer and start date. If no election policy can be resolved, it uses the worker's home-employer policy, then the system default when available.</li><li>Choose a different policy manually when you need to test another policy. Changing the policy clears the selected benefit; choosing a benefit is required before evaluation.</li><li>Choose the month, scan type, and optional dependent, then select <strong>Evaluate Eligibility</strong>.</li></ol>
+      <h3>Results and status meanings</h3><p>After evaluation completes, the results appear below the form and are brought into view. If the request fails, the error appears there instead. The page moves keyboard focus to the feedback so it can be reviewed. The selected policy is only used for this test; it does not change the worker's assignment.</p>
+      <h3>Limitations and common problems</h3><p>Review each rule result and warning. A test does not create or remove coverage. If an error appears, correct the reported issue and run the evaluation again.</p>`,
   },
   {
     id: "system:benefits-scan",

@@ -1,7 +1,8 @@
 import { pluginManifestQueryKey, pluginSearch } from "@/plugins/_core";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Policy, TrustBenefit, Employer, Variable } from "@shared/schema";
+import type { WorkerTrustElectionView } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,8 @@ function WorkerBenefitsEligibilityContent() {
   const [evaluatedSubscriberName, setEvaluatedSubscriberName] = useState<string | null>(null);
   const [evaluatedDependentName, setEvaluatedDependentName] = useState<string | null>(null);
   const [eligibilityResult, setEligibilityResult] = useState<BenefitEligibilityResult | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   const asOfDateIso = lastDayOfMonthIso(parseInt(selectedYear), parseInt(selectedMonth));
 
@@ -159,7 +162,7 @@ function WorkerBenefitsEligibilityContent() {
     }
   }, [dependentRelations, selectedDependentId]);
 
-  const { data: policies = [] } = useQuery<Policy[]>({
+  const { data: policies = [], isLoading: policiesLoading } = useQuery<Policy[]>({
     queryKey: ["/api/policies"],
   });
 
@@ -175,7 +178,7 @@ function WorkerBenefitsEligibilityContent() {
     queryKey: ["/api/options/worker-ws"],
   });
 
-  const { data: homeEmployer } = useQuery<Employer>({
+  const { data: homeEmployer, isLoading: homeEmployerLoading } = useQuery<Employer>({
     queryKey: ["/api/employers", worker.denormHomeEmployerId],
     enabled: !!worker.denormHomeEmployerId,
   });
@@ -184,7 +187,7 @@ function WorkerBenefitsEligibilityContent() {
     queryKey: ["/api/employers/lookup"],
   });
 
-  const { data: defaultPolicyVariable } = useQuery<Variable | null>({
+  const { data: defaultPolicyVariable, isLoading: defaultPolicyVariableLoading } = useQuery<Variable | null>({
     queryKey: ["/api/variables/by-name", "policy_default"],
     queryFn: async () => {
       try {
@@ -198,21 +201,51 @@ function WorkerBenefitsEligibilityContent() {
     },
   });
 
+  const { data: elections, isLoading: electionsLoading } = useQuery<WorkerTrustElectionView[]>({
+    queryKey: ["/api/workers", worker.id, "trust-elections", { sort: "startDesc" }],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/workers/${worker.id}/trust-elections?sort=startDesc`,
+      );
+      if (!response.ok) throw new Error("Failed to fetch trust elections");
+      return response.json();
+    },
+  });
+
   useEffect(() => {
-    if (selectedPolicyId || policies.length === 0) return;
-    
-    let workerPolicyId: string | null = null;
-    
-    if (homeEmployer?.denormPolicyId) {
-      workerPolicyId = homeEmployer.denormPolicyId;
-    } else if (defaultPolicyVariable?.value) {
-      workerPolicyId = defaultPolicyVariable.value as string;
+    if (
+      selectedPolicyId ||
+      policiesLoading ||
+      electionsLoading ||
+      homeEmployerLoading ||
+      defaultPolicyVariableLoading
+    ) {
+      return;
     }
-    
-    if (workerPolicyId) {
-      setSelectedPolicyId(workerPolicyId);
-    }
-  }, [policies, homeEmployer, defaultPolicyVariable, selectedPolicyId]);
+
+    const candidatePolicyIds = [
+      elections?.[0]?.effectivePolicyId,
+      homeEmployer?.denormPolicyId,
+      typeof defaultPolicyVariable?.value === "string"
+        ? defaultPolicyVariable.value
+        : null,
+    ];
+    const initialPolicyId = candidatePolicyIds.find(
+      (policyId): policyId is string =>
+        !!policyId && policies.some((policy) => policy.id === policyId),
+    );
+    if (initialPolicyId) setSelectedPolicyId(initialPolicyId);
+  }, [
+    selectedPolicyId,
+    policies,
+    policiesLoading,
+    elections,
+    electionsLoading,
+    homeEmployer,
+    homeEmployerLoading,
+    defaultPolicyVariable,
+    defaultPolicyVariableLoading,
+  ]);
 
   const selectedPolicy = policies.find((p) => p.id === selectedPolicyId);
   const policyData = (selectedPolicy?.data as PolicyData) || {};
@@ -269,6 +302,25 @@ function WorkerBenefitsEligibilityContent() {
       }
     },
   });
+
+  useEffect(() => {
+    const target =
+      evaluateMutation.status === "success"
+        ? resultsRef.current
+        : evaluateMutation.status === "error"
+          ? errorRef.current
+          : null;
+    if (!target) return;
+
+    target.focus({ preventScroll: true });
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+  }, [evaluateMutation.status]);
 
   const handleEvaluate = () => {
     if (!selectedPolicyId || !selectedBenefitId) return;
@@ -558,7 +610,13 @@ function WorkerBenefitsEligibilityContent() {
       </Card>
 
       {eligibilityResult && (
-        <Card>
+        <Card
+          ref={resultsRef}
+          tabIndex={-1}
+          role="region"
+          aria-label="Eligibility evaluation results"
+          data-testid="eligibility-results"
+        >
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -688,7 +746,14 @@ function WorkerBenefitsEligibilityContent() {
       )}
 
       {evaluateMutation.isError && (
-        <Card className="border-destructive">
+        <Card
+          ref={errorRef}
+          tabIndex={-1}
+          role="alert"
+          aria-label="Eligibility evaluation error"
+          className="border-destructive"
+          data-testid="eligibility-error"
+        >
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />

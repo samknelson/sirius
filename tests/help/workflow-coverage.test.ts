@@ -100,6 +100,29 @@ describe("audited authenticated workflow help", () => {
     }
   });
 
+  it("documents the worker eligibility policy default, manual choice, and feedback location", () => {
+    const help = getSystemHelp("system:benefits-eligibility-test")!;
+    expect(help.paths).toEqual(["/workers/%/benefits/eligibility"]);
+    for (const text of [
+      "most recent election",
+      "employer and start date",
+      "home-employer policy",
+      "system default",
+      "Choose a different policy manually",
+      "Changing the policy clears the selected benefit",
+      "results appear below the form",
+      "error appears there instead",
+      "keyboard focus",
+      "does not change the worker's assignment",
+    ]) {
+      expect(help.details).toContain(text);
+    }
+    expect(sanitizeHtml(help.details!, "rich-document")).toBe(help.details);
+    expect(idsFor("/workers/example/benefits/eligibility")).toContain(help.id);
+    expect(idsFor("/workers/example/benefits/current")).not.toContain(help.id);
+    expect(idsFor("/workers/example/benefits/eligibility/nested")).not.toContain(help.id);
+  });
+
   it("explains carrier-layout QA at the provider EDI entry without leaking onto unrelated pages", () => {
     const help = getSystemHelp("system:provider-edi")!;
     expect(idsFor("/trust/provider-edi")).toContain(help.id);

@@ -225,18 +225,22 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
   const policyMap = new Map(policyRows.map((p) => [p.id, p.name ?? null]));
   const employerMap = new Map(employerRows.map((e) => [e.id, e.name ?? null]));
 
-  // Derive each election's effective policy from its employer's policy
+  // Derive each election's displayed policy from its employer's policy
   // history as-of today clamped into the election's coverage window (the
-  // stored policy_id is legacy/audit only). Dynamic imports avoid a
-  // storage-module init cycle; one cache per hydrate call de-dupes employer
-  // history fetches across rows.
-  const { resolveEmployerPolicyAsOf, createPolicyResolutionCache } = await import(
-    '../../services/policy-resolution'
-  );
+  // stored policy_id is legacy/audit only). Also expose the policy effective
+  // at the election start date for forms that need the election's original
+  // policy context. Dynamic imports avoid a storage-module init cycle; one
+  // cache per hydrate call de-dupes employer history fetches across rows.
+  const {
+    resolveEmployerPolicyAsOf,
+    resolveElectionPolicyAsOf,
+    createPolicyResolutionCache,
+  } = await import('../../services/policy-resolution');
   const { storage } = await import('../index');
   const policyCache = createPolicyResolutionCache();
   const todayYmd = getTodayDateOnly().toISOString().slice(0, 10);
   const derivedPolicyNames = new Map<string, string | null>();
+  const effectivePolicyIds = new Map<string, string | null>();
   for (const election of rows) {
     const startYmd = toYmd(election.startYmd);
     const endYmd = toYmd(election.endYmd);
@@ -249,10 +253,16 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
       asOf,
       policyCache,
     );
+    const { policy: policyAtElectionStart } = await resolveElectionPolicyAsOf(
+      storage,
+      election,
+      policyCache,
+    );
     derivedPolicyNames.set(
       election.id,
       policy?.name ?? (election.policyId ? policyMap.get(election.policyId) ?? null : null),
     );
+    effectivePolicyIds.set(election.id, policyAtElectionStart?.id ?? null);
   }
   const benefitMap = new Map(benefitRows.map((b) => [b.id, b.name ?? b.id]));
   const relMap = new Map(relRows.map((r) => [r.id, r]));
@@ -288,6 +298,7 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
       ...election,
       workerName,
       policyName: derivedPolicyNames.get(election.id) ?? null,
+      effectivePolicyId: effectivePolicyIds.get(election.id) ?? null,
       employerName: employerMap.get(election.employerId) ?? null,
       benefits,
       relationships,

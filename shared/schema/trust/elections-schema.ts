@@ -48,6 +48,8 @@ export type InsertWorkerTrustElection = z.infer<typeof insertWorkerTrustElection
 export interface WorkerTrustElectionView extends WorkerTrustElection {
   workerName: string | null;
   policyName: string | null;
+  /** Policy effective for this election's employer as of its start date. */
+  effectivePolicyId: string | null;
   employerName: string | null;
   benefits: { id: string; name: string }[];
   relationships: { id: string; label: string; coveredWorkerId: string | null }[];

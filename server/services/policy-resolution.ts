@@ -185,6 +185,25 @@ export async function resolveEmployerPolicyAsOf(
 }
 
 /**
+ * Resolve the policy associated with an election from the employer's policy
+ * history as of the election start date. The stored election policy is
+ * intentionally absent from this input because that column is legacy/audit
+ * data, not an authority for eligibility.
+ */
+export function resolveElectionPolicyAsOf(
+  storage: PolicyResolutionStorage,
+  election: { employerId: string | null; startYmd: string },
+  cache: PolicyResolutionCache = createPolicyResolutionCache(),
+): Promise<ResolvedEmployerPolicy> {
+  return resolveEmployerPolicyAsOf(
+    storage,
+    election.employerId,
+    election.startYmd,
+    cache,
+  );
+}
+
+/**
  * Resolve a subscriber's granting policy as of a coverage month.  This is the
  * worker-facing companion to `resolveEmployerPolicyAsOf`: it obtains the
  * employer(s) from active historical elections (then the subscriber's home
