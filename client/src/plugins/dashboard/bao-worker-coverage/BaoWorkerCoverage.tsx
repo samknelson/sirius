@@ -248,7 +248,7 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
           >
             View full monthly hours breakdown
           </Link>
-          <span className="text-xs text-muted-foreground">Questions? Contact the fund.</span>
+          <span className="text-xs text-muted-foreground">Questions? Contact the fund at (866) 345-5189</span>
         </div>
       </CardContent>
     </CoverageShell>

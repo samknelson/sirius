@@ -258,10 +258,12 @@ describe("BAO worker coverage dashboard widget", () => {
     expect(html).toContain("of — required");
     expect(html).toContain("—");
     expect(html).toContain('href="/workers/worker%2F123/benefits/summary#monthly-coverage-history"');
-    expect(html).toContain("Questions? Contact the fund.");
-    expect(renderToStaticMarkup(
+    expect(html).toContain("Questions? Contact the fund at (866) 345-5189");
+    const sharedPresentation = renderToStaticMarkup(
       <Router hook={() => ["/", () => {}]}><BaoWorkerCoverageView data={data} /></Router>,
-    )).toContain("No future coverage periods to show.");
+    );
+    expect(sharedPresentation).toContain("No future coverage periods to show.");
+    expect(sharedPresentation).toContain("Questions? Contact the fund at (866) 345-5189");
   });
 
   it("preserves loading, error, unlinked and unavailable messages", () => {
