@@ -22,10 +22,10 @@ import {
   type ParticipantBoxUpdate,
 } from "@/components/ledger/ParticipantAllocationBox";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
-import { ImagePlus, Loader2, Plus, X } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
+import { PaymentAttachmentPicker } from "@/components/ledger/PaymentAttachmentPicker";
 import {
   EntityFileManager,
-  ImageAttachmentPreview,
   uploadEntityFile,
 } from "@/components/entity-files/EntityFileManager";
 
@@ -172,7 +172,6 @@ export function PaymentForm({
   ]);
   const hydratedEditSessionRef = useRef<string | null>(null);
   const [hydratedEditSession, setHydratedEditSession] = useState<string | null>(null);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
   const [savedCreateResult, setSavedCreateResult] = useState<PaymentFormSubmitResult | null>(null);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
@@ -985,71 +984,18 @@ export function PaymentForm({
         />
 
         {mode === "create" && !batchId && (
-          <div className="space-y-2 rounded-md border p-4" data-testid="payment-attachment-picker">
-            <div>
-              <label className="text-sm font-medium">Payment image (optional)</label>
-              <p className="text-xs text-muted-foreground">
-                The image stays on this device until the payment saves, then uploads through Entity Files.
-              </p>
-            </div>
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.tiff,image/jpeg,image/png,image/gif,image/webp,image/bmp,image/tiff"
-              className="hidden"
-              data-testid="input-payment-attachment"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) setPendingAttachment(file);
-                event.target.value = "";
-              }}
+          <>
+            <PaymentAttachmentPicker
+              file={pendingAttachment}
+              onChange={setPendingAttachment}
+              disabled={submitMutation.isPending || isUploadingAttachment || !!savedCreateResult}
             />
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={submitMutation.isPending || isUploadingAttachment || !!savedCreateResult}
-                  onClick={() => attachmentInputRef.current?.click()}
-                  data-testid="button-select-payment-attachment"
-                >
-                  <ImagePlus className="mr-2 h-4 w-4" />
-                  {pendingAttachment ? "Replace image" : "Select image"}
-                </Button>
-                {pendingAttachment && (
-                  <>
-                  <span className="max-w-sm truncate text-sm" data-testid="text-payment-attachment-name">
-                    {pendingAttachment.name}
-                  </span>
-                  {!savedCreateResult && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setPendingAttachment(null)}
-                      data-testid="button-remove-payment-attachment"
-                    >
-                      <X className="mr-1 h-4 w-4" />
-                      Remove
-                    </Button>
-                  )}
-                  </>
-                )}
-              </div>
-              {pendingAttachment && (
-                <ImageAttachmentPreview
-                  file={pendingAttachment}
-                  alt={`Preview of ${pendingAttachment.name}`}
-                  testId="payment-attachment-preview"
-                />
-              )}
-            </div>
             {savedCreateResult && (
               <p className="text-sm text-destructive" data-testid="text-payment-attachment-retry">
                 The payment was saved. Retry the attachment or continue to the saved payment.
               </p>
             )}
-          </div>
+          </>
         )}
 
         {isUploadSourcePayment ? (

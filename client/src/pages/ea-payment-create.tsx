@@ -12,7 +12,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
@@ -20,6 +20,8 @@ import { dateToYmd } from "@shared/utils/date";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { PaymentAttachmentPicker } from "@/components/ledger/PaymentAttachmentPicker";
+import { uploadEntityFile } from "@/components/entity-files/EntityFileManager";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -63,6 +65,14 @@ function EAPaymentCreateContent() {
   const [statementSelections, setStatementSelections] = useState<StatementSelection[]>([]);
   const [allocationMethod, setAllocationMethod] = useState<"statement" | "uploadSource">("statement");
   const [selectedUploadIds, setSelectedUploadIds] = useState<string[]>([]);
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+  const [savedPaymentId, setSavedPaymentId] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  // React state alone cannot guard two submissions in the same render.
+  const submissionLocked = useRef(false);
+  const savedPaymentIdRef = useRef<string | null>(null);
+  const uploadLocked = useRef(false);
 
   const { data: eaData } = useQuery<{ id: string; accountId: string; entityName?: string; entityType?: string }>({
     queryKey: ["/api/ledger/ea", eaId],
@@ -98,7 +108,10 @@ function EAPaymentCreateContent() {
     .reduce((sum, u) => sum + parseFloat(u.totalAmount), 0)
     .toFixed(2);
 
-  const filteredPaymentTypes = paymentTypes.filter(pt => pt.currencyCode === currencyCode);
+  const filteredPaymentTypes = useMemo(
+    () => paymentTypes.filter(pt => pt.currencyCode === currencyCode),
+    [paymentTypes, currencyCode],
+  );
 
   const getTodayString = () => new Date().toISOString().split("T")[0];
   const getEffectiveUserName = () => {
@@ -165,18 +178,43 @@ function EAPaymentCreateContent() {
     }
   }, [category, user]);
 
+  const attachToSavedPayment = async (paymentId: string, file: File) => {
+    if (uploadLocked.current) return;
+    uploadLocked.current = true;
+    setIsUploadingAttachment(true);
+    setAttachmentError(null);
+    try {
+      await uploadEntityFile({ context: "ledger_payment", entityId: paymentId, file });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-files", "ledger_payment", paymentId] });
+      setLocation(`/ledger/payment/${paymentId}`);
+    } catch (error) {
+      setAttachmentError(getApiErrorMessage(error, "The attachment could not be uploaded. Please try again."));
+    } finally {
+      uploadLocked.current = false;
+      setIsUploadingAttachment(false);
+    }
+  };
+
   const createPaymentMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       return await apiRequest("POST", "/api/ledger/payments", data);
     },
-    onSuccess: (data: Record<string, unknown>) => {
+    onSuccess: async (data: Record<string, unknown>) => {
+      const paymentId = typeof data.id === "string" ? data.id : null;
+      // Once creation succeeds, financial submission stays locked even if the
+      // attachment fails. Recovery may only upload to this returned ID.
+      savedPaymentIdRef.current = paymentId;
+      setSavedPaymentId(paymentId);
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", eaId] });
       toast({
         title: "Payment created",
         description: "The payment has been created successfully.",
       });
       showLedgerNotifications(data?.ledgerNotifications as LedgerNotification[] | undefined);
-      const paymentId = (data as Record<string, unknown>)?.id;
+      if (pendingAttachment && paymentId) {
+        await attachToSavedPayment(paymentId, pendingAttachment);
+        return;
+      }
       if (paymentId) {
         setLocation(`/ledger/payment/${paymentId}`);
       } else {
@@ -184,6 +222,7 @@ function EAPaymentCreateContent() {
       }
     },
     onError: (error) => {
+      submissionLocked.current = false;
       toast({
         title: "Error",
         description: getApiErrorMessage(error, "Failed to create payment. Please try again."),
@@ -230,6 +269,7 @@ function EAPaymentCreateContent() {
   };
 
   const onCreateSubmit = form.handleSubmit((data) => {
+    if (submissionLocked.current || savedPaymentIdRef.current || uploadLocked.current) return;
     if (allocationMethod === "uploadSource") {
       if (selectedUploadIds.length === 0) {
         toast({
@@ -260,6 +300,7 @@ function EAPaymentCreateContent() {
       }
       details.baoUploadSource = { wizardIds: selectedUploadIds };
 
+      submissionLocked.current = true;
       createPaymentMutation.mutate({
         ...data,
         ledgerEaId: eaId,
@@ -337,10 +378,13 @@ function EAPaymentCreateContent() {
       status: category === "adjustment" ? "cleared" : data.status,
     };
 
+    submissionLocked.current = true;
     createPaymentMutation.mutate(submissionData);
   });
 
   const entityLabel = eaData?.entityName || eaData?.entityType || "Entity";
+  const busy = createPaymentMutation.isPending || isUploadingAttachment;
+  const formLocked = busy || !!savedPaymentId;
 
   return (
     <Card className="max-w-3xl mx-auto">
@@ -353,6 +397,7 @@ function EAPaymentCreateContent() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={onCreateSubmit} className="space-y-6">
+            <fieldset disabled={formLocked} {...(formLocked ? { inert: "" } : {})} className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
               <FormField
                 control={form.control}
@@ -659,18 +704,46 @@ function EAPaymentCreateContent() {
               />
             )}
 
+            <PaymentAttachmentPicker file={pendingAttachment} onChange={setPendingAttachment} disabled={formLocked} />
+            </fieldset>
+
+            {savedPaymentId && (
+              <div role={attachmentError ? "alert" : "status"} className="space-y-2 rounded-md border p-4" data-testid="text-payment-attachment-retry">
+                <p>The payment was saved. {isUploadingAttachment ? "Uploading attachment…" : "The attachment was not uploaded."}</p>
+                {attachmentError && <p className="text-sm text-destructive">{attachmentError}</p>}
+                {!isUploadingAttachment && <p className="text-sm">Retry the attachment or continue to the saved payment and manage its Files there. If configuration is missing, ask an administrator to configure Payments under Config → Entity Files. Do not create the payment again.</p>}
+              </div>
+            )}
             <div className="flex gap-2 pt-4">
+              {savedPaymentId ? (
+                <>
+                  <Button type="button" variant="outline" disabled={busy}
+                    onClick={() => setLocation(`/ledger/payment/${savedPaymentId}`)} data-testid="button-continue-saved-payment">
+                    Continue to saved payment
+                  </Button>
+                  <Button type="button" disabled={busy || !pendingAttachment}
+                    onClick={() => {
+                      if (pendingAttachment) void attachToSavedPayment(savedPaymentId, pendingAttachment);
+                    }} data-testid="button-retry-attachment">
+                    {isUploadingAttachment ? "Uploading…" : "Retry attachment"}
+                  </Button>
+                </>
+              ) : (
+                <>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setLocation(`/ea/${eaId}/payments`)}
+                disabled={busy}
                 data-testid="button-cancel"
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={createPaymentMutation.isPending} data-testid="button-submit">
+              <Button type="submit" disabled={busy} data-testid="button-submit">
                 {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
               </Button>
+                </>
+              )}
             </div>
           </form>
         </Form>

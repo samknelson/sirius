@@ -15,7 +15,8 @@ describe("Entity Files payment attachment surfaces", () => {
 
   it("uses the shared manager on staff payment edit and view surfaces", () => {
     expect(paymentForm).toContain("EntityFileManager");
-    expect(paymentForm).toContain("ImageAttachmentPreview");
+    expect(paymentForm).toContain("PaymentAttachmentPicker");
+    expect(source("client/src/components/ledger/PaymentAttachmentPicker.tsx")).toContain("ImageAttachmentPreview");
     expect(paymentForm).toContain("uploadEntityFile");
     expect(paymentForm).toContain('context="ledger_payment"');
     expect(paymentForm).toContain('context: "ledger_payment"');

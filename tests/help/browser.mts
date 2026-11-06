@@ -16,6 +16,8 @@ const cases = [
   ["/bao/dc/cases/fixture", "system:disability-credit-staff"],
   ["/employers/fixture/wizards", "system:employer-upload-launcher"],
   ["/wizards/fixture", "system:shared-wizard-runner"],
+  ["/ea/fixture/payments/new", "system:staff-payment-entry"],
+  ["/ea/fixture/payments/new/check", "system:staff-payment-entry"],
 ] as const;
 const server = await createServer({
   configFile: false, envFile: false, root,
@@ -67,9 +69,16 @@ try {
       await page.click(`[data-testid="button-help-more-${id}"]`);
       await page.waitForSelector('[data-testid="text-help-details"]');
       const text = await page.$eval('[data-testid="text-help-details"]', el => el.textContent!);
-      assert.match(text, /saved.*threshold/i);
-      assert.match(text, /annual/i);
-      assert.match(text, /restor/i);
+      if (id === "system:staff-payment-entry") {
+        assert.match(text, /Select image/);
+        assert.match(text, /Retry attachment/);
+        assert.match(text, /do not create another payment/);
+        assert.match(text, /Cancel uploads nothing/);
+      } else {
+        assert.match(text, /saved.*threshold/i);
+        assert.match(text, /annual/i);
+        assert.match(text, /restor/i);
+      }
       assert.equal(await page.$$eval('[data-testid="text-help-details"] h3', nodes => nodes.length) >= 4, true);
       assert.equal(await page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true);
     }
@@ -83,12 +92,12 @@ try {
     assert.equal(await page.$(`[data-testid="button-edit-help-${id}"]`), null);
   }
   assert.match(await page.$eval('[data-testid="row-help-fixture-local"]', el => el.textContent!), /Local procedure remains intact/);
-  for (const route of ["/workers/fixture/sitespecific/bao/dp", "/bao/dc/queue/extra", "/employers/fixture/wizards/extra"]) {
+  for (const route of ["/workers/fixture/sitespecific/bao/dp", "/bao/dc/queue/extra", "/employers/fixture/wizards/extra", "/ea/fixture/payments", "/ea/fixture/payments/newish"]) {
     await page.goto(`http://127.0.0.1:5196${route}`, { waitUntil: "networkidle0" });
     for (const [, id] of cases) assert.equal(await page.$(`[data-testid="help-summary-${id}"]`), null);
   }
   assert.deepEqual(errors, []);
-  console.log("PASS: four correction help entries, real Help dialogs at desktop/mobile widths, built-in listing, local coexistence, and near misses");
+  console.log("PASS: correction and payment-entry help, real Help dialogs at desktop/mobile widths, built-in listing, local coexistence, and near misses");
 } catch (error) {
   console.error(error);
   process.exitCode = 1;
