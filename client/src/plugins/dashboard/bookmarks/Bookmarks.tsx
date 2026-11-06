@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Bookmark, User, Building, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { PersonalText } from "@/privacy/MaskMode";
 import { Button } from "@/components/ui/button";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
@@ -69,7 +70,7 @@ export function Bookmarks(_props: DashboardPluginProps) {
                 >
                   <div className="flex items-center gap-3 p-2 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer">
                     <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm flex-1 truncate">{bookmark.displayName}</span>
+                    <span className="text-sm flex-1 truncate">{bookmark.entityType === "worker" ? <PersonalText>{bookmark.displayName}</PersonalText> : bookmark.displayName}</span>
                     <span className="text-xs text-muted-foreground flex-shrink-0">
                       {bookmark.createdDate
                         ? new Date(bookmark.createdDate).toLocaleDateString()
@@ -87,7 +88,7 @@ export function Bookmarks(_props: DashboardPluginProps) {
                 data-testid={`bookmark-item-${bookmark.id}`}
               >
                 <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm flex-1 truncate">{bookmark.displayName}</span>
+                <span className="text-sm flex-1 truncate">{bookmark.entityType === "worker" ? <PersonalText>{bookmark.displayName}</PersonalText> : bookmark.displayName}</span>
                 <span className="text-xs text-muted-foreground flex-shrink-0">
                   {bookmark.createdDate
                     ? new Date(bookmark.createdDate).toLocaleDateString()

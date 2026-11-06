@@ -2,11 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { personalDisplaysPlugin } from "./scripts/build/personal-displays";
 
 const clerkProdKey = process.env.VITE_CLERK_PUBLISHABLE_KEY_PROD;
 
 export default defineConfig({
   plugins: [
+    personalDisplaysPlugin(),
     react(),
     runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== "production" &&

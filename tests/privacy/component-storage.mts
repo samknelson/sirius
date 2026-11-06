@@ -32,7 +32,7 @@ try {
     assert.deepEqual((await variables.getByName("components"))?.value,
       { "system.mask_mode": true, ledger: true, bulk: true });
     assert.equal((await readMaskComponent()).epoch, first.epoch, "unrelated component changes retain the protection generation");
-    assert.equal(await sessions.transitionMaskMode("disabled-login", 1, "on"), null);
+    assert.equal((await sessions.transitionMaskMode("disabled-login", 1, "on"))?.mode, "on");
     await sessions.upsertSession("enabled-login", identity, expiry);
     assert.equal((await sessions.transitionMaskMode("enabled-login", 1, "on"))?.mode, "on");
     const stale = await sessions.getSessionData("enabled-login");
@@ -40,19 +40,19 @@ try {
     assert.ok(config);
     await variables.update(config.id, { value: { "system.mask_mode": false, ledger: true } });
     assert.equal((await readMaskComponent()).enabled, false);
-    assert.equal((await sessions.getSessionData("enabled-login") as any).maskModeRevoked, true);
+    assert.equal((await sessions.getSessionData("enabled-login") as any).maskMode.mode, "off");
     await sessions.upsertSession("enabled-login", stale, expiry, true);
-    assert.equal((await sessions.getSessionData("enabled-login") as any).maskModeRevoked, true);
+    assert.equal((await sessions.getSessionData("enabled-login") as any).maskMode.mode, "off");
     assert.equal(await sessions.transitionMaskMode("enabled-login", 2, "off"), null);
     await variables.setByName("components", { "system.mask_mode": true, ledger: true });
     const second = await readMaskComponent();
     assert.notEqual(first.epoch, second.epoch);
-    assert.equal(await sessions.transitionMaskMode("enabled-login", 2, "on"), null);
+    assert.equal((await sessions.transitionMaskMode("enabled-login", 3, "on"))?.mode, "on");
     await sessions.upsertSession("fresh-login", identity, expiry);
     assert.equal((await sessions.transitionMaskMode("fresh-login", 1, "on"))?.mode, "on");
     await variables.delete(config.id);
     assert.equal((await readMaskComponent()).enabled, false);
-    assert.equal((await sessions.getSessionData("fresh-login") as any).maskModeRevoked, true);
+    assert.equal((await sessions.getSessionData("fresh-login") as any).maskMode.mode, "off");
     passed = true;
     throw rolledBack;
   });
@@ -62,4 +62,4 @@ try {
   await pool.end();
 }
 assert.ok(passed);
-console.log("PASS real PostgreSQL component authority, generic write paths, epoch rotation, stale-save fencing and revocation; all test writes rolled back.");
+console.log("PASS real PostgreSQL component authority, generic write paths, legacy recovery and stale-save preference fencing; all test writes rolled back.");

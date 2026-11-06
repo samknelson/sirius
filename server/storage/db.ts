@@ -377,21 +377,6 @@ export const pool = poolInstance as pg.Pool;
 export const db = dbInstance;
 
 /**
- * Response leases must not consume the same pool their handlers need for SQL:
- * enough concurrent readers would otherwise hold every connection while
- * waiting for a domain query. Reuse the already-resolved driver/TLS/IAM options;
- * this pool only takes advisory locks and never reads application tables.
- */
-let presentationLeasePool: pg.Pool | undefined;
-export function getPresentationLeasePool(): pg.Pool {
-  // Reuse the driver-aware factory, not Pool.options (which can lose the
-  // IAM password provider). Disabled installations never instantiate this.
-  return presentationLeasePool ??= createInfrastructurePool({
-    max: 4, connectionTimeoutMillis: 2500, idleTimeoutMillis: 5000,
-  });
-}
-
-/**
  * Create a small, independent pool for infrastructure protocols that must
  * hold session-scoped state (for example advisory locks) across application
  * work. Keeping these clients out of the main storage pool prevents a set of

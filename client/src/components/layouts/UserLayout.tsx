@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
@@ -91,7 +92,8 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
 
   // Set page title based on user name
   const userName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "" : "";
-  usePageTitle(userName || undefined);
+  const personal = usePersonalDisplay();
+  usePageTitle(userName ? personal(userName) : undefined);
 
   const isLoading = userLoading || contactLoading;
   const isError = !!userError;

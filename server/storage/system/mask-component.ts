@@ -38,10 +38,14 @@ export async function withMaskComponentChange<T>(write: () => Promise<T>): Promi
         INSERT INTO variables (name, value) VALUES (${EPOCH}, ${JSON.stringify(randomUUID())}::jsonb)
         ON CONFLICT (name) DO UPDATE SET value = excluded.value
       `);
-      // Keep a tombstone, not a deletion: late whole-session saves must never
-      // resurrect an identity or erase its forced-reauth requirement.
+      // Disable explicitly ends screen masking, not authentication. Increment
+      // revisions so a stale control cannot restore an old preference.
       await getClient().execute(sql`
-        UPDATE sessions SET sess = jsonb_set(sess::jsonb, '{maskModeRevoked}', 'true'::jsonb)
+        UPDATE sessions SET sess = jsonb_set(
+          sess::jsonb - 'maskModeRevoked' - 'maskModeEpoch', '{maskMode}',
+          jsonb_build_object('version', 1, 'mode', 'off', 'revision',
+            CASE WHEN (sess::jsonb -> 'maskMode' ->> 'revision') ~ '^[0-9]{1,15}$'
+            THEN (sess::jsonb -> 'maskMode' ->> 'revision')::bigint + 1 ELSE 1 END))
         WHERE sess::jsonb -> 'maskMode' ->> 'mode' = 'on'
       `);
     }

@@ -7,10 +7,8 @@ import { readMaskComponent } from "../storage/system/mask-component";
 export function installMaskMode(app: Express): void {
   app.use(createMaskModeMiddleware({
     component: readMaskComponent,
-    acquire: (sid, exclusive) => storage.sessions.acquirePresentationLease(sid, exclusive),
     read: sid => storage.sessions.getSessionData(sid),
     transition: (sid, expected, mode) => storage.sessions.transitionMaskMode(sid, expected, mode),
     permissions: maskModePermissions(storage.users),
-    people: () => storage.sessions.getTrainingBirthDates(),
   }));
 }

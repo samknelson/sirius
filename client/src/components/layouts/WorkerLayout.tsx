@@ -13,6 +13,7 @@ import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { useAccessCheck } from "@/hooks/use-access-check";
@@ -204,7 +205,8 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const workerName = contact
     ? `${contact.given || ""} ${contact.family || ""}`.trim()
     : worker?.id || "";
-  usePageTitle(workerName || undefined);
+  const personal = usePersonalDisplay();
+  usePageTitle(workerName ? personal(workerName) : undefined);
 
   // Terminology is now applied centrally in useTabAccess hook
   const mainTabs = tabs;

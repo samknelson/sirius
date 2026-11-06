@@ -141,7 +141,7 @@ export const componentRegistry: ComponentDefinition[] = [
   {
     id: "system.mask_mode",
     name: "Mask Mode",
-    description: "Optional strict, read-only training view. Disabled by default, including upgrades. Enabling requires a fresh sign-in before masking; disabling ends protected sessions. No restart is required; reload open normal pages after enabling.",
+    description: "Optional screen-only masking of structured personal fields in the normal application. Admin-controlled per login; no records or permissions change. Raw responses, downloads and unstructured content remain visible. Disabling ends screen masking, not sessions.",
     enabledByDefault: false,
     category: "core",
   },

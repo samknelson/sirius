@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useBtuCsgTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
@@ -88,7 +89,8 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
 
   // Set page title based on record name
   const recordName = record ? `${record.firstName || ""} ${record.lastName || ""}`.trim() : "";
-  usePageTitle(recordName || undefined);
+  const personal = usePersonalDisplay();
+  usePageTitle(recordName ? personal(recordName) : undefined);
 
   const isLoading = recordLoading;
   const isError = !!recordError;

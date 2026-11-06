@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PersonalText } from "@/privacy/MaskMode";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bookmark, Trash2, ArrowUpDown, User, Building } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -154,7 +155,7 @@ export default function Bookmarks() {
                           <Icon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                           <div className="flex-1">
                             <div className="font-medium" data-testid={`bookmark-name-${bookmark.id}`}>
-                              {bookmark.displayName}
+                              {bookmark.entityType === "worker" ? <PersonalText>{bookmark.displayName}</PersonalText> : bookmark.displayName}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {bookmark.createdDate

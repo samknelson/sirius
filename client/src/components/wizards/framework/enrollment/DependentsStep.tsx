@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PersonalText } from "@/privacy/MaskMode";
 import {
   Select,
   SelectContent,
@@ -293,7 +294,7 @@ export function DependentsStep({
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    SSN ***-**-{dep.ssnLast4} · DoB {dep.birthDate} · Gender{" "}
+                    SSN <PersonalText kind="ssn">{`***-**-${dep.ssnLast4}`}</PersonalText> · DoB {dep.birthDate} · Gender{" "}
                     {dep.genderCalc || "Not specified"}
                     {dep.documentFileName ? ` · ${dep.documentFileName}` : ""}
                   </div>

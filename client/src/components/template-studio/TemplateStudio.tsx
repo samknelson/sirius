@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EffectiveEmailPreview } from "@/components/comm/EffectiveEmailPreview";
 import { useQuery } from "@tanstack/react-query";
+import { PersonalText } from "@/privacy/MaskMode";
 import {
   Dialog,
   DialogContent,
@@ -630,7 +631,7 @@ function SeedPicker({
                   value={`record:${r.id}`}
                   data-testid={`studio-seed-record-${r.id}`}
                 >
-                  {r.label}
+                  {["worker", "user", "contact", "dependent", "beneficiary"].includes(root.kind) ? <PersonalText>{r.label}</PersonalText> : r.label}
                   {r.hint ? (
                     <span className="ml-1.5 text-xs text-muted-foreground">
                       {r.hint}

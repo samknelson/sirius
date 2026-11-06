@@ -174,6 +174,8 @@ export default function ComponentsConfigPage() {
   }, [componentConfigs, allComponents, updateComponentMutation.isPending, isFetching]);
 
   const handleToggle = async (componentId: string, enabled: boolean) => {
+    if (componentId === "system.mask_mode" && !enabled &&
+        !window.confirm("Disable Mask Mode? Screen masking will end for all logins using it. Structured personal fields will become visible. Stop recording before continuing. Sessions and stored records are unchanged.")) return;
     const component = allComponents.find(c => c.id === componentId);
     if (!component) return;
 

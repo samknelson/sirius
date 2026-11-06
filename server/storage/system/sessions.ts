@@ -2,11 +2,9 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient, runInTransaction, onAfterCommit } from '../transaction-context';
 import { storageLogger } from "../../logger";
 import { allowInMaintenanceMode } from '../maintenance';
-import { sessions, workers, contacts } from "@shared/schema";
+import { sessions } from "@shared/schema";
 import { readMaskState, preserveMaskState, type MaskPolicy } from "@shared/privacy/mask-mode";
-import { getPresentationLeasePool } from "../db";
 import { lockMaskComponent, readMaskComponent } from "./mask-component";
-import { createAdvisoryLockStorage, type AdvisoryLockHandle } from "../advisory-lock";
 import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 
@@ -25,11 +23,8 @@ export interface SessionWithUser {
 }
 
 export interface SessionStorage {
-  acquirePresentationLease(sid: string, exclusive: boolean): Promise<AdvisoryLockHandle | null>;
-  /** CAS under the presentation lease; never accepts arbitrary session fields. */
+  /** Row-locked CAS; never accepts arbitrary session fields. */
   transitionMaskMode(sid: string, expectedRevision: number, mode: "on" | "off"): Promise<MaskPolicy | null>;
-  /** Staff-only caller; deliberately selects no names, source IDs or opaque data. */
-  getTrainingBirthDates(): Promise<Array<{ birthDate: string | null }>>;
   getSessions(): Promise<SessionWithUser[]>;
   /**
    * Delete one session row. Logged ("Deleted session ..."); the optional
@@ -75,25 +70,13 @@ export interface SessionStorage {
 }
 
 export function createSessionStorage(): SessionStorage {
-  let presentationLocks: ReturnType<typeof createAdvisoryLockStorage> | undefined;
   const storage: SessionStorage = {
-    acquirePresentationLease(sid, exclusive) {
-      presentationLocks ??= createAdvisoryLockStorage(getPresentationLeasePool());
-      return presentationLocks.tryAcquireSession(`presentation:${sid}`, {
-        timeoutMs: 2500, pollIntervalMs: 25, shared: !exclusive,
-      });
-    },
-    async getTrainingBirthDates() {
-      return getClient().select({ birthDate: contacts.birthDate })
-        .from(workers).innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .orderBy(sql`random()`).limit(20);
-    },
 
     async transitionMaskMode(sid, expectedRevision, mode) {
       return allowInMaintenanceMode(() => runInTransaction(async () => {
         await lockMaskComponent();
         const component = await readMaskComponent();
-        if (!component.enabled || !component.epoch) return null;
+        if (!component.enabled) return null;
         const client = getClient();
         const rows = await client.execute(sql`
           SELECT sess FROM sessions
@@ -101,16 +84,15 @@ export function createSessionStorage(): SessionStorage {
         `);
         const row = rows.rows[0] as { sess: { maskMode?: unknown; maskModeEpoch?: string; maskModeRevoked?: boolean } } | undefined;
         if (!row) return null;
-        if (row.sess.maskModeRevoked || row.sess.maskModeEpoch !== component.epoch) return null;
         const before = readMaskState(row.sess.maskMode);
         if (before.revision !== expectedRevision || before.revision >= Number.MAX_SAFE_INTEGER) return null;
         const after: MaskPolicy = { version: 1, revision: before.revision + 1, mode };
         await client.update(sessions).set({
-          sess: sql`jsonb_set(${sessions.sess}, '{maskMode}', ${JSON.stringify(after)}::jsonb)`,
+          sess: sql`jsonb_set(${sessions.sess}::jsonb - 'maskModeRevoked' - 'maskModeEpoch', '{maskMode}', ${JSON.stringify(after)}::jsonb)`,
         }).where(eq(sessions.sid, sid));
         const ownerId = sessionUserId(rows.rows[0].sess);
         const effectiveId = (rows.rows[0].sess as any)?.masqueradeUserId ?? ownerId;
-        onAfterCommit(() => storageLogger.info("Presentation protection changed", {
+        onAfterCommit(() => storageLogger.info("Screen masking preference changed", {
           module: "privacy", operation: "mask_mode_transition",
           user_id: effectiveId, host_entity_id: ownerId,
           meta: {
@@ -221,16 +203,13 @@ export function createSessionStorage(): SessionStorage {
             };
           }
           if (existingOnly) throw new Error("Session ended before it could be saved");
-          const component = await readMaskComponent();
           const inserted = await client
             .insert(sessions)
             .values({
               sid,
-              // Only creation of a newly authenticated SID establishes OFF.
-              // Existing/legacy rows without policy remain UNKNOWN.
+              // A new login starts OFF; other logins/users remain independent.
               sess: newUserId
-                ? { ...preserveMaskState(sess, {}), maskMode: { version: 1, mode: "off", revision: 1 },
-                    ...(component.enabled && component.epoch ? { maskModeEpoch: component.epoch } : {}) }
+                 ? { ...preserveMaskState(sess, {}), maskMode: { version: 1, mode: "off", revision: 1 } }
                 : preserveMaskState(sess, {}),
               expire,
             })

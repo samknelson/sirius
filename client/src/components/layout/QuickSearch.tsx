@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { PersonalText } from "@/privacy/MaskMode";
 import { useDebounced } from "@/hooks/use-debounced";
 import {
   QUICKSEARCH_MIN_QUERY_LENGTH,
@@ -195,10 +196,12 @@ export function QuickSearch() {
                   >
                     <Icon className="mr-2 h-4 w-4 shrink-0 opacity-60" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate">{result.title}</div>
+                      <div className="truncate">{group.pluginId === "worker" || result.href.startsWith("/workers/")
+                        ? <PersonalText>{result.title}</PersonalText> : result.title}</div>
                       {result.subtitle && (
                         <div className="truncate text-xs text-muted-foreground">
-                          {result.subtitle}
+                          {group.pluginId === "worker" || result.href.startsWith("/workers/")
+                            ? <PersonalText kind="identifier">{result.subtitle}</PersonalText> : result.subtitle}
                         </div>
                       )}
                     </div>

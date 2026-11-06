@@ -1,3 +1,16 @@
+/* Only semantic personal inputs use this; canonical values and clipboard stay raw. */
+input[data-screen-masked="true"]::selection {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+}
+input[data-screen-masked="true"]::-moz-selection {
+  color: transparent !important;
+  text-shadow: none !important;
+}
+input[data-screen-masked="true"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, FileText } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { EmployerPayAction, type EmployerCheckout } from "@/components/ledger/EmployerPayAction";
@@ -51,6 +52,7 @@ export function useEALayout() {
 }
 
 export function EALayout({ activeTab, children }: EALayoutProps) {
+  const personal = usePersonalDisplay();
   const { id } = useParams<{ id: string }>();
 
   const { data: ea, isLoading: eaLoading } = useQuery<LedgerEA>({
@@ -100,6 +102,7 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
   }
 
   const entityName = employer?.name || (worker ? `${worker.firstName} ${worker.lastName}` : null);
+  const screenEntityName = worker && !employer ? personal(entityName ?? "") : entityName;
   const entityBackLink = employer 
     ? `/employers/${employer.id}/ledger/accounts`
     : worker 
@@ -112,7 +115,7 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
       <RecordTitleBar
         variant="page"
         icon={<FileText className="h-6 w-6 text-primary" />}
-        title={entityName && account ? `${entityName} - ${account.name}` : account?.name || "Account Entry"}
+        title={screenEntityName && account ? `${screenEntityName} - ${account.name}` : account?.name || "Account Entry"}
         titleTestId="heading-ea"
         subtitle={
           account?.description && (

@@ -8,6 +8,7 @@ import { Users } from "lucide-react";
 import { createContext, useContext } from "react";
 import { useProviderContactTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface Contact {
@@ -89,7 +90,8 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
   const contactName = trustProviderContact?.contact
     ? `${trustProviderContact.contact.given || ""} ${trustProviderContact.contact.family || ""}`.trim() || trustProviderContact.contact.displayName
     : "";
-  usePageTitle(contactName || undefined);
+  const personal = usePersonalDisplay();
+  usePageTitle(contactName ? personal(contactName) : undefined);
 
   if (isLoading) {
     return (
@@ -134,7 +136,7 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
       {/* Entity Header */}
       <RecordTitleBar
         icon={<Users className="text-primary-foreground" size={16} />}
-        title={provider?.name ? `${provider.name} :: ${trustProviderContact.contact.displayName}` : trustProviderContact.contact.displayName}
+        title={provider?.name ? `${provider.name} :: ${personal(contactName)}` : personal(contactName)}
         titleTestId="text-contact-name"
         badges={
           trustProviderContact.contactType && (

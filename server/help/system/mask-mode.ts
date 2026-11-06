@@ -2,63 +2,47 @@ import type { SystemHelpEntry } from "./index";
 
 export const maskModeHelp: SystemHelpEntry = {
   id: "system:mask-mode",
-  paths: ["/mask-mode"],
-  summary: "Strict Mask Mode replaces the normal application with a restricted, read-only training view; it does not certify HIPAA compliance.",
+  paths: ["/mask-mode", "/config/components"],
+  summary: "Mask Mode hides parts of structured personal fields on screen while you use the normal application; it does not protect underlying data.",
   details: `
-    <h3>Component prerequisite</h3>
-    <p>An administrator must enable <strong>Mask Mode</strong> in Components.
-    It is disabled by default on new installations and upgrades; existing
-    installations must explicitly opt in. No server restart is required.
-    Reload open normal pages after enabling. Sign out and sign in again before
-    using the session toggle if this login predates the component change.</p>
-    <p>When the component is disabled, its button, protected sample, polling and
-    presentation locks are unavailable. Disabling permanently ends sessions
-    that were protected: stop recording, select Sign out and sign in again.
-    Re-enabling the component does not restore those sessions. Previously
-    delivered content and sleeping tabs cannot be erased.</p>
-    <h3>Before recording</h3>
-    <p>Use a fresh browser session and one active tab. Close previous tabs.
-    Do not show browser history, developer tools, clipboard history, downloads
-    or other applications. Obtain your organization's approval for the
-    recording purpose, audience, storage and any recording or transcription service.</p>
-    <h3>Enable protection</h3>
-    <p>Only an active original presenter with the admin permission may toggle
-    this session. During masquerade, the original presenter controls this
-    toggle only; the target's permissions still control data access.
-    Protection never changes another browser session or a stored person record.</p>
-    <p>Confirm the fresh-tab warning and select Enable strict Mask Mode.
-    Waiting, unknown or error states are not ready for recording. A failed
-    transition does not grant access to normal pages.</p>
-    <h3>What is available</h3>
-    <p>The normal application is replaced, not cosmetically blurred.
-    Staff may load a sample of up to 20 live records, labeled Training person,
-    with random training-only references. Only birth year is offered; years
-    that could imply age 90 or above are replaced by 90 or older. Missing or
-    invalid dates are withheld. No source record IDs are sent.</p>
-    <p>All real names, including first names, SSNs and ID fragments, contact
-    details, month/day dates, files, photographs, credentials, notes, logs,
-    case text, payments, exports, editing, real-record previews and unknown
-    plugin content are blocked. Coverage and other original screens are not
-    available. Translation and other injected third-party scripts are not loaded.</p>
-    <p>This is not a test database. Background work, audit records and vendor
-    processing continue normally; this session cannot initiate those actions.
-    Starting or stopping masquerade is also unavailable while protected.</p>
-    <h3>Limitations and review</h3>
-    <p>This is a restricted technical projection, not a HIPAA certification
-    or automatic approval to publish. Your privacy lead must review the
-    permitted purpose, remaining context and the complete recording, including
-    spoken narration, captions and metadata. Do not identify someone verbally.</p>
-    <p>The application cannot erase previously delivered browser data,
-    sleeping-tab pixels, network history, clipboard contents or old recordings.
-    Previously issued public or copied bearer links are not revoked. Do not
-    visit public links or external documents during recording.</p>
-    <h3>Tabs, recovery and turning OFF</h3>
-    <p>Tabs sharing the login share protection. Active tabs rebootstrap after a
-    change; resumed tabs must check again. Do not rely on a sleeping tab to clear
-    its old screen. Unsaved work is not saved when entering this view.</p>
-    <p>Unknown state remains protected. An authorized admin can explicitly enable
-    protection, or you can sign out and sign in again. Stop recording before
-    selecting Turn Mask Mode OFF. OFF requires confirmation and a successful
-    server response before the normal application is opened.</p>
+    <h3>Purpose</h3>
+    <p>Use screen-only masking to reduce personal details visible during ordinary application use.
+    It is not de-identification, a security boundary, HIPAA certification or approval to publish a recording.</p>
+    <h3>Before you start</h3>
+    <p>An administrator must enable the optional <strong>Mask Mode</strong> component.
+    Only a currently active administrator can change the toggle for their login.
+    During masquerade the original administrator controls the toggle; the effective user's ordinary permissions still control all actions.</p>
+    <h3>How to use this page</h3>
+    <ol>
+      <li>Enable <strong>Mask Mode</strong> in Components if needed.</li>
+      <li>Select <strong>Mask Mode OFF</strong> in the application header and confirm the screen-only limitations.</li>
+      <li>Check for <strong>Mask Mode ON — screen only</strong> before recording. Continue using normal pages, search, editing and authorized actions.</li>
+      <li>Stop recording before turning the toggle OFF or disabling the component.</li>
+    </ol>
+    <h3>Results and status meanings</h3>
+    <p>Names keep the first character of each space-separated part. SSNs and phone numbers keep their first digit,
+    with separators retained. Email keeps its first local-part character and full domain.
+    DOB keeps its normal date display and only its first digit; other date digits become asterisks.
+    Structured personal addresses and identifiers keep the first character and separators.
+    Empty values and no-data labels remain unchanged. Nonpersonal statuses, benefits, hours, balances, organization names and other dates are unchanged.</p>
+    <p>Forms keep real values separately from the masked display. Focusing a personal input does not reveal the original;
+    you can select or replace its value normally. Edit masked date controls using the keyboard;
+    the native date popup is hidden while masking is ON so it does not reveal the selected birthday.
+    Toggling does not save forms, change records, clear drafts or alter permissions.
+    The preference survives navigation and refresh and updates other open tabs of the same login.
+    Other users and separate logins are unaffected.</p>
+    <p>Disabling the component ends screen masking for affected logins, not their sessions.
+    Its confirmation warns you to stop recording. Re-enabling does not automatically turn masking back ON.
+    Older restricted or revoked Mask Mode sessions recover in the normal application without a forced logout.
+    The former /mask-mode control address returns to the application.</p>
+    <h3>Limitations and common problems</h3>
+    <p><strong>Notes, documents/files, photographs, message bodies, templates and their previews remain untouched, even if they contain personal information.</strong>
+    No scanning, sanitization or extra reveal step is added. Ordinary downloads, exports, printing and clipboard operations are unchanged.</p>
+    <p><strong>Real data remains in API responses, developer tools, browser memory, caches and storage.</strong>
+    Copied underlying values, downloaded originals, public links and external sites are outside the claim.
+    Do not show them in a recording that relies on screen masking.</p>
+    <p>If a state or transition error appears, masking is not confirmed. Do not record; select <strong>Retry</strong>
+    and check the indicator. The application remains usable and does not redirect to the old training view.
+    A sleeping tab may not update until it resumes. Review every screen and the complete recording before sharing.</p>
   `,
 };

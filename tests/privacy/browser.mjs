@@ -1,177 +1,165 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { transform } from "esbuild";
-import { readFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
 import puppeteer from "puppeteer-core";
-import { startPrivacyFixture, RAW, CANARY } from "./fixture.ts";
+import { startPrivacyFixture } from "./fixture.ts";
+import { personalDisplaysPlugin, transformPersonalDisplays } from "../../scripts/build/personal-displays.ts";
+import { getSystemHelp } from "../../server/help/system/index.ts";
+import { likePatternMatches } from "../../server/help/path-match.ts";
 
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+console.log("Starting fictional screen masking browser fixture");
 const executablePath = ["/repl/tools/bin/chromium", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find(existsSync);
-assert.ok(executablePath, "Chromium is required for the authorized in-memory privacy fixture.");
-const f = await startPrivacyFixture();
+assert.ok(executablePath, "Chromium is required for this fictional browser fixture.");
+const fixture = await startPrivacyFixture();
+const saved = [];
+const contact = { id: "contact-fixture", given: "Morgan", family: "Lancaster", displayName: "Morgan Lancaster",
+  title: "", middle: "", generational: "", credentials: "" };
+const builtIn = getSystemHelp("system:mask-mode");
+const local = { id: "local-fixture", paths: ["/config/components"], summary: "Local administrator procedure.", details: "<p>Local content unchanged.</p>" };
+fixture.app.get("/api/contacts/contact-fixture", (_req, res) => res.json(contact));
+fixture.app.put("/api/workers/worker-fixture", (req, res) => {
+  saved.push(req.body); Object.assign(contact, req.body.nameComponents);
+  contact.displayName = `${contact.given} ${contact.family}`; res.json({ id: "worker-fixture" });
+});
+fixture.app.get("/api/helps", (_req, res) => res.json([builtIn, local]));
+fixture.app.get("/api/helps/lookup", (req, res) => res.json([builtIn, local].filter(entry =>
+  entry.paths.some(pattern => likePatternMatches(pattern, String(req.query.path))))));
+const vite = await createServer({
+  configFile: false, envFile: false, root, cacheDir: path.join(root, "node_modules/.vite-mask-browser"),
+  optimizeDeps: { entries: [path.join(root, "tests/privacy/browser.html")], holdUntilCrawlEnd: false },
+  plugins: [personalDisplaysPlugin(), {
+    name: "mask-fictional-display-slots",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.endsWith("/tests/privacy/screen-fixture.tsx")) return null;
+      return { code: transformPersonalDisplays(code, id).code, map: null };
+    },
+  }, react()],
+  resolve: { alias: { "@": path.join(root, "client/src"), "@shared": path.join(root, "shared") } },
+  appType: "custom", server: { middlewareMode: true, hmr: false,
+    watch: { ignored: ["**/.local/**", "**/artifacts/**", "**/generated-artifacts/**"] } },
+});
+console.log("Isolated Vite fixture ready");
+for (const route of ["/screen", "/config/components", "/config/helps", "/config/components/near-miss"]) {
+  fixture.app.get(route, async (_req, res) => res.type("html").send(await vite.transformIndexHtml(route,
+    readFileSync(path.join(root, "tests/privacy/browser.html"), "utf8"))));
+}
+fixture.app.use(vite.middlewares);
 let browser;
+const errors = [];
+const text = (page, selector) => page.$eval(selector, el => el.textContent);
+async function until(page, selector, expected) {
+  await page.waitForFunction((selector, expected) => document.querySelector(selector)?.textContent === expected,
+    { timeout: 15000 }, selector, expected);
+}
+async function toggle(page) {
+  await page.bringToFront();
+  console.log("Toggling screen preference");
+  page.once("dialog", dialog => dialog.accept());
+  await page.click('[data-testid="button-mask-mode"]');
+}
 try {
-  // Serve the REAL normal-app bootstrap guard against fictional response data.
-  const source = await readFile(new URL("../../client/src/lib/presentation-guard.ts", import.meta.url), "utf8");
-  const guard = await transform(source, { loader: "ts", format: "esm", target: "es2022" });
-  f.app.get("/guard.js", (_req, res) => res.type("application/javascript").send(guard.code));
-  f.app.get("/normal", (_req, res) => res.type("html").send(`<!doctype html><title>Fixture</title>
-    <script type="module">
-      import {installPresentationGuard} from "/guard.js";
-      if (await installPresentationGuard()) {
-        const result = await fetch("/api/domain");
-        const person = await result.json();
-        window.fixtureCache = person;
-        window.fixtureBlob = URL.createObjectURL(new Blob([person.family]));
-        document.body.textContent = person.family;
-      }
-    </script>`));
-  browser = await puppeteer.launch({ executablePath, headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-  const context = browser.defaultBrowserContext();
-  await context.overridePermissions(f.origin, ["clipboard-read", "clipboard-write"]);
+  browser = await puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  console.log("Browser launched");
   const page = await browser.newPage();
-  const errors = [], responses = [], urls = [];
   page.on("pageerror", error => errors.push(error.message));
-  page.on("request", req => urls.push(req.url()));
-  page.on("response", async res => {
-    if (res.url().includes("/api/mask-mode/") && res.headers()["content-type"]?.includes("application/json")) {
-      responses.push(await res.text().catch(() => ""));
-    }
-  });
-  page.on("dialog", dialog => dialog.accept());
-  await page.setCookie({ name: "fixture", value: "presenter", url: f.origin });
-  await page.goto(`${f.origin}/mask-mode`);
-  await page.waitForFunction(() => document.querySelector("#status")?.textContent.includes("MASK MODE OFF"));
-  assert.equal(await page.$eval("#load", el => el.disabled), true);
-  await page.click("#enable");
-  assert.match(await page.$eval("#error", el => el.textContent), /Confirm/);
-
-  const oldTab = await browser.newPage();
-  await oldTab.goto(`${f.origin}/normal`);
-  await oldTab.waitForFunction(canary => document.body.textContent.includes(canary), {}, CANARY);
-  assert.equal(await oldTab.evaluate(() => !!window.fixtureCache), true);
-  await page.bringToFront();
-  await page.waitForFunction(() => !document.querySelector("#enable").disabled);
-  await page.click("#ack");
-  await Promise.all([page.waitForNavigation(), page.click("#enable")]);
-  await page.waitForFunction(() => document.querySelector("#status")?.textContent.includes("MASK MODE ON"));
-  await oldTab.waitForFunction(() => location.pathname === "/mask-mode", { timeout: 12000 });
-  assert.equal(await oldTab.evaluate(() => window.fixtureCache), undefined, "hard boundary must discard old cache");
-  assert.equal(await oldTab.evaluate(() => window.fixtureBlob), undefined);
-  await page.bringToFront();
-  await page.waitForFunction(() => !document.querySelector("#load").disabled);
-  await page.click("#load");
-  await page.waitForFunction(() => document.querySelectorAll("#rows tr").length === 3);
-
-  const document = await page.content();
-  const domText = await page.$eval("body", el => el.innerText);
-  for (const value of [...Object.values(RAW).filter(v => typeof v !== "object"), "1980-02-29", "1901-12-31"]) {
-    assert.ok(!document.includes(String(value)), `DOM/attributes must not contain fixture identity ${String(value)}`);
-    assert.ok(!responses.join("\n").includes(String(value)), "protected network responses must not contain fixture identity");
+  await page.setCookie({ name: "fixture", value: "presenter", url: fixture.origin });
+  console.log("Loading initial screen");
+  await page.goto(`${fixture.origin}/screen`, { waitUntil: "domcontentloaded", timeout: 120000 });
+  await until(page, '[data-testid="worker-name"]', "Morgan Lancaster");
+  console.log("Initial normal screen ready");
+  const second = await browser.newPage();
+  console.log("Loading second login tab");
+  await second.goto(`${fixture.origin}/screen`, { waitUntil: "domcontentloaded", timeout: 120000 });
+  await until(second, '[data-testid="worker-name"]', "Morgan Lancaster");
+  console.log("Second tab ready");
+  await toggle(page);
+  await until(page, '[data-testid="worker-name"]', "M***** L********");
+  await until(second, '[data-testid="worker-name"]', "M***** L********");
+  console.log("ON and same-login tab sync confirmed");
+  for (const [testid, expected] of [["worker-ssn", "1**-**-****"], ["worker-email", "m*****@gmail.com"],
+    ["worker-dob", "1*/**/****"], ["worker-identifier", "1****"], ["worker-status", "Active"], ["worker-hours", "160"]]) {
+    assert.equal(await text(page, `[data-testid="${testid}"]`), expected);
   }
-  assert.ok(domText.includes("1980"));
-  assert.ok(domText.includes("90 or older"));
-  assert.ok(document.includes("Not a HIPAA certification"));
-  assert.ok(urls.every(url => new URL(url).origin === f.origin), "no third-party scripts or network calls");
-  assert.ok(!urls.some(url => /weglot|\/api\/plugins\/client-injection/.test(url)));
-  await page.evaluate(() => {
-    const selection = getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(document.body);
-    selection.removeAllRanges(); selection.addRange(range);
-  });
-  await page.keyboard.down("Control"); await page.keyboard.press("c"); await page.keyboard.up("Control");
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
-  assert.ok(copied.includes("Training person"));
-  assert.ok(!copied.includes(CANARY));
-  assert.ok(!copied.includes(RAW.ssn));
-  const refused = await page.evaluate(async () => {
-    const res = await fetch("/api/domain", { method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ family:"••••", ssn:"Withheld" }) });
-    return { status:res.status, body:await res.text() };
-  });
-  assert.equal(refused.status, 423);
-  assert.ok(!refused.body.includes(CANARY));
-  assert.equal(f.controls.effects, 1, "only the intentional OFF fixture read reached the domain double");
-
-  // Independent browser session remains OFF.
-  const otherContext = await browser.createBrowserContext();
-  const other = await otherContext.newPage();
-  await other.setCookie({ name:"fixture", value:"other", url:f.origin });
-  await other.goto(`${f.origin}/mask-mode`);
-  await other.waitForFunction(() => document.querySelector("#status")?.textContent.includes("MASK MODE OFF"));
-  assert.equal(f.rows.get("other").maskMode.mode, "off");
-  await otherContext.close();
-
-  // Protected read is refused immediately when effective permissions change.
-  f.controls.targetCanRead = false;
-  const dataRefusal = await page.evaluate(async () => {
-    const state = await (await fetch("/api/mask-mode/state")).json();
-    const res = await fetch("/api/mask-mode/people", { headers:{"X-Mask-Revision":String(state.revision)} });
-    return res.status;
-  });
-  assert.equal(dataRefusal, 409);
-  f.controls.targetCanRead = true;
-
-  // Cross-tab OFF transition clears the protected sample rather than mixing caches.
-  await page.bringToFront();
-  await page.click("#ack");
-  await Promise.all([page.waitForNavigation(), page.click("#disable")]);
-  assert.equal(new URL(page.url()).pathname, "/");
-  await oldTab.bringToFront();
-  await oldTab.waitForFunction(() => document.querySelector("#status")?.textContent.includes("MASK MODE OFF"), { timeout:12000 });
-  assert.equal(await oldTab.$eval("#rows", el => el.children.length), 0);
-  assert.equal(f.rows.get("presenter").maskMode.mode, "off");
-
-  const legacy = await browser.newPage();
-  await legacy.setCookie({ name:"fixture", value:"legacy", url:f.origin });
-  await legacy.goto(`${f.origin}/mask-mode`);
-  await legacy.waitForFunction(() => document.querySelector("#status")?.textContent.includes("unknown"));
-  assert.equal(await legacy.$eval("#load", el => el.disabled), true);
-  await legacy.setRequestInterception(true);
-  legacy.on("request", request => {
-    if (new URL(request.url()).pathname === "/api/mask-mode/state") f.controls.failRead = true;
-    void request.continue();
-  });
-  await legacy.reload();
-  await legacy.waitForFunction(() => document.querySelector("#veil")?.textContent.includes("could not be confirmed"));
-  assert.equal(await legacy.$eval("#veil", el => el.hidden), false, "failure must not uncover a ready view");
-  assert.ok(!(await legacy.content()).includes(CANARY), "server exceptions may not be relayed");
-  await legacy.close();
-  f.controls.failRead = false;
-  assert.ok(errors.length === 0, errors.join("\n"));
-  // A disabled installation must mount normal content without installing
-  // fetch interception, state polling or mask-specific browser listeners.
-  f.controls.enabled = false;
-  const disabledContext = await browser.createBrowserContext();
-  const disabledPage = await disabledContext.newPage();
-  await disabledPage.setCookie({ name:"fixture", value:"presenter", url:f.origin });
-  let stateRequests = 0;
-  disabledPage.on("request", request => {
-    if (new URL(request.url()).pathname === "/api/mask-mode/state") stateRequests++;
-  });
-  await disabledPage.evaluateOnNewDocument(() => { window.originalFixtureFetch = window.fetch; });
-  await disabledPage.goto(`${f.origin}/normal`);
-  await disabledPage.waitForFunction(canary => document.body.textContent.includes(canary), {}, CANARY);
-  assert.equal(await disabledPage.evaluate(() => window.fetch === window.originalFixtureFetch), true);
-  await new Promise(resolve => setTimeout(resolve, 5500));
-  assert.equal(stateRequests, 0, "disabled startup must not call or poll the Mask Mode state endpoint");
-
-  // Disable while ON, then re-enable. The same SID must never resume normal
-  // content or revive an old protected session.
-  const protectedRow = f.rows.get("presenter");
-  protectedRow.maskMode.mode = "on";
-  protectedRow.maskModeRevoked = true;
-  await disabledPage.goto(`${f.origin}/normal`);
-  await disabledPage.waitForFunction(() => document.body.textContent.includes("Protected session ended"));
-  assert.ok(!(await disabledPage.content()).includes(CANARY));
-  f.controls.enabled = true;
-  f.controls.epoch = "re-enabled-generation";
-  await disabledPage.goto(`${f.origin}/normal`);
-  assert.ok((await disabledPage.content()).includes("Protected session ended"));
-  assert.ok(!(await disabledPage.content()).includes(CANARY));
-  console.log("PASS authorized in-memory browser: strict ON/OFF/unknown coverage, disabled startup without fetch interception/state polling, disable/re-enable revocation, clipboard/cache isolation, permissions and no live effects.");
+  assert.equal(await page.$eval('[data-testid="worker-tooltip"]', el => el.title), "M***** L********");
+  assert.equal(await page.$eval('[data-testid="worker-name"]', el => el.getAttribute("href")), "/workers/worker-fixture");
+  assert.equal(await page.$eval('[data-testid="person-picker"]', el => el.value), "worker-fixture");
+  assert.equal(await page.$eval('[data-testid="dob-input"]', el => el.type), "date");
+  assert.equal(await page.$eval('[data-testid="dob-input"]', el => el.value), "1980-12-31");
+  assert.equal(await page.$eval('[data-testid="dob-input"]', el => {
+    el.min = "1981-01-01"; const invalid = el.validity.rangeUnderflow; el.min = ""; return invalid;
+  }), true, "native date constraints stay intact while masked");
+  await page.click('[data-testid="uncontrolled-name"]', { clickCount: 3 });
+  await page.type('[data-testid="uncontrolled-name"]', "Moira");
+  assert.equal(await page.$eval('[data-testid="person-picker"] option', el => el.textContent), "M***** L********");
+  assert.match(await text(page, '[data-testid="contact"]'), /D\*\*\* R\*\*\*\*\*\*/);
+  assert.match(await text(page, '[data-testid="dependent"]'), /C\*\*\*\* L\*\*\*\*\*\*\*\*/);
+  assert.match(await text(page, '[data-testid="ordinary"]'), /Fictional Employer Medical \$200.00 12\/01\/2026/);
+  for (const testid of ["note", "template-preview"]) assert.match(await text(page, `[data-testid="${testid}"]`), /Morgan Lancaster 123-45-6789/);
+  assert.equal(await page.evaluate(async () => (await (await fetch("/api/domain")).json()).family), "FictionalSurname");
+  assert.equal(await page.evaluate(async () => (await fetch("/files/canary.pdf")).text()), "FictionalSurname");
+  const socketData = await page.evaluate(() => new Promise((resolve, reject) => {
+    const ws = new WebSocket(location.origin.replace("http", "ws") + "/ws");
+    ws.onmessage = event => { resolve(event.data); ws.close(); };
+    ws.onerror = () => reject(new Error("Socket failed"));
+  }));
+  assert.equal(JSON.parse(socketData).family, "FictionalSurname");
+  await page.click('[data-testid="button-edit-name"]');
+  await page.waitForSelector("#given[data-screen-masked]");
+  assert.equal(await page.$eval("#given", el => el.value), "Morgan");
+  assert.equal(await page.$eval("#given", el => getComputedStyle(el).color), "rgba(0, 0, 0, 0)");
+  await page.focus("#given");
+  await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
+  await page.keyboard.type("Mavis");
+  await toggle(page); // OFF without losing unsaved state
+  assert.equal(await page.$eval('[data-testid="uncontrolled-name"]', el => el.value), "Moira");
+  await page.waitForFunction(() => document.querySelector("#given")?.value === "Mavis" && !document.querySelector("#given")?.hasAttribute("data-screen-masked"));
+  await toggle(page);
+  await page.waitForSelector("#given[data-screen-masked]");
+  assert.equal(await page.$eval('[data-testid="uncontrolled-name"]', el => el.value), "Moira");
+  await page.click('[data-testid="button-save-name"]');
+  await page.waitForSelector('[data-testid="button-edit-name"]');
+  assert.equal(saved.at(-1).nameComponents.given, "Mavis");
+  assert.equal(saved.at(-1).nameComponents.family, "Lancaster");
+  console.log("Real NameManagement save preserves canonical name");
+  assert.ok(!JSON.stringify(saved).includes("*"), "Never save a masked value");
+  await page.reload({ waitUntil: "networkidle0" });
+  await until(page, '[data-testid="worker-name"]', "M***** L********");
+  await page.goto(`${fixture.origin}/config/components`, { waitUntil: "networkidle0" });
+  await page.click('[data-testid="button-help-more-system:mask-mode"]');
+  await page.waitForSelector('[data-testid="text-help-details"]');
+  assert.match(await text(page, '[data-testid="text-help-details"]'), /API responses/);
+  await page.keyboard.press("Escape");
+  await page.goto(`${fixture.origin}/config/helps`, { waitUntil: "networkidle0" });
+  assert.match(await page.$eval("body", el => el.innerText), /System/);
+  assert.match(await page.$eval("body", el => el.innerText), /Built-in/);
+  assert.match(await page.$eval("body", el => el.innerText), /Local administrator procedure/);
+  await page.goto(`${fixture.origin}/config/components/near-miss`, { waitUntil: "networkidle0" });
+  assert.equal(await page.$('[data-testid="help-summary-system:mask-mode"]'), null);
+  fixture.controls.enabled = false;
+  // Real lifecycle resets mode to OFF. Simulate the same transaction result here.
+  fixture.rows.get("presenter").maskMode = { version: 1, mode: "off", revision: 99 };
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await until(page, '[data-testid="worker-name"]', "Morgan Lancaster");
+  assert.equal(await page.$('[data-testid="mask-mode-on-indicator"]'), null);
+  fixture.controls.enabled = true;
+  await page.reload({ waitUntil: "networkidle0" });
+  await until(page, '[data-testid="worker-name"]', "Morgan Lancaster");
+  fixture.controls.failComponent = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForFunction(() => document.body.innerText.includes("Mask Mode state unavailable"));
+  assert.ok(page.url().endsWith("/config/components/near-miss"));
+  assert.deepEqual(errors, []);
+  console.log("PASS screen masking, raw HTTP/WebSocket/downloads, actual name edit integrity, exclusions, ON/OFF, reload/tab sync, component transitions, error recovery, built-in/local help listing and dialog.");
+} catch (error) {
+  console.error(error.stack || error);
+  throw error;
 } finally {
   await browser?.close();
-  await f.close();
+  await fixture.close();
+  await Promise.race([vite.close(), new Promise(resolve => setTimeout(resolve, 5000))]);
 }

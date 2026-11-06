@@ -116,8 +116,8 @@ export async function setupAuth(app: Express): Promise<void> {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
-  // Must precede provider setup (which registers routes), all ordinary
-  // auth/user APIs, files and the application router.
+  // Preference controls follow session authentication, before provider routes.
+  // They no longer intercept ordinary APIs, files or application delivery.
   installMaskMode(app);
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));

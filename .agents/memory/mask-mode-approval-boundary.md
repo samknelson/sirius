@@ -1,16 +1,35 @@
 ---
-name: Mask Mode scope and approval boundary
-description: User requirements for recording mode and the distinction between an audit and implementation approval.
+name: Mask Mode screen-only approval boundary
+description: The approved screen-only scope supersedes the historical strict training-view contract.
 ---
 
-The user selected **strict live-data de-identification**, with **admin** as the only role permitted to toggle. This supersedes the earlier convenience policy that kept first names and last-four fragments. Neither those fragments nor initials qualify under Safe Harbor. Legacy AAT and unclassified identifiers remain withheld; CSS or client-only formatting is insufficient.
+The user explicitly approved **screen-only masking** in the normal Sirius
+application, superseding the earlier strict de-identification policy and
+refusal-based training view. Only the original active administrator may
+toggle the preference for their login. Normal effective-actor authorization
+must remain unchanged.
 
-**Why:** The user records training against live S2 data, required an audit-first approval boundary, and subsequently broadened the objective to HIPAA-informed protection. HHS explicitly rejects last-four SSNs and initials under Safe Harbor; a masking feature cannot certify the whole workflow.
+**Why:** The user chose lightweight deterministic first-character-plus-asterisks
+presentation and explicitly accepted real data in responses, browser memory,
+caches and storage. The older strict-view guarantees are historical, not
+current product requirements.
 
-**How to apply:** Do not silently replace live data with fictional people or re-enable convenience fragments. The strict approach deliberately refuses original/unknown surfaces rather than assuming their complex output is safe; expanding it requires a positive reviewed disclosure contract. Do not substitute development configuration for live evidence. Preserve public-link, prior-browser-content and sleeping-tab limitations, and never claim whole-workflow HIPAA compliance or an Expert Determination from UI or test results alone.
+**How to apply:** Keep masking at semantic structured personal displays,
+separate from canonical state. Do not restore API/socket refusals, generated
+identities, aliases, sample-view substitution or forced sign-outs as masking.
+Downloads, copied underlying values, public links and external sites are
+outside the protection claim. Do not claim HIPAA certification, Safe Harbor
+or Expert Determination.
 
-Optional feature availability and session protection are separate decisions. Disabling availability must revoke protected sessions, never silently turn them into normal live-data sessions. Logins predating an enable must authenticate afresh before they may enter protection.
+Notes, documents/files, photographs, message bodies, templates and their
+previews remain untouched even when personal information appears in them.
+Disabling the component ends screen masking, not login sessions, and requires
+a visible warning before the action.
 
-**Why:** A tab opened while the feature was unavailable has no presentation guard. Allowing the same old login to start masking would falsely imply its other active tabs are guarded; clearing protection on disable would expose live data during recording.
+**Why:** These exclusions and the change from forced session revocation were
+part of the user's explicit replacement scope, not compromises to reinstate
+strict protection later.
 
-**How to apply:** Preserve this boundary across configuration imports, generic variable edits, multi-process requests, stale session saves and disable/re-enable cycles, not only the Components screen.
+**How to apply:** Leave excluded content and original exports/clipboard
+behavior alone. Preserve legacy-session recovery, normal authorized actions
+and the user's explicit display-only limitations in guidance.

@@ -1,3 +1,10 @@
+# Historical implementation — superseded
+
+The strict training-view implementation and audit below are historical.
+The current approved contract is screen-only masking in the normal application.
+See `docs/privacy/screen-mask-mode.md`; do not treat the old refusal/egress
+architecture or its guarantees as current product behavior.
+
 # Strict Mask Mode: implementation and verification
 
 ## Decision and scope

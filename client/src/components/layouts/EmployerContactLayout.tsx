@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEmployerContactTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { usePersonalDisplay } from "@/privacy/MaskMode";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface EmployerContactDetail {
@@ -75,7 +76,8 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
   const contactName = employerContact?.contact
     ? `${employerContact.contact.given || ""} ${employerContact.contact.family || ""}`.trim() || employerContact.contact.displayName
     : "";
-  usePageTitle(contactName || undefined);
+  const personal = usePersonalDisplay();
+  usePageTitle(contactName ? personal(contactName) : undefined);
 
   // Error/Not found state
   if (error) {
@@ -133,7 +135,7 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
       {/* Entity Header */}
       <RecordTitleBar
         icon={<Users className="text-primary-foreground" size={16} />}
-        title={employer?.name ? `${employer.name} :: ${employerContact.contact.displayName}` : employerContact.contact.displayName}
+        title={employer?.name ? `${employer.name} :: ${personal(contactName)}` : personal(contactName)}
         titleTestId={`text-contact-name-${employerContact.id}`}
         backLink={{
           href: `/employers/${employerContact.employerId}`,

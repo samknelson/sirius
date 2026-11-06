@@ -149,5 +149,5 @@
 - [Isolated renderer cancellation](isolated-renderer-cancellation.md) — timeout must stop CPU work and await exit; native conversion and inherited worker CLI flags can defeat isolation assumptions.
 - [Browser callback compiler boundary](browser-callback-transpiler-boundary.md) — Puppeteer callbacks can capture compiler helpers under tsx that Vitest omits; verify both real runtime transforms.
 - [COBRA initial obligation](cobra-initial-obligation.md) — initial payment covers every month from coverage start through election month; later premiums are separate.
-- [Mask Mode approval boundary](mask-mode-approval-boundary.md) — strict de-identification supersedes convenience fragments; admin-only toggle; no HIPAA certification or prior-data/public-link control.
+- [Mask Mode approval boundary](mask-mode-approval-boundary.md) — approved screen-only masking supersedes strict refusals; admin toggle, unchanged canonical data and unstructured content; no compliance claim.
 - [Enrollment dependent-age scope](enrollment-dependent-age-boundary.md) — dependent's 26th birthday, add-only; no handicapped-child exception or monthly eligibility policy change.

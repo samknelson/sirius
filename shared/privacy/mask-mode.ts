@@ -1,4 +1,4 @@
-/** Presentation only. Never use these DTOs to update a source record. */
+/** Session display preference, not an authorization or disclosure boundary. */
 export const MASK_POLICY_VERSION = 1;
 export type MaskPolicy = {
   version: typeof MASK_POLICY_VERSION;
@@ -21,9 +21,6 @@ export function readMaskState(value: unknown): MaskState {
 export function preserveMaskState(incoming: unknown, existing: unknown): Record<string, unknown> {
   const { maskMode: _ignored, maskModeEpoch: _epoch, maskModeRevoked: _revoked, ...rest } = incoming as Record<string, unknown>;
   const prior = existing as Record<string, unknown>;
-  // Lifecycle fields can only be minted at login or by component revocation.
-  if (prior.maskModeEpoch !== undefined) rest.maskModeEpoch = prior.maskModeEpoch;
-  if (prior.maskModeRevoked !== undefined) rest.maskModeRevoked = prior.maskModeRevoked;
   const actor = (session: any) => session.masqueradeUserId ?? session.passport?.user?.dbUser?.id;
   const policy = readMaskState(prior.maskMode);
   // An effective-actor change is another presentation generation. Never let
@@ -35,38 +32,48 @@ export function preserveMaskState(incoming: unknown, existing: unknown): Record<
     ? { ...rest, maskMode: prior.maskMode } : rest;
 }
 
-// Strict policy deliberately does NOT retain first names or last-four fragments.
-export function maskName(_value: unknown): string { return "Name withheld"; }
-export function maskSsn(_value: unknown): string { return "Withheld"; }
-export function maskId(_value: unknown): string { return "Withheld"; }
+export type PersonalField = "name" | "email" | "phone" | "ssn" | "dob" | "address" | "identifier" | "initials";
+const EMPTY_LABEL = /^(?:N\/A|None|Unknown(?: worker)?|Unnamed(?: worker| contact)?|Not (?:provided|set|available)|No (?:name(?: set)?|email(?: set)?|phone|address|Sirius ID)|Loading(?:\.\.\.|…)?|—|-)$/i;
+const text = (value: unknown) => value == null ? "" : String(value);
+const eligible = (value: string) => value !== "" && !EMPTY_LABEL.test(value.trim());
 
-export interface TrainingPerson {
-  reference: string;
-  label: "Training person";
-  birthYear: string | null;
-  ageGroup: "90 or older" | null;
+/** Unicode code points, never UTF-16 halves. Separators are retained verbatim. */
+function firstThenStars(value: string, characters: RegExp): string {
+  let first = true;
+  return Array.from(value, c => {
+    if (!characters.test(c) && c !== "*") return c;
+    if (first) { first = false; return c; }
+    return "*";
+  }).join("");
 }
-
-/** A positive allowlist; no object spreads, original keys, IDs or names. */
-export function projectTrainingPerson(
-  source: { birthDate: string | null },
-  randomReference: string,
-  currentYear: number,
-): TrainingPerson {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(source.birthDate ?? "");
-  const year = match ? Number(match[1]) : 0;
-  const month = match ? Number(match[2]) : 0;
-  const day = match ? Number(match[3]) : 0;
-  const check = new Date(Date.UTC(year, month - 1, day));
-  const valid = year >= 1900 && year <= currentYear &&
-    check.getUTCFullYear() === year && check.getUTCMonth() === month - 1 &&
-    check.getUTCDate() === day;
-  // Conservative: suppress the year for everyone who could be 90 this year.
-  const older = valid && currentYear - year >= 90;
-  return {
-    reference: randomReference,
-    label: "Training person",
-    birthYear: valid && !older ? String(year) : null,
-    ageGroup: older ? "90 or older" : null,
-  };
+export function maskName(value: unknown): string {
+  const s = text(value);
+  if (!eligible(s)) return s;
+  return s.split(/(\s+)/u).map(part => firstThenStars(part, /[\p{L}\p{N}\p{M}]/u)).join("");
+}
+export function maskId(value: unknown): string {
+  const s = text(value);
+  return eligible(s) ? firstThenStars(s, /[\p{L}\p{N}\p{M}]/u) : s;
+}
+export function maskSsn(value: unknown): string {
+  const s = text(value);
+  // Invalid numeric fields still mask letters; never fall back to the raw input.
+  return eligible(s) ? firstThenStars(s, /[\p{L}\p{N}\p{M}]/u) : s;
+}
+export function maskEmail(value: unknown): string {
+  const s = text(value);
+  if (!eligible(s)) return s;
+  const at = s.lastIndexOf("@");
+  return at > 0 ? maskId(s.slice(0, at)) + s.slice(at) : maskName(s);
+}
+export function maskPersonal(value: unknown, field: PersonalField): string {
+  if (field === "name") return maskName(value);
+  if (field === "email") return maskEmail(value);
+  if (field === "dob") {
+    const s = text(value);
+    if (!eligible(s)) return s;
+    return /\p{N}/u.test(s) ? firstThenStars(s, /\p{N}/u) : maskId(s);
+  }
+  if (field === "initials") return eligible(text(value)) ? "*" : text(value);
+  return maskId(value);
 }
