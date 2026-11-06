@@ -19,7 +19,7 @@ import type {
   NormalizedPaymentStatus,
 } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
-import { PaymentInitiationRejected } from "../types";
+import { PaymentCancellationError, PaymentInitiationRejected } from "../types";
 
 /** Build a Stripe client from the per-config resolved secret. */
 function client(ctx: PaymentGatewayContext): Stripe {
@@ -82,8 +82,27 @@ function dashboardBaseUrl(ctx: PaymentGatewayContext): string {
     : "https://dashboard.stripe.com";
 }
 
+function assertAdminAssistedCredentials(ctx: PaymentGatewayContext): void {
+  const publishable = configData(ctx).publishableKey;
+  const matching = typeof publishable === "string" &&
+    ((ctx.apiKey.startsWith("sk_test_") && publishable.startsWith("pk_test_")) ||
+     (ctx.apiKey.startsWith("sk_live_") && publishable.startsWith("pk_live_")));
+  if (!matching) throw new PaymentInitiationRejected("credentials_not_ready",
+    "Administrator Stripe payments require matching test-mode or live-mode secret and publishable keys.");
+}
+
 function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void {
-  assertOnlinePaymentTestCredentials(ctx);
+  // Only the server-authorized on-behalf path sets this purpose. Ordinary
+  // payer and historical admin-test checkout retain their test-only contract.
+  if (args.metadata?.paymentPurpose === "admin_assisted") {
+    assertAdminAssistedCredentials(ctx);
+    if (args.saveMethod || args.savedMethodRef || args.customerRef) {
+      throw new PaymentInitiationRejected("saved_method_not_allowed",
+        "Administrator checkout requires newly entered payment details for this payment only.");
+    }
+  } else {
+    assertOnlinePaymentTestCredentials(ctx);
+  }
   assertPaymentAmount(args.amountMinor);
   assertAllowedPaymentTypes(ctx, args.paymentTypes);
   if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
@@ -312,8 +331,24 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     return normalizeStripeWebhookEvent(event);
   },
 
-  async cancelPayment(ctx, providerRef): Promise<NormalizedPayment> {
-    assertOnlinePaymentTestCredentials(ctx);
+  async cancelPayment(ctx, providerRef, authorization): Promise<NormalizedPayment> {
+    if (authorization) {
+      assertAdminAssistedCredentials(ctx);
+      // A caller's live-capability flag is not enough. Verify this exact
+      // provider payment was created by the authorized on-behalf contract.
+      const intent = await client(ctx).paymentIntents.retrieve(providerRef);
+      if (!authorization.adminAssistedAttemptId ||
+          intent.id !== providerRef ||
+          intent.metadata?.paymentPurpose !== "admin_assisted" ||
+          intent.metadata?.attemptId !== authorization.adminAssistedAttemptId ||
+          intent.livemode !== ctx.apiKey.startsWith("sk_live_") ||
+          !["requires_payment_method", "requires_confirmation", "requires_action"].includes(intent.status)) {
+        throw new PaymentCancellationError("payment_not_cancelable",
+          "The provider payment does not match this unconfirmed administrator payment.");
+      }
+    } else {
+      assertOnlinePaymentTestCredentials(ctx);
+    }
     return normalizeStripePaymentIntent(
       await client(ctx).paymentIntents.cancel(providerRef),
     );

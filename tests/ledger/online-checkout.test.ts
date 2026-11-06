@@ -3,6 +3,7 @@ import http from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateCheckoutSelection } from "../../shared/ledger/checkout-selection";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "../../shared/ledger/checkout-save-consent";
+import { ADMIN_PAYMENT_CONFIRMATION } from "../../shared/ledger/admin-payment-confirmation";
 import { PaymentInitiationRejected } from "../../server/plugins/ledger/payment-gateway/types";
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   createPaymentFromRequestBody: vi.fn(),
   AuthorityError: class extends Error {},
   resolve: vi.fn(),
+  stripeRetrieve: vi.fn(),
+  stripeCancel: vi.fn(),
   storage: {
     variables: { getByName: vi.fn() },
     workers: { getWorker: vi.fn(), getWorkerDisplayName: vi.fn() },
@@ -33,10 +36,15 @@ const mocks = vi.hoisted(() => ({
     },
   },
 }));
+vi.mock("stripe", () => ({ default: class {
+  paymentIntents = { retrieve: mocks.stripeRetrieve, cancel: mocks.stripeCancel };
+} }));
+vi.mock("../../server/plugins/ledger/payment-gateway/registry", () => ({ registerPaymentGatewayPlugin: vi.fn() }));
 
 vi.mock("../../server/storage", () => ({ storage: mocks.storage }));
 vi.mock("../../server/modules/ledger/online-payment-authority", () => ({
   assertAdminTestPaymentAuthority: mocks.adminAuthority,
+  assertAdminPaymentAuthority: mocks.adminAuthority,
   assertOnlinePaymentAuthority: mocks.authority,
   OnlinePaymentAuthorityError: mocks.AuthorityError,
 }));
@@ -62,6 +70,7 @@ vi.mock("../../server/flood/service", () => ({ enforceFloodLimit: vi.fn(), Flood
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: vi.fn().mockResolvedValue({ dbUser: { id: "user-1" } }) }));
 
 const { registerLedgerPaymentAttemptRoutes } = await import("../../server/modules/ledger/payment-attempts");
+const { stripePaymentGatewayPlugin } = await import("../../server/plugins/ledger/payment-gateway/plugins/stripe");
 
 let server: http.Server;
 let base: string;
@@ -108,6 +117,7 @@ beforeEach(() => {
   mocks.authority.mockResolvedValue("user-1");
   mocks.adminAuthority.mockResolvedValue("admin-1");
   gateway.plugin.isTestMode = vi.fn(() => true);
+  gateway.plugin.cancelPayment = vi.fn();
   mocks.storage.ledger.ea.get.mockResolvedValue(ea);
   mocks.storage.ledger.accounts.get.mockResolvedValue({
     id: "acct-1", name: "Health", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
@@ -230,6 +240,229 @@ describe("online checkout HTTP contract", () => {
     fetch(`${adminTestUrl(entity)}/sessions`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
+
+  const onBehalfUrl = (scope = "worker/worker-1/ea-1") => `${base}/api/ledger/admin-checkout/${scope}`;
+  const onBehalfBody = (overrides: Record<string, unknown> = {}) => ({
+    amount: "100.00", idempotencyKey: "admin-assisted-1", paymentMethodType: "card",
+    selection: { mode: "full", invoiceNumbers: [] },
+    statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }],
+    creditTransfers: [], saveMethod: false,
+    adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, accepted: true }, ...overrides,
+  });
+  const onBehalfPost = (body = onBehalfBody(), scope?: string) => fetch(`${onBehalfUrl(scope)}/sessions`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const retainCreatedAttempt = () => {
+    mocks.storage.ledger.paymentAttempts.create.mockImplementation(async input => {
+      const row = { ...input, id: "on-behalf-1", __created: true };
+      liveAttempts.set(row.id, row);
+      return row;
+    });
+  };
+
+  it.each([true, false, undefined])("allows administrator worker checkout independently of a gateway test-mode signal %s", async signal => {
+    gateway.plugin.isTestMode = signal === undefined ? undefined : vi.fn(() => signal);
+    retainCreatedAttempt();
+    const response = await fetch(onBehalfUrl());
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toMatchObject({
+      entityType: "worker", entityId: "worker-1", isAdminAssisted: true,
+      adminConfirmation: ADMIN_PAYMENT_CONFIRMATION,
+    });
+    const created = await onBehalfPost();
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ id: "on-behalf-1", isAdminAssisted: true, isAdminTest: false });
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(expect.objectContaining({
+      workerId: "worker-1", entityType: "worker", entityId: "worker-1",
+      ledgerEaId: "ea-1", createdByUserId: "admin-1", consent: null, saveMethod: false,
+      metadata: expect.objectContaining({
+        source: "admin_assisted_checkout", paymentMethodRef: null,
+        adminAssisted: { actorUserId: "admin-1", gatewayFingerprint: expect.any(String), confirmation: {
+          ...ADMIN_PAYMENT_CONFIRMATION, accepted: true, acceptedAt: expect.any(String),
+        } },
+      }),
+    }));
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      savedMethodRef: undefined, customerRef: undefined, saveMethod: false,
+      description: "Administrator payment on behalf of worker",
+      metadata: expect.objectContaining({ paymentPurpose: "admin_assisted" }),
+    }));
+    expect(mocks.authority).not.toHaveBeenCalled();
+    expect(gateway.plugin.createCustomer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { adminConfirmation: undefined },
+    { adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, accepted: false } },
+    { adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, version: "stale", accepted: true } },
+    { paymentMethodId: "saved-worker-method", paymentMethodType: undefined },
+    { saveMethod: true, saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true } },
+    { consent: { version: "v1", text: "Pay now", accepted: true } },
+    { metadata: { paymentPurpose: "admin_assisted" } },
+  ])("rejects missing authorization, saving and forged payer consent before provider entry: %j", async overrides => {
+    const result = await onBehalfPost(onBehalfBody(overrides));
+    expect(result.status).toBe(400);
+    expect(result.headers.get("content-type")).toContain("application/json");
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-administrator and does not broaden employer or ordinary payer authority", async () => {
+    mocks.adminAuthority.mockRejectedValue(new mocks.AuthorityError("Administrator access is required"));
+    expect((await fetch(onBehalfUrl())).status).toBe(403);
+    expect((await onBehalfPost()).status).toBe(403);
+    expect((await onBehalfPost(onBehalfBody(), "employer/employer-1/ea-1")).status).toBe(400);
+    mocks.authority.mockRejectedValue(new mocks.AuthorityError("Staff cannot perform online payment actions"));
+    expect((await checkout(valid())).status).toBe(403);
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it("checks account owner and enabled checkout before administrator provider entry", async () => {
+    mocks.storage.ledger.ea.get.mockResolvedValueOnce({ ...ea, entityId: "another-worker" });
+    expect((await fetch(onBehalfUrl())).status).toBe(409);
+    mocks.storage.ledger.accounts.get.mockResolvedValue({
+      id: "acct-1", currencyCode: "USD", isActive: false, gatewayConfigId: "gw-1",
+    });
+    expect((await onBehalfPost()).status).toBe(409);
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it("returns JSON rather than the SPA HTML for a malformed administrator checkout path", async () => {
+    const response = await fetch(`${base}/api/ledger/admin-checkout/worker/worker-1`);
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toMatchObject({ message: expect.stringContaining("Reopen Make payment") });
+    expect(mocks.adminAuthority).not.toHaveBeenCalled();
+  });
+
+  it("keeps failures structured and safe at preview, creation and status", async () => {
+    const sensitive = "private failure body must not reach the browser";
+    mocks.adminAuthority.mockRejectedValueOnce(new Error(sensitive));
+    const preview = await fetch(onBehalfUrl());
+    expect(preview.status).toBe(500);
+    expect(JSON.stringify(await preview.json())).not.toContain(sensitive);
+    mocks.storage.ledger.paymentAttempts.create.mockRejectedValueOnce(new Error(sensitive));
+    const create = await onBehalfPost();
+    expect(create.status).toBe(500);
+    expect(await create.json()).toMatchObject({ message: expect.stringContaining("unfinished payment status") });
+    mocks.storage.ledger.paymentAttempts.get.mockRejectedValueOnce(new Error(sensitive));
+    const status = await fetch(`${base}/api/ledger/admin-checkout/sessions/on-behalf-1`);
+    expect(status.status).toBe(502);
+    expect(await status.json()).toMatchObject({ message: expect.stringContaining("Do not start another payment") });
+  });
+
+  it("keeps administrator receipts creator-only and separate from payer and test receipts", async () => {
+    retainCreatedAttempt();
+    expect((await onBehalfPost()).status).toBe(201);
+    gateway.plugin.retrievePayment.mockResolvedValue({ providerRef: "pi-1", status: "created", amountMinor: 10000, currency: "USD" });
+    const path = `${base}/api/ledger/admin-checkout/sessions/on-behalf-1`;
+    expect((await fetch(path)).status).toBe(200);
+    expect((await fetch(`${base}/api/ledger/checkout/sessions/on-behalf-1`)).status).toBe(403);
+    expect((await fetch(`${base}/api/ledger/admin-test-checkout/sessions/on-behalf-1`)).status).toBe(403);
+    mocks.adminAuthority.mockResolvedValue("other-admin");
+    expect((await fetch(path)).status).toBe(403);
+    expect((await fetch(`${path}/cancel`, { method: "POST" })).status).toBe(403);
+  });
+
+  it("confirms provider cancellation before releasing an administrator payment", async () => {
+    retainCreatedAttempt();
+    expect((await onBehalfPost()).status).toBe(201);
+    const attempt = liveAttempts.get("on-behalf-1");
+    attempt.status = "created";
+    gateway.plugin.retrievePayment.mockResolvedValue({ providerRef: "pi-1", status: "created", amountMinor: 10000, currency: "USD" });
+    gateway.plugin.cancelPayment.mockResolvedValue({ providerRef: "pi-1", status: "canceled", amountMinor: 10000, currency: "USD" });
+    mocks.processPaymentEvidence.mockImplementation(async (_id, _gateway, evidence) => {
+      if (evidence.type === "payment.canceled") attempt.status = "canceled";
+    });
+    const response = await fetch(`${base}/api/ledger/admin-checkout/sessions/on-behalf-1/cancel`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: "on-behalf-1", status: "canceled", isAdminAssisted: true });
+    expect(gateway.plugin.cancelPayment).toHaveBeenCalledWith(expect.anything(), "pi-1", { adminAssistedAttemptId: "on-behalf-1" });
+  });
+
+  it("does not cancel an administrator payment after provider confirmation has begun", async () => {
+    retainCreatedAttempt();
+    expect((await onBehalfPost()).status).toBe(201);
+    liveAttempts.get("on-behalf-1").status = "created";
+    gateway.plugin.retrievePayment.mockResolvedValue({ providerRef: "pi-1", status: "processing", amountMinor: 10000, currency: "USD" });
+    const response = await fetch(`${base}/api/ledger/admin-checkout/sessions/on-behalf-1/cancel`, { method: "POST" });
+    expect(response.status).toBe(409);
+    expect(gateway.plugin.cancelPayment).not.toHaveBeenCalled();
+  });
+  it("cancels an unconfirmed live administrator payment through the actual Stripe adapter and releases its reservation", async () => {
+    const liveConfig = { ...gateway.config, data: { publishableKey: "pk_live_fixture", paymentTypes: ["card"] } };
+    mocks.resolve.mockResolvedValue({ ...gateway, config: liveConfig,
+      context: { ...gateway.context, apiKey: "sk_live_fixture", config: liveConfig },
+      plugin: { ...gateway.plugin, isTestMode: () => false, cancelPayment: stripePaymentGatewayPlugin.cancelPayment } });
+    retainCreatedAttempt();
+    expect((await onBehalfPost()).status).toBe(201);
+    const attempt = liveAttempts.get("on-behalf-1");
+    attempt.status = "created";
+    const intent = { id: "pi-1", livemode: true, status: "requires_payment_method",
+      amount: 10000, currency: "usd", metadata: { attemptId: attempt.id, paymentPurpose: "admin_assisted" } };
+    mocks.stripeRetrieve.mockResolvedValue(intent);
+    mocks.stripeCancel.mockResolvedValue({ ...intent, status: "canceled" });
+    gateway.plugin.retrievePayment.mockResolvedValue({ providerRef: "pi-1", status: "created", amountMinor: 10000, currency: "USD" });
+    mocks.processPaymentEvidence.mockImplementation(async (_id, _gateway, evidence) => {
+      if (evidence.type === "payment.canceled") attempt.status = "canceled";
+    });
+    mocks.storage.ledger.paymentAttempts.getReservations.mockImplementation(async () =>
+      [...liveAttempts.values()].filter(row => ["created", "requires_action", "processing"].includes(row.status)));
+    const before = await (await fetch(onBehalfUrl())).json();
+    expect(before.quote.available).toBe("0.00");
+    const response = await fetch(`${base}/api/ledger/admin-checkout/sessions/on-behalf-1/cancel`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "canceled" });
+    expect(mocks.stripeCancel).toHaveBeenCalledWith("pi-1");
+    const after = await (await fetch(onBehalfUrl())).json();
+    expect(after.quote).toMatchObject({ pendingPayments: "0.00", available: "100.00" });
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists only the acting administrator's on-behalf unfinished payments on the new checkout", async () => {
+    mocks.storage.ledger.paymentAttempts.getReservations.mockResolvedValue([
+      { id: "owned-admin", createdByUserId: "admin-1", amount: "1.00", currency: "USD", status: "created", metadata: { source: "admin_assisted_checkout" } },
+      { id: "owned-old-test", createdByUserId: "admin-1", amount: "1.00", currency: "USD", status: "created", metadata: { source: "admin_test_checkout" } },
+      { id: "other-admin", createdByUserId: "admin-2", amount: "1.00", currency: "USD", status: "created", metadata: { source: "admin_assisted_checkout" } },
+    ]);
+    const response = await fetch(onBehalfUrl());
+    expect(response.status).toBe(200);
+    expect((await response.json()).pendingCheckouts.map((a: { id: string }) => a.id)).toEqual(["owned-admin"]);
+  });
+
+  it("replays the same administrator payment without reserving or creating twice", async () => {
+    retainCreatedAttempt();
+    expect((await onBehalfPost()).status).toBe(201);
+    mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockResolvedValue(liveAttempts.get("on-behalf-1"));
+    gateway.plugin.retrievePayment.mockResolvedValue({ providerRef: "pi-1", status: "created", clientSecret: "cs-1" });
+    expect((await onBehalfPost()).status).toBe(200);
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledTimes(1);
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledTimes(1);
+    mocks.adminAuthority.mockResolvedValue("other-admin");
+    expect((await onBehalfPost()).status).toBe(409);
+  });
+  it("refuses retry and status retrieval with changed gateway credentials instead of creating in another mode or account", async () => {
+    retainCreatedAttempt();
+    expect((await onBehalfPost()).status).toBe(201);
+    mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockResolvedValue(liveAttempts.get("on-behalf-1"));
+    mocks.resolve.mockResolvedValue({ ...gateway, context: { ...gateway.context, apiKey: "changed-fixture-credentials" } });
+    expect((await onBehalfPost()).status).toBe(500);
+    expect((await fetch(`${base}/api/ledger/admin-checkout/sessions/on-behalf-1`)).status).toBe(502);
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledTimes(1);
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledTimes(1);
+    expect(gateway.plugin.retrievePayment).not.toHaveBeenCalled();
+  });
+  it("refuses a gateway credential change between preflight and the locked payment insert", async () => {
+    mocks.resolve.mockResolvedValueOnce(gateway).mockResolvedValue({
+      ...gateway, context: { ...gateway.context, apiKey: "changed-fixture-credentials" },
+    });
+    const response = await onBehalfPost();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ message: expect.stringContaining("credentials changed") });
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
 
   it.each(["worker", "employer"])("creates a distinct admin test attempt for a %s ledger owner", async entityType => {
     const entityId = `${entityType}-1`;

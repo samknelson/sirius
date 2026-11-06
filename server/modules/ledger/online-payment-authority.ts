@@ -10,13 +10,13 @@ export class OnlinePaymentAuthorityError extends Error {
 }
 
 /**
- * Admin test payments are a separate authority path. They must be started by
+ * Administrator payments are a separate authority path. They must be started by
  * the authenticated administrator themselves, never through a masqueraded
  * user's effective identity.
  */
-export async function assertAdminTestPaymentAuthority(req: Request): Promise<string> {
+export async function assertAdminPaymentAuthority(req: Request): Promise<string> {
   if ((req as any).session?.masqueradeUserId) {
-    throw new OnlinePaymentAuthorityError("Stop masquerading before starting an admin test payment");
+    throw new OnlinePaymentAuthorityError("Stop masquerading before making an administrator payment");
   }
   const context = await buildContext(req);
   if (!context.user) throw new OnlinePaymentAuthorityError("Authentication required");
@@ -24,6 +24,9 @@ export async function assertAdminTestPaymentAuthority(req: Request): Promise<str
   if (!admin.granted) throw new OnlinePaymentAuthorityError("Administrator access is required");
   return context.user.id;
 }
+
+// Historical test receipts retain their original authority and test-mode gate.
+export const assertAdminTestPaymentAuthority = assertAdminPaymentAuthority;
 
 /**
  * Authorize a checkout or saved-method operation without relying on the

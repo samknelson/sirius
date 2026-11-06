@@ -10,6 +10,8 @@ import { hasPaymentGatewayPayComponent, resolvePaymentGatewayPayComponent } from
 import { calculateCheckoutSelection, type CheckoutQuote, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 import { useAuth } from "@/contexts/AuthContext";
+import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
+import { getCheckoutErrorMessage } from "@/lib/checkout-errors";
 
 type Statement = { invoiceNumber: string; month: number; year: number; invoiceBalance: string };
 type Readiness = {
@@ -35,6 +37,9 @@ export default function SharedCheckoutPage() {
   const { eaId, entityType, entityId } = useParams<{ eaId: string; entityType?: "worker" | "employer"; entityId?: string }>();
   const [location, navigate] = useLocation();
   const isAdminTest = location.startsWith("/admin-test-pay/");
+  const isAdminAssisted = location.startsWith("/admin-pay/");
+  const isAdminCheckout = isAdminTest || isAdminAssisted;
+  const receiptBase = isAdminTest ? "/admin-test-pay/receipt" : isAdminAssisted ? "/admin-pay/receipt" : "/pay/receipt";
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isAdmin = hasPermission("admin");
@@ -60,23 +65,25 @@ export default function SharedCheckoutPage() {
   const ea = useQuery<{ entityType: string; entityId: string }>({
     queryKey: ["checkout-ea", eaId],
     queryFn: () => apiRequest("GET", `/api/ledger/ea/${encodeURIComponent(eaId)}`),
-    enabled: !isAdminTest,
+    enabled: !isAdminCheckout,
   });
-  const scope = isAdminTest
-    ? entityType && entityId ? `${entityType}/${entityId}` : null
+  const scope = isAdminCheckout
+    ? (isAdminAssisted || entityType) && entityId ? `${isAdminAssisted ? "worker" : entityType}/${entityId}` : null
     : ea.data?.entityType === "worker" || ea.data?.entityType === "employer" ? `${ea.data.entityType}/${ea.data.entityId}` : null;
-  const checkoutPath = isAdminTest
+  const checkoutPath = isAdminAssisted
+    ? `/api/ledger/admin-checkout/worker/${encodeURIComponent(entityId ?? "")}/${encodeURIComponent(eaId)}`
+    : isAdminTest
     ? `/api/ledger/admin-test-checkout/${encodeURIComponent(entityType ?? "")}/${encodeURIComponent(entityId ?? "")}/${encodeURIComponent(eaId)}`
     : `/api/ledger/checkout/${scope}/${encodeURIComponent(eaId)}`;
-  const checkout = useQuery<Checkout & { isAdminTest?: boolean; testMode?: boolean }>({
-    queryKey: ["checkout", isAdminTest ? "admin-test" : scope, eaId],
+  const checkout = useQuery<Checkout & { isAdminTest?: boolean; testMode?: boolean; isAdminAssisted?: boolean; adminConfirmation?: typeof ADMIN_PAYMENT_CONFIRMATION }>({
+    queryKey: ["checkout", isAdminAssisted ? "admin-assisted" : isAdminTest ? "admin-test" : scope, eaId, ...(isAdminCheckout ? [scope] : [])],
     queryFn: () => apiRequest("GET", checkoutPath),
     enabled: !!scope && !!eaId, refetchOnMount: "always",
   });
   const methods = useQuery<Method[]>({
     queryKey: ["checkout-methods", scope],
     queryFn: () => apiRequest("GET", `/api/ledger/payment-methods/${scope}`),
-    enabled: !isAdminTest && !!scope, retry: false,
+    enabled: !isAdminCheckout && !!scope, retry: false,
   });
   const data = checkout.data;
   const currency = data?.account.currency ?? "USD";
@@ -97,10 +104,12 @@ export default function SharedCheckoutPage() {
   const methodDescription = method
     ? chosenMethod?.providerDetails?.card ? "saved card" : "saved bank account"
     : selectedNewType === "card" ? "new credit/debit card" : "new US bank transfer";
-  const authReady = isAdminTest ? data?.isAdminTest === true && data.testMode === true
+  const authReady = isAdminAssisted
+    ? data?.isAdminAssisted === true && data.adminConfirmation?.version === ADMIN_PAYMENT_CONFIRMATION.version && data.adminConfirmation?.text === ADMIN_PAYMENT_CONFIRMATION.text
+    : isAdminTest ? data?.isAdminTest === true && data.testMode === true
     : data?.readiness ? data.readiness.paymentAuthorization === "ready" : !!data?.authorization;
   const canManageMethods = data?.readiness?.methodPermission === "allowed" && data.reusableMethodsSupported;
-  const canSaveMethod = !!data && !method && !!selectedNewType && data.paymentTypes.includes(selectedNewType) &&
+  const canSaveMethod = !isAdminCheckout && !!data && !method && !!selectedNewType && data.paymentTypes.includes(selectedNewType) &&
     data.readiness?.saveMethod === "ready" && canManageMethods &&
     ["card", "us_bank_account"].includes(selectedNewType);
   const managementUrl = data?.entityType === "worker" ? `/workers/${data.entityId}/ledger/payment-methods` : `/employers/${data?.entityId}/ledger/payment_methods`;
@@ -154,7 +163,7 @@ export default function SharedCheckoutPage() {
   const selectionReady = !!breakdown && !breakdown.issues.length && (choice === "full" || statementIds.length > 0);
   const shownBreakdown = session && lockedQuote ? lockedQuote : breakdown;
   const canReview = selectionReady && authReady && !!data?.paymentTypes.length &&
-    (isAdminTest ? !!Pay && !method && !!selectedNewType && data.paymentTypes.includes(selectedNewType)
+    (isAdminCheckout ? !!Pay && !method && !!selectedNewType && data.paymentTypes.includes(selectedNewType)
       : method ? !!chosenMethod : !!Pay && !!selectedNewType && data.paymentTypes.includes(selectedNewType));
   const submit = async () => {
     if (!data || !scope || !breakdown || !canReview || !accepted ||
@@ -162,27 +171,29 @@ export default function SharedCheckoutPage() {
     submitting.current = true; setBusy(true); setError("");
     const current = generation.current;
     try {
-      const created: Session = await apiRequest("POST", `${isAdminTest ? checkoutPath : `/api/ledger/checkout/${scope}/${encodeURIComponent(eaId)}`}/sessions`, {
+      const created: Session = await apiRequest("POST", `${checkoutPath}/sessions`, {
         selection: { mode: choice, invoiceNumbers: choice === "full" ? [] : statementIds },
         amount: breakdown.amount, statementSelection: breakdown.statementSelection,
         creditTransfers: breakdown.creditTransfers,
          paymentMethodId: method || undefined, paymentMethodType: method ? undefined : selectedNewType,
-         saveMethod: !isAdminTest && !!(canSaveMethod && saveMethodAccepted),
-         ...(!isAdminTest && canSaveMethod && saveMethodAccepted
+          saveMethod: !isAdminCheckout && !!(canSaveMethod && saveMethodAccepted),
+          ...(!isAdminCheckout && canSaveMethod && saveMethodAccepted
            ? { saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true } }
            : {}),
-         ...(isAdminTest
+          ...(isAdminAssisted
+            ? { adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, accepted: true } }
+            : isAdminTest
            ? { adminTestConfirmation: true, purpose: purpose.trim() }
            : { consent: { ...data.authorization, accepted: true } }),
          idempotencyKey: crypto.randomUUID(),
       });
-      const receiptPath = `${isAdminTest ? "/admin-test-pay/receipt" : "/pay/receipt"}/${encodeURIComponent(created.id)}`;
+      const receiptPath = `${receiptBase}/${encodeURIComponent(created.id)}`;
       if (current !== generation.current || !["created", "requires_action"].includes(created.status)) navigate(receiptPath);
       else if (created.clientSecret && Pay) { setLockedQuote(breakdown); setSession(created); }
        else { setLockedQuote(breakdown); setSession(created); setError("Secure payment entry is unavailable. Check the payment status below; if it is still awaiting confirmation, contact support with the confirmation number. Do not start another payment until its status is known."); }
     } catch (cause) {
       if (current === generation.current) {
-        setError(getApiErrorMessage(cause, "Could not start payment. Check your unfinished payment status before trying again."));
+        setError(isAdminAssisted ? getCheckoutErrorMessage(cause, "session") : getApiErrorMessage(cause, "Could not start payment. Check your unfinished payment status before trying again."));
         setReview(false);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["checkout"] }),
@@ -193,16 +204,17 @@ export default function SharedCheckoutPage() {
     }
     finally { submitting.current = false; setBusy(false); }
   };
-  if ((!isAdminTest && ea.isLoading) || checkout.isLoading) return <main className="mx-auto w-full max-w-xl p-4" role="status">Loading checkout…</main>;
-  if ((!isAdminTest && ea.isError) || checkout.isError || !data) return <main className="mx-auto w-full max-w-xl p-4"><Alert variant="destructive"><AlertDescription>{getApiErrorMessage(ea.error || checkout.error, "Online payment is unavailable for this account.")}</AlertDescription></Alert><Button variant="outline" className="mt-4" onClick={() => { if (!isAdminTest) void ea.refetch(); void checkout.refetch(); }}>Retry</Button></main>;
+  if ((!isAdminCheckout && ea.isLoading) || checkout.isLoading) return <main className="mx-auto w-full max-w-xl p-4" role="status">Loading checkout…</main>;
+  if ((!isAdminCheckout && ea.isError) || checkout.isError || !data) return <main className="mx-auto w-full max-w-xl p-4"><Alert variant="destructive"><AlertDescription>{isAdminAssisted ? getCheckoutErrorMessage(checkout.error, "preview") : getApiErrorMessage(ea.error || checkout.error, "Online payment is unavailable for this account.")}</AlertDescription></Alert><Button variant="outline" className="mt-4" onClick={() => { if (!isAdminCheckout) void ea.refetch(); void checkout.refetch(); }}>Retry</Button></main>;
   return <main className="mx-auto w-full max-w-xl space-y-4 p-4 sm:p-6" aria-label="Checkout">
-    <header><h1 className="text-2xl font-semibold">{isAdminTest ? "Admin test payment" : "Make a payment"}</h1><p className="mt-1 break-words text-muted-foreground">{data.account.name}</p>
-      {isAdminTest && <p className="mt-1 text-sm text-muted-foreground">{data.entityType === "worker" ? "Worker" : "Employer"} {data.entityId}</p>}
+    <header><h1 className="text-2xl font-semibold">{isAdminAssisted ? "Make a payment on behalf of worker" : isAdminTest ? "Admin test payment" : "Make a payment"}</h1><p className="mt-1 break-words text-muted-foreground">{data.account.name}</p>
+      {isAdminCheckout && <p className="mt-1 text-sm text-muted-foreground">{data.entityType === "worker" ? "Worker" : "Employer"} {data.entityId}</p>}
     </header>
+    {isAdminAssisted && <Alert><AlertDescription><strong>This can charge real funds.</strong> You are making a payment on this worker's behalf through the account's configured gateway. A confirmed payment applies to this worker's ledger and the allocation shown below. Your administrator authorization is recorded separately; this is not the worker's own consent.</AlertDescription></Alert>}
     {isAdminTest && <Alert><AlertDescription><strong>Test mode only.</strong> A successful test payment will post to this selected account's ledger and apply to the displayed balance and statement selection. It does not represent real funds or the worker's or employer's payment consent.</AlertDescription></Alert>}
     <Card><CardContent className="space-y-1 pt-6 text-sm"><p>Posted balance: {money(data.quote.postedBalance, currency)}</p><p>Pending payments: {money(data.quote.pendingPayments, currency)}</p><p className="font-medium">Available to pay: {money(data.quote.available, currency)}</p></CardContent></Card>
     {!!data.pendingCheckouts?.length && <Card><CardHeader><CardTitle className="text-lg">{isAdminTest ? "Your unfinished test payments" : "Your unfinished payments"}</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">
-      {data.pendingCheckouts.map(attempt => <p key={attempt.id}>{money(attempt.amount, attempt.currency)} · {attempt.status === "created" ? "Awaiting payment details" : attempt.status === "requires_action" ? "Awaiting confirmation" : attempt.status === "processing" ? "Processing funds" : "Awaiting ledger posting"} · <Link href={`${isAdminTest ? "/admin-test-pay/receipt" : "/pay/receipt"}/${encodeURIComponent(attempt.id)}`} className="underline">Check status</Link></p>)}
+      {data.pendingCheckouts.map(attempt => <p key={attempt.id}>{money(attempt.amount, attempt.currency)} · {attempt.status === "created" ? "Awaiting payment details" : attempt.status === "requires_action" ? "Awaiting confirmation" : attempt.status === "processing" ? "Processing funds" : "Awaiting ledger posting"} · <Link href={`${receiptBase}/${encodeURIComponent(attempt.id)}`} className="underline">Check status</Link></p>)}
     </CardContent></Card>}
     {Number(data.quote.available) <= 0 ? <Alert><AlertDescription>No payment is currently available. Pending payments or account credits may be covering this balance.</AlertDescription></Alert> : <>
       <Card><CardHeader><CardTitle className="text-lg">Choose what to pay</CardTitle></CardHeader><CardContent className="space-y-3">
@@ -216,26 +228,26 @@ export default function SharedCheckoutPage() {
          {shownBreakdown ? <><p className="text-2xl font-semibold">{money(shownBreakdown.amount, currency)}</p>{shownBreakdown.statements.filter(item => item.selected).map(item => <p key={item.invoiceNumber} className="flex justify-between gap-4 text-sm"><span className="min-w-0 break-words">{item.invoiceNumber}<span className="block text-muted-foreground">Unreserved statement due {money(item.due, currency)}</span></span><span>{money(item.payable, currency)} cash</span></p>)}{shownBreakdown.creditTransfers.length > 0 && <div className="rounded-md border p-3 text-sm"><p className="font-medium">Account-credit transfers</p>{shownBreakdown.creditTransfers.map(transfer => <p key={`${transfer.sourceInvoiceNumber}-${transfer.targetInvoiceNumber}-${transfer.amount}`} className="mt-1 break-words">{money(transfer.amount, currency)} from {transfer.sourceInvoiceNumber} ({transfer.sourceStatementYmd}) to {transfer.targetInvoiceNumber} ({transfer.targetStatementYmd})</p>)}<p className="mt-2 text-muted-foreground">The listed transfer and cash payment cover the selected unreserved debt.</p></div>}{Number(shownBreakdown.unstatementedAmount) > 0 && <p className="text-sm">Account debt not tied to a statement: {money(shownBreakdown.unstatementedAmount, currency)}</p>}{shownBreakdown.issues.length > 0 && <Alert variant="destructive"><AlertDescription>{shownBreakdown.issues.join(" ")}</AlertDescription></Alert>}</> : <p className="text-sm text-muted-foreground">{choice === "statements" && !statementIds.length ? "Select at least one outstanding statement." : "This selection changed. Refresh the checkout to get its current total."}</p>}
       </CardContent></Card>
       <Card><CardHeader><CardTitle className="text-lg">Payment method</CardTitle></CardHeader><CardContent className="space-y-3">
-        {!isAdminTest && methods.isLoading ? <p role="status">Loading saved methods…</p> : null}
-        {!isAdminTest && methods.isError ? <Alert variant="destructive"><AlertDescription>Saved methods could not be loaded. <Button variant="link" onClick={() => void methods.refetch()}>Retry</Button></AlertDescription></Alert> : null}
-         {!isAdminTest && methods.isSuccess && methods.data?.length === 0 && <p className="text-sm text-muted-foreground">No saved methods for this payer yet.</p>}
-         {!isAdminTest && methods.isSuccess && unavailableMethods > 0 && <p className="text-sm text-muted-foreground">{unavailableMethods} saved {unavailableMethods === 1 ? "method is" : "methods are"} unavailable for this account. A method may be inactive, belong to another gateway, have an unsupported type, or be temporarily unavailable at the provider. You can use a new method instead.</p>}
+        {!isAdminCheckout && methods.isLoading ? <p role="status">Loading saved methods…</p> : null}
+        {!isAdminCheckout && methods.isError ? <Alert variant="destructive"><AlertDescription>Saved methods could not be loaded. <Button variant="link" onClick={() => void methods.refetch()}>Retry</Button></AlertDescription></Alert> : null}
+         {!isAdminCheckout && methods.isSuccess && methods.data?.length === 0 && <p className="text-sm text-muted-foreground">No saved methods for this payer yet.</p>}
+         {!isAdminCheckout && methods.isSuccess && unavailableMethods > 0 && <p className="text-sm text-muted-foreground">{unavailableMethods} saved {unavailableMethods === 1 ? "method is" : "methods are"} unavailable for this account. A method may be inactive, belong to another gateway, have an unsupported type, or be temporarily unavailable at the provider. You can use a new method instead.</p>}
           {data.paymentTypes.includes("card") && <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method && selectedNewType === "card"} disabled={frozen} onChange={() => change(() => { setMethod(""); setNewType("card"); })} />New credit/debit card</label>}
           {data.paymentTypes.includes("us_bank_account") && <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method && selectedNewType === "us_bank_account"} disabled={frozen} onChange={() => change(() => { setMethod(""); setNewType("us_bank_account"); })} />New US bank transfer</label>}
-          {!isAdminTest && compatibleMethods.map(item => <label key={item.id} className="flex items-center gap-2 break-words"><input type="radio" name="method" checked={method === item.id} disabled={frozen} onChange={() => change(() => setMethod(item.id))} />{item.providerDetails?.card ? `${item.providerDetails.card.brand} •••• ${item.providerDetails.card.last4}` : `${item.providerDetails?.us_bank_account?.bank_name || "Bank"} •••• ${item.providerDetails?.us_bank_account?.last4}`}</label>)}
-          {!isAdminTest && canManageMethods && <Link href={managementUrl} className="inline-block text-sm underline">Manage saved payment methods</Link>}
-          {!method && <p className="text-sm text-muted-foreground">{isAdminTest
-            ? "Admin test checkout always uses a new method for this attempt and cannot save it."
+          {!isAdminCheckout && compatibleMethods.map(item => <label key={item.id} className="flex items-center gap-2 break-words"><input type="radio" name="method" checked={method === item.id} disabled={frozen} onChange={() => change(() => setMethod(item.id))} />{item.providerDetails?.card ? `${item.providerDetails.card.brand} •••• ${item.providerDetails.card.last4}` : `${item.providerDetails?.us_bank_account?.bank_name || "Bank"} •••• ${item.providerDetails?.us_bank_account?.last4}`}</label>)}
+          {!isAdminCheckout && canManageMethods && <Link href={managementUrl} className="inline-block text-sm underline">Manage saved payment methods</Link>}
+          {!method && <p className="text-sm text-muted-foreground">{isAdminCheckout
+            ? "Administrator checkout uses newly entered details for this payment only. It cannot use or save the worker's payment methods."
              : canSaveMethod
                ? "Saving is optional; leave the separate checkbox unchecked to use this method for this payment only."
                : "A new method here is used for this payment only. To add or remove a reusable method, use payment method management."}</p>}
-          {!isAdminTest && canSaveMethod && <label className="flex items-start gap-2 text-sm"><Checkbox checked={saveMethodAccepted} disabled={frozen} onCheckedChange={value => { if (!frozen) { setReview(false); setSaveMethodAccepted(value === true); } }} /><span><span className="block font-medium">{CHECKOUT_SAVE_METHOD_CONSENT.text}</span><span className="mt-1 block text-muted-foreground">This is separate from the required authorization for the payment above. Saving does not authorize a later charge or enable automatic payments.</span></span></label>}
+          {!isAdminCheckout && canSaveMethod && <label className="flex items-start gap-2 text-sm"><Checkbox checked={saveMethodAccepted} disabled={frozen} onCheckedChange={value => { if (!frozen) { setReview(false); setSaveMethodAccepted(value === true); } }} /><span><span className="block font-medium">{CHECKOUT_SAVE_METHOD_CONSENT.text}</span><span className="mt-1 block text-muted-foreground">This is separate from the required authorization for the payment above. Saving does not authorize a later charge or enable automatic payments.</span></span></label>}
          {!method && selectedNewType && <p className="text-sm text-muted-foreground">After you review and start this payment, securely {selectedNewType === "card" ? "enter your card details" : "link or enter your US bank account with the payment provider"} and confirm there. Your payment is not complete yet.</p>}
          {!data.paymentTypes.length && <Alert variant="destructive"><AlertDescription>No payment types are available for this account. Ask an administrator to enable a compatible card or bank account type under Gateway Payment Types and ledger online payment settings.</AlertDescription></Alert>}
         {!method && !Pay && <Alert variant="destructive"><AlertDescription>Secure payment entry is unavailable for this account. Contact support before starting a new payment.</AlertDescription></Alert>}
       </CardContent></Card>
       <Card><CardContent className="space-y-4 pt-6">
-        {isAdminTest ? <div className="space-y-3">
+        {isAdminAssisted ? <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>{ADMIN_PAYMENT_CONFIRMATION.text}</span></label> : isAdminTest ? <div className="space-y-3">
           <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>I confirm this is an administrator test only. I understand that success posts a test payment to the selected ledger, and this does not record payer consent or prove real funds.</span></label>
           <label className="block space-y-1 text-sm font-medium">Test purpose
             <input className="w-full rounded-md border bg-background px-3 py-2 font-normal" value={purpose} maxLength={500} disabled={frozen} onChange={event => change(() => setPurpose(event.target.value))} placeholder="For example, verify the test gateway setup" />
@@ -245,7 +257,7 @@ export default function SharedCheckoutPage() {
          {error && !session && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       </CardContent></Card>
     </>}
-      {session && <div ref={providerSection} tabIndex={-1} className="scroll-mt-4 outline-none" aria-label="Secure payment confirmation"><Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm">Payment not complete. {method ? "Complete verification with the payment provider." : selectedNewType === "card" ? "Enter your card details securely below, then confirm with the provider." : "Link or enter your US bank account securely below, then confirm with the provider."}</p>{error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}{Pay && session.clientSecret && (method || (Array.isArray(session.publicConfig?.paymentTypes) && session.publicConfig.paymentTypes.length === 1 && session.publicConfig.paymentTypes[0] === selectedNewType)) ? <Pay key={session.id} clientSecret={session.clientSecret} publicConfig={session.publicConfig ?? {}} amount={shownBreakdown ? money(shownBreakdown.amount, currency) : ""} savedMethod={!!method} returnUrl={`${window.location.origin}${isAdminTest ? "/admin-test-pay/receipt" : "/pay/receipt"}/${encodeURIComponent(session.id)}`} onComplete={(status, message) => status === "failed" ? setError(message || "Provider confirmation failed. Check your details and try again below.") : navigate(`${isAdminTest ? "/admin-test-pay/receipt" : "/pay/receipt"}/${encodeURIComponent(session.id)}`)} /> : <p role="alert">Provider confirmation is unavailable or does not match your selection. Check this payment's status before starting another payment; contact support with confirmation {session.id} if needed.</p>}<Link href={`${isAdminTest ? "/admin-test-pay/receipt" : "/pay/receipt"}/${encodeURIComponent(session.id)}`} className="mt-3 inline-block underline">Check this payment's status</Link></CardContent></Card></div>}
+      {session && <div ref={providerSection} tabIndex={-1} className="scroll-mt-4 outline-none" aria-label="Secure payment confirmation"><Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm">Payment not complete. {method ? "Complete verification with the payment provider." : selectedNewType === "card" ? "Enter your card details securely below, then confirm with the provider." : "Link or enter your US bank account securely below, then confirm with the provider."}</p>{error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}{Pay && session.clientSecret && (method || (Array.isArray(session.publicConfig?.paymentTypes) && session.publicConfig.paymentTypes.length === 1 && session.publicConfig.paymentTypes[0] === selectedNewType)) ? <Pay key={session.id} clientSecret={session.clientSecret} publicConfig={session.publicConfig ?? {}} amount={shownBreakdown ? money(shownBreakdown.amount, currency) : ""} savedMethod={!!method} returnUrl={`${window.location.origin}${receiptBase}/${encodeURIComponent(session.id)}`} onComplete={(status, message) => status === "failed" ? setError(message || "Provider confirmation failed. Check your details and try again below.") : navigate(`${receiptBase}/${encodeURIComponent(session.id)}`)} /> : <p role="alert">Provider confirmation is unavailable or does not match your selection. Check this payment's status before starting another payment; contact support with confirmation {session.id} if needed.</p>}<Link href={`${receiptBase}/${encodeURIComponent(session.id)}`} className="mt-3 inline-block underline">Check this payment's status</Link></CardContent></Card></div>}
     {data.entityType === "worker" ? <Link href={`/workers/${data.entityId}/ledger/accounts`} className="inline-block text-sm underline">Back to accounts</Link> : <Link href={`/ea/${eaId}`} className="inline-block text-sm underline">Back to account</Link>}
   </main>;
 }

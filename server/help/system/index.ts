@@ -6,7 +6,7 @@ import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
 import { adminUserPermissionsHelp } from "./admin-user-permissions";
 import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefaultsHelp } from "./message-defaults";
 import { workerCommsComplianceHelp } from "./worker-comms-compliance";
-import { workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp, adminTestPaymentHelp } from "./online-checkout";
+import { workerPaymentChooserHelp, onlineCheckoutHelp, onlinePaymentReceiptHelp, adminTestPaymentHelp, adminAssistedWorkerPaymentHelp } from "./online-checkout";
 import { workerPaymentMethodsHelp } from "./worker-payment-methods";
 import { baoCobraHelp } from "./bao-cobra";
 import { benefitsWorkflowHelp } from "./benefits-workflows";
@@ -45,6 +45,7 @@ const entries: SystemHelpEntry[] = [
   onlineCheckoutHelp,
   onlinePaymentReceiptHelp,
   adminTestPaymentHelp,
+  adminAssistedWorkerPaymentHelp,
   workerPaymentMethodsHelp,
   workerCommsComplianceHelp,
   trustProvidersHelp,

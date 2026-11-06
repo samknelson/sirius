@@ -597,12 +597,29 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
+        <Route path="/admin-pay/receipt/:sessionId">
+          <ProtectedRoute permission="admin">
+            <AuthenticatedLayout>
+              <SharedPaymentReceipt />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        </Route>
+        <Route path="/admin-pay/worker/:entityId/:eaId">
+          <ProtectedRoute permission="admin">
+            <AuthenticatedLayout>
+              <SharedCheckoutPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        </Route>
         <Route path="/admin-test-pay/receipt/:sessionId">
           <ProtectedRoute permission="admin">
             <AuthenticatedLayout>
               <SharedPaymentReceipt />
             </AuthenticatedLayout>
           </ProtectedRoute>
+        </Route>
+        <Route path="/admin-test-pay/worker/:entityId/:eaId">
+          {params => <Redirect to={`/admin-pay/worker/${encodeURIComponent(params.entityId)}/${encodeURIComponent(params.eaId)}`} />}
         </Route>
         <Route path="/admin-test-pay/:entityType/:entityId/:eaId">
           <ProtectedRoute permission="admin">

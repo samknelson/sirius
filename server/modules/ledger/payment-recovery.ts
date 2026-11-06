@@ -4,6 +4,7 @@ import { ensureCustomer } from "./payment-methods";
 import { evidenceFromPayment, logSettlementFailure, processPaymentEvidence, settlementError, SettlementRefusal } from "./payment-settlement";
 import { runInTransaction } from "../../storage/transaction-context";
 import { initiatePayment } from "./payment-initiation";
+import { assertAdminPaymentGateway, assertAdminAssistedPaymentProvenance } from "./admin-assisted-payment";
 
 const BATCH_SIZE = 40;
 const TEN_MINUTES = 10 * 60 * 1000;
@@ -59,6 +60,8 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
     try {
       const resolved = await resolveGateway(attempt.gatewayConfigId, { allowDisabled: true });
       const metadata = attempt.metadata as Record<string, any> | null;
+      const adminAssisted = assertAdminAssistedPaymentProvenance(attempt);
+      if (adminAssisted) assertAdminPaymentGateway(attempt, resolved);
       const isAdminTestSource = metadata?.source === "admin_test_checkout";
       const hasAdminTestMarker = metadata?.adminTest?.isAdminTest === true;
       if (isAdminTestSource !== hasAdminTestMarker ||
@@ -72,7 +75,7 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
         // Older worker intents used another provider creation contract and
         // idempotency key. Reissuing them as checkout sessions could charge
         // twice; leave them reserved for explicit provider investigation.
-        if (metadata?.source !== "online_checkout" && metadata?.source !== "admin_test_checkout")
+        if (metadata?.source !== "online_checkout" && metadata?.source !== "admin_test_checkout" && !adminAssisted)
           throw new SettlementRefusal("Legacy payment has no recoverable provider reference");
         const methodRef = typeof metadata?.paymentMethodRef === "string" ? metadata.paymentMethodRef : undefined;
         const customerRef = methodRef
@@ -84,10 +87,11 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
           currency: attempt.currency, customerRef, savedMethodRef: methodRef,
           saveMethod: attempt.saveMethod,
           paymentTypes: Array.isArray(metadata?.paymentTypes) ? metadata.paymentTypes.filter((v): v is string => typeof v === "string") : ["card"],
-          description: metadata?.source === "admin_test_checkout" ? "Admin test payment" : "Ledger payment",
+          description: metadata?.source === "admin_test_checkout" ? "Admin test payment" : adminAssisted ? "Administrator payment on behalf of worker" : "Ledger payment",
           metadata: {
             attemptId: attempt.id, entityType: attempt.entityType, entityId: attempt.entityId,
             ...(metadata?.source === "admin_test_checkout" ? { paymentPurpose: "admin_test" } : {}),
+            ...(adminAssisted ? { paymentPurpose: "admin_assisted" } : {}),
           },
         });
         ref = session.providerRef;
@@ -106,7 +110,9 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
       if (Date.now() - new Date(attempt.createdAt ?? 0).getTime() > ONE_DAY &&
           ["created", "requires_action"].includes(payment.status) && resolved.plugin.cancelPayment) {
         try {
-          const canceled = await resolved.plugin.cancelPayment(resolved.context, ref!);
+          const canceled = adminAssisted
+            ? await resolved.plugin.cancelPayment(resolved.context, ref!, { adminAssistedAttemptId: attempt.id })
+            : await resolved.plugin.cancelPayment(resolved.context, ref!);
           await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, evidenceFromPayment(canceled));
           if (canceled.status === "canceled") {
             await runInTransaction(async () => {

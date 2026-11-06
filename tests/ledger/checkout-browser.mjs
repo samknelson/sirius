@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -29,7 +29,7 @@ const server = await createServer({
     name: "checkout-browser-entry",
     configureServer(viteServer) {
       viteServer.middlewares.use((request, _response, next) => {
-        if (request.url?.startsWith("/pay/") || request.url?.startsWith("/ea/")) request.url = "/tests/ledger/checkout-browser.html";
+        if (request.url?.startsWith("/pay/") || request.url?.startsWith("/ea/") || request.url?.startsWith("/admin-pay/")) request.url = "/tests/ledger/checkout-browser.html";
         next();
       });
     },
@@ -80,6 +80,9 @@ try {
     selectionInput, quote,
   };
   let activeCheckout = checkout;
+  const { ADMIN_PAYMENT_CONFIRMATION } = await server.ssrLoadModule("/shared/ledger/admin-payment-confirmation.ts");
+  let htmlFailure = "";
+  const administratorRequests = [];
   let rejectInitiation = false;
   let submittedPayments = 0;
   const submittedBodies = [];
@@ -100,6 +103,11 @@ try {
       return request.abort();
     }
     if (!url.pathname.startsWith("/api/")) return request.continue();
+    if (url.pathname.startsWith("/api/ledger/admin-checkout/")) {
+      administratorRequests.push({ method: request.method(), path: url.pathname });
+      const stage = request.method() === "POST" ? "session" : url.pathname.includes("/sessions/") ? "status" : "preview";
+      if (htmlFailure === stage) return request.respond({ status: 200, contentType: "text/html", body: "<html>private upstream response</html>" });
+    }
     const responses = {
       "/api/auth/user": {
         user: { id: "fixture-payer", email: "payer@example.invalid" },
@@ -107,6 +115,16 @@ try {
         timezone: { systemTimeZone: "UTC", userTimeZone: null, allowUserTimezones: false },
       },
       "/api/ledger/ea/fixture-ea": { entityType: activeCheckout.entityType, entityId: activeCheckout.entityId },
+      "/api/ledger/admin-checkout/worker/fixture-worker/fixture-ea": {
+        ...activeCheckout, isAdminAssisted: true, adminConfirmation: ADMIN_PAYMENT_CONFIRMATION,
+        authorization: null, reusableMethodsSupported: false,
+        readiness: { paymentAuthorization: "admin_assisted", methodPermission: "denied", saveMethod: "permission_denied" },
+      },
+      "/api/ledger/admin-checkout/sessions/fixture-session": {
+        id: "fixture-session", entityType: "worker", entityId: "fixture-worker",
+        eaId: "fixture-ea", status: "processing", amount: "125.00", currency: "USD",
+        canCancel: false, isAdminAssisted: true,
+      },
       [`/api/ledger/checkout/${activeCheckout.entityType}/${activeCheckout.entityId}/fixture-ea`]: activeCheckout,
       [`/api/ledger/payment-methods/${activeCheckout.entityType}/${activeCheckout.entityId}`]: [
         { id: "fixture-card", gatewayConfigId: "fixture-gateway", isActive: true,
@@ -209,7 +227,8 @@ try {
   await clickButton("Review payment");
    await page.waitForFunction(() => document.body.textContent.includes("$267.35 to COBRA account using a saved card"));
   await assertNoOverflow("COBRA review");
-  const screenshotPath = path.join(root, "tests/ledger/checkout-browser-cobra-review.png");
+  mkdirSync(path.join(root, "generated-artifacts"), { recursive: true });
+  const screenshotPath = path.join(root, "generated-artifacts/checkout-browser-cobra-review.png");
   await page.screenshot({ path: screenshotPath, fullPage: true });
 
   await clickButton("Edit");
@@ -312,6 +331,47 @@ try {
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
   assert.deepEqual(submittedBodies.filter(body => body.saveMethod).map(body => body.paymentMethodType),
     ["us_bank_account", "card"], "browser submits the explicit save choice for both new method types");
+  // Real router and apiRequest, isolated network answers: no provider or DB.
+  activeCheckout = fullBalance("worker", "125.00");
+  htmlFailure = "preview";
+  await page.goto(`${origin}/admin-pay/worker/fixture-worker/fixture-ea`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.body.textContent.includes("Administrator checkout could not be loaded"));
+  assert.ok(!(await page.$eval("main", node => node.textContent)).includes("private upstream response"));
+  htmlFailure = "";
+  await clickButton("Retry");
+  await page.waitForSelector('main[aria-label="Checkout"]');
+  assert.equal(await reviewDisabled(), true, "administrator must attest their on-behalf authorization");
+  const adminContent = await page.$eval("main", node => node.textContent);
+  assert.ok(adminContent.includes("This can charge real funds"));
+  assert.ok(!adminContent.includes("Test mode only") && !adminContent.includes("Test purpose"));
+  assert.ok(!adminContent.includes("Visa") && !adminContent.includes("Save this payment method"));
+  await assertNoOverflow("administrator checkout");
+  await page.screenshot({ path: path.join(root, "generated-artifacts/admin-assisted-checkout.png"), fullPage: true });
+  await clickLabel(ADMIN_PAYMENT_CONFIRMATION.text);
+  await clickButton("Review payment");
+  htmlFailure = "session";
+  const priorSubmissions = submittedPayments;
+  await clickButton("Continue to secure confirmation");
+  await page.waitForFunction(() => document.body.textContent.includes("Check your unfinished payments"));
+  assert.equal(submittedPayments, priorSubmissions, "HTML failure does not trigger another session request");
+  assert.equal(administratorRequests.filter(item => item.method === "POST").length, 1);
+  htmlFailure = "";
+  await clickButton("Review payment");
+  await clickButton("Continue to secure confirmation");
+  await page.waitForSelector('[data-testid="fixture-provider"]');
+  assert.equal(submittedBodies.at(-1).consent, undefined);
+  assert.equal(submittedBodies.at(-1).saveMethod, false);
+  assert.deepEqual(submittedBodies.at(-1).adminConfirmation, { ...ADMIN_PAYMENT_CONFIRMATION, accepted: true });
+  htmlFailure = "status";
+  await clickButton("Confirm provider payment");
+  await page.waitForFunction(() => document.body.textContent.includes("Payment status could not be checked"));
+  assert.ok(page.url().includes("/admin-pay/receipt/fixture-session"));
+  assert.ok((await page.$eval("main", node => node.textContent)).includes("Confirmation: fixture-session"));
+  htmlFailure = "";
+  await clickButton("Retry");
+  await page.waitForFunction(() => document.body.textContent.includes("Payment processing"));
+  assert.equal(administratorRequests.filter(item => item.method === "POST").length, 2, "receipt retries never create a replacement");
+  assert.deepEqual(failures, [], "administrator flow has no browser errors or external requests");
   console.log(`Checkout browser fixture passed; screenshot: ${screenshotPath}`);
 } finally {
   await browser?.close();

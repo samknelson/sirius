@@ -25,6 +25,8 @@ createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
+        <Route path="/admin-pay/worker/:entityId/:eaId" component={SharedCheckoutPage} />
+        <Route path="/admin-pay/receipt/:sessionId" component={SharedPaymentReceipt} />
         <Route path="/pay/:eaId" component={SharedCheckoutPage} />
         <Route path="/pay/receipt/:sessionId" component={SharedPaymentReceipt} />
         <Route path="/ea/fixture-ea" component={EmployerEntryFixture} />

@@ -96,7 +96,6 @@ export const onlinePaymentReceiptHelp: SystemHelpEntry = {
 export const adminTestPaymentHelp: SystemHelpEntry = {
   id: "system:admin-test-payment",
   paths: [
-    "/workers/%/ledger/accounts",
     "/employers/%/ledger/accounts",
     "/admin-test-pay/%/%/%",
     "/admin-test-pay/receipt/%",
@@ -104,13 +103,13 @@ export const adminTestPaymentHelp: SystemHelpEntry = {
   summary: "Admins can run a payment only through a gateway positively verified as test mode; successful tests post to the selected ledger.",
   details: `
     <h3>Purpose</h3>
-    <p>Use <strong>Test payment</strong> on a worker or employer ledger account to check its online payment setup without masquerading as that payer.</p>
+    <p>Use <strong>Test payment</strong> on an employer ledger account to check its online payment setup without masquerading as that payer. Worker Accounts now offers <strong>Make payment</strong> for administrator payments on behalf; existing worker test receipts remain test-only.</p>
     <h3>Before you start</h3>
     <p>Only an administrator who is not currently masquerading can start or manage this flow. The selected ledger account must have online payments enabled and its gateway must positively identify itself as test mode. Live-mode gateways and gateways without a reliable test-mode signal are refused before payment creation.</p>
     <p><strong>A successful test payment is posted to the selected account's ledger</strong> and applies to the displayed balance and statement allocation. Review the amount and affected ledger allocation before continuing. This action cannot be used to charge a live account.</p>
     <h3>How to use this page</h3>
     <ol>
-      <li>Open the worker's or employer's <strong>Accounts</strong> page and select <strong>Test payment</strong> beside the intended ledger account.</li>
+      <li>Open the employer's <strong>Accounts</strong> page and select <strong>Test payment</strong> beside the intended ledger account.</li>
       <li>Review the posted balance, pending payments, available amount, statement selection, credits, and total.</li>
       <li>Enter a test purpose, select a new payment method, and confirm that you understand this test can post to the ledger.</li>
       <li>Select <strong>Review test payment</strong>, verify the amount and allocation, then select <strong>Start test payment</strong>.</li>
@@ -122,5 +121,35 @@ export const adminTestPaymentHelp: SystemHelpEntry = {
     <h3>Limitations and common problems</h3>
     <p>Admin test checkout uses a new payment method for one attempt; it does not use or save a payer's stored methods. A live or unknown gateway, disabled online payments, unsupported payment types, or missing secure payment entry prevents checkout. Do not use ordinary <strong>Pay online</strong> to perform an administrator test.</p>
     <p>If a test attempt is unfinished or its status is uncertain, check the same receipt before starting another. Cancellation releases the reservation only after the provider confirms it. Never treat a test result as a real payment or evidence of payer approval.</p>
+  `,
+};
+
+export const adminAssistedWorkerPaymentHelp: SystemHelpEntry = {
+  id: "system:admin-assisted-worker-payment",
+  paths: ["/workers/%/ledger/accounts", "/admin-pay/worker/%/%", "/admin-pay/receipt/%"],
+  summary: "Administrators can make payments on a worker's behalf using newly entered details; confirmed payments apply to the worker's ledger.",
+  details: `
+    <h3>Purpose</h3>
+    <p>Use <strong>Make payment</strong> on a worker's Accounts page to make a payment on their behalf without masquerading as them.</p>
+    <h3>Before you start</h3>
+    <p>You must be an administrator and must stop masquerading first. The selected account must be active, enabled for worker online payments, and have a compatible configured gateway, payment type, and signed webhook.</p>
+    <p><strong>Confirming with the payment provider can charge real funds.</strong> Only proceed when authorized to make this payment on the worker's behalf. Administrator authority is not evidence of the worker's consent. The gateway's configured credentials determine whether it processes live or test transactions; this flow does not depend on system mode or turn test credentials into a live gateway.</p>
+    <h3>How to use this page</h3>
+    <ol>
+      <li>Select <strong>Make payment</strong> beside the intended worker ledger account.</li>
+      <li>Review the worker, account, posted and available balances, unfinished payments, statement selection, credits, and total. Check an unfinished payment's status before starting another.</li>
+      <li>Choose a new card or US bank transfer when offered. These details are used for this payment only; you cannot use or save the worker's stored payment methods here.</li>
+      <li>Accept the administrator authorization, select <strong>Review payment</strong>, and verify the total and allocation.</li>
+      <li>Select <strong>Continue to secure confirmation</strong>, enter the payment details directly with the provider, and confirm there. Starting this step alone does not complete payment.</li>
+      <li>Read the <strong>Administrator payment receipt</strong> or use <strong>Check this payment's status</strong> to follow this same attempt.</li>
+    </ol>
+    <h3>Results and status meanings</h3>
+    <p>The worker remains the ledger owner. The acting administrator and their versioned authorization are recorded separately; the attempt does not record the worker's own payment consent. Confirmed payments use the existing statement and account-credit allocation, not a separate ledger.</p>
+    <p>Awaiting details or confirmation means provider steps remain unfinished. Processing funds and awaiting ledger posting do not mean cleared funds. A configured test gateway does not establish real funds. Only the checkout's acting administrator can use this receipt and cancel its unconfirmed payment, while still holding administrator authority.</p>
+    <h3>Limitations and common problems</h3>
+    <p><strong>Do not start another payment while its outcome is unknown.</strong> Retry reloads the same checkout or receipt; it does not submit a replacement payment. If creation or status checking fails, check unfinished payments or contact support with the confirmation number, never card details, bank details, or secure provider links.</p>
+    <p><strong>Abandon this payment</strong>, when offered, is not a refund. It releases the reservation only after the provider confirms cancellation; processing or completed payments cannot be abandoned here. Leaving a page does not cancel a payment.</p>
+    <p>Do not change the account's gateway credentials while a payment is unfinished. Automatic recovery will not recreate an attempt using different credentials, including a switch between test and live keys. Ask support to reconcile the original payment first.</p>
+    <p>Ordinary worker and employer checkout permissions are unchanged. Employer <strong>Test payment</strong> remains a separate test-only workflow.</p>
   `,
 };

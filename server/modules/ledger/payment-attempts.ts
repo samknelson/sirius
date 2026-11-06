@@ -10,6 +10,7 @@ import { getComponentChecker } from "../../services/access-policy-evaluator";
 import { getCurrency } from "@shared/currency";
 import {
   assertAdminTestPaymentAuthority,
+  assertAdminPaymentAuthority,
   assertOnlinePaymentAuthority,
   OnlinePaymentAuthorityError,
 } from "./online-payment-authority";
@@ -23,6 +24,8 @@ import { checkoutPaymentTypes, initiatePayment } from "./payment-initiation";
 import { ensureCustomer } from "./payment-methods";
 import { processPaymentEvidence, evidenceFromPayment, settlementError, logSettlementFailure, SettlementRefusal } from "./payment-settlement";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
+import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
+import { adminPaymentGatewayFingerprint, assertAdminPaymentGateway, assertAdminAssistedPaymentProvenance } from "./admin-assisted-payment";
 
 const options = createUnifiedOptionsStorage();
 const raw = (req: Request) => (req as Request & { rawBody?: Buffer }).rawBody;
@@ -379,6 +382,13 @@ export function registerLedgerPaymentAttemptRoutes(
     adminTestConfirmation: z.literal(true),
     purpose: z.string().trim().min(1).max(500),
   }).strict();
+  const adminCheckoutBody = checkoutBody.omit({ consent: true }).extend({
+    adminConfirmation: z.object({
+      version: z.literal(ADMIN_PAYMENT_CONFIRMATION.version),
+      text: z.literal(ADMIN_PAYMENT_CONFIRMATION.text),
+      accepted: z.literal(true),
+    }).strict(),
+  }).strict();
   const safeAttempt = (a: any, extra: Record<string, unknown> = {}) => ({
     id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId,
     amount: a.amount, currency: a.currency, status: a.status,
@@ -388,6 +398,7 @@ export function registerLedgerPaymentAttemptRoutes(
     creditTransfers: a.metadata?.checkoutQuote?.creditTransfers ?? [],
     isAdminTest: a.metadata?.adminTest?.isAdminTest === true,
     adminTestPurpose: a.metadata?.adminTest?.purpose ?? null,
+    isAdminAssisted: a.metadata?.source === "admin_assisted_checkout",
     failureMessage: a.status === "failed" ? a.failureMessage : null, ...extra,
   });
   const receipt = async (a: any) => {
@@ -449,9 +460,9 @@ export function registerLedgerPaymentAttemptRoutes(
       allowPartial: loaded.settings.allowPartial, minAmount: loaded.settings.minAmount,
     };
   };
-  const ownedPending = async (eaId: string, userId: string) =>
+  const ownedPending = async (eaId: string, userId: string, source?: string) =>
     (await storage.ledger.paymentAttempts.getReservations(eaId))
-      .filter(row => row.createdByUserId === userId)
+      .filter(row => row.createdByUserId === userId && (!source || (row.metadata as any)?.source === source))
       .map(row => ({
         id: row.id, amount: row.amount, currency: row.currency, status: row.status,
         canCancel: row.status === "created" && !!row.providerIntentRef && !row.ledgerPaymentId,
@@ -509,15 +520,14 @@ export function registerLedgerPaymentAttemptRoutes(
       });
     } catch (e) { return error(res, e instanceof PaymentAttemptConflictError ? 409 : 500, e instanceof Error ? e.message : "Checkout unavailable"); }
   });
-  app.get("/api/ledger/admin-test-checkout/:entityType/:entityId/:eaId", requireAuth, async (req, res) => {
+  const adminPreview = (adminAssisted: boolean) => async (req: Request, res: Response) => {
     const entityType = checkoutEntity.safeParse(req.params.entityType);
     if (!entityType.success) return error(res, 400, "Unsupported entity type");
-    let actorId: string;
-    try { actorId = await assertAdminTestPaymentAuthority(req); }
-    catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
+    if (adminAssisted && entityType.data !== "worker") return error(res, 400, "Administrator payments on behalf are available for workers only");
     try {
+      const actorId = await (adminAssisted ? assertAdminPaymentAuthority(req) : assertAdminTestPaymentAuthority(req));
       const loaded = await loadCheckout(entityType.data, req.params.entityId, req.params.eaId);
-      assertAdminTestGateway(loaded.resolved);
+      if (!adminAssisted) assertAdminTestGateway(loaded.resolved);
       const input = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
         return selectionInput(loaded);
@@ -529,34 +539,44 @@ export function registerLedgerPaymentAttemptRoutes(
         account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode, gatewayConfigId: loaded.account.gatewayConfigId },
         balance: input.balance, reserved: input.reserved, available: quote.available,
         invoices: input.invoices, selectionInput: input, quote,
-        pendingCheckouts: await ownedPending(loaded.ea.id, actorId),
-        readiness: { paymentAuthorization: "admin_test", methodPermission: "denied",
+        pendingCheckouts: await ownedPending(loaded.ea.id, actorId, adminAssisted ? "admin_assisted_checkout" : "admin_test_checkout"),
+        readiness: { paymentAuthorization: adminAssisted ? "admin_assisted" : "admin_test", methodPermission: "denied",
           reusableMethods: "unsupported", saveMethod: "permission_denied" },
         paymentTypes, payComponentId: loaded.resolved.plugin.payComponentId ?? null,
         reusableMethodsSupported: false, settings: loaded.settings,
-        isAdminTest: true, testMode: true,
+        ...(adminAssisted
+          ? { isAdminAssisted: true, adminConfirmation: ADMIN_PAYMENT_CONFIRMATION }
+          : { isAdminTest: true, testMode: true }),
       });
     } catch (e) {
-      return error(res, e instanceof PaymentAttemptConflictError ? 409 : 500,
-        e instanceof Error ? e.message : "Admin test checkout unavailable");
+      return error(res, e instanceof OnlinePaymentAuthorityError ? 403 : e instanceof PaymentAttemptConflictError ? 409 : 500,
+        e instanceof OnlinePaymentAuthorityError || e instanceof PaymentAttemptConflictError ? e.message : "Administrator checkout could not be loaded. Retry or ask support to check this account's payment configuration.");
     }
-  });
+  };
+  app.get("/api/ledger/admin-test-checkout/:entityType/:entityId/:eaId", requireAuth, adminPreview(false));
+  app.get("/api/ledger/admin-checkout/:entityType/:entityId/:eaId", requireAuth, adminPreview(true));
 
-  const createCheckoutSession = async (req: Request, res: Response, adminTest = false) => {
+  const createCheckoutSession = async (req: Request, res: Response, mode: "payer" | "admin_test" | "admin_assisted" = "payer") => {
+    const adminTest = mode === "admin_test";
+    const adminAssisted = mode === "admin_assisted";
+    const adminCheckout = adminTest || adminAssisted;
+    const description = adminTest ? "Admin test payment" : adminAssisted ? "Administrator payment on behalf of worker" : "Ledger payment";
+    const providerMetadata: Record<string, string> = adminTest ? { paymentPurpose: "admin_test" } : adminAssisted ? { paymentPurpose: "admin_assisted" } : {};
     let userId: string;
-    if (adminTest) {
-      try { userId = await assertAdminTestPaymentAuthority(req); }
-      catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
-    } else {
-      const authorized = await authorizeCheckout(req, res);
-      if (!authorized) return;
-      userId = authorized;
-    }
     try {
-      const parsed = adminTest ? adminTestCheckoutBody.parse(req.body) : checkoutBody.parse(req.body);
+      if (adminCheckout) {
+        if (adminAssisted && req.params.entityType !== "worker") return error(res, 400, "Administrator payments on behalf are available for workers only");
+        userId = await (adminAssisted ? assertAdminPaymentAuthority(req) : assertAdminTestPaymentAuthority(req));
+      } else {
+        const authorized = await authorizeCheckout(req, res);
+        if (!authorized) return;
+        userId = authorized;
+      }
+      const parsed = adminTest ? adminTestCheckoutBody.parse(req.body) : adminAssisted ? adminCheckoutBody.parse(req.body) : checkoutBody.parse(req.body);
       const body = parsed as z.infer<typeof checkoutBody> & {
         adminTestConfirmation?: true;
         purpose?: string;
+        adminConfirmation?: typeof ADMIN_PAYMENT_CONFIRMATION & { accepted: true };
       };
       if (body.paymentMethodId ? body.paymentMethodType !== undefined : !body.paymentMethodType) {
         return error(res, 400, "Choose exactly one saved method or new payment type");
@@ -570,6 +590,9 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       if (adminTest && (body.paymentMethodId || body.saveMethod || body.adminTestConfirmation !== true || !body.purpose)) {
         return error(res, 400, "Admin test checkout requires a new method, purpose, and explicit test confirmation");
+      }
+      if (adminAssisted && (body.paymentMethodId || body.saveMethod || body.saveMethodConsent)) {
+        return error(res, 400, "Administrator checkout uses a new payment method for this payment only; saved methods cannot be used or stored");
       }
       const amountText = String(body.amount);
       if (!/^\d+(?:\.\d{1,2})?$/.test(amountText)) return error(res, 400, "amount must be a currency value");
@@ -599,6 +622,7 @@ export function registerLedgerPaymentAttemptRoutes(
           ? existingMetadata.saveMethodConsent as Record<string, unknown> : null;
         const existingAdminTest = existingMetadata.adminTest && typeof existingMetadata.adminTest === "object"
           ? existingMetadata.adminTest as Record<string, unknown> : {};
+        const existingAdminAssisted = assertAdminAssistedPaymentProvenance(existing);
         if (existing.entityType !== req.params.entityType || existing.entityId !== req.params.entityId ||
             existing.ledgerEaId !== req.params.eaId || Math.round(Number(existing.amount) * 100) !== cents ||
             existing.saveMethod !== body.saveMethod ||
@@ -607,12 +631,13 @@ export function registerLedgerPaymentAttemptRoutes(
               existingSaveConsent?.accepted !== true)) ||
             existing.gatewayConfigId !== loaded.account.gatewayConfigId ||
             existing.createdByUserId !== userId ||
+            (adminAssisted !== existingAdminAssisted) ||
             (adminTest
               ? existingAdminTest.isAdminTest !== true || existingAdminTest.actorUserId !== userId || existingAdminTest.purpose !== body.purpose
               : existingAdminTest.isAdminTest === true) ||
             existingMetadata.paymentMethodRef !== (body.paymentMethodId ? (await storage.ledger.paymentMethods.get(body.paymentMethodId))?.providerMethodRef : null) ||
              (body.paymentMethodType !== undefined && JSON.stringify(existingMetadata.paymentTypes) !== JSON.stringify([body.paymentMethodType])) ||
-            (!adminTest && (existingConsent.version !== body.consent.version || existingConsent.text !== body.consent.text)) ||
+            (!adminCheckout && (existingConsent.version !== body.consent.version || existingConsent.text !== body.consent.text)) ||
             JSON.stringify(existingMetadata.checkoutSelection) !== JSON.stringify({
               mode: body.selection.mode, invoiceNumbers: [...body.selection.invoiceNumbers].sort(),
             }) ||
@@ -620,6 +645,7 @@ export function registerLedgerPaymentAttemptRoutes(
             JSON.stringify(existing.statementSelection ?? []) !== JSON.stringify(body.statementSelection)) {
           return error(res, 409, "Idempotency key was already used for a different checkout");
         }
+        if (adminAssisted) assertAdminPaymentGateway(existing, loaded.resolved);
         if (!existing.providerIntentRef && ["created", "requires_action", "processing"].includes(existing.status)) {
           const metadata = existing.metadata && typeof existing.metadata === "object" ? existing.metadata as Record<string, unknown> : {};
           const retryMethodRef = typeof metadata.paymentMethodRef === "string" ? metadata.paymentMethodRef : undefined;
@@ -635,9 +661,9 @@ export function registerLedgerPaymentAttemptRoutes(
             sessionId: existing.id, amountMinor: Math.round(Number(existing.amount) * 100),
             currency: existing.currency, customerRef: retryCustomer,
             savedMethodRef: retryMethodRef, saveMethod: existing.saveMethod,
-             paymentTypes: retryTypes, description: adminTest ? "Admin test payment" : "Ledger payment",
+             paymentTypes: retryTypes, description,
              metadata: { attemptId: existing.id, entityType: existing.entityType, entityId: existing.entityId,
-               ...(adminTest ? { paymentPurpose: "admin_test" } : {}) },
+               ...providerMetadata },
           });
           const retried = await storage.ledger.paymentAttempts.updateStatus(existing.id, retry.status, { providerIntentRef: retry.providerRef });
           return res.json(safeAttempt(retried ?? existing, { clientSecret: retry.clientSecret, publicConfig: safePublicConfig(retry.publicConfig), providerRef: retry.providerRef }));
@@ -669,7 +695,7 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       const sessionTypes = [selectedType!];
       let selectedText: { version: string; text: string } | null = null;
-      if (!adminTest) {
+      if (!adminCheckout) {
         const auth = await storage.variables.getByName(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE);
         const texts = onlinePaymentAuthorizationTextsSchema.safeParse(auth?.value);
         selectedText = texts.success ? texts.data[req.params.entityType === "worker" ? "consumer" : "business"] : null;
@@ -685,9 +711,10 @@ export function registerLedgerPaymentAttemptRoutes(
         sessionId: "", amountMinor: cents, currency: loaded.account.currencyCode,
         customerRef: savedCustomer?.customerRef, savedMethodRef: savedMethod?.providerMethodRef,
         saveMethod: body.saveMethod, paymentTypes: sessionTypes,
-        description: adminTest ? "Admin test payment" : "Ledger payment",
-        metadata: adminTest ? { paymentPurpose: "admin_test" } as Record<string, string> : {},
+        description,
+        metadata: providerMetadata as Record<string, string>,
       };
+      const gatewayFingerprint = adminAssisted ? adminPaymentGatewayFingerprint(loaded.resolved) : undefined;
       loaded.resolved.plugin.validatePaymentSession?.(loaded.resolved.context, preflight);
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
@@ -696,6 +723,9 @@ export function registerLedgerPaymentAttemptRoutes(
         // the EA lock, not from the earlier preview or request.
         const current = await loadCheckout(req.params.entityType, req.params.entityId, req.params.eaId);
         if (adminTest) assertAdminTestGateway(current.resolved);
+        if (adminAssisted && gatewayFingerprint !== adminPaymentGatewayFingerprint(current.resolved)) {
+          throw new PaymentAttemptConflictError("Payment gateway credentials changed. Refresh checkout and review the current account before continuing.");
+        }
         if (current.account.gatewayConfigId !== loaded.account.gatewayConfigId ||
             current.account.currencyCode !== loaded.account.currencyCode) {
           throw new PaymentAttemptConflictError("Checkout configuration changed. Refresh and review before confirming.");
@@ -715,7 +745,7 @@ export function registerLedgerPaymentAttemptRoutes(
           throw new PaymentAttemptConflictError("Statement balances changed. Review the updated selection before confirming.");
         }
         let currentText: { version: string; text: string } | null = null;
-        if (!adminTest) {
+        if (!adminCheckout) {
           const currentAuth = onlinePaymentAuthorizationTextsSchema.safeParse(
             (await storage.variables.getByName(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE))?.value,
           );
@@ -729,16 +759,18 @@ export function registerLedgerPaymentAttemptRoutes(
           ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!,
           accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId,
           createdByUserId: userId, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod,
-          consent: adminTest ? null : {
+          consent: adminCheckout ? null : {
             ...body.consent, acceptedAt: new Date().toISOString(),
             authorizationVersion: currentText!.version, authorizationText: currentText!.text,
           },
           statementSelection: quote.statementSelection, idempotencyKey: body.idempotencyKey,
           amount: quote.amount, currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null,
           failureCode: "creation_not_started",
-          metadata: { source: adminTest ? "admin_test_checkout" : "online_checkout",
+          metadata: { source: adminTest ? "admin_test_checkout" : adminAssisted ? "admin_assisted_checkout" : "online_checkout",
             ...(adminTest ? { adminTest: { isAdminTest: true, actorUserId: userId, purpose: body.purpose,
               confirmedAt: new Date().toISOString() } } : {}),
+            ...(adminAssisted ? { adminAssisted: { actorUserId: userId, gatewayFingerprint,
+              confirmation: { ...body.adminConfirmation, acceptedAt: new Date().toISOString() } } } : {}),
             paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes: sessionTypes,
             ...(body.saveMethodConsent ? { saveMethodConsent: {
               ...body.saveMethodConsent,
@@ -760,37 +792,49 @@ export function registerLedgerPaymentAttemptRoutes(
        const session = await initiatePayment(attempt, loaded.resolved, {
          sessionId: attempt.id, amountMinor: cents, currency: loaded.account.currencyCode,
          customerRef, savedMethodRef: savedMethod?.providerMethodRef, saveMethod: body.saveMethod,
-         paymentTypes: sessionTypes, description: adminTest ? "Admin test payment" : "Ledger payment",
+         paymentTypes: sessionTypes, description,
          metadata: { attemptId: attempt.id, entityType: req.params.entityType, entityId: req.params.entityId,
-           ...(adminTest ? { paymentPurpose: "admin_test" } : {}) },
+           ...providerMetadata },
        }, true);
       const updated = await storage.ledger.paymentAttempts.updateStatus(attempt.id, session.status, { providerIntentRef: session.providerRef });
       return res.status(201).json(safeAttempt(updated ?? attempt, { clientSecret: session.clientSecret, publicConfig: safePublicConfig(session.publicConfig), providerRef: session.providerRef }));
-    } catch (e) { return error(res, e instanceof z.ZodError ? 400 : e instanceof PaymentAttemptConflictError || e instanceof PaymentInitiationRejected ? 409 : 500, e instanceof Error ? e.message : "Checkout session failed"); }
+    } catch (e) {
+      if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message);
+      if (adminAssisted && e instanceof z.ZodError) return error(res, 400, "Review the payment selection and accept the administrator authorization before continuing.");
+      return error(res, e instanceof z.ZodError ? 400 : e instanceof PaymentAttemptConflictError || e instanceof PaymentInitiationRejected ? 409 : 500,
+        adminAssisted && !(e instanceof PaymentAttemptConflictError || e instanceof PaymentInitiationRejected)
+          ? "Could not start the payment. Check your unfinished payment status before trying again; contact support if its outcome is unknown."
+          : e instanceof Error ? e.message : "Checkout session failed");
+    }
    };
   app.post("/api/ledger/checkout/:entityType/:entityId/:eaId/sessions", requireAuth,
-    (req, res) => createCheckoutSession(req, res, false));
+    (req, res) => createCheckoutSession(req, res));
   app.post("/api/ledger/admin-test-checkout/:entityType/:entityId/:eaId/sessions", requireAuth,
-    (req, res) => createCheckoutSession(req, res, true));
+    (req, res) => createCheckoutSession(req, res, "admin_test"));
+  app.post("/api/ledger/admin-checkout/:entityType/:entityId/:eaId/sessions", requireAuth,
+    (req, res) => createCheckoutSession(req, res, "admin_assisted"));
 
-  const checkoutStatus = async (req: Request, res: Response, cancel: boolean, adminTest = false) => {
-    const attempt = await storage.ledger.paymentAttempts.get(req.params.attemptId);
-    if (!attempt) return error(res, 404, "Payment attempt not found");
-    const metadata = attempt.metadata && typeof attempt.metadata === "object" ? attempt.metadata as Record<string, any> : {};
-    const adminTestAttempt = metadata.source === "admin_test_checkout" && metadata.adminTest?.isAdminTest === true;
-    if (adminTest !== adminTestAttempt) return error(res, 403, "Access denied");
+  const checkoutStatus = async (req: Request, res: Response, cancel: boolean, mode: "payer" | "admin_test" | "admin_assisted" = "payer") => {
+    const adminTest = mode === "admin_test";
+    const adminAssisted = mode === "admin_assisted";
     try {
+      const attempt = await storage.ledger.paymentAttempts.get(req.params.attemptId);
+      if (!attempt) return error(res, 404, "Payment attempt not found");
+      const metadata = attempt.metadata && typeof attempt.metadata === "object" ? attempt.metadata as Record<string, any> : {};
+      const adminTestAttempt = metadata.source === "admin_test_checkout" && metadata.adminTest?.isAdminTest === true;
+      const adminAssistedAttempt = assertAdminAssistedPaymentProvenance(attempt);
+      if (adminTest !== adminTestAttempt || adminAssisted !== adminAssistedAttempt) return error(res, 403, "Access denied");
       const actorId = adminTest
         ? await assertAdminTestPaymentAuthority(req)
+        : adminAssisted ? await assertAdminPaymentAuthority(req)
         : await assertOnlinePaymentAuthority(req, attempt.entityType as "worker" | "employer", attempt.entityId, "pay");
       if (!attempt.createdByUserId || actorId !== attempt.createdByUserId ||
           (adminTest && metadata.adminTest.actorUserId !== actorId)) {
         return error(res, 403, cancel ? "Only the checkout creator can cancel it" : "Only the checkout creator can view this payment");
       }
-    } catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
-    try {
       const resolved = await resolveGateway(attempt.gatewayConfigId);
       if (adminTest) assertAdminTestGateway(resolved);
+      if (adminAssisted) assertAdminPaymentGateway(attempt, resolved);
       if (cancel) {
         // Hold the same attempt lock as webhook settlement while checking the
         // local state and asking the provider. A processing webhook cannot
@@ -800,6 +844,11 @@ export function registerLedgerPaymentAttemptRoutes(
           const fresh = await storage.ledger.paymentAttempts.get(attempt.id);
           if (!fresh || fresh.status !== "created" || fresh.ledgerPaymentId)
             return { message: "This payment is already processing or complete; check its status before paying again" };
+          if (adminAssisted) {
+            if (!assertAdminAssistedPaymentProvenance(fresh) || fresh.createdByUserId !== actorId)
+              return { message: "Administrator payment authorization changed. Check its status or contact support." };
+            assertAdminPaymentGateway(fresh, resolved);
+          }
           if (!fresh.providerIntentRef || !resolved.plugin.cancelPayment || !resolved.plugin.retrievePayment)
             return { message: "Payment cannot be canceled automatically. Contact support with the confirmation number" };
           const current = await resolved.plugin.retrievePayment(resolved.context, fresh.providerIntentRef);
@@ -809,7 +858,9 @@ export function registerLedgerPaymentAttemptRoutes(
           }
           // A simultaneous provider confirmation may still win; only its
           // confirmed canceled response can release the reservation.
-          const canceled = await resolved.plugin.cancelPayment(resolved.context, fresh.providerIntentRef);
+          const canceled = adminAssisted
+            ? await resolved.plugin.cancelPayment(resolved.context, fresh.providerIntentRef, { adminAssistedAttemptId: fresh.id })
+            : await resolved.plugin.cancelPayment(resolved.context, fresh.providerIntentRef);
           await processPaymentEvidence(fresh.id, fresh.gatewayConfigId, evidenceFromPayment(canceled));
           const saved = await storage.ledger.paymentAttempts.get(fresh.id);
           if (canceled.status !== "canceled" || saved?.status !== "canceled" || saved.ledgerPaymentId)
@@ -825,14 +876,22 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       return res.json(await receipt(await storage.ledger.paymentAttempts.get(attempt.id)));
     } catch (e) {
+      if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message);
       if (e instanceof PaymentCancellationError) return error(res, 409, "Provider could not cancel this payment. Check its status or contact support");
-      return error(res, 502, "Payment provider could not be reconciled");
+      return error(res, 502, adminAssisted
+        ? "Payment status could not be checked. Retry this receipt or contact support with the confirmation number. Do not start another payment while its outcome is unknown."
+        : "Payment provider could not be reconciled");
     }
   };
   app.get("/api/ledger/checkout/sessions/:attemptId", requireAuth, (req, res) => checkoutStatus(req, res, false));
   app.post("/api/ledger/checkout/sessions/:attemptId/cancel", requireAuth, (req, res) => checkoutStatus(req, res, true));
-  app.get("/api/ledger/admin-test-checkout/sessions/:attemptId", requireAuth, (req, res) => checkoutStatus(req, res, false, true));
-  app.post("/api/ledger/admin-test-checkout/sessions/:attemptId/cancel", requireAuth, (req, res) => checkoutStatus(req, res, true, true));
+  app.get("/api/ledger/admin-test-checkout/sessions/:attemptId", requireAuth, (req, res) => checkoutStatus(req, res, false, "admin_test"));
+  app.post("/api/ledger/admin-test-checkout/sessions/:attemptId/cancel", requireAuth, (req, res) => checkoutStatus(req, res, true, "admin_test"));
+  app.get("/api/ledger/admin-checkout/sessions/:attemptId", requireAuth, (req, res) => checkoutStatus(req, res, false, "admin_assisted"));
+  app.post("/api/ledger/admin-checkout/sessions/:attemptId/cancel", requireAuth, (req, res) => checkoutStatus(req, res, true, "admin_assisted"));
+  // Never let a malformed administrator-checkout request reach the SPA HTML fallback.
+  app.use("/api/ledger/admin-checkout", requireAuth, (_req, res) =>
+    error(res, 404, "Administrator checkout request not found. Reopen Make payment from the worker's Accounts page; check any existing payment's status before starting another."));
 
   app.get("/api/workers/:workerId/ledger/payable-accounts", requireAuth, async (req, res) => {
     try {

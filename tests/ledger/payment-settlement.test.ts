@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "../../shared/ledger/checkout-save-consent";
+import { ADMIN_PAYMENT_CONFIRMATION } from "../../shared/ledger/admin-payment-confirmation";
+
+const stripeSdk = vi.hoisted(() => ({ retrieve: vi.fn(), cancel: vi.fn() }));
+vi.mock("stripe", () => ({ default: class {
+  paymentIntents = stripeSdk;
+} }));
+vi.mock("../../server/plugins/ledger/payment-gateway/registry", () => ({ registerPaymentGatewayPlugin: vi.fn() }));
 
 let attempt: any;
 let ledgerPayment: any;
@@ -77,7 +84,8 @@ vi.mock("../../server/modules/ledger/payments", () => ({
 }));
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({
   resolveGateway: vi.fn(async () => ({
-    context: {}, plugin: { retrievePayment: retrieve, cancelPayment: cancel, createPaymentSession: createSession, isTestMode: () => true },
+    config: { id: "gateway-1", data: {} }, context: { apiKey: "fixture" },
+    plugin: { id: "fixture", retrievePayment: retrieve, cancelPayment: cancel, createPaymentSession: createSession, isTestMode: () => true },
   })),
 }));
 vi.mock("../../server/modules/ledger/payment-methods", () => ({
@@ -89,10 +97,26 @@ vi.mock("../../server/logger", () => ({
 
 const { processPaymentEvidence } = await import("../../server/modules/ledger/payment-settlement");
 const { recoverOnlinePayments } = await import("../../server/modules/ledger/payment-recovery");
+const { adminPaymentGatewayFingerprint } = await import("../../server/modules/ledger/admin-assisted-payment");
+const { stripePaymentGatewayPlugin } = await import("../../server/plugins/ledger/payment-gateway/plugins/stripe");
 const success = (overrides: Record<string, unknown> = {}) => ({
   type: "payment.succeeded" as const, providerRef: "ref-1", amountMinor: 10000,
   currency: "USD", methodRef: "pm-1", providerCreated: 100, ...overrides,
 });
+
+function markAdminAssisted() {
+  attempt.consent = null;
+  attempt.createdByUserId = "admin-1";
+  attempt.saveMethod = false;
+  attempt.metadata = { ...attempt.metadata, source: "admin_assisted_checkout",
+    adminAssisted: { actorUserId: "admin-1", gatewayFingerprint: adminPaymentGatewayFingerprint({
+      context: { apiKey: "fixture" }, plugin: { id: "fixture" }, config: { id: "gateway-1", data: {} },
+    } as any), confirmation: {
+      ...ADMIN_PAYMENT_CONFIRMATION, accepted: true, acceptedAt: "2026-11-06T12:00:00.000Z",
+    } },
+  };
+  delete attempt.metadata.saveMethodConsent;
+}
 
 describe("online settlement", () => {
   beforeEach(() => {
@@ -144,6 +168,70 @@ describe("online settlement", () => {
     });
     expect(allocation).toHaveBeenCalledOnce();
     expect(attempt.ledgerPaymentId).toBe("payment-1");
+  });
+
+  it("posts an administrator-assisted payment to the worker ledger once, with separate authorization", async () => {
+    markAdminAssisted();
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    expect(paymentCreate).toHaveBeenCalledOnce();
+    expect(paymentCreate.mock.calls[0][0]).toMatchObject({
+      ledgerEaId: "ea-1", status: "cleared", amount: "100.00",
+      memo: "Administrator payment on behalf of worker",
+      details: { adminAssisted: true, adminActorUserId: "admin-1",
+        adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, accepted: true },
+        proposedAllocation: [
+          { eaId: "ea-1", amount: "60.00", statementYmd: "2026-01-01" },
+          { eaId: "ea-1", amount: "40.00", statementYmd: "2026-02-01" },
+        ],
+      },
+    });
+    expect(methodUpsert).not.toHaveBeenCalled();
+    expect(attempt.consent).toBeNull();
+  });
+  it("recovers an uncertain administrator-assisted creation using the same idempotent payment contract", async () => {
+    markAdminAssisted();
+    attempt.providerIntentRef = null;
+    attempt.status = "requires_action";
+    attempt.failureCode = "creation_uncertain";
+    attempt.metadata.paymentTypes = ["card"];
+    createSession.mockResolvedValueOnce({ providerRef: "ref-1", status: "processing" });
+    retrieve.mockResolvedValueOnce({ providerRef: "ref-1", status: "succeeded",
+      amountMinor: 10000, currency: "USD", methodRef: "pm-admin" });
+    expect((await recoverOnlinePayments()).failures).toBe(0);
+    expect(createSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "attempt-1", saveMethod: false, customerRef: undefined,
+      description: "Administrator payment on behalf of worker",
+      metadata: expect.objectContaining({ paymentPurpose: "admin_assisted" }),
+    }));
+    expect(paymentCreate).toHaveBeenCalledWith(expect.objectContaining({
+      ledgerEaId: "ea-1", details: expect.objectContaining({ adminAssisted: true }),
+    }), { requireAccountId: "account-1" });
+  });
+  it.each(["actor", "confirmation", "source", "payer-consent", "saving", "owner"])(
+    "refuses damaged administrator %s provenance in settlement and recovery", async damage => {
+      markAdminAssisted();
+      if (damage === "actor") attempt.metadata.adminAssisted.actorUserId = "other-admin";
+      if (damage === "confirmation") attempt.metadata.adminAssisted.confirmation.accepted = false;
+      if (damage === "source") attempt.metadata.source = "online_checkout";
+      if (damage === "payer-consent") attempt.consent = { accepted: true };
+      if (damage === "saving") attempt.saveMethod = true;
+      if (damage === "owner") attempt.entityType = "employer";
+      await expect(processPaymentEvidence("attempt-1", "gateway-1", success())).rejects.toThrow("provenance");
+      expect((await recoverOnlinePayments()).failures).toBe(1);
+      expect(createSession).not.toHaveBeenCalled();
+      expect(retrieve).not.toHaveBeenCalled();
+      expect(paymentCreate).not.toHaveBeenCalled();
+    },
+  );
+  it("does not recover an administrator attempt with changed credentials", async () => {
+    markAdminAssisted();
+    attempt.providerIntentRef = null;
+    attempt.metadata.adminAssisted.gatewayFingerprint = "a".repeat(64);
+    expect((await recoverOnlinePayments()).failures).toBe(1);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(paymentCreate).not.toHaveBeenCalled();
   });
 
   it("marks admin test settlement and retains the admin actor and purpose separately from payer consent", async () => {
@@ -426,6 +514,28 @@ describe("online settlement", () => {
     retrieve.mockResolvedValue({ providerRef: "ref-1", status: "succeeded", amountMinor: 10000, currency: "USD" });
     await recoverOnlinePayments();
     expect(paymentCreate).toHaveBeenCalledOnce();
+  });
+  it("expires an old unconfirmed live administrator payment only after actual Stripe cancellation confirms it", async () => {
+    markAdminAssisted();
+    attempt.status = "created";
+    attempt.createdAt = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    const config = { id: "gateway-1", data: { publishableKey: "pk_live_fixture" } };
+    const resolved = { config, context: { apiKey: "sk_live_fixture", config },
+      plugin: { ...stripePaymentGatewayPlugin, retrievePayment: retrieve } };
+    attempt.metadata.adminAssisted.gatewayFingerprint = adminPaymentGatewayFingerprint(resolved as any);
+    const { resolveGateway } = await import("../../server/modules/ledger/payment-gateway-context");
+    vi.mocked(resolveGateway).mockResolvedValueOnce(resolved as any);
+    retrieve.mockResolvedValue({ providerRef: "ref-1", status: "created", amountMinor: 10000, currency: "USD" });
+    const providerIntent = { id: "ref-1", status: "requires_payment_method", amount: 10000,
+      currency: "usd", livemode: true, metadata: { paymentPurpose: "admin_assisted", attemptId: "attempt-1" } };
+    stripeSdk.retrieve.mockReset().mockResolvedValue(providerIntent);
+    stripeSdk.cancel.mockReset().mockResolvedValue({ ...providerIntent, status: "canceled" });
+    expect((await recoverOnlinePayments()).failures).toBe(0);
+    expect(stripeSdk.cancel).toHaveBeenCalledWith("ref-1");
+    expect(attempt.status).toBe("expired");
+    expect(events.updateStatus).toHaveBeenCalledWith("attempt-1", "canceled", expect.anything());
+    expect(events.updateStatus).toHaveBeenCalledWith("attempt-1", "expired", expect.anything());
+    expect(paymentCreate).not.toHaveBeenCalled();
   });
 
   it("recovers a provider reference lost after checkout creation with the same session id", async () => {

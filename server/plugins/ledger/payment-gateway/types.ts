@@ -378,6 +378,8 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
   cancelPayment?(
     ctx: PaymentGatewayContext,
     providerRef: string,
+    /** Server supplies this only after validating stored on-behalf provenance. */
+    authorization?: { adminAssistedAttemptId: string },
   ): Promise<NormalizedPayment>;
 
   // --- Provider-only behaviour (no storage/DB access) --------------------

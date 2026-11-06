@@ -241,9 +241,9 @@ function WorkerLedgerAccountsContent() {
                              Pay Balance
                           </Link>
                          </Button>}
-                          {isAdmin && <Button asChild variant="outline" size="sm" data-testid={`button-admin-test-payment-${entry.id}`}>
-                            <Link href={`/admin-test-pay/worker/${encodeURIComponent(workerId)}/${encodeURIComponent(entry.id)}`}>
-                              Test payment
+                          {isAdmin && <Button asChild variant="outline" size="sm" data-testid={`button-admin-payment-${entry.id}`}>
+                            <Link href={`/admin-pay/worker/${encodeURIComponent(workerId)}/${encodeURIComponent(entry.id)}`}>
+                              Make payment
                             </Link>
                           </Button>}
                       </div>

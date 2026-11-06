@@ -5,6 +5,7 @@ import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getCheckoutErrorMessage } from "@/lib/checkout-errors";
 
 type Receipt = {
   id: string; entityType: string; entityId: string; eaId: string;
@@ -12,7 +13,7 @@ type Receipt = {
   canCancel?: boolean;
   ledgerPaymentId?: string | null;
   paymentStatus?: string | null; dateReceived?: string | null; dateCleared?: string | null;
-  isAdminTest?: boolean; adminTestPurpose?: string | null;
+  isAdminTest?: boolean; adminTestPurpose?: string | null; isAdminAssisted?: boolean;
 };
 const terminal = new Set(["failed", "canceled", "expired"]);
 
@@ -20,12 +21,14 @@ export default function SharedPaymentReceipt() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [location] = useLocation();
   const isAdminTest = location.startsWith("/admin-test-pay/receipt/");
-  const apiPath = isAdminTest ? "/api/ledger/admin-test-checkout/sessions" : "/api/ledger/checkout/sessions";
+  const isAdminAssisted = location.startsWith("/admin-pay/receipt/");
+  const apiPath = isAdminAssisted ? "/api/ledger/admin-checkout/sessions" : isAdminTest ? "/api/ledger/admin-test-checkout/sessions" : "/api/ledger/checkout/sessions";
+  const receiptKey = ["checkout-receipt", sessionId, ...(isAdminAssisted ? ["admin-assisted"] : isAdminTest ? ["admin-test"] : [])];
   const queryClient = useQueryClient();
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const receipt = useQuery<Receipt>({
-    queryKey: ["checkout-receipt", sessionId],
+    queryKey: receiptKey,
     queryFn: () => apiRequest("GET", `${apiPath}/${encodeURIComponent(sessionId)}`),
     refetchInterval: query => {
       const data = query.state.data;
@@ -45,22 +48,23 @@ export default function SharedPaymentReceipt() {
     try {
       const result: Receipt = await apiRequest("POST", `${apiPath}/${encodeURIComponent(sessionId)}/cancel`);
       if (result.status !== "canceled") throw new Error("Provider cancellation was not confirmed. Check the status before starting another payment.");
-      queryClient.setQueryData(["checkout-receipt", sessionId], result);
+      queryClient.setQueryData(receiptKey, result);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["worker-online-pay-accounts"] }),
         queryClient.invalidateQueries({ queryKey: ["checkout"] }),
         queryClient.invalidateQueries({ queryKey: ["employer-checkout-entry"] }),
       ]);
     } catch (cause) {
-      setCancelError(getApiErrorMessage(cause, "Could not confirm cancellation. Your balance remains reserved; check status or contact support."));
+      setCancelError(isAdminAssisted ? getCheckoutErrorMessage(cause, "cancel") : getApiErrorMessage(cause, "Could not confirm cancellation. Your balance remains reserved; check status or contact support."));
       await receipt.refetch();
     } finally { setCanceling(false); }
   };
   return <main className="mx-auto w-full max-w-xl space-y-4 p-4" aria-live="polite">
-    <h1 className="text-2xl font-semibold">{isAdminTest ? "Admin test payment receipt" : "Payment receipt"}</h1>
+    <h1 className="text-2xl font-semibold">{isAdminAssisted ? "Administrator payment receipt" : isAdminTest ? "Admin test payment receipt" : "Payment receipt"}</h1>
+    {isAdminAssisted && <Alert><AlertDescription>This payment was initiated by an administrator on the worker's behalf. Administrator authorization is recorded separately from the worker's own consent.</AlertDescription></Alert>}
     {isAdminTest && <Alert><AlertDescription>This is a test-only payment. A successful result is recorded on the selected account's ledger; it is not evidence of real funds or payer consent.</AlertDescription></Alert>}
     {receipt.isLoading ? <p role="status">Checking payment status…</p> :
-      receipt.isError ? <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(receipt.error, "Unable to check payment status.")} <Button variant="link" onClick={() => void receipt.refetch()}>Retry</Button></AlertDescription></Alert> :
+      receipt.isError ? <Alert variant="destructive"><AlertDescription>{isAdminAssisted ? getCheckoutErrorMessage(receipt.error, "status") : getApiErrorMessage(receipt.error, "Unable to check payment status.")}{isAdminAssisted && <p>Confirmation: {sessionId}</p>} <Button variant="link" onClick={() => void receipt.refetch()}>Retry</Button></AlertDescription></Alert> :
        value && <Card><CardHeader><CardTitle>{posted ? "Payment cleared" :
          value.status === "created" ? "Awaiting payment details or confirmation" :
          value.status === "requires_action" ? "Awaiting payment confirmation" :
@@ -86,7 +90,9 @@ export default function SharedPaymentReceipt() {
              {value.entityType === "worker" && <Link className="underline" href={`/workers/${encodeURIComponent(value.entityId)}/ledger/accounts`}>Worker accounts</Link>}
              {value.entityType === "employer" && <Link className="underline" href={`/employers/${encodeURIComponent(value.entityId)}/ledger/accounts`}>Employer accounts</Link>}
             {(value.status === "failed" || value.status === "canceled" || value.status === "expired") &&
-               <Link className="underline" href={isAdminTest
+               <Link className="underline" href={isAdminAssisted
+                 ? `/admin-pay/worker/${encodeURIComponent(value.entityId)}/${encodeURIComponent(value.eaId)}`
+                 : isAdminTest
                  ? `/admin-test-pay/${value.entityType}/${encodeURIComponent(value.entityId)}/${encodeURIComponent(value.eaId)}`
                  : `/pay/${encodeURIComponent(value.eaId)}`}>Try again</Link>}
           </div>

@@ -5,11 +5,13 @@ import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
+import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
+import { ApiError } from "@/lib/queryClient";
 
 const { apiRequest, navigate, route, payEnabled } = vi.hoisted(() => ({
   apiRequest: vi.fn(),
   navigate: vi.fn(),
-  route: { sessionId: "session-1", eaId: "ea-1" },
+  route: { sessionId: "session-1", eaId: "ea-1", entityId: "worker-1", location: "/pay/ea-1" },
   payEnabled: { value: true },
 }));
 
@@ -21,7 +23,7 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ hasPermission: () =
 vi.mock("wouter", () => ({
   Link: ({ href, children, ...props }: { href: string; children: React.ReactNode } & React.HTMLAttributes<HTMLAnchorElement>) =>
     <a href={href} {...props}>{children}</a>,
-  useLocation: () => ["/pay/ea-1", navigate],
+  useLocation: () => [route.location, navigate],
   useParams: () => route,
 }));
 vi.mock("@/plugins/payment-gateway/registry", () => ({
@@ -148,6 +150,7 @@ beforeEach(() => {
   apiRequest.mockReset();
   navigate.mockReset();
   payEnabled.value = true;
+  route.location = "/pay/ea-1";
   workerFixture = checkout;
   methodsFixture = methods;
   vi.stubGlobal("crypto", { randomUUID: () => "idempotency-1" });
@@ -162,6 +165,83 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   employerFixture = null;
   window.history.replaceState({}, "", "/");
+});
+
+describe("administrator-assisted worker checkout", () => {
+  function administratorFixture() {
+    route.location = "/admin-pay/worker/worker-1/ea-1";
+    apiRequest.mockImplementation((method, url, body) => {
+      if (method === "GET" && url === "/api/ledger/admin-checkout/worker/worker-1/ea-1") {
+        return Promise.resolve({ ...checkout, authorization: null, isAdminAssisted: true,
+          adminConfirmation: ADMIN_PAYMENT_CONFIRMATION, reusableMethodsSupported: false,
+          readiness: { paymentAuthorization: "admin_assisted", methodPermission: "denied", saveMethod: "permission_denied" } });
+      }
+      return Promise.resolve(response(method, url, body));
+    });
+  }
+  it.each(["New credit/debit card", "New US bank transfer"])("uses on-behalf URLs and separate authorization for %s", async method => {
+    administratorFixture();
+    await render();
+    expect(text()).toContain("This can charge real funds");
+    expect(text()).not.toContain("Test mode only");
+    expect(text()).not.toContain("Test purpose");
+    expect(apiRequest.mock.calls).toHaveLength(1);
+    expect(apiRequest.mock.calls[0]).toEqual(["GET", "/api/ledger/admin-checkout/worker/worker-1/ea-1"]);
+    expect(button("Review payment").disabled).toBe(true);
+    await selectRadio(method);
+    await clickCheckboxContaining(ADMIN_PAYMENT_CONFIRMATION.text);
+    await submit();
+    expect(postBody()).toMatchObject({
+      adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, accepted: true },
+      saveMethod: false, amount: "125.00",
+      paymentMethodType: method.includes("card") ? "card" : "us_bank_account",
+    });
+    expect(postBody().consent).toBeUndefined();
+    expect(postBody().adminTestConfirmation).toBeUndefined();
+    expect(postBody().saveMethodConsent).toBeUndefined();
+    expect(apiRequest.mock.calls.some(([m, url]) => m === "POST" && url === "/api/ledger/admin-checkout/worker/worker-1/ea-1/sessions")).toBe(true);
+    await act(async () => { button("Confirm provider payment").click(); });
+    expect(navigate).toHaveBeenCalledWith("/admin-pay/receipt/session-1");
+  });
+  it("shows a safe loading explanation for an HTML response and retries only the preview", async () => {
+    administratorFixture();
+    const next = apiRequest.getMockImplementation()!;
+    apiRequest.mockRejectedValueOnce(new ApiError(502, "<html>private response</html>")).mockImplementation(next);
+    await render();
+    expect(text()).toContain("Administrator checkout could not be loaded");
+    expect(text()).not.toContain("private response");
+    noPost();
+    await act(async () => { button("Retry").click(); });
+    await settle();
+    expect(text()).toContain("This can charge real funds");
+    noPost();
+  });
+  it("never treats an uncertain creation response as permission to create a replacement", async () => {
+    administratorFixture();
+    const next = apiRequest.getMockImplementation()!;
+    apiRequest.mockImplementation((method, url, body) => method === "POST"
+      ? Promise.reject(new ApiError(502, "Server returned an unexpected response. Please try again."))
+      : next(method, url, body));
+    await render();
+    await clickCheckboxContaining(ADMIN_PAYMENT_CONFIRMATION.text);
+    await submit();
+    expect(text()).toContain("Check your unfinished payments");
+    expect(text()).not.toContain("Server returned an unexpected response");
+    expect(apiRequest.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
+  });
+  it("shows status failures with the same confirmation number and no replacement action", async () => {
+    route.location = "/admin-pay/receipt/session-1";
+    apiRequest.mockRejectedValue(new ApiError(502, "<html>private response</html>"));
+    await render("receipt");
+    expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/admin-checkout/sessions/session-1");
+    expect(text()).toContain("Do not start another payment");
+    expect(text()).toContain("Confirmation: session-1");
+    expect(text()).not.toContain("private response");
+    expect(container?.querySelector('a[href^="/admin-pay/worker/"]')).toBeNull();
+    await act(async () => { button("Retry").click(); });
+    await settle();
+    expect(apiRequest.mock.calls.every(([method, path]) => method === "GET" && path.endsWith("/sessions/session-1"))).toBe(true);
+  });
 });
 
 describe("shared checkout", () => {

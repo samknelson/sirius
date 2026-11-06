@@ -9,10 +9,12 @@ import {
   stripePaymentGatewayPlugin,
 } from "../../server/plugins/ledger/payment-gateway/plugins/stripe";
 
-const stripeCreate = vi.hoisted(() => vi.fn());
+const { stripeCreate, stripeRetrieve, stripeCancel } = vi.hoisted(() => ({
+  stripeCreate: vi.fn(), stripeRetrieve: vi.fn(), stripeCancel: vi.fn(),
+}));
 vi.mock("stripe", () => ({
   default: class {
-    paymentIntents = { create: stripeCreate };
+    paymentIntents = { create: stripeCreate, retrieve: stripeRetrieve, cancel: stripeCancel };
   },
 }));
 
@@ -22,6 +24,108 @@ const context = {
 } as PaymentGatewayContext;
 
 describe("payment gateway provider contract", () => {
+  it.each(["test", "live"])("cancels an unconfirmed %s administrator payment only after verifying its provider provenance", async mode => {
+    const ctx = { apiKey: `sk_${mode}_fixture`, config: { id: "stripe",
+      data: { publishableKey: `pk_${mode}_fixture` } } } as PaymentGatewayContext;
+    const intent = { id: "pi_admin", status: "requires_payment_method", livemode: mode === "live",
+      amount: 12500, currency: "usd", metadata: { paymentPurpose: "admin_assisted", attemptId: "admin-attempt" } };
+    stripeRetrieve.mockReset().mockResolvedValue(intent);
+    stripeCancel.mockReset().mockResolvedValue({ ...intent, status: "canceled" });
+    await expect(stripePaymentGatewayPlugin.cancelPayment!(ctx, "pi_admin", { adminAssistedAttemptId: "admin-attempt" }))
+      .resolves.toMatchObject({ providerRef: "pi_admin", status: "canceled", amountMinor: 12500 });
+    expect(stripeRetrieve).toHaveBeenCalledWith("pi_admin");
+    expect(stripeCancel).toHaveBeenCalledWith("pi_admin");
+  });
+  it("still refuses live cancellation for ordinary and historical test flows without provider entry", async () => {
+    stripeRetrieve.mockClear();
+    stripeCancel.mockClear();
+    const ctx = { apiKey: "sk_live_fixture", config: { id: "stripe",
+      data: { publishableKey: "pk_live_fixture" } } } as PaymentGatewayContext;
+    await expect(stripePaymentGatewayPlugin.cancelPayment!(ctx, "pi_ordinary"))
+      .rejects.toMatchObject({ code: "credentials_not_ready" });
+    expect(stripeRetrieve).not.toHaveBeenCalled();
+    expect(stripeCancel).not.toHaveBeenCalled();
+  });
+  it.each([
+    { metadata: { paymentPurpose: "admin_test", attemptId: "admin-attempt" } },
+    { metadata: { paymentPurpose: "online_checkout", attemptId: "admin-attempt" } },
+    { metadata: { paymentPurpose: "admin_assisted", attemptId: "other-attempt" } },
+    { livemode: false },
+    { id: "pi_another" },
+    { status: "processing" },
+    { status: "succeeded" },
+  ])("does not cancel a live payment with mismatched administrator provenance or confirmed state %j", async overrides => {
+    stripeRetrieve.mockReset().mockResolvedValue({
+      id: "pi_admin", status: "requires_payment_method", livemode: true,
+      metadata: { paymentPurpose: "admin_assisted", attemptId: "admin-attempt" }, ...overrides,
+    });
+    stripeCancel.mockClear();
+    const ctx = { apiKey: "sk_live_fixture", config: { id: "stripe",
+      data: { publishableKey: "pk_live_fixture" } } } as PaymentGatewayContext;
+    await expect(stripePaymentGatewayPlugin.cancelPayment!(ctx, "pi_admin", { adminAssistedAttemptId: "admin-attempt" }))
+      .rejects.toMatchObject({ code: "payment_not_cancelable" });
+    expect(stripeCancel).not.toHaveBeenCalled();
+  });
+  it("refuses mismatched live cancellation credentials before provider entry", async () => {
+    stripeRetrieve.mockClear();
+    stripeCancel.mockClear();
+    const ctx = { apiKey: "sk_live_fixture", config: { id: "stripe",
+      data: { publishableKey: "pk_test_fixture" } } } as PaymentGatewayContext;
+    await expect(stripePaymentGatewayPlugin.cancelPayment!(ctx, "pi_admin", { adminAssistedAttemptId: "admin-attempt" }))
+      .rejects.toMatchObject({ code: "credentials_not_ready" });
+    expect(stripeRetrieve).not.toHaveBeenCalled();
+    expect(stripeCancel).not.toHaveBeenCalled();
+  });
+  it.each(["test", "live"])("permits matching %s keys only for administrator-on-behalf sessions", async mode => {
+    const ctx = { apiKey: `sk_${mode}_fixture`, config: { id: "stripe",
+      data: { publishableKey: `pk_${mode}_fixture`, paymentTypes: ["card", "us_bank_account"] } } } as PaymentGatewayContext;
+    const args = { sessionId: "admin-on-behalf", amountMinor: 12500, currency: "USD",
+      saveMethod: false, paymentTypes: ["card"], description: "Administrator payment on behalf of worker",
+      metadata: { paymentPurpose: "admin_assisted" } };
+    stripeCreate.mockReset().mockResolvedValue({
+      id: "pi_fixture", status: "requires_payment_method", client_secret: "cs_fixture",
+      amount: 12500, currency: "usd",
+    });
+    await expect(stripePaymentGatewayPlugin.createPaymentSession!(ctx, args)).resolves.toMatchObject({
+      providerRef: "pi_fixture", status: "created",
+    });
+    expect(stripeCreate).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 12500, currency: "usd", confirm: undefined,
+      metadata: expect.objectContaining({ paymentPurpose: "admin_assisted" }),
+    }), { idempotencyKey: "admin-on-behalf" });
+    stripeCreate.mockClear();
+    if (mode === "live") {
+      for (const metadata of [{}, { paymentPurpose: "admin_test" }] as Record<string, string>[]) {
+        await expect(stripePaymentGatewayPlugin.createPaymentSession!(ctx, { ...args, metadata }))
+          .rejects.toMatchObject({ code: "credentials_not_ready" });
+      }
+      expect(stripeCreate).not.toHaveBeenCalled();
+    }
+  });
+  it.each([
+    ["sk_live_fixture", "pk_test_fixture"], ["sk_test_fixture", "pk_live_fixture"],
+    ["unknown", "pk_live_fixture"], ["sk_live_fixture", ""],
+  ])("refuses mismatched administrator keys %s / %s before provider entry", async (apiKey, publishableKey) => {
+    stripeCreate.mockClear();
+    const ctx = { apiKey, config: { id: "stripe", data: { publishableKey, paymentTypes: ["card"] } } } as PaymentGatewayContext;
+    await expect(stripePaymentGatewayPlugin.createPaymentSession!(ctx, {
+      sessionId: "admin-on-behalf", amountMinor: 12500, currency: "USD", saveMethod: false,
+      paymentTypes: ["card"], description: "Administrator payment", metadata: { paymentPurpose: "admin_assisted" },
+    })).rejects.toMatchObject({ code: "credentials_not_ready" });
+    expect(stripeCreate).not.toHaveBeenCalled();
+  });
+  it.each([{ saveMethod: true }, { savedMethodRef: "pm_worker" }, { customerRef: "cus_worker" }])(
+    "refuses saved-method use in administrator provider entry %j", async extras => {
+      stripeCreate.mockClear();
+      const ctx = { apiKey: "sk_live_fixture", config: { id: "stripe",
+        data: { publishableKey: "pk_live_fixture", paymentTypes: ["card"] } } } as PaymentGatewayContext;
+      await expect(stripePaymentGatewayPlugin.createPaymentSession!(ctx, {
+        sessionId: "admin-on-behalf", amountMinor: 12500, currency: "USD", saveMethod: false,
+        paymentTypes: ["card"], description: "Administrator payment", metadata: { paymentPurpose: "admin_assisted" }, ...extras,
+      })).rejects.toMatchObject({ code: "saved_method_not_allowed" });
+      expect(stripeCreate).not.toHaveBeenCalled();
+    },
+  );
   it("requires matching provider-specific Stripe test-key signals", () => {
     const testContext = {
       apiKey: "sk_test_fixture",

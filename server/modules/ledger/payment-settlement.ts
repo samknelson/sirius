@@ -1,3 +1,4 @@
+import { assertAdminAssistedPaymentProvenance } from "./admin-assisted-payment";
 import { randomUUID } from "node:crypto";
 import type { LedgerPayment, LedgerPaymentAttempt } from "@shared/schema";
 import type { NormalizedGatewayEvent, NormalizedPayment } from "../../plugins/ledger/payment-gateway/types";
@@ -54,6 +55,7 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
     await storage.ledger.paymentAttempts.lockEa(attempt.ledgerEaId);
     if (attempt.gatewayConfigId !== gatewayId) throw new SettlementRefusal("Payment gateway mismatch");
     const metadata = attempt.metadata as Record<string, any> | null;
+    const adminAssisted = assertAdminAssistedPaymentProvenance(attempt);
     const isAdminTestSource = metadata?.source === "admin_test_checkout";
     const hasAdminTestMarker = metadata?.adminTest?.isAdminTest === true;
     if (isAdminTestSource !== hasAdminTestMarker)
@@ -139,11 +141,16 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
           paymentType: paymentType.id, ledgerEaId: attempt.ledgerEaId,
           dateReceived: now.toISOString(),
           dateCleared: status === "succeeded" ? now.toISOString() : null,
-          memo: adminTest ? "Admin test payment" : "Online payment", details: {
+          memo: adminTest ? "Admin test payment" : adminAssisted ? "Administrator payment on behalf of worker" : "Online payment", details: {
             provider: gatewayId, paymentAttemptId: attempt.id,
             providerIntentRef: evidence.providerRef, proposedAllocation: allocations,
             statementSelection: selection ?? [],
             creditTransfers: quote?.creditTransfers ?? [],
+            ...(adminAssisted ? {
+              adminAssisted: true,
+              adminActorUserId: metadata!.adminAssisted.actorUserId,
+              adminConfirmation: metadata!.adminAssisted.confirmation,
+            } : {}),
             ...(adminTest ? {
               adminTest: true,
               adminTestPurpose: metadata!.adminTest.purpose,
