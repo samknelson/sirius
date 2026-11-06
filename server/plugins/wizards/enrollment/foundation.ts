@@ -12,6 +12,8 @@ import type { Wizard } from "@shared/schema";
 import type { EnrollmentType } from "@shared/schema";
 import { parseSSN } from "@shared/utils/ssn";
 import { evaluateEnrollmentDependentAge } from "@shared/utils/enrollment-dependent-age";
+import { isWorkerElectionRelationshipAvailable } from "@shared/utils/enrollment-relationship-choices";
+import { WorkerTrustElectionValidationError } from "../../../storage/trust/elections";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import {
   evaluateBenefitEligibility,
@@ -531,6 +533,13 @@ export async function handleDependentsSubmit(
       ? await createUnifiedOptionsStorage().get("worker-relation-type", input.relationTypeId)
       : undefined;
     if (!relationship) throw new Error("Choose an existing relationship type.");
+    if (!isWorkerElectionRelationshipAvailable(relationship) &&
+        !(await checkAccessInline(ctx.req, "staff")).granted) {
+      throw new WorkerTrustElectionValidationError(
+        "relationTypeId",
+        "This relationship type is staff-only in election wizards. Ask staff for help.",
+      );
+    }
     const age = evaluateEnrollmentDependentAge(input.birthDate, relationship.name, todayYmd());
     if (age.error) throw new Error(age.error);
     if (!input.documentFileId) {

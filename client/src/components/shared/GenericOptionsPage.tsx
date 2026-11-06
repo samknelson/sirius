@@ -64,6 +64,7 @@ interface FieldDefinition {
   columnWidth?: string;
   dataField?: boolean;
   dataPath?: string[];
+  default?: boolean;
   selectOptionsType?: string;
   enumOptions?: Array<{ value: string; label?: string }>;
 }
@@ -315,7 +316,7 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
     const value = getFieldValue(item, field);
 
     if (field.inputType === "checkbox") {
-      return value ? "Yes" : "No";
+      return (value ?? field.default) ? "Yes" : "No";
     }
     if (field.inputType === "icon") {
       return value ? renderIcon(value, "h-5 w-5") : (

@@ -1129,6 +1129,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Spouse, Parent, Sibling", showInTable: true, columnHeader: "Name" },
+      { name: "availableToWorkersInElectionWizards", label: "Available to workers in election wizards", inputType: "checkbox", required: false, default: true, helperText: "When off, only staff can choose this type when adding dependents in election wizards. Staff relationship management and existing relationships are unchanged.", showInTable: true, columnHeader: "Worker election choice", dataField: true },
       { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "description", label: "Description", inputType: "text", required: false, placeholder: "Short description of this relationship type", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },

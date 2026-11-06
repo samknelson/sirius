@@ -14,3 +14,9 @@ Existing-person matches require separate authority: an SSN/date-of-birth match a
 **Why:** Exposing a formerly staff-only add step otherwise turns identity matching into cross-worker disclosure and contact modification.
 
 **How to apply:** Check relationship authority before returning matched personal details or making mutations, and test direct add requests as well as the lookup response.
+
+Worker election relationship-choice restrictions are add-only, not coverage policy. Administrators may reserve any configured relationship type for staff; never derive this restriction from a relationship name or retroactively invalidate existing relationships or covered dependents.
+
+**Why:** The requested setting deliberately preserves staff enrollment, manual relationship management, posted elections, and existing coverage.
+
+**How to apply:** Enforce the restriction when a non-staff operator adds a dependent, before dependent/contact mutations. Keep manual relationship APIs and existing election selections outside this restriction.

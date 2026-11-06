@@ -31,6 +31,10 @@ const props: any = { wizardId: "wizard", step: { id: "dependents" }, data: {
   dependents: [], dependentLookup: { status: "no_match", message: "Fictional new dependent" },
   pendingDocument: { fileId: "doc", fileName: "evidence.pdf" },
 } };
+const actor = vi.hoisted(() => ({ staff: false }));
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ hasPermission: (permission: string) => permission === "staff" && actor.staff }),
+}));
 
 describe("immediate dependent DOB form feedback", () => {
   let root: Root, container: HTMLDivElement;
@@ -64,6 +68,7 @@ describe("immediate dependent DOB form feedback", () => {
   }
   beforeEach(async () => {
     queryClient.clear();
+    actor.staff = false;
     vi.clearAllMocks();
     vi.mocked(apiRequest).mockResolvedValue({});
     vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
@@ -153,7 +158,7 @@ describe("immediate dependent DOB form feedback", () => {
       queryClient.setQueryData(["/api/options/worker-relation-type"], relationTypes.slice(0, 9));
       await new Promise(resolve => setTimeout(resolve, 0));
     });
-    expect(text("alert-dependent-age-error")).toContain("existing relationship");
+    expect(text("alert-dependent-age-error")).toContain("available relationship");
     expect(add().disabled).toBe(true);
   });
   it("requires staff assistance for an unrelated existing person and offers no add controls", async () => {
@@ -167,6 +172,33 @@ describe("immediate dependent DOB form feedback", () => {
     expect(container.querySelector('[data-testid="input-dependent-document"]')).toBeNull();
     expect(container.querySelector('[data-testid="select-relation-type"]')).toBeNull();
     expect(apiRequest).not.toHaveBeenCalled();
+  });
+  it("hides disabled types for workers and blocks a previously selected type after an administrator disables it", async () => {
+    await input("input-dependent-dob", "2000-06-15");
+    await choose("configured-9");
+    await lookup();
+    expect(add().disabled).toBe(false);
+    await act(async () => {
+      queryClient.setQueryData(["/api/options/worker-relation-type"], relationTypes.map(option =>
+        option.id === "configured-9" ? {
+          ...option, data: { availableToWorkersInElectionWizards: false },
+        } : option));
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('option[value="configured-9"]')).toBeNull();
+    expect(container.querySelectorAll('option[value^="configured-"]').length).toBe(relationTypes.length - 1);
+    expect(text("alert-dependent-age-error")).toContain("ask staff");
+    expect(add().disabled).toBe(true);
+    vi.mocked(apiRequest).mockClear();
+    await act(async () => add().click());
+    expect(apiRequest).not.toHaveBeenCalled();
+
+    actor.staff = true;
+    await act(async () => root.render(
+      <QueryClientProvider client={queryClient}><DependentsStep {...props} /></QueryClientProvider>,
+    ));
+    expect(container.querySelector('option[value="configured-9"]')).not.toBeNull();
+    expect(add().disabled).toBe(false);
   });
   it("changes leap-day availability on March 1 using only the server's date", async () => {
     await date("2026-02-28");

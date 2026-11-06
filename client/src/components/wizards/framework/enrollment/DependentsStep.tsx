@@ -23,6 +23,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { DependentGenderFields } from "./DependentGenderFields";
+import { useAuth } from "@/contexts/AuthContext";
+import { isWorkerElectionRelationshipAvailable } from "@shared/utils/enrollment-relationship-choices";
 import {
   ADULT_RELATIONSHIP_GUIDANCE,
   classifyEnrollmentRelationship,
@@ -64,6 +66,7 @@ interface LookupResult {
 interface RelationTypeOption {
   id: string;
   name: string;
+  data?: unknown;
 }
 
 interface GenderOption {
@@ -89,6 +92,8 @@ export function DependentsStep({
   data,
 }: WizardStepComponentProps) {
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const isStaff = hasPermission("staff");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const dependents: DependentEntry[] = Array.isArray(data?.dependents)
@@ -115,9 +120,12 @@ export function DependentsStep({
     (option) => option.id === gender && option.nota,
   );
 
-  const { data: relationTypes } = useQuery<RelationTypeOption[]>({
+  const { data: configuredRelationTypes } = useQuery<RelationTypeOption[]>({
     queryKey: ["/api/options/worker-relation-type"],
   });
+  const relationTypes = configuredRelationTypes?.filter(
+    option => isStaff || isWorkerElectionRelationshipAvailable(option),
+  );
 
   // Live dual-coverage preview: the server re-runs the same check the final
   // post enforces, so a conflicting dependent is flagged here — before the
@@ -137,7 +145,7 @@ export function DependentsStep({
     : null;
   const identityChecked = checkedIdentity?.ssn === ssn && checkedIdentity?.birthDate === birthDate;
   const relationshipError = relationTypeId && relationTypes && !selectedRelationship
-    ? "Choose an existing relationship type." : null;
+    ? "Choose an available relationship type. If the correct type is missing, ask staff for help." : null;
   const conflicts: DualCoverageConflict[] =
     stepData?.dualCoverageConflicts ??
     ((data?.dualCoverageConflicts as DualCoverageConflict[] | undefined) ?? []);

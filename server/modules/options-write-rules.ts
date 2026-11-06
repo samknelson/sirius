@@ -141,6 +141,13 @@ export async function validateOptionTypeSpecificData(
   type: string,
   data: unknown,
 ): Promise<string | null> {
+  if (type === "worker-relation-type") {
+    const available = (data as { availableToWorkersInElectionWizards?: unknown } | null)
+      ?.availableToWorkersInElectionWizards;
+    if (available !== undefined && typeof available !== "boolean") {
+      return "Available to workers in election wizards must be a boolean";
+    }
+  }
   if (type === "dispatch-job-type") {
     return validateDispatchJobTypeBullpen(data);
   }

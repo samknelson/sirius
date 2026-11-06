@@ -22,6 +22,17 @@ export const administrationHelp: SystemHelpEntry[] = [
       <h3>Limitations and common problems</h3><p>A preview does not write changes. Shared choices can be referenced by many records; deleting or changing them can alter offered workflows or be refused by references. Do not import one list's file into another type.</p>`,
   },
   {
+    id: "system:worker-relationship-election-options",
+    paths: ["/config/options/worker-relation-type/list"],
+    summary: "Control which relationship types workers can choose when adding dependents in election wizards, without restricting staff relationship management.",
+    details: `
+      <h3>Purpose</h3><p>Keep relationship types available for staff records while controlling worker election choices.</p>
+      <h3>Before you start</h3><p>Administrator access and the Worker Relationships feature are required to configure this list.</p>
+      <h3>How to use this page</h3><ol><li>Add or edit a Worker Relationship Type.</li><li>Set <strong>Available to workers in election wizards</strong>. Leave it checked to offer this type to workers, or uncheck it to make the choice staff-only.</li><li>Save the type.</li></ol>
+      <h3>Results and status meanings</h3><p>Types without a saved setting remain available to workers. Turning this off prevents new worker dependent additions with this type in First-time Enrollment, Open Enrollment, and Life Event, including an already-selected choice submitted after the setting changes. Staff can still use every type in enrollment, subject to existing validation, and manually create or edit relationships.</p>
+      <h3>Limitations and common problems</h3><p>This setting does not alter existing relationships, posted elections, eligibility rules, or covered dependents. Workers whose accurate relationship is unavailable should contact staff rather than select an inaccurate type.</p>`,
+  },
+  {
     id: "system:entity-files-configuration",
     paths: ["/config/entity-files"],
     summary: "Configure each attachment area with its own filesystem, directory, and extension rules before enabling uploads or changing record-tab availability.",

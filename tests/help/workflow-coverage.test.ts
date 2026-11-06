@@ -46,6 +46,9 @@ const pluginKinds = [
 ];
 const reportPaths = reportTypeHelp.flatMap(entry => entry.paths);
 function concretePaths(template: string): string[] {
+  if (template === "/config/options/:type/list") {
+    return ["/config/options/example/list", "/config/options/worker-relation-type/list"];
+  }
   if (template === "/admin/plugin-configs/:kind") {
     return pluginKinds.map(kind => `/admin/plugin-configs/${kind}`);
   }
@@ -77,7 +80,7 @@ describe("audited authenticated workflow help", () => {
     expect(idsFor("/wizards/fictional")).toContain("system:enrollment-next");
     expect(idsFor("/wizards")).not.toContain("system:enrollment-next");
   });
-  it("documents dependent gender only on the existing enrollment review help", () => {
+  it("documents dependent gender on the staff review and worker election help separately", () => {
     const enrollmentHelp = getSystemHelp("system:enrollment-review")!;
     expect(enrollmentHelp.details).toContain("Gender is optional");
     expect(enrollmentHelp.details).toContain("Specify Gender");
@@ -85,7 +88,6 @@ describe("audited authenticated workflow help", () => {
       enrollmentHelp.details,
     );
     for (const path of [
-      "/workers/example/elections/list",
       "/trust/enrollment-queue",
       "/trust/election/example",
     ]) {
@@ -93,11 +95,13 @@ describe("audited authenticated workflow help", () => {
     }
     for (const path of [
       "/wizards/example",
+      "/workers/example/elections/list",
       "/workers/example/elections/current",
       "/cobra/cases/example",
     ]) {
       expect(idsFor(path)).not.toContain(enrollmentHelp.id);
     }
+    expect(getSystemHelp("system:elections-current")!.details).toContain("Gender is optional");
   });
 
   it("documents the worker eligibility policy default, manual choice, and feedback location", () => {

@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   rows: new Map<string, any>(), files: new Map<string, any>(),
   component: true, cobra: false, medical: false, active: false, window: true,
   deadline: "2099-12-31", elected: false, caseClosed: false, related: true, matched: true,
+  relationData: undefined as undefined | { availableToWorkersInElectionWizards: boolean },
 }));
 vi.mock("../../server/services/access-policy-evaluator", async original => {
   const allowed = (user: any, policy: string, entityId?: string) => {
@@ -55,7 +56,7 @@ vi.mock("../../server/plugins/wizards/attachments", () => ({
 vi.mock("../../server/storage/unified-options", () => ({
   createUnifiedOptionsStorage: () => ({
     get: async (type: string, id: string) => type === "worker-relation-type"
-      ? { id, name: "Spouse" } : { id, name: "New", closed: state.caseClosed },
+      ? { id, name: "Spouse", data: state.relationData } : { id, name: "New", closed: state.caseClosed },
     list: async () => [{ id: "pending", name: "Pending First Payment", closed: false }],
   }),
 }));
@@ -76,6 +77,7 @@ import { baoCobraEnrollmentPlugin } from "../../server/plugins/wizards/plugins/b
 import { computeDefaultEffectiveDate } from "../../server/plugins/wizards/enrollment/foundation";
 import workerMine from "../../shared/access-policies/worker/mine";
 import { findSystemHelpsForPath } from "../../server/help/system";
+import { registerWorkerRelationsRoutes } from "../../server/modules/workers/relations";
 
 const plugins = [benefitElectionEnrollmentPlugin, openEnrollmentEnrollmentPlugin,
   lifeEventEnrollmentPlugin, baoCobraEnrollmentPlugin];
@@ -159,6 +161,7 @@ beforeAll(async () => {
     state.related ? [{ id: "established-relation", worker1: params.workerId, worker2: "dependent",
       relationType: "spouse" }] as any : []);
   vi.spyOn(storage.workerRelations, "create").mockResolvedValue({ id: "dependent-relation" } as any);
+  vi.spyOn(storage.workerRelations, "update").mockResolvedValue({ id: "dependent-relation" } as any);
   vi.spyOn(storage.workers, "getWorkerBySSN").mockImplementation(async () =>
     state.matched ? { id: "dependent", contactId: "contact" } as any : undefined);
   vi.spyOn(storage.workers, "createWorker").mockResolvedValue({ id: "dependent-new" } as any);
@@ -184,6 +187,7 @@ beforeAll(async () => {
   registerWizardRoutes(app, requireAuth, key => requireAccess(key));
   registerWizardDispatcherRoutes(app, requireAuth);
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
+  registerWorkerRelationsRoutes(app, requireAuth, requireAccess);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -191,7 +195,8 @@ beforeAll(async () => {
 beforeEach(() => {
   state.rows.clear(); state.files.clear(); vi.clearAllMocks();
   Object.assign(state, { component: true, cobra: false, medical: false, active: false,
-    window: true, deadline: "2099-12-31", elected: false, caseClosed: false, related: true, matched: true });
+    window: true, deadline: "2099-12-31", elected: false, caseClosed: false, related: true, matched: true,
+    relationData: undefined });
 });
 afterAll(async () => {
   await new Promise<void>(resolve => server.close(() => resolve()));
@@ -199,6 +204,43 @@ afterAll(async () => {
 });
 
 describe("worker-only enrollment authorization through real HTTP routes", () => {
+  it.each(plugins.slice(0, 3))("refuses disabled relationship submissions before any mutation for $id, while retaining staff", async plugin => {
+    state.active = plugin.id === "life_event_enrollment";
+    const row = await (await create(plugin.id)).json();
+    if (state.active) await step(row.id, "event_type", { eventType: "marriage" });
+    const evidence = await upload(row.id, "dependents");
+    const documentFileId = (await evidence.json()).data.pendingDocument.fileId;
+    state.relationData = { availableToWorkersInElectionWizards: false };
+    for (const matched of [true, false]) {
+      state.matched = matched;
+      const response = await step(row.id, "dependents", { action: "add", ssn: "123-45-6789",
+        birthDate: "1990-01-01", given: "Fictional", family: "Dependent",
+        relationTypeId: "spouse", documentFileId, gender: "forged" });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("staff-only");
+      for (const method of ["createWorker", "updateWorkerSSN", "updateWorkerContactBirthDate",
+        "updateWorkerContactGender"] as const) expect(storage.workers[method]).not.toHaveBeenCalled();
+      expect(storage.workerRelations.create).not.toHaveBeenCalled();
+      expect(state.rows.get(row.id).data.dependents ?? []).toEqual([]);
+    }
+    const response = await step(row.id, "dependents", { action: "add", ssn: "123-45-6789",
+      birthDate: "1990-01-01", given: "Fictional", family: "Dependent",
+      relationTypeId: "spouse", documentFileId }, "staff");
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(storage.workerRelations.create).toHaveBeenCalled();
+  });
+
+  it("keeps disabled types available for staff manual relationship creation and editing", async () => {
+    state.relationData = { availableToWorkersInElectionWizards: false };
+    const body = { worker2: "dependent", relationType: "spouse", startYmd: "2026-01-01" };
+    expect((await request("/api/workers/own-worker/relations", "POST", body, "staff")).status).toBe(201);
+    expect(storage.workerRelations.create).toHaveBeenCalledWith(expect.objectContaining(body));
+    expect((await request("/api/worker-relations/dependent-relation", "PATCH",
+      { relationType: "spouse" }, "staff")).status).toBe(200);
+    expect(storage.workerRelations.update).toHaveBeenCalledWith("dependent-relation", { relationType: "spouse" });
+    expect((await request("/api/workers/own-worker/relations", "POST", body)).status).toBe(403);
+  });
+
   it.each(plugins)("scopes create, read, dispatch, files, and schema for $id", async plugin => {
     state.cobra = plugin.id === "bao_cobra_enrollment";
     state.active = plugin.id === "life_event_enrollment";

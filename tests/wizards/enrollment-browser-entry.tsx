@@ -4,6 +4,7 @@ import { queryClient } from "@/lib/queryClient";
 import { FrameworkWizardBody } from "@/components/wizards/framework/FrameworkWizardBody";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "@/index.css";
 
 function Enrollment() {
@@ -20,5 +21,5 @@ function Enrollment() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={queryClient}><Enrollment /></QueryClientProvider>,
+  <QueryClientProvider client={queryClient}><AuthProvider><Enrollment /></AuthProvider></QueryClientProvider>,
 );

@@ -132,6 +132,9 @@ beforeAll(async () => {
     res.json({ ...row, manifest: wizardPluginRegistry.computeManifest(plugin, row) });
   });
   app.get("/api/helps/lookup", requireAuth, (req, res) => res.json(findSystemHelpsForPath(String(req.query.path))));
+  app.get("/api/auth/user", requireAuth, (_req, res) => res.json({
+    user: { id: "fixture-user" }, permissions: state.admin ? ["staff", "admin"] : ["worker"],
+  }));
   app.get("/api/options/worker-relation-type", requireAuth, (_req, res) => res.json(state.relationOptions));
   app.get("/api/options/gender", requireAuth, (_req, res) => res.json([
     { id: "gender-nota", name: "Specify Gender", nota: true },
