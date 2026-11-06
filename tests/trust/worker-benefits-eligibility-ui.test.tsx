@@ -70,13 +70,32 @@ import WorkerBenefitsEligibility from "../../client/src/pages/worker-benefits-el
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const policies = [
-  { id: "policy-election", name: "Election Policy", data: { benefitIds: ["benefit-1"] } },
+  { id: "policy-election", name: "Election Policy", data: { benefitIds: ["benefit-1", "benefit-2", "benefit-dental"] } },
   { id: "policy-home", name: "Home Policy", data: { benefitIds: ["benefit-1"] } },
   { id: "policy-default", name: "System Default", data: { benefitIds: ["benefit-1"] } },
   { id: "policy-manual", name: "Manual Policy", data: { benefitIds: ["benefit-1"] } },
 ];
 
 let elections: Array<Record<string, unknown>>;
+let benefitHistory: Array<{ benefitId: string; year: number; month: number; benefit?: { benefitType: string } }>;
+let benefitDataGate: { url: string; promise: Promise<unknown> } | null;
+const benefits = [
+  { id: "benefit-1", name: "Health Plan One", benefitType: "type-medical" },
+  { id: "benefit-2", name: "Health Plan Two", benefitType: "type-medical" },
+  // A benefit's name must not be mistaken for its type.
+  { id: "benefit-dental", name: "Medical", benefitType: "type-dental" },
+];
+const benefitTypes = [
+  { id: "type-medical", name: "Medical" },
+  { id: "type-dental", name: "Dental" },
+];
+
+function recordedBenefits() {
+  return benefitHistory.map((row) => ({
+    ...row,
+    benefit: row.benefit ?? benefits.find((benefit) => benefit.id === row.benefitId) ?? null,
+  }));
+}
 let homePolicyId: string | null;
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -185,6 +204,8 @@ beforeEach(() => {
     },
   ];
   homePolicyId = "policy-home";
+  benefitHistory = [];
+  benefitDataGate = null;
   electionFetchGate.promise = null;
   apiRequest.mockReset();
   pluginSearch.mockReset().mockResolvedValue([]);
@@ -202,13 +223,16 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (benefitDataGate?.url === url) return json(await benefitDataGate.promise);
+      if (url === "/api/workers/worker-1/benefits") return json(recordedBenefits());
+      if (url === "/api/options/trust-benefit-type") return json(benefitTypes);
       if (url.startsWith("/api/workers/worker-1/trust-elections?")) {
         if (electionFetchGate.promise) elections = await electionFetchGate.promise;
         return json(elections);
       }
       if (url === "/api/policies") return json(policies);
       if (url === "/api/trust-benefits") {
-        return json([{ id: "benefit-1", name: "Medical" }]);
+        return json(benefits);
       }
       if (url === "/api/employers/home-employer") {
         return json({ id: "home-employer", denormPolicyId: homePolicyId });
@@ -232,6 +256,133 @@ afterEach(async () => {
   root = null;
   container = null;
   vi.unstubAllGlobals();
+});
+
+describe("worker eligibility Medical benefit default", () => {
+  it("uses coverage year then month, regardless of history order or benefit name", async () => {
+    benefitHistory = [
+      { benefitId: "benefit-1", year: 2025, month: 12 },
+      { benefitId: "benefit-dental", year: 2027, month: 1 },
+      { benefitId: "benefit-2", year: 2026, month: 2 },
+      { benefitId: "benefit-1", year: 2026, month: 1 },
+    ];
+    await renderPage();
+    await waitFor(() => expect(selects()[1].value).toBe("benefit-2"));
+    expect(Array.from(selects()[1].options).map((option) => option.value))
+      .toEqual(["", "benefit-1", "benefit-2", "benefit-dental"]);
+  });
+
+  it.each(["empty", "non-medical", "unknown"] as const)(
+    "leaves Benefit blank with %s history",
+    async (kind) => {
+      benefitHistory = kind === "empty" ? [] : [{
+        benefitId: kind === "non-medical" ? "benefit-dental" : "unknown-benefit",
+        year: 2026, month: 1,
+      }];
+      await renderPage();
+      await waitFor(() => expect(selects()[0].value).toBe("policy-election"));
+      expect(selects()[1].value).toBe("");
+    },
+  );
+
+  it("clears the old selection on policy change without substituting older Medical history", async () => {
+    benefitHistory = [
+      { benefitId: "benefit-1", year: 2025, month: 12 },
+      { benefitId: "benefit-2", year: 2026, month: 1 },
+    ];
+    await renderPage();
+    await waitFor(() => expect(selects()[1].value).toBe("benefit-2"));
+    await changeSelect(0, "policy-manual");
+    expect(selects()[1].value).toBe("");
+    await changeSelect(1, "benefit-1");
+    await changeSelect(0, "policy-election");
+    await waitFor(() => expect(selects()[1].value).toBe("benefit-2"));
+  });
+
+  it("resolves the default for a manually chosen policy while election data is pending", async () => {
+    const gate = deferred<Array<Record<string, unknown>>>();
+    electionFetchGate.promise = gate.promise;
+    benefitHistory = [{ benefitId: "benefit-1", year: 2026, month: 1 }];
+    await renderPage();
+    await waitFor(() => expect(selects()[0].options.length).toBeGreaterThan(1));
+    await changeSelect(0, "policy-manual");
+    await waitFor(() => expect(selects()[1].value).toBe("benefit-1"));
+    await act(async () => gate.resolve(elections));
+    expect(selects()[0].value).toBe("policy-manual");
+    expect(selects()[1].value).toBe("benefit-1");
+  });
+
+  it("does not substitute older active coverage when the newest Medical benefit is inactive", async () => {
+    benefitHistory = [
+      { benefitId: "benefit-1", year: 2025, month: 12 },
+      { benefitId: "inactive-benefit", year: 2026, month: 1, benefit: { benefitType: "type-medical" } },
+    ];
+    await renderPage();
+    await waitFor(() => expect(selects()[0].value).toBe("policy-election"));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(selects()[1].value).toBe("");
+  });
+
+  it.each(["history", "types", "benefits"] as const)(
+    "waits for late %s data and applies the current policy's default",
+    async (kind) => {
+      benefitHistory = [{ benefitId: "benefit-2", year: 2026, month: 1 }];
+      const gate = deferred<unknown>();
+      benefitDataGate = {
+        url: kind === "history" ? "/api/workers/worker-1/benefits"
+          : kind === "types" ? "/api/options/trust-benefit-type" : "/api/trust-benefits",
+        promise: gate.promise,
+      };
+      await renderPage();
+      await waitFor(() => expect(selects()[0].value).toBe("policy-election"));
+      expect(selects()[1].value).toBe("");
+      await changeSelect(0, "policy-manual");
+      await act(async () => gate.resolve(
+        kind === "history" ? recordedBenefits() : kind === "types" ? benefitTypes : benefits,
+      ));
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      expect(selects()[1].value).toBe("");
+      await changeSelect(0, "policy-election");
+      await waitFor(() => expect(selects()[1].value).toBe("benefit-2"));
+    },
+  );
+
+  it.each(["history", "types"] as const)(
+    "preserves manual Benefit selection when %s arrives late",
+    async (kind) => {
+      benefitHistory = [{ benefitId: "benefit-2", year: 2026, month: 1 }];
+      const gate = deferred<unknown>();
+      benefitDataGate = {
+        url: kind === "history" ? "/api/workers/worker-1/benefits"
+          : "/api/options/trust-benefit-type",
+        promise: gate.promise,
+      };
+      await renderPage();
+      await waitFor(() => expect(selects()[1].options.length).toBe(4));
+      await changeSelect(1, "benefit-dental");
+      await act(async () => gate.resolve(kind === "history" ? recordedBenefits() : benefitTypes));
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      expect(selects()[1].value).toBe("benefit-dental");
+    },
+  );
+
+  it("does not change Benefit or results when history refreshes after evaluation", async () => {
+    benefitHistory = [{ benefitId: "benefit-1", year: 2026, month: 1 }];
+    apiRequest.mockResolvedValue({ benefitId: "benefit-1", eligible: true, results: [] });
+    await renderPage();
+    await waitFor(() => expect(selects()[1].value).toBe("benefit-1"));
+    await runEvaluation();
+    await waitFor(() =>
+      expect(container!.querySelector('[data-testid="eligibility-results"]')).not.toBeNull(),
+    );
+    await act(async () => {
+      queryClient.setQueryData(["/api/workers", "worker-1", "benefits"], [
+        { benefitId: "benefit-2", year: 2026, month: 2, benefit: benefits[1] },
+      ]);
+    });
+    expect(selects()[1].value).toBe("benefit-1");
+    expect(container!.querySelector('[data-testid="eligibility-results"]')).not.toBeNull();
+  });
 });
 
 describe("worker eligibility policy defaults and feedback", () => {

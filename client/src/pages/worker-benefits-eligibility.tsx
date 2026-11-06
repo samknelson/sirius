@@ -2,7 +2,7 @@ import { pluginManifestQueryKey, pluginSearch } from "@/plugins/_core";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Policy, TrustBenefit, Employer, Variable } from "@shared/schema";
-import type { WorkerTrustElectionView } from "@shared/schema";
+import type { WorkerTrustElectionView, TrustWmb } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,10 @@ import { apiRequest } from "@/lib/queryClient";
 
 interface PolicyData {
   benefitIds?: string[];
+}
+
+interface WorkerBenefitHistoryRow extends Pick<TrustWmb, "benefitId" | "year" | "month"> {
+  benefit: Pick<TrustBenefit, "benefitType"> | null;
 }
 
 interface EligibilityRule {
@@ -113,6 +117,7 @@ function WorkerBenefitsEligibilityContent() {
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString());
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("");
+  const benefitDefaultResolved = useRef(false);
   const [selectedScanType, setSelectedScanType] = useState<"start" | "continue">("start");
   const [selectedDependentId, setSelectedDependentId] = useState<string>(NO_DEPENDENT);
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>(USE_RESOLVED_EMPLOYER);
@@ -166,8 +171,21 @@ function WorkerBenefitsEligibilityContent() {
     queryKey: ["/api/policies"],
   });
 
-  const { data: allBenefits = [] } = useQuery<TrustBenefit[]>({
+  const { data: allBenefits = [], isSuccess: benefitsReady } = useQuery<TrustBenefit[]>({
     queryKey: ["/api/trust-benefits"],
+  });
+
+  const { data: benefitTypes = [], isSuccess: benefitTypesReady } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/options/trust-benefit-type"],
+  });
+
+  const { data: benefitHistory = [], isSuccess: benefitHistoryReady } = useQuery<WorkerBenefitHistoryRow[]>({
+    queryKey: ["/api/workers", worker.id, "benefits"],
+    queryFn: async () => {
+      const response = await fetch(`/api/workers/${worker.id}/benefits`);
+      if (!response.ok) throw new Error("Failed to fetch worker benefits");
+      return response.json();
+    },
   });
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
@@ -251,6 +269,38 @@ function WorkerBenefitsEligibilityContent() {
   const policyData = (selectedPolicy?.data as PolicyData) || {};
   const policyBenefitIds = policyData.benefitIds || [];
   const policyBenefits = allBenefits.filter((b) => policyBenefitIds.includes(b.id));
+
+  useEffect(() => {
+    if (
+      !selectedPolicy || benefitDefaultResolved.current || selectedBenefitId ||
+      !benefitsReady || !benefitTypesReady || !benefitHistoryReady
+    ) return;
+
+    // Resolve once per policy choice, including an empty match. Background
+    // refreshes must not change the inputs of an already evaluated test.
+    benefitDefaultResolved.current = true;
+    const medicalTypeIds = new Set(
+      benefitTypes.filter((type) => type.name === "Medical").map((type) => type.id),
+    );
+    const latestMedical = benefitHistory.reduce<(typeof benefitHistory)[number] | undefined>(
+      (latest, row) => {
+        // History includes inactive benefits too; the selector's active-only
+        // catalog must not cause an older Medical record to look newest.
+        if (!row.benefit?.benefitType || !medicalTypeIds.has(row.benefit.benefitType)) return latest;
+        return !latest || row.year > latest.year ||
+          (row.year === latest.year && row.month > latest.month) ? row : latest;
+      },
+      undefined,
+    );
+    // Find the latest Medical record first; never fall back to an older
+    // policy-compatible benefit when the latest one isn't offered.
+    if (latestMedical && policyBenefits.some((benefit) => benefit.id === latestMedical.benefitId)) {
+      setSelectedBenefitId(latestMedical.benefitId);
+    }
+  }, [
+    selectedPolicy, selectedBenefitId, policyBenefits,
+    benefitTypes, benefitHistory, benefitsReady, benefitTypesReady, benefitHistoryReady,
+  ]);
 
   // Eligibility rules live in the unified plugin_configs table; load the rows
   // for the selected policy + benefit (ordered by the dispatcher).
@@ -397,6 +447,7 @@ function WorkerBenefitsEligibilityContent() {
               <Select
                 value={selectedPolicyId}
                 onValueChange={(value) => {
+                  benefitDefaultResolved.current = false;
                   setSelectedPolicyId(value);
                   setSelectedBenefitId("");
                   setEligibilityResult(null);
@@ -420,6 +471,7 @@ function WorkerBenefitsEligibilityContent() {
               <Select
                 value={selectedBenefitId}
                 onValueChange={(value) => {
+                  benefitDefaultResolved.current = true;
                   setSelectedBenefitId(value);
                   setEligibilityResult(null);
                 }}
