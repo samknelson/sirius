@@ -29,7 +29,7 @@ const server = await createServer({
     name: "checkout-browser-entry",
     configureServer(viteServer) {
       viteServer.middlewares.use((request, _response, next) => {
-        if (request.url?.startsWith("/pay/") || request.url?.startsWith("/ea/") || request.url?.startsWith("/admin-pay/")) request.url = "/tests/ledger/checkout-browser.html";
+        if (request.url?.startsWith("/pay/") || request.url?.startsWith("/ea/") || request.url?.startsWith("/admin-pay/") || request.url?.startsWith("/workers/")) request.url = "/tests/ledger/checkout-browser.html";
         next();
       });
     },
@@ -37,6 +37,7 @@ const server = await createServer({
   resolve: {
     alias: [
       { find: "@/plugins/payment-gateway/registry", replacement: path.join(root, "tests/ledger/checkout-browser-registry.ts") },
+      { find: "@/components/layouts/WorkerLayout", replacement: path.join(root, "tests/ledger/worker-method-browser-layout.tsx") },
       { find: "@shared", replacement: path.join(root, "shared") },
       { find: "@", replacement: path.join(root, "client/src") },
     ],
@@ -86,6 +87,11 @@ try {
   let rejectInitiation = false;
   let submittedPayments = 0;
   const submittedBodies = [];
+  let saveFlow = false;
+  let flowMethods = [];
+  let flowType = "card";
+  let flowStatus = "created";
+  let optedIn = false;
   const origin = `http://127.0.0.1:${server.config.server.port}`;
   const failures = [];
   browser = await puppeteer.launch({
@@ -130,17 +136,43 @@ try {
         { id: "fixture-card", gatewayConfigId: "fixture-gateway", isActive: true,
           providerDetails: { card: { brand: "Visa", last4: "4242" } } },
       ],
+      "/api/ledger/payment-methods/worker/fixture-worker/capabilities": { canManageMethods: true },
+      "/api/ledger/payment-methods/worker/fixture-worker/authorization": { authorization: { version: "v1", text: "Fixture authorization" } },
+      "/api/ledger/payment-methods/worker/fixture-worker/gateways": [],
       "/api/ledger/checkout/sessions/fixture-pending": {
         id: "fixture-pending", entityType: activeCheckout.entityType, entityId: activeCheckout.entityId,
         eaId: "fixture-ea", status: "processing", amount: "150.00", currency: "USD",
         canCancel: false, ledgerPaymentId: "fixture-ledger", paymentStatus: "pending",
       },
     };
+    if (saveFlow && request.method() === "GET" && url.pathname === "/api/ledger/payment-methods/worker/fixture-worker") {
+      return request.respond({ status: 200, contentType: "application/json", body: JSON.stringify(flowMethods) });
+    }
+    if (saveFlow && request.method() === "GET" && url.pathname === "/api/ledger/checkout/sessions/fixture-session") {
+      if (optedIn && flowStatus === "succeeded" && !flowMethods.length) {
+        flowMethods = [{ id: `saved-${flowType}`, gatewayConfigId: "fixture-gateway", isActive: true, isDefault: true,
+          providerDetails: flowType === "card" ? { card: { brand: "Visa", last4: "1111" } }
+            : { us_bank_account: { bank_name: "Fixture Bank", last4: "6789" } } }];
+      }
+      return request.respond({ status: 200, contentType: "application/json", body: JSON.stringify({
+        id: "fixture-session", entityType: "worker", entityId: "fixture-worker", eaId: "fixture-ea",
+        amount: "307.35", currency: "USD", status: flowStatus,
+        ledgerPaymentId: "fixture-payment", paymentStatus: flowStatus === "succeeded" ? "cleared" : "pending",
+      }) });
+    }
     if (request.method() === "POST" && url.pathname.endsWith("/sessions")) {
       submittedPayments++;
       if (rejectInitiation) return request.respond({ status: 409, contentType: "application/json",
         body: JSON.stringify({ message: "Ask an administrator to enable card payments. No payment was initiated." }) });
       const body = JSON.parse(request.postData());
+      if (saveFlow) {
+        optedIn = body.saveMethod;
+        if (body.paymentMethodId) assert.equal(body.paymentMethodId, `saved-${flowType}`);
+        else assert.equal(body.paymentMethodType, flowType);
+        return request.respond({ status: 201, contentType: "application/json",
+          body: JSON.stringify({ id: "fixture-session", status: body.paymentMethodId ? "requires_action" : "created",
+            clientSecret: "fixture-secret", publicConfig: { paymentTypes: [flowType] } }) });
+      }
       submittedBodies.push(body);
       if (body.saveMethod && (!body.saveMethodConsent?.accepted || !body.saveMethodConsent?.version ||
           !body.saveMethodConsent?.text.includes("does not authorize future charges"))) {
@@ -372,6 +404,60 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes("Payment processing"));
   assert.equal(administratorRequests.filter(item => item.method === "POST").length, 2, "receipt retries never create a replacement");
   assert.deepEqual(failures, [], "administrator flow has no browser errors or external requests");
+
+  // The real management, checkout and receipt pages share ONE browser query
+  // client throughout. HTTP/provider answers here are controlled fixtures.
+  activeCheckout = checkout;
+  saveFlow = true;
+  for (const type of ["card", "us_bank_account"]) {
+    flowType = type;
+    flowMethods = [];
+    flowStatus = "created";
+    optedIn = false;
+    await page.goto(`${origin}/workers/fixture-worker/ledger/payment-methods`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="text-worker-no-payment-methods"]');
+    await page.click('a[href="/pay/fixture-ea"]');
+    await page.waitForFunction(() => document.body.textContent.includes("No saved methods for this payer yet"));
+    await clickLabel(type === "card" ? "New credit/debit card" : "New US bank transfer");
+    await clickLabel("I authorize this payment.");
+    await clickLabel("Save this payment method for future payments");
+    await clickButton("Review payment");
+    await clickButton("Continue to secure confirmation");
+    await page.waitForSelector('[data-testid="fixture-provider"]');
+    flowStatus = type === "card" ? "succeeded" : "processing";
+    await clickButton("Confirm provider payment");
+    await page.waitForFunction(() => document.body.textContent.includes("Confirmation: fixture-session"));
+    if (type === "us_bank_account") {
+      assert.equal(flowMethods.length, 0, "processing ACH is not saved");
+      await page.click('a[href="/workers/fixture-worker/ledger/payment-methods"]');
+      await page.waitForSelector('[data-testid="text-worker-no-payment-methods"]');
+      // Simulate delayed webhook settlement in another browser tab. The
+      // management page must refresh on refocus, without a hard reload.
+      const otherTab = await browser.newPage();
+      await otherTab.bringToFront();
+      await page.waitForFunction(() => document.visibilityState === "hidden");
+      flowStatus = "succeeded";
+      flowMethods = [{ id: `saved-${type}`, gatewayConfigId: "fixture-gateway", isActive: true, isDefault: true,
+        providerDetails: { us_bank_account: { bank_name: "Fixture Bank", last4: "6789" } } }];
+      await page.bringToFront();
+      await otherTab.close();
+    } else {
+      await page.click('a[href="/workers/fixture-worker/ledger/payment-methods"]');
+    }
+    await page.waitForSelector(`[data-testid="worker-payment-method-saved-${type}"]`);
+    assert.equal(await page.$$eval('[data-testid^="worker-payment-method-"]', nodes => nodes.length), 1);
+    await page.click('a[href="/pay/fixture-ea"]');
+    await page.waitForFunction(() => document.body.textContent.includes("••••"));
+    await clickLabel(type === "card" ? "Visa •••• 1111" : "Fixture Bank •••• 6789");
+    await clickLabel("I authorize this payment.");
+    await clickButton("Review payment");
+    await clickButton("Continue to secure confirmation");
+    await page.waitForSelector('[data-testid="fixture-provider"]');
+    assert.equal(optedIn, false, "reuse does not attach another method or record new save consent");
+    assert.equal(flowMethods.length, 1);
+    await assertNoOverflow(`saved ${type} checkout`);
+  }
+  assert.deepEqual(failures, [], "no errors during saved-method return/reuse");
   console.log(`Checkout browser fixture passed; screenshot: ${screenshotPath}`);
 } finally {
   await browser?.close();

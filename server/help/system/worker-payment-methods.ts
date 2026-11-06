@@ -19,6 +19,7 @@ export const workerPaymentMethodsHelp: SystemHelpEntry = {
       <li>Before removal, consider any unfinished payment separately: removal is not cancellation. Use the method's <strong>Remove</strong> control, review <strong>Remove payment method?</strong>, then choose <strong>Remove</strong> to proceed or <strong>Cancel</strong> to leave it unchanged.</li>
     </ol>
     <h3>Results and status meanings</h3>
+    <p>If you separately opted in during checkout, the new card or US bank account appears here only after successful settlement and saving. ACH processing alone does not save it; return to this page after settlement to refresh the list. A temporary save failure can be retried independently of the payment, so do not pay again to save a method. Saving does not authorize future charges or enable automatic payments.</p>
     <p><strong>Payment method removed</strong> means the worker method has been marked inactive locally and is no longer eligible for a new checkout. Its record is retained for payment history and can remain listed. The app attempts provider detachment, but local removal does not guarantee the provider has removed it. Adding it again later requires secure setup.</p>
     <p>A saved method is not necessarily usable for every account. Checkout requires an active method on the account's gateway, an accepted card or US bank account type, and available provider details. A <strong>Default</strong> label does not override these checks.</p>
     <h3>Limitations and common problems</h3>

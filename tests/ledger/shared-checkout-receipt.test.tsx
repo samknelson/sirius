@@ -7,6 +7,7 @@ import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
 import { ApiError } from "@/lib/queryClient";
+import { paymentMethodsKey } from "@/lib/payment-method-queries";
 
 const { apiRequest, navigate, route, payEnabled } = vi.hoisted(() => ({
   apiRequest: vi.fn(),
@@ -91,8 +92,8 @@ let employerFixture: typeof checkout | null = null;
 let workerFixture: typeof checkout = checkout;
 let methodsFixture = methods;
 
-async function render(page: "checkout" | "receipt" = "checkout") {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+async function render(page: "checkout" | "receipt" = "checkout", existingClient?: QueryClient) {
+  const client = existingClient ?? new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   queryClient = client;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -823,13 +824,13 @@ describe("shared checkout", () => {
     await render();
     expect(text()).toContain("No saved methods for this payer yet");
     expect(text()).not.toContain("Saved methods could not be loaded");
-    await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout-methods"] }); });
+    await act(async () => { await queryClient!.invalidateQueries({ queryKey: paymentMethodsKey("worker", "worker-1") }); });
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
       Promise.resolve(method === "GET" && url.includes("/payment-methods/")
         ? [{ id: "other", isActive: true, gatewayConfigId: "other", providerDetails: { card: { brand: "Visa", last4: "1234" } } },
           { id: "broken", isActive: true, gatewayConfigId: "stripe", providerError: "provider failed" }]
         : response(method, url, body)));
-    await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout-methods"] }); });
+    await act(async () => { await queryClient!.invalidateQueries({ queryKey: paymentMethodsKey("worker", "worker-1") }); });
     await settle();
     expect(text()).toContain("2 saved methods are unavailable for this account");
     expect(text()).not.toContain("Visa •••• 1234");
@@ -852,6 +853,23 @@ describe("shared payment receipt", () => {
   const receipt = (status: string, extra: Record<string, unknown> = {}) => ({
     id: "session-1", entityType: "worker", entityId: "worker-1", eaId: "ea-1",
     amount: "12.50", currency: "USD", status, ...extra,
+  });
+
+  it("refreshes only this payer's stale empty methods after delayed settlement, not processing", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const key = paymentMethodsKey("worker", "worker-1");
+    const other = paymentMethodsKey("worker", "worker-2");
+    client.setQueryData(key, []);
+    client.setQueryData(other, []);
+    let current = receipt("processing");
+    apiRequest.mockImplementation(() => Promise.resolve(current));
+    await render("receipt", client);
+    expect(client.getQueryState(key)?.isInvalidated).toBe(false);
+    current = receipt("succeeded", { ledgerPaymentId: "ledger-1", paymentStatus: "cleared" });
+    await act(async () => { await client.invalidateQueries({ queryKey: ["checkout-receipt"] }); });
+    await settle();
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(other)?.isInvalidated).toBe(false);
   });
 
   it("explicitly abandons a provider-confirmed draft and refreshes the available balance", async () => {

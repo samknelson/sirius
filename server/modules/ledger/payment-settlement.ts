@@ -192,13 +192,20 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
 /** A second, replayable effect: an unsuccessful save must not undo posted funds. */
 export async function saveConfirmedMethod(attempt: LedgerPaymentAttempt, evidence: Evidence): Promise<void> {
   if (!attempt.saveMethod || attempt.status !== "succeeded" || !attempt.ledgerPaymentId) return;
+  const provenance = attempt.metadata as Record<string, any> | null;
+  if (attempt.paymentMethodId || provenance?.source !== "online_checkout" || provenance?.adminTest?.isAdminTest)
+    throw new SettlementRefusal("This checkout cannot save a new payment method");
   if ((attempt.metadata as Record<string, unknown> | null)?.methodSavedAt) return;
   const resolved = await resolveGateway(attempt.gatewayConfigId, { allowDisabled: true });
   if (!resolved.plugin.retrievePayment) throw new SettlementRefusal("Payment retrieval is unavailable");
   const confirmed = await resolved.plugin.retrievePayment(resolved.context, attempt.providerIntentRef!);
   if (confirmed.providerRef !== attempt.providerIntentRef || confirmed.status !== "succeeded" ||
       !paymentEventMatchesAmount(attempt, confirmed)) throw new SettlementRefusal("Saved method payment could not be confirmed");
-  const ref = confirmed.methodRef ?? evidence.methodRef;
+  const customer = await storage.ledger.gatewayCustomers.get(attempt.entityType, attempt.entityId, attempt.gatewayConfigId);
+  if (!customer || confirmed.customerRef !== customer.customerRef || confirmed.reusableMethod !== true) {
+    throw new SettlementRefusal("Provider did not confirm reusable method ownership");
+  }
+  const ref = confirmed.methodRef;
   if (!ref || (confirmed.methodRef && evidence.methodRef && confirmed.methodRef !== evidence.methodRef)) {
     throw new SettlementRefusal("Provider did not confirm the requested saved payment method");
   }
@@ -213,6 +220,11 @@ export async function saveConfirmedMethod(attempt: LedgerPaymentAttempt, evidenc
     throw new SettlementRefusal("Separate saved-method consent is unavailable");
   }
   await runInTransaction(async () => {
+    await storage.ledger.paymentAttempts.lockAttempt(attempt.id);
+    const current = await storage.ledger.paymentAttempts.get(attempt.id);
+    if (!current || current.status !== "succeeded" || !current.saveMethod || !current.ledgerPaymentId)
+      throw new SettlementRefusal("Saved method payment is unavailable");
+    if ((current.metadata as Record<string, unknown> | null)?.methodSavedAt) return;
     const method = await storage.ledger.paymentMethods.upsertProviderMethod({
       entityType: attempt.entityType, entityId: attempt.entityId, gatewayConfigId: attempt.gatewayConfigId,
       providerMethodRef: ref, consent: saveConsent,

@@ -715,7 +715,10 @@ export function registerLedgerPaymentAttemptRoutes(
         metadata: providerMetadata as Record<string, string>,
       };
       const gatewayFingerprint = adminAssisted ? adminPaymentGatewayFingerprint(loaded.resolved) : undefined;
-      loaded.resolved.plugin.validatePaymentSession?.(loaded.resolved.context, preflight);
+      // Validate credentials/types before any customer-side provider call.
+      // An opted-in new method has no customer yet; session creation below
+      // still requires the real customer after ensureCustomer completes.
+      loaded.resolved.plugin.validatePaymentSession?.(loaded.resolved.context, preflight, { customerWillBeCreated: body.saveMethod });
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
         await storage.ledger.paymentAttempts.expireReservations(loaded.ea.id);
@@ -734,7 +737,7 @@ export function registerLedgerPaymentAttemptRoutes(
         if (sessionTypes.some(type => !currentTypes.includes(type))) {
           throw new PaymentAttemptConflictError("The selected payment type is no longer enabled. Refresh checkout and ask an administrator to check Gateway Payment Types.");
         }
-        current.resolved.plugin.validatePaymentSession?.(current.resolved.context, preflight);
+        current.resolved.plugin.validatePaymentSession?.(current.resolved.context, preflight, { customerWillBeCreated: body.saveMethod });
         // Use the configuration re-read at the authoritative boundary for
         // creation too, not the earlier preview-time snapshot.
         loaded.resolved = current.resolved;

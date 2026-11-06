@@ -57,6 +57,7 @@ vi.mock("../../server/storage", () => ({
       payments: { get: paymentGet, settleOnline: paymentUpdate,
         update: vi.fn(async () => { throw new Error("Online payments cannot be edited"); }) },
       paymentMethods: { upsertProviderMethod: methodUpsert },
+      gatewayCustomers: { get: vi.fn(async () => ({ customerRef: "customer-1" })) },
       invoices: { listForEa: vi.fn(async () => [
         { invoiceNumber: "INV-JAN", year: 2026, month: 1 },
         { invoiceNumber: "INV-FEB", year: 2026, month: 2 },
@@ -149,7 +150,7 @@ describe("online settlement", () => {
     methodUpsert.mockResolvedValue({ id: "method-1" });
     retrieve.mockResolvedValue({
       providerRef: "ref-1", status: "succeeded", amountMinor: 10000,
-      currency: "USD", methodRef: "pm-1",
+      currency: "USD", methodRef: "pm-1", customerRef: "customer-1", reusableMethod: true,
     });
     cancel.mockReset();
     createSession.mockReset();
@@ -422,7 +423,7 @@ describe("online settlement", () => {
     expect(events.setDefaultIfAbsent).toHaveBeenCalledOnce();
   });
 
-  it("recovers a saved method from the signed inbox when provider retrieval omits its reference", async () => {
+  it("retains an unfinished save when provider retrieval cannot confirm the inbox method", async () => {
     attempt.saveMethod = true;
     attempt.ledgerPaymentId = "payment-1";
     attempt.status = "succeeded";
@@ -442,10 +443,9 @@ describe("online settlement", () => {
     }]);
     events.listForRecovery.mockResolvedValueOnce([]);
     await recoverOnlinePayments();
-    expect(methodUpsert).toHaveBeenCalledWith(expect.objectContaining({
-      providerMethodRef: "pm-1", entityId: "worker-1",
-    }));
-    expect(events.markEventProcessed).toHaveBeenCalledOnce();
+    expect(methodUpsert).not.toHaveBeenCalled();
+    expect(events.markEventProcessed).not.toHaveBeenCalled();
+    expect(events.markEventError).toHaveBeenCalledOnce();
     expect(paymentCreate).not.toHaveBeenCalled();
   });
 
@@ -489,7 +489,7 @@ describe("online settlement", () => {
     expect(methodUpsert).not.toHaveBeenCalled();
 
     retrieve.mockResolvedValue({ providerRef: "ref-1", status: "succeeded", amountMinor: 10000,
-      currency: "USD", methodRef: "pm-ach", methodType: "us_bank_account" });
+      currency: "USD", methodRef: "pm-ach", methodType: "us_bank_account", customerRef: "customer-1", reusableMethod: true });
     await recoverOnlinePayments();
     expect(attempt.status).toBe("succeeded");
     expect(ledgerPayment.status).toBe("cleared");

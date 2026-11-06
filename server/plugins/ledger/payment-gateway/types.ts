@@ -152,6 +152,9 @@ export interface NormalizedPayment {
   clientSecret?: string | null;
   methodRef?: string;
   methodType?: string;
+  /** Provider-confirmed ownership and future-use readiness, never webhook guesses. */
+  customerRef?: string;
+  reusableMethod?: boolean;
   failureCode?: string;
   failureMessage?: string;
   methodSummary?: GatewayMethodSummary;
@@ -309,8 +312,12 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
   supportedPaymentTypes?: PaymentTypeOption[];
   /** Provider defaults apply only when configuration is absent, never to []. */
   getCheckoutPaymentTypes?(ctx: PaymentGatewayContext): string[];
-  /** Pure preflight: known creation prerequisites, without provider calls. */
-  validatePaymentSession?(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void;
+  /**
+   * Pure preflight: known creation prerequisites, without provider calls.
+   * customerWillBeCreated defers ONLY the new-customer existence check; all
+   * credential/type/amount checks still apply. Provider creation stays strict.
+   */
+  validatePaymentSession?(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput, options?: { customerWillBeCreated?: boolean }): void;
 
   /**
    * Per-plugin configuration fields. Rendered by the generic admin config form

@@ -126,6 +126,27 @@ describe("payment gateway provider contract", () => {
       expect(stripeCreate).not.toHaveBeenCalled();
     },
   );
+  it.each(["card", "us_bank_account"])("requires expanded, attached %s evidence for reusable ownership", type => {
+    const intent = { id: "pi_fixture", amount: 1000, currency: "usd", status: "succeeded",
+      customer: "cus_fixture", setup_future_usage: "off_session",
+      payment_method: { id: "pm_fixture", type, customer: "cus_fixture" } } as any;
+    expect(normalizeStripePaymentIntent(intent)).toMatchObject({ customerRef: "cus_fixture", reusableMethod: true });
+    expect(normalizeStripePaymentIntent({ ...intent, payment_method: "pm_fixture" }).reusableMethod).toBe(false);
+    expect(normalizeStripePaymentIntent({ ...intent, setup_future_usage: null }).reusableMethod).toBe(false);
+    expect(normalizeStripePaymentIntent({ ...intent, payment_method: { ...intent.payment_method, customer: "cus_other" } }).reusableMethod).toBe(false);
+  });
+
+  it("defers only new-customer readiness at preflight, never session creation or saved-method use", async () => {
+    const ctx = { apiKey: "sk_test_fixture", config: { id: "stripe", data: { publishableKey: "pk_test_fixture" } } } as PaymentGatewayContext;
+    const input = { sessionId: "fixture", amountMinor: 1000, currency: "USD",
+      saveMethod: true, paymentTypes: ["card"], description: "Fixture", metadata: {} };
+    expect(() => stripePaymentGatewayPlugin.validatePaymentSession!(ctx, input, { customerWillBeCreated: true })).not.toThrow();
+    expect(() => stripePaymentGatewayPlugin.validatePaymentSession!(ctx, { ...input, savedMethodRef: "pm_fixture" },
+      { customerWillBeCreated: true })).toThrow("customer");
+    await expect(stripePaymentGatewayPlugin.createPaymentSession!(ctx, input)).rejects.toThrow("customer");
+    expect(() => stripePaymentGatewayPlugin.validatePaymentSession!({ ...ctx, apiKey: "sk_live_fixture" },
+      input, { customerWillBeCreated: true })).toThrow("test-mode");
+  });
   it("requires matching provider-specific Stripe test-key signals", () => {
     const testContext = {
       apiKey: "sk_test_fixture",

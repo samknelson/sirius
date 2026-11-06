@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, CreditCard, Loader2, Plus, Star, Trash2 } from "lucide-react";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
-import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { hasPaymentGatewayComponent, resolvePaymentGatewayComponent } from "@/plugins/payment-gateway/registry";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { paymentMethodsKey, paymentMethodsFreshness } from "@/lib/payment-method-queries";
 
 type PaymentMethod = {
   id: string;
@@ -33,8 +34,9 @@ const BASE = "/api/ledger/payment-methods";
 
 function WorkerPaymentMethodsContent() {
   const { worker } = useWorkerLayout();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
-  const key = [BASE, "worker", worker.id];
+   const key = paymentMethodsKey("worker", worker.id);
   const [addOpen, setAddOpen] = useState(false);
   const [gatewayId, setGatewayId] = useState<string>();
   const [setup, setSetup] = useState<Setup>();
@@ -45,7 +47,7 @@ function WorkerPaymentMethodsContent() {
   const setupAttempt = useRef<{ id: number; key: string } | null>(null);
   const [deleteId, setDeleteId] = useState<string>();
 
-  const methods = useQuery<PaymentMethod[]>({ queryKey: key, queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}`) });
+   const methods = useQuery<PaymentMethod[]>({ queryKey: key, queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}`), ...paymentMethodsFreshness });
   const gateways = useQuery<Gateway[]>({ queryKey: [...key, "gateways"], queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}/gateways`) });
   const capabilities = useQuery<{ canManageMethods: boolean }>({
     queryKey: [...key, "capabilities"],

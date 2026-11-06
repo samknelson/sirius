@@ -948,7 +948,10 @@ describe("online checkout HTTP contract", () => {
     mocks.resolve.mockResolvedValue({
       ...gateway,
       config: { ...gateway.config, data: { paymentTypes: ["card", "us_bank_account"], publishableKey: "pk_test" } },
-      plugin: { ...gateway.plugin, supportedPaymentTypes: [{ id: "card" }, { id: "us_bank_account" }] },
+      context: { ...gateway.context, apiKey: "sk_test_fixture",
+        config: { id: "gw-1", data: { publishableKey: "pk_test_fixture", paymentTypes: ["card", "us_bank_account"] } } },
+      plugin: { ...gateway.plugin, validatePaymentSession: stripePaymentGatewayPlugin.validatePaymentSession,
+        supportedPaymentTypes: [{ id: "card" }, { id: "us_bank_account" }] },
     });
     const response = await checkout(valid({
       paymentMethodType,

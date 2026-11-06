@@ -1,6 +1,8 @@
 // Fixture provider exercises handoff without contacting Stripe or collecting credentials.
 import { createElement } from "react";
 import type { PaymentGatewayPayProps } from "../../client/src/plugins/payment-gateway/registry";
+export const hasPaymentGatewayComponent = () => false;
+export const resolvePaymentGatewayComponent = () => null;
 export function hasPaymentGatewayPayComponent(_id: string): boolean {
   return true;
 }

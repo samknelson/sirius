@@ -69,6 +69,7 @@ vi.mock("@/components/ui/select", async () => {
 });
 
 import WorkerPaymentMethodsPage from "@/pages/worker-payment-methods";
+import { paymentMethodsKey } from "@/lib/payment-method-queries";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;
@@ -104,8 +105,8 @@ function configurePaymentMethodApi() {
   });
 }
 
-async function renderPaymentMethodsPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+async function renderPaymentMethodsPage(existingClient?: QueryClient) {
+  const queryClient = existingClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -114,6 +115,26 @@ async function renderPaymentMethodsPage() {
   });
   await flush();
 }
+
+describe("checkout-saved methods refresh", () => {
+  it.each(["card", "us_bank_account"])("replaces an infinitely fresh empty cache with a settled %s on return", async type => {
+    configurePaymentMethodApi();
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false } } });
+    const key = paymentMethodsKey("worker", "worker-1");
+    client.setQueryData(key, []);
+    const implementation = apiRequest.getMockImplementation()!;
+    apiRequest.mockImplementation(async (method, url, body) => url === "/api/ledger/payment-methods/worker/worker-1"
+      ? [{ id: "settled", isActive: true, isDefault: true, gatewayConfigId: "gateway-1",
+        providerDetails: type === "card" ? { card: { brand: "Visa", last4: "4242" } }
+          : { us_bank_account: { bank_name: "Fixture Bank", last4: "6789" } } }]
+      : implementation(method, url, body));
+    await renderPaymentMethodsPage(client);
+    expect(container!.textContent).toContain(type === "card" ? "Visa •••• 4242" : "Fixture Bank •••• 6789");
+    expect(container!.textContent).not.toContain("No saved payment methods yet");
+    expect(client.getQueryData(key)).toMatchObject([{ id: "settled" }]);
+    client.clear();
+  });
+});
 
 async function flush() {
   for (let i = 0; i < 5; i++) {

@@ -1,6 +1,7 @@
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { paymentMethodsKey } from "@/lib/payment-method-queries";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,14 @@ export default function SharedPaymentReceipt() {
     refetchOnMount: "always",
   });
   const value = receipt.data;
+   useEffect(() => {
+     // A status read runs reconciliation before answering. Invalidate only
+     // this payer, including when a retry finished saving after funds posted.
+     // This is a refresh signal, NOT a claim that a method was saved.
+     if (!isAdminTest && !isAdminAssisted && value?.status === "succeeded" && value.ledgerPaymentId) {
+       void queryClient.invalidateQueries({ queryKey: paymentMethodsKey(value.entityType, value.entityId), exact: true });
+     }
+   }, [isAdminTest, isAdminAssisted, value?.entityType, value?.entityId, value?.status, value?.ledgerPaymentId, receipt.dataUpdatedAt, queryClient]);
   const posted = value?.status === "succeeded" && value.paymentStatus === "cleared";
   const ledgerPending = value?.paymentStatus === "pending";
   const pending = value && !posted && !["failed", "canceled", "expired"].includes(value.status);

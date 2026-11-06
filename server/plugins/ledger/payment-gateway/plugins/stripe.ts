@@ -91,7 +91,7 @@ function assertAdminAssistedCredentials(ctx: PaymentGatewayContext): void {
     "Administrator Stripe payments require matching test-mode or live-mode secret and publishable keys.");
 }
 
-function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void {
+function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput, options?: { customerWillBeCreated?: boolean }): void {
   // Only the server-authorized on-behalf path sets this purpose. Ordinary
   // payer and historical admin-test checkout retain their test-only contract.
   if (args.metadata?.paymentPurpose === "admin_assisted") {
@@ -105,7 +105,7 @@ function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentS
   }
   assertPaymentAmount(args.amountMinor);
   assertAllowedPaymentTypes(ctx, args.paymentTypes);
-  if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
+  if ((args.savedMethodRef || (args.saveMethod && !options?.customerWillBeCreated)) && !args.customerRef) {
     throw new PaymentInitiationRejected("customer_required",
       "A provider customer is required to save or use a saved payment method.");
   }
@@ -680,6 +680,12 @@ export function normalizeStripePaymentIntent(
         ? intent.payment_method
         : intent.payment_method?.id,
     methodType: method?.type,
+    customerRef: typeof intent.customer === "string" ? intent.customer : intent.customer?.id,
+    reusableMethod: !!method && ["card", "us_bank_account"].includes(method.type) &&
+      !!intent.customer && !!method.customer &&
+      (typeof method.customer === "string" ? method.customer : method.customer.id) ===
+        (typeof intent.customer === "string" ? intent.customer : intent.customer.id) &&
+      !!intent.setup_future_usage,
     failureCode: intent.last_payment_error?.code,
     failureMessage: intent.last_payment_error?.message,
     methodSummary: method ? stripeMethodSummary(method) : undefined,

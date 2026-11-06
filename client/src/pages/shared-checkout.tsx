@@ -12,6 +12,7 @@ import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-conse
 import { useAuth } from "@/contexts/AuthContext";
 import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
 import { getCheckoutErrorMessage } from "@/lib/checkout-errors";
+import { paymentMethodsKey, paymentMethodsFreshness } from "@/lib/payment-method-queries";
 
 type Statement = { invoiceNumber: string; month: number; year: number; invoiceBalance: string };
 type Readiness = {
@@ -81,9 +82,10 @@ export default function SharedCheckoutPage() {
     enabled: !!scope && !!eaId, refetchOnMount: "always",
   });
   const methods = useQuery<Method[]>({
-    queryKey: ["checkout-methods", scope],
+    queryKey: paymentMethodsKey(isAdminCheckout ? entityType ?? "" : ea.data?.entityType ?? "", isAdminCheckout ? entityId ?? "" : ea.data?.entityId ?? ""),
     queryFn: () => apiRequest("GET", `/api/ledger/payment-methods/${scope}`),
     enabled: !isAdminCheckout && !!scope, retry: false,
+    ...paymentMethodsFreshness,
   });
   const data = checkout.data;
   const currency = data?.account.currency ?? "USD";

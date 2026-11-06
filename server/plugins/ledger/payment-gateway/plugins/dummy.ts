@@ -141,9 +141,9 @@ function normalizedDummyPayment(
   };
 }
 
-function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput): void {
+function validatePaymentSession(ctx: PaymentGatewayContext, args: CreatePaymentSessionInput, options?: { customerWillBeCreated?: boolean }): void {
   assertPaymentInput(ctx, args.amountMinor, args.paymentTypes);
-  if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
+  if ((args.savedMethodRef || (args.saveMethod && !options?.customerWillBeCreated)) && !args.customerRef) {
     throw new PaymentInitiationRejected("customer_required", "A customer is required to save or use a saved payment method");
   }
   if (args.savedMethodRef) {

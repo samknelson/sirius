@@ -3,12 +3,13 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { Route } from "wouter";
+import { Link, Route } from "wouter";
 import { queryClient } from "@/lib/queryClient";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SharedCheckoutPage from "@/pages/shared-checkout";
 import SharedPaymentReceipt from "@/pages/shared-payment-receipt";
+import WorkerPaymentMethodsPage from "@/pages/worker-payment-methods";
 import { EmployerPayAction, type EmployerCheckout } from "@/components/ledger/EmployerPayAction";
 import { apiRequest } from "@/lib/queryClient";
 import "@/index.css";
@@ -27,9 +28,14 @@ createRoot(document.getElementById("root")!).render(
       <TooltipProvider>
         <Route path="/admin-pay/worker/:entityId/:eaId" component={SharedCheckoutPage} />
         <Route path="/admin-pay/receipt/:sessionId" component={SharedPaymentReceipt} />
+        <nav aria-label="Fixture navigation">
+          <Link href="/workers/fixture-worker/ledger/payment-methods">Worker methods fixture</Link>
+          <Link href="/pay/fixture-ea">Checkout fixture</Link>
+        </nav>
         <Route path="/pay/:eaId" component={SharedCheckoutPage} />
         <Route path="/pay/receipt/:sessionId" component={SharedPaymentReceipt} />
         <Route path="/ea/fixture-ea" component={EmployerEntryFixture} />
+        <Route path="/workers/fixture-worker/ledger/payment-methods" component={WorkerPaymentMethodsPage} />
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>,
