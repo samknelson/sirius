@@ -133,7 +133,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
         .select({ id: optionsWorkerIdType.id, name: optionsWorkerIdType.name })
         .from(optionsWorkerIdType)
         .where(sql`(${optionsWorkerIdType.data}->>'showOnLists')::boolean = true`)
-        .orderBy(optionsWorkerIdType.sequence);
+        .orderBy(optionsWorkerIdType.sequence, optionsWorkerIdType.name, optionsWorkerIdType.id);
       return results;
     },
 

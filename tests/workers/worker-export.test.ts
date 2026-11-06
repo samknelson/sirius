@@ -139,6 +139,33 @@ beforeEach(() => {
 });
 
 describe("GET /api/workers/export", () => {
+  it("forwards all normalized directory fields through GET and secure POST without changing streaming", async () => {
+    const filters = {
+      employerIds: ["A", "B"], employmentMode: "custom", employmentStatusIds: ["leave"],
+      bargainingUnitIds: ["unit"], memberStatusIds: ["member"], workStatusIds: ["ws"],
+      workStatusActive: "yes", benefitIds: ["medical"], representativeIds: ["official"],
+      fieldRepIds: ["rep-contact"], isSteward: "yes",
+    };
+    const query = new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]));
+    const normal = await fetch(`${baseUrl}/api/workers/export?${query}`);
+    expect(normal.status).toBe(200);
+    await normal.text();
+    expect(batchCalls.at(-1)?.params).toMatchObject(filters);
+    const secure = await fetch(`${baseUrl}/api/workers/export`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...filters, ssn: "6789" }),
+    });
+    expect(secure.status).toBe(200);
+    const csv = await secure.text();
+    expect(csv).not.toContain("SSN");
+    expect(batchCalls.at(-1)?.params).toMatchObject({ ...filters, ssnFilter: { mode: "last4", digits: "6789" } });
+  });
+  it("rejects invalid directory filters before starting a CSV response", async () => {
+    const response = await fetch(`${baseUrl}/api/workers/export?employmentMode=invalid`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ message: "employmentMode must be current, ever, or custom" });
+    expect(getBatch).not.toHaveBeenCalled();
+  });
   it("returns JSON on a metadata failure before CSV headers are sent", async () => {
     getStatusOptions.mockRejectedValueOnce(new Error("metadata unavailable"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

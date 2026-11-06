@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from "express";
 import type { WorkerStorage, WorkersPaginationParams } from "../../storage/workers";
 import { WorkerBenefitRoleFilterError } from "@shared/worker-benefit-role-filters";
 import { parseWorkerSsnFilter, WorkerSsnFilterError } from "./ssn-filter";
+import { WorkerDirectoryFilterError } from "@shared/worker-directory-filters";
 
 type ListFilters = Omit<WorkersPaginationParams, "page" | "pageSize" | "ssnFilter">;
 
@@ -24,7 +25,7 @@ export function registerWorkerSsnListRoutes(
       const filters = parseFilters(req.body ?? {});
       res.json(await workers.getWorkersWithDetailsPaginated({ page, pageSize, ...filters, ssnFilter }));
     } catch (error) {
-      if (error instanceof WorkerSsnFilterError || error instanceof WorkerBenefitRoleFilterError) {
+      if (error instanceof WorkerSsnFilterError || error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerDirectoryFilterError) {
         return res.status(400).json({ message: error.message });
       }
       console.error("Failed to fetch paginated workers");
@@ -38,7 +39,7 @@ export function registerWorkerSsnListRoutes(
       const contactIds = await workers.getAllMatchingContactIds({ ...filters, ssnFilter });
       res.json({ contactIds, total: contactIds.length });
     } catch (error) {
-      if (error instanceof WorkerSsnFilterError || error instanceof WorkerBenefitRoleFilterError) {
+      if (error instanceof WorkerSsnFilterError || error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerDirectoryFilterError) {
         return res.status(400).json({ message: error.message });
       }
       console.error("Failed to fetch matching worker contact IDs");

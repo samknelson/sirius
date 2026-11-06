@@ -35,12 +35,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ContextualWorkerFilters } from "@/components/workers/contextual-worker-filters";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTerminology } from "@/contexts/TerminologyContext";
+import { normalizeWorkerDirectoryFilters, type WorkerDirectoryFilters } from "@shared/worker-directory-filters";
 
-export interface WorkerFilters {
+export interface WorkerFilters extends Omit<Partial<WorkerDirectoryFilters>, "workStatusActive" | "isSteward"> {
   employerId: string;
   employerTypeId: string;
   bargainingUnitId: string;
   benefitId: string;
+  benefitIds?: string[];
   contactStatus: string;
   hasMultipleEmployers?: boolean;
   jobTitle: string;
@@ -52,6 +57,17 @@ export interface WorkerFilters {
   subscriberSinceThrough?: string;
   dependentSinceFrom?: string;
   dependentSinceThrough?: string;
+  employerIds?: string[];
+  employmentMode?: "current" | "ever" | "custom";
+  employmentStatusIds?: string[];
+  memberStatusIds?: string[];
+  bargainingUnitIds?: string[];
+  workStatusIds?: string[];
+  workStatusActive?: "all" | "yes" | "no";
+  isSteward?: "all" | "yes" | "no";
+  representativeIds?: string[];
+  fieldRepIds?: string[];
+  enableBenefitRoleFilters?: boolean;
 }
 
 interface WorkersTableProps {
@@ -68,7 +84,7 @@ interface WorkersTableProps {
   onContactChange?: (query: string) => void;
   ssnQuery?: string;
   onSsnChange?: (query: string) => void;
-  onSecureExport?: (filters: Record<string, string>) => void;
+  onSecureExport?: (filters: Record<string, unknown>) => void;
   onApplySearch?: () => void;
   appliedNameId?: string;
   appliedContact?: string;
@@ -78,6 +94,9 @@ interface WorkersTableProps {
   onSortByChange?: (sortBy: "lastName" | "firstName" | "employer") => void;
   filters?: WorkerFilters;
   onFiltersChange?: (filters: WorkerFilters) => void;
+  onClearFilters?: () => void;
+  onRemoveAppliedFilter?: (key: keyof WorkerFilters | "contactSearch" | "nameIdSearch") => void;
+  enableContextualFilters?: boolean;
   /** Last-applied filters (apply-button model); used for CSV export so it matches the visible list. */
   appliedFilters?: WorkerFilters;
   /** Opt in only on the workers page; other table consumers do not support these controls. */
@@ -182,6 +201,9 @@ export function WorkersTable({
   onSortByChange,
   filters: externalFilters,
   onFiltersChange,
+  onClearFilters,
+  onRemoveAppliedFilter,
+  enableContextualFilters = false,
   appliedFilters: externalAppliedFilters,
   enableBenefitRoleFilters = false,
   selectable = false,
@@ -189,6 +211,10 @@ export function WorkersTable({
   onSelectionChange,
   disabledIds,
 }: WorkersTableProps) {
+  const { hasPermission } = useAuth();
+  const { term } = useTerminology();
+  const canReadStaffWorkerIds = hasPermission("staff");
+  const [openWorkerFilterSections, setOpenWorkerFilterSections] = useState(["contact"]);
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
   const [internalSortBy, setInternalSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
@@ -219,6 +245,9 @@ export function WorkersTable({
   
   const selectedEmployerId = filters.employerId;
   const selectedBenefitId = filters.benefitId;
+  const selectedBenefitIds = filters.benefitIds?.length
+    ? filters.benefitIds
+    : selectedBenefitId !== "all" ? [selectedBenefitId] : [];
   const contactStatusFilter = filters.contactStatus;
   const selectedEmployerTypeId = filters.employerTypeId;
   const selectedBargainingUnitId = filters.bargainingUnitId;
@@ -229,7 +258,7 @@ export function WorkersTable({
   };
 
   // Fetch component configs to check if trust benefits is enabled
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+  const { data: componentConfigs = [], isSuccess: componentConfigsLoaded } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
   });
   const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
@@ -312,14 +341,16 @@ export function WorkersTable({
 
   // Reset benefit filter when trust.benefits is disabled
   useEffect(() => {
-    if (!trustBenefitsEnabled && selectedBenefitId !== "all") {
-      updateFilter("benefitId", "all");
+    if (!componentConfigsLoaded) return;
+    if (!trustBenefitsEnabled && (selectedBenefitId !== "all" || filters.benefitIds?.length)) {
+      setFilters({ ...filters, benefitId: "all", benefitIds: [] });
     }
-  }, [trustBenefitsEnabled, selectedBenefitId]);
+  }, [componentConfigsLoaded, trustBenefitsEnabled, selectedBenefitId, filters.benefitIds]);
 
   // Role-history controls are opt-in because this table is also used by
   // recipient-selection pages whose endpoints do not support them.
   useEffect(() => {
+    if (!componentConfigsLoaded) return;
     if (!showBenefitRoleFilters && enableBenefitRoleFilters) {
       const {
         isSubscriber: _isSubscriber,
@@ -341,25 +372,27 @@ export function WorkersTable({
         setFilters(withoutRoleFilters);
       }
     }
-  }, [enableBenefitRoleFilters, filters, setFilters, showBenefitRoleFilters]);
+  }, [componentConfigsLoaded, enableBenefitRoleFilters, filters, setFilters, showBenefitRoleFilters]);
 
   // Reset member status filter when cardcheck is disabled
   useEffect(() => {
+    if (!componentConfigsLoaded) return;
     if (!cardcheckEnabled && filters.memberStatusId !== "all") {
       updateFilter("memberStatusId", "all");
     }
-  }, [cardcheckEnabled, filters.memberStatusId]);
+  }, [componentConfigsLoaded, cardcheckEnabled, filters.memberStatusId]);
 
   // Reset representative filter when political component is disabled
   useEffect(() => {
+    if (!componentConfigsLoaded) return;
     if (!politicalEnabled && filters.representativeId && filters.representativeId !== "all") {
       updateFilter("representativeId", "all");
     }
-  }, [politicalEnabled, filters.representativeId]);
+  }, [componentConfigsLoaded, politicalEnabled, filters.representativeId]);
 
   const { data: politicalOfficials = [] } = useQuery<{ id: string; name: string; officeName: string; level: string }[]>({
     queryKey: ["/api/sitespecific/btu/political/officials"],
-    enabled: politicalEnabled,
+    enabled: politicalEnabled && canReadStaffWorkerIds,
   });
 
   // Fetch worker-employer summary
@@ -387,6 +420,38 @@ export function WorkersTable({
   // Fetch bargaining units for filter dropdown
   const { data: bargainingUnits = [] } = useQuery<{ id: string; siriusId: string; name: string; data?: { icon?: string } | null }[]>({
     queryKey: ["/api/bargaining-units"],
+  });
+
+  const bargainingUnitsEnabled =
+    componentConfigs.find(config => config.componentId === "bargainingunits")?.enabled ?? false;
+  const stewardEnabled =
+    componentConfigs.find(config => config.componentId === "worker.steward")?.enabled ?? false;
+  const btuEnabled =
+    componentConfigs.find(config => config.componentId === "sitespecific.btu")?.enabled ?? false;
+  const { data: employmentStatusOptions = [] } = useQuery<{
+    id: string; name: string; code?: string | null; employed?: boolean;
+  }[]>({
+    queryKey: ["/api/options/employment-status"],
+    enabled: enableContextualFilters && canReadStaffWorkerIds,
+  });
+  const { data: workStatusOptions = [] } = useQuery<{
+    id: string; name: string; data?: { isActive?: boolean | string } | null;
+  }[]>({
+    queryKey: ["/api/options/worker-ws"],
+    enabled: enableContextualFilters && canReadStaffWorkerIds,
+  });
+  const { data: industryOptions = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/options/industry"],
+    enabled: enableContextualFilters && canReadStaffWorkerIds && cardcheckEnabled,
+  });
+  const {
+    data: fieldRepOptions = [],
+    isLoading: fieldRepsLoading,
+    isError: fieldRepsError,
+    refetch: retryFieldReps,
+  } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/sitespecific/btu/territories/field-reps"],
+    enabled: enableContextualFilters && canReadStaffWorkerIds && btuEnabled,
   });
 
   
@@ -492,26 +557,35 @@ export function WorkersTable({
   }, [memberStatusOptions]);
 
   // Fetch worker ID types configured to show on lists
-  const { data: showOnListsIdTypes = [] } = useQuery<{ id: string; name: string }[]>({
+  const {
+    data: showOnListsIdTypes = [],
+    isError: showOnListsTypesError,
+    refetch: retryShowOnListsTypes,
+  } = useQuery<{ id: string; name: string; sequence?: number }[]>({
     queryKey: ["/api/worker-id-types/show-on-lists"],
+    enabled: canReadStaffWorkerIds,
   });
+  const orderedShowOnListsIdTypes = useMemo(
+    () => showOnListsIdTypes.every(type => typeof type.sequence === "number")
+      ? [...showOnListsIdTypes].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+      : showOnListsIdTypes,
+    [showOnListsIdTypes],
+  );
 
   // Fetch worker IDs for show-on-lists types
   const workerIdsList = useMemo(() => workers.map((w: any) => w.id), [workers]);
-  const { data: workerIdsForList = [] } = useQuery<{ workerId: string; typeId: string; value: string }[]>({
-    queryKey: ["/api/worker-ids/for-list", workerIdsList],
+  const workerIdsForListRequest = workerIdsList;
+  const {
+    data: workerIdsForList = [],
+    isError: workerIdsForListError,
+    refetch: retryWorkerIdsForList,
+  } = useQuery<{ workerId: string; typeId: string; value: string }[]>({
+    queryKey: ["/api/worker-ids/for-list", workerIdsForListRequest],
     queryFn: async () => {
-      if (workerIdsList.length === 0 || showOnListsIdTypes.length === 0) return [];
-      const res = await fetch("/api/worker-ids/for-list", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workerIds: workerIdsList }),
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      return res.json();
+      if (workerIdsForListRequest.length === 0 || orderedShowOnListsIdTypes.length === 0) return [];
+      return apiRequest("POST", "/api/worker-ids/for-list", { workerIds: workerIdsForListRequest });
     },
-    enabled: workerIdsList.length > 0 && showOnListsIdTypes.length > 0,
+    enabled: canReadStaffWorkerIds && workerIdsForListRequest.length > 0 && orderedShowOnListsIdTypes.length > 0,
   });
 
   // Create map: workerId -> { typeId -> value }
@@ -731,9 +805,9 @@ export function WorkersTable({
       }
       
       // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
-      if (trustBenefitsEnabled && selectedBenefitId !== "all") {
+      if (trustBenefitsEnabled && selectedBenefitIds.length) {
         filtered = filtered.filter(worker => 
-          worker.benefitIds?.includes(selectedBenefitId)
+          selectedBenefitIds.some(id => worker.benefitIds?.includes(id))
         );
       }
       
@@ -787,7 +861,7 @@ export function WorkersTable({
     }
     
     return filtered;
-  }, [workersWithNames, nameIdQuery, contactQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
+  }, [workersWithNames, nameIdQuery, contactQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, selectedBenefitIds, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -823,38 +897,74 @@ export function WorkersTable({
   const handleExportCSV = () => {
     // Build URL with the last-APPLIED search/filter parameters so the export
     // always matches what the list is showing (apply-button model).
-    const params = new URLSearchParams();
     const exportNameId = externalAppliedNameId ?? nameIdQuery;
     const exportContact = externalAppliedContact ?? contactQuery;
     const exportFilters = externalAppliedFilters ?? filters;
-    if (exportNameId) params.set('nameIdSearch', exportNameId);
-    if (exportContact) params.set('contactSearch', exportContact);
-    params.set('sortBy', sortBy);
-    params.set('sortOrder', sortOrder);
-    if (exportFilters.employerId !== 'all') params.set('employerId', exportFilters.employerId);
-    if (exportFilters.employerTypeId !== 'all') params.set('employerTypeId', exportFilters.employerTypeId);
-    if (exportFilters.bargainingUnitId !== 'all') params.set('bargainingUnitId', exportFilters.bargainingUnitId);
-    if (exportFilters.benefitId !== 'all') params.set('benefitId', exportFilters.benefitId);
-    if (exportFilters.contactStatus !== 'all') params.set('contactStatus', exportFilters.contactStatus);
-    if (exportFilters.hasMultipleEmployers) params.set('hasMultipleEmployers', 'true');
-    if (exportFilters.jobTitle) params.set('jobTitle', exportFilters.jobTitle);
-    if (exportFilters.memberStatusId !== 'all') params.set('memberStatusId', exportFilters.memberStatusId);
-    if (exportFilters.representativeId && exportFilters.representativeId !== 'all') params.set('representativeId', exportFilters.representativeId);
+    const employmentMode = exportFilters.employmentMode ??
+      (exportFilters.employerId && exportFilters.employerId !== "all" ? "ever" : undefined);
     const exportBenefitRoleFilters: WorkerBenefitRoleFilters =
-      normalizeWorkerBenefitRoleFilters(
-        exportFilters,
-        showBenefitRoleFilters,
-      );
-    for (const [key, value] of Object.entries(exportBenefitRoleFilters)) {
-      params.set(key, value);
-    }
-    if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
+      normalizeWorkerBenefitRoleFilters(exportFilters, showBenefitRoleFilters);
+    const requestFilters: Record<string, unknown> = {
+      nameIdSearch: exportNameId,
+      contactSearch: exportContact,
+      sortBy,
+      sortOrder,
+      employerIds: exportFilters.employerIds?.length
+        ? exportFilters.employerIds
+        : exportFilters.employerId !== "all" ? [exportFilters.employerId] : [],
+      employerId: exportFilters.employerIds?.length === 1
+        ? exportFilters.employerIds[0]
+        : exportFilters.employerId,
+      employerTypeId: exportFilters.employerTypeId,
+      bargainingUnitIds: bargainingUnitsEnabled && exportFilters.bargainingUnitIds?.length
+        ? exportFilters.bargainingUnitIds
+        : bargainingUnitsEnabled && exportFilters.bargainingUnitId !== "all" ? [exportFilters.bargainingUnitId] : [],
+      bargainingUnitId: !bargainingUnitsEnabled ? "all" : exportFilters.bargainingUnitIds?.length === 1
+        ? exportFilters.bargainingUnitIds[0]
+        : exportFilters.bargainingUnitId,
+      benefitIds: trustBenefitsEnabled && exportFilters.benefitIds?.length
+        ? exportFilters.benefitIds
+        : trustBenefitsEnabled && exportFilters.benefitId !== "all" ? [exportFilters.benefitId] : [],
+      benefitId: trustBenefitsEnabled ? exportFilters.benefitId : "all",
+      contactStatus: exportFilters.contactStatus,
+      hasMultipleEmployers: exportFilters.hasMultipleEmployers,
+      jobTitle: exportFilters.jobTitle,
+      memberStatusIds: cardcheckEnabled && exportFilters.memberStatusIds?.length
+        ? exportFilters.memberStatusIds
+        : cardcheckEnabled && exportFilters.memberStatusId !== "all" ? [exportFilters.memberStatusId] : [],
+      memberStatusId: !cardcheckEnabled ? "all" : exportFilters.memberStatusIds?.length === 1
+        ? exportFilters.memberStatusIds[0]
+        : exportFilters.memberStatusId,
+      representativeIds: politicalEnabled && exportFilters.representativeIds?.length
+        ? exportFilters.representativeIds
+        : politicalEnabled && exportFilters.representativeId && exportFilters.representativeId !== "all"
+          ? [exportFilters.representativeId] : [],
+      representativeId: !politicalEnabled ? undefined : exportFilters.representativeIds?.length === 1
+        ? exportFilters.representativeIds[0]
+        : exportFilters.representativeId,
+      employmentMode,
+      employmentStatusIds: employmentMode === "custom" ? exportFilters.employmentStatusIds ?? [] : [],
+      workStatusIds: exportFilters.workStatusIds ?? [],
+      workStatusActive: normalizeWorkerDirectoryFilters({
+        workStatusActive: exportFilters.workStatusActive,
+      }).workStatusActive,
+      isSteward: stewardEnabled && exportFilters.isSteward !== "all" ? exportFilters.isSteward : undefined,
+      fieldRepIds: btuEnabled ? exportFilters.fieldRepIds ?? [] : [],
+      includeBenefits: trustBenefitsEnabled ? "true" : undefined,
+      ...exportBenefitRoleFilters,
+    };
     if (onSecureExport) {
-      onSecureExport(Object.fromEntries(params.entries()));
+      onSecureExport(requestFilters);
       return;
     }
     
     // Trigger download by opening the export URL
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(requestFilters)) {
+      if (value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)) continue;
+      if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)));
+      else params.set(key, String(value));
+    }
     const exportUrl = `/api/workers/export?${params.toString()}`;
     window.location.href = exportUrl;
   };
@@ -946,7 +1056,7 @@ export function WorkersTable({
                 data-testid="input-search-name-id"
               />
             </div>
-            <div className="relative flex-1 min-w-48">
+            {!enableContextualFilters && <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
               <Input
                 type="text"
@@ -961,7 +1071,7 @@ export function WorkersTable({
                 className="pl-10"
                 data-testid="input-search-contact"
               />
-            </div>
+            </div>}
             {ssnQuery !== undefined && (
               <div className="relative flex-1 min-w-48">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
@@ -986,9 +1096,47 @@ export function WorkersTable({
               Apply
             </Button>
           </div>
-          
+          {enableContextualFilters && filters && onFiltersChange && (
+            <div className="mb-3">
+              <ContextualWorkerFilters
+                filters={filters}
+                appliedFilters={externalAppliedFilters ?? filters}
+                onChange={onFiltersChange}
+                employers={employers}
+                employerTypes={employerTypes}
+                bargainingUnits={bargainingUnits}
+                benefits={trustBenefits}
+                memberStatuses={memberStatusOptions}
+                employmentStatuses={employmentStatusOptions}
+                workStatuses={workStatusOptions}
+                industries={industryOptions}
+                politicalOfficials={politicalOfficials}
+                fieldReps={fieldRepOptions}
+                bargainingUnitsEnabled={bargainingUnitsEnabled}
+                cardcheckEnabled={cardcheckEnabled}
+                stewardEnabled={stewardEnabled}
+                stewardLabel={term("steward")}
+                btuEnabled={btuEnabled}
+                benefitsEnabled={trustBenefitsEnabled}
+                politicalEnabled={politicalEnabled}
+                fieldRepsLoading={fieldRepsLoading}
+                fieldRepsError={fieldRepsError}
+                onRetryFieldReps={() => { void retryFieldReps(); }}
+                enableBenefitRoleFilters={enableBenefitRoleFilters}
+                contactQuery={contactQuery}
+                appliedContact={externalAppliedContact ?? ""}
+                appliedNameId={externalAppliedNameId ?? ""}
+                openSections={openWorkerFilterSections}
+                onOpenSectionsChange={setOpenWorkerFilterSections}
+                onContactChange={setContactQuery}
+                onApply={() => onApplySearch?.()}
+                onRemoveApplied={key => onRemoveAppliedFilter?.(key)}
+                onClear={() => onClearFilters?.()}
+              />
+            </div>
+          )}
           {/* Employer Filter - own row */}
-          <div className="mb-3">
+          <div className={`mb-3 ${enableContextualFilters ? "hidden" : ""}`}>
             <Select
               value={selectedEmployerId}
               onValueChange={(value) => setFilters({ ...filters, employerId: value })}
@@ -1024,7 +1172,7 @@ export function WorkersTable({
           </div>
           
           {/* Other Filters */}
-          <div className="flex flex-wrap gap-3">
+          <div className={`flex flex-wrap gap-3 ${enableContextualFilters ? "hidden" : ""}`}>
             {/* Benefit Filter - only show when trust.benefits component is enabled */}
             {trustBenefitsEnabled && (
               <div className="w-64">
@@ -1351,6 +1499,19 @@ export function WorkersTable({
           </div>
         </div>
 
+        {(showOnListsTypesError || (!showOnListsTypesError && orderedShowOnListsIdTypes.length > 0 && workerIdsForListError)) && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground" data-testid="worker-list-id-error">
+            <span>
+              {showOnListsTypesError
+                ? "Configured list ID types could not be loaded."
+                : "List ID values could not be loaded for this page."}
+            </span>
+            <Button type="button" variant="link" size="sm" className="h-auto p-0"
+              onClick={() => { void (showOnListsTypesError ? retryShowOnListsTypes() : retryWorkerIdsForList()); }}>
+              Retry
+            </Button>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-muted/20">
@@ -1446,12 +1607,17 @@ export function WorkersTable({
                             {worker.contactName}
                           </span>
                         </Link>
-                        <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
-                           {worker.siriusId ?? "No Sirius ID"}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
-                        </p>
+                        {(orderedShowOnListsIdTypes.length === 0 || worker.denormJobTitle) && (
+                          <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
+                            {orderedShowOnListsIdTypes.length === 0 ? worker.siriusId ?? "No Sirius ID" : null}
+                            {worker.denormJobTitle
+                              ? `${orderedShowOnListsIdTypes.length === 0 ? " · " : ""}${worker.denormJobTitle}`
+                              : null}
+                          </p>
+                        )}
                         {/* One small labeled row per list-enabled worker ID
                             (replaces the former per-ID-type columns; mirrors BTU). */}
-                        {showOnListsIdTypes.map((idType) => {
+                        {orderedShowOnListsIdTypes.map((idType) => {
                           const value = workerIdValueMap.get(worker.id)?.get(idType.id);
                           if (!value) return null;
                           return (

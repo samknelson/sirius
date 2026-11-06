@@ -17,6 +17,7 @@ import {
   type Employer,
 } from "@shared/schema";
 import type { WorkerBenefitRoleFilters } from "@shared/worker-benefit-role-filters";
+import type { WorkerDirectoryFilters } from "@shared/worker-directory-filters";
 import { eq, sql, and, or, ne, isNull, inArray } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -164,7 +165,7 @@ export interface PaginatedWorkersResult {
   totalPages: number;
 }
 
-export interface WorkersExportParams extends WorkerBenefitRoleFilters {
+export interface WorkersExportParams extends WorkerBenefitRoleFilters, WorkerDirectoryFilters {
   ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   nameIdSearch?: string;
   contactSearch?: string;
@@ -192,7 +193,7 @@ export interface WorkerExportBatch {
   nextCursor: WorkerExportCursor | null;
 }
 
-export interface WorkersPaginationParams extends WorkerBenefitRoleFilters {
+export interface WorkersPaginationParams extends WorkerBenefitRoleFilters, WorkerDirectoryFilters {
   ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   page?: number;
   pageSize?: number;
@@ -353,7 +354,7 @@ export interface WorkerStorage {
   getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>>;
 }
 
-export interface InternalSearchParams {
+export interface InternalSearchParams extends WorkerDirectoryFilters {
   ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   isSubscriber?: WorkerBenefitRoleFilters["isSubscriber"];
   isDependent?: WorkerBenefitRoleFilters["isDependent"];
@@ -546,10 +547,25 @@ export function buildWorkerPopulationCondition(params: InternalSearchParams, ben
     : sql``;
   const searchCondition = sql`${nameIdSearchCondition} ${contactSearchCondition} ${ssnCondition}`;
 
-  const employerCondition = employerId 
+  const selectedEmployers = params.employerIds?.length ? params.employerIds : employerId && employerId !== "all" ? [employerId] : [];
+  const selectedEmploymentStatuses = params.employmentStatusIds ?? [];
+  const idList = (ids: string[]) => sql.join(ids.map(id => sql`${id}`), sql`, `);
+  // The employment payload has no status: test the latest hours row for the
+  // selected employer, never an older row or a different employer's status.
+  const employerCondition = selectedEmployers.length
     ? sql`AND EXISTS (
-        SELECT 1 FROM worker_employment_denorm wed
-        WHERE wed.worker_id = w.id AND wed.employer_id = ${employerId}
+        SELECT 1 FROM (
+          SELECT DISTINCT ON (wh.employer_id) wh.employer_id, wh.employment_status_id
+          FROM worker_hours wh
+          WHERE wh.worker_id = w.id AND wh.employer_id IN (${idList(selectedEmployers)})
+          ORDER BY wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC, wh.id DESC
+        ) latest
+        LEFT JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE ${params.employmentMode === "current" ? sql`es.employed = true`
+          : (params.employmentMode === "custom" || !params.employmentMode) && selectedEmploymentStatuses.length
+            ? sql`(latest.employment_status_id IN (${idList(selectedEmploymentStatuses)})
+                ${selectedEmploymentStatuses.includes("none") ? sql`OR latest.employment_status_id IS NULL` : sql``})`
+            : sql`true`}
       )`
     : sql``;
 
@@ -562,11 +578,13 @@ export function buildWorkerPopulationCondition(params: InternalSearchParams, ben
       )`
     : sql``;
 
-  const bargainingUnitCondition = (bargainingUnitId && bargainingUnitsEnabled)
-    ? sql`AND w.bargaining_unit_id = ${bargainingUnitId}`
+  const selectedUnits = params.bargainingUnitIds?.length ? params.bargainingUnitIds : bargainingUnitId && bargainingUnitId !== "all" ? [bargainingUnitId] : [];
+  const bargainingUnitCondition = (selectedUnits.length && bargainingUnitsEnabled)
+    ? sql`AND (w.bargaining_unit_id IN (${idList(selectedUnits)})
+        ${selectedUnits.includes("none") ? sql`OR w.bargaining_unit_id IS NULL` : sql``})`
     : sql``;
 
-  const selectedBenefits = params.benefitIds?.length ? params.benefitIds : benefitId ? [benefitId] : [];
+  const selectedBenefits = params.benefitIds?.length ? params.benefitIds : benefitId && benefitId !== "all" ? [benefitId] : [];
   const benefitCondition = (selectedBenefits.length && benefitsEnabled)
     ? sql`AND EXISTS (
         SELECT 1 FROM trust_wmb wmb
@@ -593,8 +611,8 @@ export function buildWorkerPopulationCondition(params: InternalSearchParams, ben
       )`
     : sql``;
 
-  const selectedStatuses = params.memberStatusIds?.length ? params.memberStatusIds : memberStatusId ? [memberStatusId] : [];
-  const memberStatusCondition = selectedStatuses.length
+  const selectedStatuses = params.memberStatusIds?.length ? params.memberStatusIds : memberStatusId && memberStatusId !== "all" ? [memberStatusId] : [];
+  const memberStatusCondition = selectedStatuses.length && isComponentEnabledSync("cardcheck")
     ? sql`AND (
       ${selectedStatuses.includes('none') ? sql`NOT EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id)` : sql`false`}
       OR EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id
@@ -602,11 +620,39 @@ export function buildWorkerPopulationCondition(params: InternalSearchParams, ben
     )`
     : sql``;
 
-  const representativeCondition = (representativeId && politicalEnabled)
+  const selectedRepresentatives = params.representativeIds?.length ? params.representativeIds : representativeId && representativeId !== "all" ? [representativeId] : [];
+  const representativeCondition = (selectedRepresentatives.length && politicalEnabled)
     ? sql`AND EXISTS (
         SELECT 1 FROM sitespecific_btu_political_worker_reps pwr
         WHERE pwr.worker_id = w.id
-        AND pwr.official_id = ${representativeId}
+        AND pwr.official_id IN (${idList(selectedRepresentatives)})
+      )`
+    : sql``;
+
+  const workStatusCondition = params.workStatusIds?.length || params.workStatusActive
+    ? sql`AND (
+        ${params.workStatusIds?.length ? sql`(
+          EXISTS (SELECT 1 FROM worker_wsh_denorm ws WHERE ws.worker_id = w.id AND ws.ws_id IN (${idList(params.workStatusIds)}))
+          ${params.workStatusIds.includes("none") ? sql`OR NOT EXISTS (SELECT 1 FROM worker_wsh_denorm ws WHERE ws.worker_id = w.id)` : sql``}
+        )` : sql`true`}
+        AND ${params.workStatusActive ? sql`(
+          ${params.workStatusActive === "no" ? sql`NOT` : sql``} EXISTS (
+            SELECT 1 FROM worker_wsh_denorm ws JOIN options_worker_ws opt ON opt.id = ws.ws_id
+            WHERE ws.worker_id = w.id AND opt.data->>'isActive' = 'true'
+          ))` : sql`true`}
+      )`
+    : sql``;
+
+  const stewardCondition = params.isSteward && isComponentEnabledSync("worker.steward")
+    ? sql`AND ${params.isSteward === "no" ? sql`NOT` : sql``} EXISTS (
+        SELECT 1 FROM worker_steward_assignments sa WHERE sa.worker_id = w.id
+      )`
+    : sql``;
+  const fieldRepCondition = params.fieldRepIds?.length && isComponentEnabledSync("sitespecific.btu")
+    ? sql`AND EXISTS (
+        SELECT 1 FROM btu_territory_workers tw
+        JOIN btu_territory_reps tr ON tr.territory_id = tw.territory_id
+        WHERE tw.worker_id = w.id AND tr.contact_id IN (${idList(params.fieldRepIds)})
       )`
     : sql``;
 
@@ -660,7 +706,7 @@ export function buildWorkerPopulationCondition(params: InternalSearchParams, ben
       )`
     : sql``;
 
-  return sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition} ${roleCondition}`;
+  return sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition} ${workStatusCondition} ${stewardCondition} ${fieldRepCondition} ${roleCondition}`;
 }
 
 async function _searchWorkers(params: InternalSearchParams): Promise<InternalSearchResult> {
@@ -973,6 +1019,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const pageSize = params.pageSize ?? 50;
 
       const { rows, total } = await _searchWorkers({
+        ...params,
         ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
@@ -1014,6 +1061,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const { rows } = await runInTransaction(async () => {
         await getClient().execute(sql`SET LOCAL statement_timeout = '85s'`);
         return _searchWorkers({
+        ...params,
         ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
@@ -1055,6 +1103,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]> {
       const { rows } = await _searchWorkers({
+        ...params,
         ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,

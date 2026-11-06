@@ -211,7 +211,10 @@ export function registerWorkerIdsRoutes(
         res.status(400).json({ message: "workerIds must be an array" });
         return;
       }
-      const sanitized = workerIdsList.filter((id: any) => typeof id === 'string' && id.length > 0);
+      if (workerIdsList.some((id: unknown) => typeof id !== "string" || !id.trim() || id.length > 255)) {
+        return res.status(400).json({ message: "workerIds must contain nonempty IDs" });
+      }
+      const sanitized = [...new Set(workerIdsList as string[])];
       if (sanitized.length === 0) {
         res.json([]);
         return;

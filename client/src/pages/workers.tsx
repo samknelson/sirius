@@ -15,6 +15,10 @@ import {
   type WorkerBenefitRoleFilters,
 } from "@shared/worker-benefit-role-filters";
 import { fetchSecureWorkerExport } from "@/lib/secure-worker-export";
+import {
+  normalizeEmployerEmploymentFilters,
+} from "@shared/utils/employer-employment-filters";
+import { normalizeWorkerDirectoryFilters } from "@shared/worker-directory-filters";
 
 interface PaginatedWorkersResponse {
   data: any[];
@@ -43,14 +47,19 @@ function withoutWorkerBenefitRoleFilters(filters: WorkerFilters): WorkerFilters 
 
 export default function Workers() {
   const [location] = useLocation();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasComponent, authReady } = useAuth();
   const canSearchSsn = hasPermission("workers.ssn");
   const { toast } = useToast();
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+  const { data: componentConfigs = [], isSuccess: componentConfigsLoaded } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
   });
   const trustBenefitsEnabled =
     componentConfigs.find((config) => config.componentId === "trust.benefits")?.enabled ?? false;
+  const cardcheckEnabled = hasComponent("cardcheck");
+  const bargainingUnitsEnabled = hasComponent("bargainingunits");
+  const politicalEnabled = hasComponent("sitespecific.btu.political");
+  const stewardEnabled = hasComponent("worker.steward");
+  const btuEnabled = hasComponent("sitespecific.btu");
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   // Pending (typed/selected but not yet applied) search + filter state. Nothing
@@ -69,12 +78,20 @@ export default function Workers() {
   const [isSelectingAll, setIsSelectingAll] = useState(false);
   const defaultFilters: WorkerFilters = {
     employerId: "all",
+    employerIds: [],
     employerTypeId: "all",
     bargainingUnitId: "all",
+    bargainingUnitIds: [],
     benefitId: "all",
+    benefitIds: [],
     contactStatus: "all",
     jobTitle: "",
     memberStatusId: "all",
+    memberStatusIds: [],
+    employmentStatusIds: [],
+    workStatusIds: [],
+    representativeIds: [],
+    workStatusActive: "all",
   };
   const [filters, setFilters] = useState<WorkerFilters>(defaultFilters);
   // Applied state — the only inputs the server query sees.
@@ -110,10 +127,10 @@ export default function Workers() {
     setSsnGeneration(value => value + 1);
     // Applied state is canonicalized so requests and exports can never include
     // the pending-only `any` or blank values.
-    setAppliedFilters({
+    setAppliedFilters(normalizeEmployerEmploymentFilters({
       ...withoutWorkerBenefitRoleFilters(filters),
       ...normalizedRoleFilters,
-    });
+    }));
     setPage(1);
     // Applying is an explicit recipient-set boundary, even when the effective
     // filter values happen to be unchanged.
@@ -130,20 +147,143 @@ export default function Workers() {
 
   // Filter controls just accumulate locally; applying happens via the button.
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
-    setFilters(newFilters);
+    setFilters(normalizeEmployerEmploymentFilters(newFilters));
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setNameIdInput("");
+    setContactInput("");
+    setSsnInput("");
+    setAppliedSsn("");
+    setSsnGeneration(value => value + 1);
+    setFilters(defaultFilters);
+    setAppliedNameId("");
+    setAppliedContact("");
+    setAppliedFilters(defaultFilters);
+    setPage(1);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleRemoveAppliedFilter = useCallback((
+    key: keyof WorkerFilters | "contactSearch" | "nameIdSearch",
+  ) => {
+    if (key === "nameIdSearch") {
+      setNameIdInput("");
+      setAppliedNameId("");
+    } else if (key === "contactSearch") {
+      setContactInput("");
+      setAppliedContact("");
+    } else if (key === "isSubscriber" || key === "isDependent") {
+      const removeRole = (current: WorkerFilters): WorkerFilters => {
+        const next = { ...current };
+        if (key === "isSubscriber") {
+          delete next.isSubscriber;
+          delete next.subscriberSinceFrom;
+          delete next.subscriberSinceThrough;
+        } else {
+          delete next.isDependent;
+          delete next.dependentSinceFrom;
+          delete next.dependentSinceThrough;
+        }
+        return next;
+      };
+      setFilters(removeRole);
+      setAppliedFilters(removeRole);
+    } else {
+      const reset: Partial<Record<keyof WorkerFilters, unknown>> = {
+        employerIds: [],
+        employerId: "all",
+        employmentMode: "ever",
+        employmentStatusIds: [],
+        employerTypeId: "all",
+        jobTitle: "",
+        hasMultipleEmployers: false,
+        memberStatusIds: [],
+        memberStatusId: "all",
+        bargainingUnitIds: [],
+        bargainingUnitId: "all",
+        workStatusIds: [],
+        workStatusActive: "all",
+        benefitId: "all",
+        benefitIds: [],
+        representativeIds: [],
+        representativeId: "all",
+        fieldRepIds: [],
+        isSteward: "all",
+        contactStatus: "all",
+      };
+      if (key === "employmentStatusIds" || key === "employmentMode") {
+        reset.employmentMode = "ever";
+        reset.employmentStatusIds = [];
+      }
+      const value = reset[key];
+      const patch = { [key]: value } as Partial<WorkerFilters>;
+      if (key === "employerIds") {
+        Object.assign(patch, { employerId: "all", employmentMode: undefined, employmentStatusIds: [] });
+      } else if (key === "memberStatusIds") {
+        patch.memberStatusId = "all";
+      } else if (key === "bargainingUnitIds") {
+        patch.bargainingUnitId = "all";
+      } else if (key === "benefitIds") {
+        patch.benefitId = "all";
+      } else if (key === "representativeIds") {
+        patch.representativeId = "all";
+      } else if (key === "employmentMode" || key === "employmentStatusIds") {
+        Object.assign(patch, { employmentMode: "ever", employmentStatusIds: [] });
+      }
+      setFilters(current => normalizeEmployerEmploymentFilters({ ...current, ...patch }));
+      setAppliedFilters(current => normalizeEmployerEmploymentFilters({ ...current, ...patch }));
+    }
+    setPage(1);
   }, []);
 
   // A trust.benefits deployment may be turned off while this page is open.
   // Clear both generations of local state immediately; filterParams below also
   // gates the request during the transition before this effect runs.
   useEffect(() => {
+    if (!componentConfigsLoaded) return;
     if (!trustBenefitsEnabled) {
-      setFilters((current) => withoutWorkerBenefitRoleFilters(current));
-      setAppliedFilters((current) => withoutWorkerBenefitRoleFilters(current));
+      setFilters((current) => ({ ...withoutWorkerBenefitRoleFilters(current), benefitId: "all", benefitIds: [] }));
+      setAppliedFilters((current) => ({ ...withoutWorkerBenefitRoleFilters(current), benefitId: "all", benefitIds: [] }));
       setPage(1);
       setSelectedIds(new Set());
     }
-  }, [trustBenefitsEnabled]);
+  }, [trustBenefitsEnabled, componentConfigsLoaded]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (cardcheckEnabled) return;
+    setFilters(current => current.memberStatusIds?.length ? { ...current, memberStatusIds: [] } : current);
+    setAppliedFilters(current => current.memberStatusIds?.length ? { ...current, memberStatusIds: [] } : current);
+  }, [authReady, cardcheckEnabled]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (bargainingUnitsEnabled) return;
+    setFilters(current => current.bargainingUnitIds?.length ? { ...current, bargainingUnitIds: [] } : current);
+    setAppliedFilters(current => current.bargainingUnitIds?.length ? { ...current, bargainingUnitIds: [] } : current);
+  }, [authReady, bargainingUnitsEnabled]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (politicalEnabled) return;
+    setFilters(current => current.representativeIds?.length ? { ...current, representativeIds: [] } : current);
+    setAppliedFilters(current => current.representativeIds?.length ? { ...current, representativeIds: [] } : current);
+  }, [authReady, politicalEnabled]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (stewardEnabled) return;
+    setFilters(current => current.isSteward && current.isSteward !== "all" ? { ...current, isSteward: "all" } : current);
+    setAppliedFilters(current => current.isSteward && current.isSteward !== "all" ? { ...current, isSteward: "all" } : current);
+  }, [authReady, stewardEnabled]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (btuEnabled) return;
+    setFilters(current => current.fieldRepIds?.length ? { ...current, fieldRepIds: [] } : current);
+    setAppliedFilters(current => current.fieldRepIds?.length ? { ...current, fieldRepIds: [] } : current);
+  }, [authReady, btuEnabled]);
 
   const appliedBenefitRoleFilters = useMemo(
     () => normalizeWorkerBenefitRoleFilters(appliedFilters, trustBenefitsEnabled),
@@ -157,15 +297,46 @@ export default function Workers() {
     contactSearch: appliedContact,
     sortOrder,
     sortBy,
-    employerId: appliedFilters.employerId,
+    employerId: appliedFilters.employerIds?.length === 1
+      ? appliedFilters.employerIds[0]
+      : appliedFilters.employerId,
+    employerIds: appliedFilters.employerIds ?? [],
     employerTypeId: appliedFilters.employerTypeId,
-    bargainingUnitId: appliedFilters.bargainingUnitId,
-    benefitId: appliedFilters.benefitId,
+    bargainingUnitId: bargainingUnitsEnabled
+      ? appliedFilters.bargainingUnitIds?.length === 1
+        ? appliedFilters.bargainingUnitIds[0]
+        : appliedFilters.bargainingUnitId
+      : "all",
+    bargainingUnitIds: bargainingUnitsEnabled ? appliedFilters.bargainingUnitIds ?? [] : [],
+    benefitId: trustBenefitsEnabled ? appliedFilters.benefitId : "all",
+    benefitIds: trustBenefitsEnabled && appliedFilters.benefitIds?.length
+      ? appliedFilters.benefitIds
+      : trustBenefitsEnabled && appliedFilters.benefitId !== "all" ? [appliedFilters.benefitId] : [],
     contactStatus: appliedFilters.contactStatus,
     hasMultipleEmployers: appliedFilters.hasMultipleEmployers,
     jobTitle: appliedFilters.jobTitle,
-    memberStatusId: appliedFilters.memberStatusId,
-    representativeId: appliedFilters.representativeId,
+    memberStatusId: cardcheckEnabled
+      ? appliedFilters.memberStatusIds?.length === 1
+        ? appliedFilters.memberStatusIds[0]
+        : appliedFilters.memberStatusId
+      : "all",
+    memberStatusIds: cardcheckEnabled ? appliedFilters.memberStatusIds ?? [] : [],
+    representativeId: politicalEnabled
+      ? appliedFilters.representativeIds?.length === 1
+        ? appliedFilters.representativeIds[0]
+        : appliedFilters.representativeId
+      : undefined,
+    representativeIds: politicalEnabled ? appliedFilters.representativeIds ?? [] : [],
+    employmentMode: appliedFilters.employmentMode,
+    employmentStatusIds: appliedFilters.employmentMode === "custom"
+      ? appliedFilters.employmentStatusIds ?? []
+      : [],
+    workStatusIds: appliedFilters.workStatusIds ?? [],
+    workStatusActive: normalizeWorkerDirectoryFilters({
+      workStatusActive: appliedFilters.workStatusActive,
+    }).workStatusActive,
+    isSteward: stewardEnabled && appliedFilters.isSteward !== "all" ? appliedFilters.isSteward : undefined,
+    fieldRepIds: btuEnabled ? appliedFilters.fieldRepIds ?? [] : [],
     ...appliedBenefitRoleFilters,
   }), [
     appliedNameId,
@@ -174,6 +345,12 @@ export default function Workers() {
     sortBy,
     appliedFilters,
     appliedBenefitRoleFilters,
+    bargainingUnitsEnabled,
+    trustBenefitsEnabled,
+    cardcheckEnabled,
+    politicalEnabled,
+    stewardEnabled,
+    btuEnabled,
   ]);
 
   // Reset selection whenever the effective filter set changes so users can never
@@ -223,7 +400,7 @@ export default function Workers() {
     }
   }, [filterParams, appliedSsn, canSearchSsn, toast]);
 
-  const handleSecureExport = useCallback(async (filters: Record<string, string>) => {
+  const handleSecureExport = useCallback(async (filters: Record<string, unknown>) => {
     try {
       const blobUrl = URL.createObjectURL(
         await fetchSecureWorkerExport(filters, appliedSsn),
@@ -313,6 +490,9 @@ export default function Workers() {
           filters={filters}
           onFiltersChange={handleFiltersChange}
           appliedFilters={appliedFilters}
+          onClearFilters={handleClearFilters}
+          onRemoveAppliedFilter={handleRemoveAppliedFilter}
+          enableContextualFilters
            enableBenefitRoleFilters={trustBenefitsEnabled}
           selectable
           selectedIds={selectedIds}

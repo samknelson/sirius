@@ -67,3 +67,9 @@ For CSS `auto-fit` grids, computed `gridTemplateColumns` can include collapsed z
 **Why:** A four-tile grid reported five computed tracks even though only four tracks had width and all tiles were contained.
 
 **How to apply:** In layout tests, count nonzero tracks and assert element geometry, not the raw space-separated track count.
+
+Wait for a closed Radix popover's portal to disappear before reopening the same control.
+
+**Why:** Rapid Chromium close/reopen actions can target the exiting portal; a group-selection click then appears to succeed while leaving the selection unchanged, even though the control's behavior is correct.
+
+**How to apply:** After Escape, wait for the popper wrapper to become hidden before the next trigger click. Keep the state assertion; do not weaken it to work around animation timing.

@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
+import { normalizeWorkerDirectoryFilters, WorkerDirectoryFilterError } from "@shared/worker-directory-filters";
 import { registerUserRoutes } from "./modules/users";
 import { resolveLinkedWorkerId } from "./auth/worker-link";
 import { registerVariableRoutes } from "./modules/system/variables";
@@ -634,6 +635,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // listing and the "all matching IDs" endpoint route through this single helper
   // so the two query interpretations cannot drift.
   const parseWorkersWithDetailsFilters = (query: Record<string, unknown>) => {
+    const directoryFilters = normalizeWorkerDirectoryFilters(query);
     const nameIdSearch = typeof query.nameIdSearch === 'string' ? query.nameIdSearch : undefined;
     const contactSearch = typeof query.contactSearch === 'string' ? query.contactSearch : undefined;
     const sortOrderParam = query.sortOrder as string;
@@ -674,6 +676,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       jobTitle,
       memberStatusId,
       representativeId,
+      ...directoryFilters,
       ...roleFilters,
     };
   };
@@ -695,7 +698,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       });
       res.json(result);
     } catch (error) {
-      if (error instanceof WorkerBenefitRoleFilterError) {
+      if (error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerDirectoryFilterError) {
         return res.status(400).json({ message: error.message });
       }
       console.error("Failed to fetch paginated workers:", error);
@@ -711,7 +714,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const contactIds = await storage.workers.getAllMatchingContactIds(filters);
       res.json({ contactIds, total: contactIds.length });
     } catch (error) {
-      if (error instanceof WorkerBenefitRoleFilterError) {
+      if (error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerDirectoryFilterError) {
         return res.status(400).json({ message: error.message });
       }
       console.error("Failed to fetch matching worker contact IDs:", error);

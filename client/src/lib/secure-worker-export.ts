@@ -5,7 +5,7 @@
  * stream has delivered only part of the body.
  */
 export async function fetchSecureWorkerExport(
-  filters: Record<string, string>,
+  filters: Record<string, unknown>,
   ssn: string,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<Blob> {

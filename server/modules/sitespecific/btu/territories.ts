@@ -14,6 +14,17 @@ export function registerBtuTerritoriesRoutes(
   const territoriesStorage = storage.btuTerritories;
   const componentMiddleware = requireComponent("sitespecific.btu");
 
+  // Literal route precedes /:id; directory choices are contact identities,
+  // not territory IDs or arbitrary JSON embedded on a territory.
+  app.get("/api/sitespecific/btu/territories/field-reps", requireAuth, requirePermission("staff"), componentMiddleware, async (_req, res) => {
+    try {
+      res.json(await territoriesStorage.getFieldRepOptions());
+    } catch (error) {
+      console.error("Failed to fetch field representative choices:", error);
+      res.status(500).json({ message: "Failed to fetch field representative choices" });
+    }
+  });
+
   app.get("/api/sitespecific/btu/territories", requireAuth, componentMiddleware, async (req, res) => {
     try {
       const tableExists = await territoriesStorage.tableExists();

@@ -22,6 +22,7 @@ import {
   WorkerBenefitRoleFilterError,
 } from "@shared/worker-benefit-role-filters";
 import { parseWorkerSsnFilter, WorkerSsnFilterError } from "./ssn-filter";
+import { normalizeWorkerDirectoryFilters, WorkerDirectoryFilterError } from "@shared/worker-directory-filters";
 
 export interface WorkerExportDependencies {
   workers: Pick<WorkerStorage, "getWorkersForExportBatch">;
@@ -216,6 +217,7 @@ export function registerWorkerExportRoute(
           return res.status(400).json({ message: "SSN filters require a secure request body" });
         }
         const query = req.method === "POST" ? req.body ?? {} : req.query;
+        const directoryFilters = normalizeWorkerDirectoryFilters(query);
         const ssnFilter = req.method === "POST" ? parseWorkerSsnFilter(query.ssn) : undefined;
         const nameIdSearch =
           typeof query.nameIdSearch === "string"
@@ -352,6 +354,7 @@ export function registerWorkerExportRoute(
               memberStatusId,
               representativeId,
               includeBenefits,
+              ...directoryFilters,
               ...roleFilters,
             },
             cursor,
@@ -459,7 +462,7 @@ export function registerWorkerExportRoute(
           }
         }
       } catch (error) {
-        if (error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerSsnFilterError) {
+        if (error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerSsnFilterError || error instanceof WorkerDirectoryFilterError) {
           return res.status(400).json({ message: error.message });
         }
         // SQL errors may carry prepared-statement parameters, including a
