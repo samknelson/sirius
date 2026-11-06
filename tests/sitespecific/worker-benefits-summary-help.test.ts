@@ -9,6 +9,9 @@ describe("Benefits Summary built-in help", () => {
     expect(help.source).toBe("system");
     expect(getAllSystemHelps().filter(item => item.id === id)).toHaveLength(1);
     expect(help.details).toBe(sanitizeHtml(help.details!, "rich-document"));
+    expect(help.details).toContain("Staff with access can review a selected worker");
+    expect(help.details).toContain("A signed-in worker can review only the record linked to their account");
+    expect(help.details).toContain("The BAO component must be enabled");
     expect(help.details).toContain("<h3>Results and status meanings</h3>");
     expect(help.details).toContain("Each dependent appears once");
     expect(help.details).toContain("scanned in the previous system");

@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerWorkerMonthlyCoverageHistoryRoute } from "../../server/modules/workers/monthly-coverage-history";
 import { getTabAccessRequirements } from "../../shared/tabRegistry";
+import workerMinePolicy from "../../shared/access-policies/worker/mine";
 
 let server: Server | undefined;
 afterEach(() => { server?.close(); server = undefined; });
@@ -49,10 +50,27 @@ describe("worker monthly coverage history route", () => {
     expect(build).toHaveBeenCalledExactlyOnceWith("selected", 12, 12);
   });
 
-  it("keeps the worker summary navigation and protected page tied to the BAO staff tab", () => {
+  it("keeps the worker summary tab and protected page on own-worker access with BAO enabled", () => {
     expect(getTabAccessRequirements("worker", "benefits-summary")).toMatchObject({
-      permission: "staff",
+      policyId: "worker.mine",
       component: "sitespecific.bao",
     });
+    expect(getTabAccessRequirements("worker", "benefits-summary")?.permission).toBeUndefined();
+  });
+
+  it("grants the Summary tab to staff and only the linked worker", async () => {
+    const evaluate = workerMinePolicy.evaluate as (context: any) => Promise<{ granted: boolean }>;
+    const workerContext = (entityId: string) => ({
+      entityId,
+      hasPermission: async (permission: string) => permission === "worker",
+      getUserWorker: async () => ({ id: "linked-worker" }),
+    });
+
+    await expect(evaluate(workerContext("linked-worker"))).resolves.toMatchObject({ granted: true });
+    await expect(evaluate(workerContext("someone-else"))).resolves.toMatchObject({ granted: false });
+    await expect(evaluate({
+      entityId: "someone-else",
+      hasPermission: async (permission: string) => permission === "staff",
+    })).resolves.toMatchObject({ granted: true });
   });
 });

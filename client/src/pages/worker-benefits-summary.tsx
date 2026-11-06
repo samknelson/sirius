@@ -6,12 +6,17 @@ import {
 import { useDashboardContent } from "@/plugins/dashboard/useDashboardContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WorkerMonthlyCoverageHistory } from "./worker-monthly-coverage-history";
+import { useAuth } from "@/contexts/AuthContext";
 
 function SummaryContent() {
   const { worker } = useWorkerLayout();
+  const { hasPermission } = useAuth();
+  const isStaff = hasPermission("staff");
   const { data, isLoading, isError } = useDashboardContent<BaoCoverageSummary>(
     "bao-worker-coverage",
-    { action: "staff-worker", params: { workerId: worker.id } },
+    isStaff
+      ? { action: "staff-worker", params: { workerId: worker.id } }
+      : {},
   );
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;

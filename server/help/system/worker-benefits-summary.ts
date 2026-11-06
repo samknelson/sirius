@@ -8,7 +8,7 @@ export const workerBenefitsSummaryHelp: SystemHelpEntry = {
     <h3>Purpose</h3>
     <p>Use the Benefits Summary monthly history to review recorded coverage without changing benefits, eligibility, scans, or charges.</p>
     <h3>Before you start</h3>
-    <p>You need access to this worker's Benefits Summary. Available evidence determines which details can be shown.</p>
+    <p>Staff with access can review a selected worker. A signed-in worker can review only the record linked to their account. The BAO component must be enabled. Available evidence determines which details can be shown.</p>
     <h3>How to use this page</h3>
     <ol>
       <li>Expand a monthly coverage span to see its recorded evidence.</li>

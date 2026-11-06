@@ -8,6 +8,7 @@ import WorkerBenefitsSummary from "../../client/src/pages/worker-benefits-summar
 const dashboardContent = vi.hoisted(() => ({
   result: { data: null as BaoCoverageSummary | null, isLoading: false, isError: false },
   calls: [] as unknown[][],
+  isStaff: false,
 }));
 
 vi.mock("../../client/src/plugins/dashboard/useDashboardContent", () => ({
@@ -20,6 +21,10 @@ vi.mock("../../client/src/plugins/dashboard/useDashboardContent", () => ({
 vi.mock("../../client/src/components/layouts/WorkerLayout", () => ({
   WorkerLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useWorkerLayout: () => ({ worker: { id: "staff-worker-456" } }),
+}));
+
+vi.mock("../../client/src/contexts/AuthContext", () => ({
+  useAuth: () => ({ hasPermission: (permission: string) => permission === "staff" && dashboardContent.isStaff }),
 }));
 
 vi.mock("../../client/src/pages/worker-monthly-coverage-history", () => ({
@@ -112,6 +117,7 @@ describe("BAO worker coverage dashboard widget", () => {
   beforeEach(() => {
     dashboardContent.result = { data: null, isLoading: false, isError: false };
     dashboardContent.calls = [];
+    dashboardContent.isStaff = false;
   });
 
   it("links the member's balance to the card worker, not the signed-in user", () => {
@@ -144,7 +150,20 @@ describe("BAO worker coverage dashboard widget", () => {
     }
   });
 
-  it("uses the same card worker link in the staff benefits summary", () => {
+  it("loads the linked-worker dashboard action for a worker summary", () => {
+    dashboardContent.result = { data: summary({ workerId: "staff-worker-456" }), isLoading: false, isError: false };
+    const html = renderToStaticMarkup(
+      <Router hook={() => ["/", () => {}]}><WorkerBenefitsSummary /></Router>,
+    );
+    expect(dashboardContent.calls).toContainEqual(["bao-worker-coverage", {}]);
+    expect(html).toContain('href="/workers/staff-worker-456/ledger/pay"');
+    expect(html).toContain('href="/workers/staff-worker-456/benefits/summary#monthly-coverage-history"');
+    expect(html).toContain("Pay Balance");
+    expect(html).toContain('data-testid="worker-monthly-coverage-history"');
+  });
+
+  it("keeps the selected-worker card action for staff benefits summaries", () => {
+    dashboardContent.isStaff = true;
     dashboardContent.result = { data: summary({ workerId: "staff-worker-456" }), isLoading: false, isError: false };
     const html = renderToStaticMarkup(
       <Router hook={() => ["/", () => {}]}><WorkerBenefitsSummary /></Router>,
