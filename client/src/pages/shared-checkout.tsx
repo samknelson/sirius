@@ -116,7 +116,7 @@ export default function SharedCheckoutPage() {
     update();
   };
   useEffect(() => {
-    seeded.current = false; generation.current++; setChoice("full"); setStatementIds([]); setMethod(""); setPurpose(""); setNewType(null); setAccepted(false); setReview(false); setSession(undefined); setLockedQuote(undefined); setError("");
+    seeded.current = false; generation.current++; setChoice("full"); setStatementIds([]); setMethod(""); setPurpose(""); setNewType(null); setAccepted(false); setSaveMethodAccepted(false); setReview(false); setSession(undefined); setLockedQuote(undefined); setError("");
   }, [eaId, location]);
   useEffect(() => {
     if (session) {

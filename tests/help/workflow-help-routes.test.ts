@@ -87,7 +87,7 @@ describe("enrollment Next help boundaries", () => {
   it("is conditional on enrollment and matches generic wizard paths only", () => {
     const help = getAllSystemHelps().find(entry => entry.id === "system:enrollment-next")!;
     expect(help.details).toBe(sanitizeHtml(help.details!, "rich-document"));
-    expect(help.details).toContain("applies only");
+    expect(help.details).toContain("Use this guidance for First-time Enrollment");
     expect(help.details).toContain("does not post");
     for (const path of ["/wizards", "/workers/example", "/trust/enrollment-queue", "/config/wizards", "/__mockup/"]) {
       expect(help.paths.some(pattern => likePatternMatches(pattern, path))).toBe(false);
@@ -96,6 +96,31 @@ describe("enrollment Next help boundaries", () => {
 });
 
 describe("Disability Credit correction guidance", () => {
+  it("explains the worker-tab staff handoff without changing help scope", async () => {
+    const response = await read(
+      `/api/helps/lookup?path=${encodeURIComponent("/workers/example/sitespecific/bao/disability-credit")}`,
+    );
+    const entry = (await response.json()).find(
+      (item: { id: string }) => item.id === "system:disability-credit-worker",
+    );
+    expect(entry.details).toContain("<strong>Start case</strong>");
+    expect(entry.details).toContain("new case's detail page opens for preparation");
+    expect(entry.details).toContain("separate action does not use");
+    expect(entry.details).toContain("Workers:");
+    expect(entry.details).toBe(sanitizeHtml(entry.details, "rich-document"));
+
+    for (const path of [
+      "/workers/example/sitespecific/bao/dp",
+      "/workers/example/sitespecific/bao/disability-credit/extra",
+      "/bao/dc/cases/example",
+    ]) {
+      const matches = await (
+        await read(`/api/helps/lookup?path=${encodeURIComponent(path)}`)
+      ).json();
+      expect(matches.some((item: { id: string }) => item.id === "system:disability-credit-worker")).toBe(false);
+    }
+  });
+
   it.each([
     ["system:disability-credit-worker", "/workers/example/sitespecific/bao/disability-credit",
       ["/workers/example/sitespecific/bao/dp", "/workers/example/sitespecific/bao/disability-credit/extra", "/bao/dc/queue"]],

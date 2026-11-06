@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CalendarClock, FilePlus2, ShieldCheck } from "lucide-react";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
@@ -99,6 +99,7 @@ function CaseMonthSummary({ months }: { months: DcCaseMonthState[] }) {
 function WorkerDcContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [exceptionReason, setExceptionReason] = useState("");
@@ -112,12 +113,15 @@ function WorkerDcContent() {
       apiRequest("POST", `/api/workers/${worker.id}/sitespecific/bao/dc/cases`, {
         confirmDuplicate,
       }),
-    onSuccess: () => {
+    onSuccess: (createdCase: BaoDcCase) => {
       setConfirmOpen(false);
       toast({ title: "Disability Credit case opened" });
       queryClient.invalidateQueries({
         queryKey: ["/api/workers", worker.id, "sitespecific/bao/dc"],
       });
+      if (data?.isStaff) {
+        navigate(`/bao/dc/cases/${createdCase.id}`);
+      }
     },
     onError: (err) =>
       toast({
