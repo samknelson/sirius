@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { edlsSheetStatusEnum } from "../../shared/schema";
+import { edlsSheetStatusEnum, edlsSheets } from "../../shared/schema";
 
 const mocks = vi.hoisted(() => ({
   getClient: vi.fn(),
@@ -62,7 +62,16 @@ beforeEach(() => {
   written = {};
   const returning = async () => [row];
   mocks.getClient.mockReturnValue({
-    select: () => ({ from: () => ({ where: async () => [row] }) }),
+    select: () => ({ from: (table: unknown) => {
+      const rows = table === edlsSheets ? [row] : [];
+      const query = {
+        where: () => query,
+        innerJoin: () => query,
+        for: async () => rows,
+        then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
+      };
+      return query;
+    } }),
     update: () => ({
       set: (patch: Record<string, any>) => {
         written = patch;

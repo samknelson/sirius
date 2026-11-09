@@ -36,6 +36,7 @@ import {
   type EdlsPassportExportPage,
 } from "./passport-export";
 import { getEdlsSheetsPageOrder } from "./sheets-page-order";
+import { importedFieldsDiffer } from "./import-comparison";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -175,15 +176,16 @@ export interface EdlsSheetsStorage {
    */
   update(id: string, sheet: Partial<InsertEdlsSheet>, crews?: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
   /**
-   * Replace one imported sheet and its complete roster as one save boundary.
-   * The root snapshot/event is emitted only after every child is final.
+   * Reconcile one imported sheet and its complete roster as one save boundary.
+   * Matched crew IDs come from the importer; unchanged fillings are untouched.
+   * The root snapshot/event is emitted only for changes, after children are final.
    */
   replaceFromImport(
     id: string | undefined,
     sheet: InsertEdlsSheet,
     crews: EdlsImportedCrewInput[],
   ): Promise<{
-    kind: "created" | "updated";
+    kind: "created" | "updated" | "unchanged";
     sheet: EdlsSheetWithCrews;
     omittedAssignments: EdlsImportAssignmentOmission[];
   }>;
@@ -640,7 +642,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       insertSheet: InsertEdlsSheet,
       importedCrews: EdlsImportedCrewInput[],
     ): Promise<{
-      kind: "created" | "updated";
+      kind: "created" | "updated" | "unchanged";
       sheet: EdlsSheetWithCrews;
       omittedAssignments: EdlsImportAssignmentOmission[];
     }> {
@@ -650,23 +652,59 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return runInTransaction(async () => {
         const client = getClient();
         const [existing] = id
-          ? await client.select().from(edlsSheets).where(eq(edlsSheets.id, id))
+          ? await client.select().from(edlsSheets).where(eq(edlsSheets.id, id)).for("update")
           : [];
         if (id && !existing) throw new Error("Target sheet disappeared during import.");
 
         let saved: EdlsSheet;
-        let kind: "created" | "updated";
-        if (existing) {
-          [saved] = await client.update(edlsSheets)
-            .set({ ...insertSheet, changed: sql`now()` })
-            .where(eq(edlsSheets.id, existing.id))
-            .returning();
-          kind = "updated";
-          const oldCrews = await storage.edlsCrews.getBySheetId(existing.id);
-          for (const oldCrew of oldCrews) {
-            await storage.edlsAssignments.deleteByCrewId(oldCrew.id);
-            await storage.edlsCrews.delete(oldCrew.id);
+        let kind: "created" | "updated" | "unchanged";
+        let changed = !existing || importedFieldsDiffer(existing, insertSheet);
+        const oldCrews = existing ? await client.select().from(edlsCrews)
+          .where(eq(edlsCrews.sheetId, existing.id)).for("update") : [];
+        const oldAssignments = existing
+          ? await client.select({ assignment: edlsAssignments }).from(edlsAssignments)
+            .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+            .where(eq(edlsCrews.sheetId, existing.id))
+            .for("update", { of: edlsAssignments })
+          : [];
+        const retainedCrewIds = new Set<string>();
+        for (const { crew } of importedCrews) {
+          if (!crew.id) continue;
+          if (retainedCrewIds.has(crew.id) || !oldCrews.some((old) => old.id === crew.id)) {
+            throw new Error("Ambiguous or foreign imported crew identity.");
           }
+          retainedCrewIds.add(crew.id);
+        }
+        // Release only absent/moved fillings before reducing capacities or
+        // adding replacements. Unchanged fillings retain generation/answer/receipt.
+        for (const { assignment } of oldAssignments) {
+          const retained = importedCrews.some(({ crew, assignments }) =>
+            crew.id === assignment.crewId && assignments.some((desired) =>
+              desired.workerId === assignment.workerId && desired.ymd === assignment.ymd,
+            ),
+          );
+          if (!retained || insertSheet.status === "trash") {
+            if (!assignment.crewId || !assignment.generationId
+              || !await storage.edlsAssignments.delete(assignment.id, assignment.crewId, assignment.generationId)) {
+              throw new Error("Imported assignment changed during reconciliation.");
+            }
+            changed = true;
+          }
+        }
+        for (const oldCrew of oldCrews) {
+          if (!retainedCrewIds.has(oldCrew.id)) {
+            await storage.edlsCrews.delete(oldCrew.id);
+            changed = true;
+          }
+        }
+        if (existing) {
+          saved = existing;
+          if (importedFieldsDiffer(existing, insertSheet)) {
+            [saved] = await client.update(edlsSheets)
+              .set({ ...insertSheet, changed: sql`now()` })
+              .where(eq(edlsSheets.id, existing.id)).returning();
+          }
+          kind = "updated";
         } else {
           [saved] = await client.insert(edlsSheets)
             .values({ ...insertSheet, changed: sql`now()` })
@@ -674,22 +712,47 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           kind = "created";
         }
 
-        const createdCrews = crewInputs.length
-          ? await storage.edlsCrews.createMany(crewInputs.map((crew, index) => {
-            const { id: _id, ...crewData } = crew;
-            return { ...crewData, sheetId: saved.id, sequence: index };
-          }))
-          : [];
+        const createdCrews: EdlsCrew[] = [];
+        for (const [index, crew] of crewInputs.entries()) {
+          const { id: crewId, ...crewData } = crew;
+          const desired = { ...crewData, sheetId: saved.id, sequence: index };
+          const old = oldCrews.find((item) => item.id === crewId);
+          if (!old) {
+            createdCrews.push(await storage.edlsCrews.create(desired));
+            changed = true;
+          } else if (importedFieldsDiffer(old, desired)) {
+            const updated = await storage.edlsCrews.update(old.id, desired);
+            if (!updated) throw new Error("Imported crew disappeared during reconciliation.");
+            createdCrews.push(updated);
+            changed = true;
+          } else createdCrews.push(old);
+        }
         const omittedAssignments: EdlsImportAssignmentOmission[] = [];
+        const seenWorkers = new Set<string>();
         if (saved.status !== "trash") {
           for (let index = 0; index < createdCrews.length; index++) {
             const assignments = importedCrews[index]?.assignments ?? [];
             for (let assignmentIndex = 0; assignmentIndex < assignments.length; assignmentIndex++) {
               try {
-                await runInSavepoint(() => storage.edlsAssignments.create({
-                  ...assignments[assignmentIndex],
-                  crewId: createdCrews[index].id,
-                }, saved.id));
+                const desired = { ...assignments[assignmentIndex], crewId: createdCrews[index].id };
+                const key = `${desired.ymd}:${desired.workerId}`;
+                if (seenWorkers.has(key)) throw new Error("The same worker is assigned more than once on this date.");
+                seenWorkers.add(key);
+                const old = oldAssignments.find(({ assignment }) =>
+                  assignment.crewId === desired.crewId && assignment.ymd === desired.ymd
+                  && assignment.workerId === desired.workerId,
+                )?.assignment;
+                if (!old) {
+                  await runInSavepoint(() => storage.edlsAssignments.create(desired, saved.id));
+                  changed = true;
+                } else if (importedFieldsDiffer(old, desired)) {
+                  await runInSavepoint(async () => {
+                    if (!old.generationId || !await storage.edlsAssignments.updateData(
+                      old.id, (desired.data ?? {}) as Record<string, unknown>, desired.crewId, old.generationId,
+                    )) throw new Error("Imported assignment changed during reconciliation.");
+                  });
+                  changed = true;
+                }
               } catch (error) {
                 omittedAssignments.push({
                   crewIndex: index,
@@ -701,7 +764,13 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           }
         }
 
-        await emitSheetSaved(saved, existing?.status ?? null);
+        if (changed) {
+          if (existing && saved === existing) {
+            [saved] = await client.update(edlsSheets).set({ changed: sql`now()` })
+              .where(eq(edlsSheets.id, existing.id)).returning();
+          }
+          await emitSheetSaved(saved, existing?.status ?? null);
+        } else kind = "unchanged";
         return {
           kind,
           sheet: { ...saved, crews: createdCrews },
@@ -780,6 +849,8 @@ export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
     },
     replaceFromImport: {
       metadataMode: 'none',
+      shouldLog: (_args, result) => result?.kind !== "unchanged",
+      getEntityId: (_args, result) => result?.sheet.id,
       getHostEntityId: (_args, result) => result?.sheet.id,
       getDescription: async (_args, result) => {
         const action = result?.kind === "created" ? "Created" : "Updated";
