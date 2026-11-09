@@ -61,6 +61,8 @@ export interface AdvisoryLockHandle {
   readonly waitedMs: number;
   /** True when the lock was NOT free on the first attempt. */
   readonly contended: boolean;
+  /** Fail closed if this dedicated session no longer owns the lock. */
+  assertHeld(): Promise<void>;
   /** Release the lock and return the connection to the pool. Idempotent. */
   release(): Promise<void>;
 }
@@ -126,28 +128,58 @@ export function createAdvisoryLockStorage(): AdvisoryLockStorage {
       // than blocking forever.
       const client: pg.PoolClient = await pool.connect();
       let released = false;
+      let lost: Error | undefined;
       let announcedWait = false;
+      const onLost = (error?: Error) => { lost = error ?? new Error("Advisory lock connection ended."); };
+      client.on("error", onLost);
+      client.on("end", onLost);
 
       const releaseClient = (err?: Error) => {
         if (released) return;
         released = true;
+        client.removeListener("error", onLost);
+        client.removeListener("end", onLost);
         client.release(err);
       };
 
       try {
         for (;;) {
-          const result = await client.query<{ locked: boolean }>(
-            "SELECT pg_try_advisory_lock($1::int4, hashtext($2)::int4) AS locked",
-            [ADVISORY_LOCK_CLASS_ID, name],
-          );
+          const probe = {
+            text: "SELECT pg_try_advisory_lock($1::int4, hashtext($2)::int4) AS locked",
+            values: [ADVISORY_LOCK_CLASS_ID, name],
+            // The polling deadline alone cannot bound a stalled query.
+            query_timeout: 5_000,
+          };
+          const result = await client.query<{ locked: boolean }>(probe);
           if (result.rows[0]?.locked === true) {
             const waitedMs = Date.now() - startedAt;
             return {
               name,
               waitedMs,
               contended: announcedWait,
+              async assertHeld(): Promise<void> {
+                if (released || lost) throw lost ?? new Error("Advisory lock was released.");
+                try {
+                  const probe = {
+                    text: `SELECT EXISTS (
+                      SELECT 1 FROM pg_locks
+                      WHERE locktype = 'advisory' AND pid = pg_backend_pid()
+                        AND classid = $1::oid AND objid = hashtext($2)::oid
+                        AND objsubid = 2 AND granted
+                    ) AS held`,
+                    values: [ADVISORY_LOCK_CLASS_ID, name],
+                    query_timeout: 5_000,
+                  };
+                  const result = await client.query<{ held: boolean }>(probe);
+                  if (lost || !result.rows[0]?.held) throw lost ?? new Error("Advisory lock ownership was lost.");
+                } catch (error) {
+                  lost = error instanceof Error ? error : new Error(String(error));
+                  throw lost;
+                }
+              },
               async release(): Promise<void> {
                 if (released) return;
+                if (lost) { releaseClient(lost); return; }
                 try {
                   await client.query(
                     "SELECT pg_advisory_unlock($1::int4, hashtext($2)::int4)",

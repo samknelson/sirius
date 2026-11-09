@@ -45,6 +45,13 @@ type StatusResponse = {
   variableName: string;
   statuses: Record<StatusName, Cursor>;
   warning?: string;
+  recovery?: {
+    enabled: boolean;
+    heartbeatStale: boolean;
+    deferredReason: string | null;
+    resumedAt: string | null;
+    resumeCount: number;
+  };
   currentBatch?: {
     batchNumber: number;
     updatedAt: string;
@@ -412,7 +419,7 @@ export default function MigrateSheets() {
     onSuccess: (status) => {
       setLatestRun(null);
       queryClient.setQueryData([STATUS_KEY], status);
-      toast({ title: "Background import started", description: "It will continue in the background if you leave this page." });
+      toast({ title: "Background import started", description: "It continues after you leave this page and can automatically resume after a server restart." });
     },
     onError: (error: Error) => toast({ title: "Migration could not start", description: getApiErrorMessage(error, "A live run may already be active."), variant: "destructive" }),
   });
@@ -427,6 +434,8 @@ export default function MigrateSheets() {
 
   const lifecycle = statusQuery.data?.run.lifecycle ?? "idle";
   const liveActive = lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping";
+  const recovery = statusQuery.data?.recovery;
+  const manualRestartAvailable = recovery?.heartbeatStale && !recovery.enabled && lifecycle !== "stopping";
   const displayedRun = latestRun ?? statusQuery.data?.run.latestBatch ?? null;
   const busy = runMutation.isPending || resetMutation.isPending || startMutation.isPending || stopMutation.isPending;
   const outcomes = useMemo(() => new Map(displayedRun?.statuses.map((item) => [item.status, item]) ?? []), [displayedRun]);
@@ -490,6 +499,23 @@ export default function MigrateSheets() {
             <p className="mt-1 text-xs text-muted-foreground">
               Totals above cover finalized batches. Child “matched existing” counts include records needing no writes.
             </p>
+            <div className="mt-2 space-y-1 text-sm text-muted-foreground" data-testid="import-recovery-status">
+              {recovery?.enabled ? (
+                <p>Automatic recovery enabled. After interruption, this background run resumes from saved progress at startup or a scheduler check (normally every ten minutes). The Cron Tick Emitter must be enabled for periodic checks.</p>
+              ) : (
+                <p>Automatic recovery is off for this run. Only an explicitly started background import enables it; test runs, single live batches, completed runs, failures, and deliberate stops do not restart automatically.</p>
+              )}
+              {recovery?.heartbeatStale && (
+                <p className="text-amber-700 dark:text-amber-400">
+                  No recent heartbeat: the worker may have been interrupted, but another instance may still hold its lock.
+                  {recovery.enabled ? " Recovery will check the lock before resuming." : " Use Stop safely to settle an interrupted run, then start a background import if needed."}
+                </p>
+              )}
+              {recovery?.deferredReason && <p className="text-amber-700 dark:text-amber-400">Recovery deferred: {recovery.deferredReason}</p>}
+              {recovery?.resumedAt && (
+                <p>Resumed {formatDate(recovery.resumedAt)} · {recovery.resumeCount} automatic recovery attempt(s). An interrupted page may be replayed; unchanged records are reconciled without rebuilding their rosters.</p>
+              )}
+            </div>
             {currentBatch && (
               <div className="mt-3 space-y-2 border-t pt-3" data-testid="import-current-batch">
                 <p className="text-sm font-medium">
@@ -577,7 +603,7 @@ export default function MigrateSheets() {
             </AlertDialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-background">
+                <Button variant="destructive" disabled={busy || (liveActive && !manualRestartAvailable) || statusQuery.isLoading} data-testid="button-import-background">
                   <Play className="mr-2 h-4 w-4" /> Start background import
                 </Button>
               </AlertDialogTrigger>
@@ -585,7 +611,7 @@ export default function MigrateSheets() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Start the background Freeman import?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This writes EDLS records and continues running batches in the background until the migration completes, fails, or is safely stopped. Each batch processes up to {validLimit} records for each legacy status.
+                    This writes EDLS records and continues running batches in the background until the migration completes, fails, or is safely stopped. It automatically resumes after a server restart. Each batch processes up to {validLimit} records for each legacy status.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
