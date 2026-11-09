@@ -181,10 +181,12 @@ export function createAdvisoryLockStorage(): AdvisoryLockStorage {
                 if (released) return;
                 if (lost) { releaseClient(lost); return; }
                 try {
-                  await client.query(
-                    "SELECT pg_advisory_unlock($1::int4, hashtext($2)::int4)",
-                    [ADVISORY_LOCK_CLASS_ID, name],
-                  );
+                  const probe = {
+                    text: "SELECT pg_advisory_unlock($1::int4, hashtext($2)::int4)",
+                    values: [ADVISORY_LOCK_CLASS_ID, name],
+                    query_timeout: 5_000,
+                  };
+                  await client.query(probe);
                   releaseClient();
                 } catch (error) {
                   // A dead connection has already dropped the lock server-side;
