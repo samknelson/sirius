@@ -158,3 +158,10 @@ events. No remote database, restaging, loader/sync, or wet repair was executed
 as implementation verification. Real checkpoint equality, remote query costs,
 applied repair results, worker-page retrieval and background derived-state
 completion remain operator proof, pending separate approval.
+
+For the subsequent operator-run production repair and independent zero-mismatch
+dry run, see [the sanitized execution evidence](financial-worker-link-repair-evidence.md).
+That record distinguishes the verified link correction from checks the operator
+elected not to continue and retains the unresolved missing-payment count.
+Correct links for future payments belong to the existing daily-sync integration
+follow-up, not to a recurring invocation of the historical wet repair.
