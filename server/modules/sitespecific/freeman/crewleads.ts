@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import { insertFreemanCrewleadSchema } from "../../../../shared/schema/sitespecific/freeman/schema";
+import { registerCrewLeadsTransferRoutes } from "./crewleads-transfer";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (
@@ -21,6 +22,11 @@ export function registerFreemanCrewleadsRoutes(
   const componentMiddleware = requireComponent("sitespecific.freeman");
   const viewerGate = requireAccess("edls.any");
   const managerGate = requirePermission("edls.manager");
+  registerCrewLeadsTransferRoutes(
+    app,
+    [requireAuth, componentMiddleware, viewerGate],
+    [requireAuth, componentMiddleware, managerGate],
+  );
 
   const tableUnavailable = (res: Response) =>
     res.status(503).json({

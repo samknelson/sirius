@@ -43,6 +43,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import type { FreemanCrewlead } from "@shared/schema/sitespecific/freeman/schema";
+import { CrewLeadsTransfer } from "@/components/sitespecific/freeman/CrewLeadsTransfer";
 
 type SortKey = "siriusId" | "name";
 type SortDir = "asc" | "desc";
@@ -68,6 +69,7 @@ export default function FreemanCrewleadsListPage() {
   const [adding, setAdding] = useState(false);
   const [newDraft, setNewDraft] = useState<RowDraft>({ siriusId: "", name: "" });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [transfer, setTransfer] = useState<"import" | "export" | null>(null);
 
   const { data: rows = [], isLoading, isError } = useQuery<FreemanCrewlead[]>({
     queryKey: QUERY_KEY,
@@ -240,7 +242,10 @@ export default function FreemanCrewleadsListPage() {
               className="max-w-md"
               data-testid="input-filter-crewleads"
             />
-            {canEdit && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setTransfer("export")} data-testid="button-export-crewleads">Export</Button>
+              {canEdit && <Button variant="outline" onClick={() => setTransfer("import")} data-testid="button-import-crewleads">Import</Button>}
+              {canEdit && (
               <Button
                 onClick={startAdd}
                 disabled={adding}
@@ -249,7 +254,8 @@ export default function FreemanCrewleadsListPage() {
                 <Plus className="h-4 w-4 mr-2" />
                 Add Crew Lead
               </Button>
-            )}
+              )}
+            </div>
           </div>
 
           {isLoading ? (
@@ -455,6 +461,8 @@ export default function FreemanCrewleadsListPage() {
         </CardContent>
       </Card>
 
+      {transfer && <CrewLeadsTransfer kind={transfer} onClose={() => setTransfer(null)}
+        onApplied={() => { setAdding(false); setEditingId(null); }} />}
       <AlertDialog
         open={!!confirmDeleteId}
         onOpenChange={(open) => !open && setConfirmDeleteId(null)}

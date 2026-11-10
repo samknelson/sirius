@@ -15,6 +15,7 @@ import {
 import { storage } from '../storage';
 import { isEntityContextAvailable } from './entity-contexts';
 import { logger } from '../logger';
+import { edlsSheetStatusEnum } from '@shared/schema';
 
 /**
  * Check if a tab's component requirement is met
@@ -106,7 +107,17 @@ export function registerAccessPolicyRoutes(app: Express) {
   app.get("/api/access/policies/:policyId", requireAuth, async (req, res) => {
     try {
       const { policyId } = req.params;
-      const { entityId, entityType } = req.query;
+      const { entityId, entityType, targetStatus } = req.query;
+
+      // Only this policy accepts a target status; never accept arbitrary
+      // client-supplied entity data in the generic policy checker.
+      if (targetStatus !== undefined && (
+        policyId !== 'edls.sheet.set_status'
+        || typeof targetStatus !== 'string'
+        || !edlsSheetStatusEnum.some(status => status === targetStatus)
+      )) {
+        return res.status(400).json({ message: 'Invalid target status for policy' });
+      }
       
       // Get the policy by ID - check both declarative and modular registries
       let policy = accessPolicyRegistry.get(policyId);
@@ -153,6 +164,10 @@ export function registerAccessPolicyRoutes(app: Express) {
           entityData = { entityType: ea.entityType, entityId: ea.entityId };
           resolvedEntityId = ea.entityId;
         }
+      }
+
+      if (policyId === 'edls.sheet.set_status' && typeof targetStatus === 'string') {
+        entityData = { targetStatus };
       }
       
       // Build context from request

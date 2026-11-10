@@ -41,3 +41,16 @@ obscure otherwise-working application behavior.
 **How to apply:** Keep fixtures outside application authentication and outside
 the permanent UI suite. Bundle with automatic JSX, exercise the real WebSocket
 handler and shared UI, and inspect the rendered result.
+
+For centered Radix dialog fixtures, do not retain browser element handles
+across preview changes or dialog close/reopen transitions. Prefer independently
+seeded dialog states when checking separate flows.
+
+**Why:** Replacing a tall preview moves the centered dialog while close
+animations and focus restoration are still running. Fixture pointer clicks
+can silently hit the wrong position or use a detached node, despite the
+application handler working correctly.
+
+**How to apply:** Wait for the prior dialog to finish closing, query the current
+element again, and separate export checks from an import-dialog closing flow.
+Distinguish automation timing failures from application failures in the report.

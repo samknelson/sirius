@@ -335,6 +335,7 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
+        res.set("Cache-Control", "private, no-store");
         res.json(await getFreemanMigrateStatus());
       } catch (error) {
         res.status(500).json({ message: failureMessage(error, "Failed to read migration progress") });

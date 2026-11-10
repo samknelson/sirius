@@ -45,6 +45,25 @@ type StatusResponse = {
   variableName: string;
   statuses: Record<StatusName, Cursor>;
   warning?: string;
+  recovery?: {
+    enabled: boolean;
+    heartbeatStale: boolean;
+    deferredReason: string | null;
+    resumedAt: string | null;
+    resumeCount: number;
+  };
+  currentBatch?: {
+    batchNumber: number;
+    updatedAt: string;
+    status: StatusName;
+    page: number;
+    phase: "fetching" | "processing" | "finished";
+    sheet: { nid?: string; title: string } | null;
+    pageSize: number | null;
+    completedSheets: number;
+    created: number; updated: number; unchanged: number; failed: number;
+    outcomes: RunSheet[];
+  } | null;
   run: {
     lifecycle: "idle" | "starting" | "running" | "stopping" | "stopped" | "completed" | "failed";
     limit: number | null;
@@ -53,7 +72,7 @@ type StatusResponse = {
     heartbeatAt: string | null;
     batchCount: number;
     totals: {
-      fetched: number; valid: number; created: number; updated: number; failed: number;
+      fetched: number; valid: number; created: number; updated: number; unchanged?: number; failed: number;
       records: RunRecordCounts;
     };
     latestBatch: RunResponse | null;
@@ -61,7 +80,7 @@ type StatusResponse = {
   };
 };
 type RunStage = "fetch" | "response" | "source" | "relation_resolution" | "validation" | "canonical_save" | "processing";
-type SheetOutcome = "would_create" | "would_update" | "created" | "updated" | "failed";
+type SheetOutcome = "would_create" | "would_update" | "created" | "updated" | "unchanged" | "failed";
 type RunError = {
   stage: RunStage;
   code: string;
@@ -100,6 +119,7 @@ type RunStatus = {
   valid: number;
   created: number;
   updated: number;
+  unchanged?: number;
   failed: number;
   records: RunRecordCounts;
   page: number;
@@ -261,6 +281,7 @@ function SheetOutcomeBadge({ outcome }: { outcome: SheetOutcome }) {
   if (outcome === "failed") return <Badge variant="destructive">Failed</Badge>;
   if (outcome === "created") return <Badge>Created</Badge>;
   if (outcome === "updated") return <Badge>Updated</Badge>;
+  if (outcome === "unchanged") return <Badge variant="secondary">Unchanged</Badge>;
   return <Badge variant="secondary">{outcome === "would_create" ? "Would create" : "Would update"}</Badge>;
 }
 
@@ -272,7 +293,7 @@ function RecordCountSummary({
   mode?: "test" | "live";
 }) {
   const createLabel = mode === "test" ? "would create" : "created";
-  const updateLabel = mode === "test" ? "would update" : "updated";
+  const updateLabel = "matched existing";
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
       {(["crews", "assignments", "workers"] as const).map((kind) => (
@@ -318,6 +339,7 @@ function StatusRow({ name, cursor, outcome, mode }: {
             <span>{outcome.valid} valid</span>
             <span>{outcome.created} {mode === "test" ? "would create" : "created"}</span>
             <span>{outcome.updated} {mode === "test" ? "would update" : "updated"}</span>
+            <span>{outcome.unchanged ?? 0} unchanged</span>
             {outcome.failed > 0 && <span className="font-medium text-destructive">{outcome.failed} failed</span>}
           </div>
           <RecordCountSummary records={outcome.records} mode={mode} />
@@ -336,11 +358,12 @@ export default function MigrateSheets() {
   const [latestRun, setLatestRun] = useState<RunResponse | null>(null);
   const [runFailure, setRunFailure] = useState<MigrationRequestError | null>(null);
   const [resetStartDate, setResetStartDate] = useState(INITIAL_START_DATE);
+  const [foregroundRunning, setForegroundRunning] = useState(false);
   const statusQuery = useQuery<StatusResponse>({
     queryKey: [STATUS_KEY],
     refetchInterval: (query) => {
       const lifecycle = query.state.data?.run.lifecycle;
-      return lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping" ? 3000 : false;
+      return foregroundRunning || lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping" ? 3000 : false;
     },
   });
   const validLimit = Math.min(100, Math.max(1, Number(limit) || 1));
@@ -352,7 +375,14 @@ export default function MigrateSheets() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, limit: validLimit }),
       }),
-    onMutate: () => setRunFailure(null),
+    onMutate: ({ mode }) => {
+      setRunFailure(null);
+      setForegroundRunning(mode === "live");
+    },
+    onSettled: () => {
+      setForegroundRunning(false);
+      queryClient.invalidateQueries({ queryKey: [STATUS_KEY] });
+    },
     onSuccess: (run) => {
       setRunFailure(null);
       setLatestRun(run);
@@ -389,7 +419,7 @@ export default function MigrateSheets() {
     onSuccess: (status) => {
       setLatestRun(null);
       queryClient.setQueryData([STATUS_KEY], status);
-      toast({ title: "Background import started", description: "It will continue in the background if you leave this page." });
+      toast({ title: "Background import started", description: "It continues after you leave this page and can automatically resume after a server restart." });
     },
     onError: (error: Error) => toast({ title: "Migration could not start", description: getApiErrorMessage(error, "A live run may already be active."), variant: "destructive" }),
   });
@@ -404,10 +434,13 @@ export default function MigrateSheets() {
 
   const lifecycle = statusQuery.data?.run.lifecycle ?? "idle";
   const liveActive = lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping";
+  const recovery = statusQuery.data?.recovery;
+  const manualRestartAvailable = recovery?.heartbeatStale && !recovery.enabled && lifecycle !== "stopping";
   const displayedRun = latestRun ?? statusQuery.data?.run.latestBatch ?? null;
   const busy = runMutation.isPending || resetMutation.isPending || startMutation.isPending || stopMutation.isPending;
   const outcomes = useMemo(() => new Map(displayedRun?.statuses.map((item) => [item.status, item]) ?? []), [displayedRun]);
   const statuses = statusQuery.data?.statuses;
+  const currentBatch = statusQuery.data?.currentBatch;
 
   return (
     <Card>
@@ -459,9 +492,67 @@ export default function MigrateSheets() {
               <span>{statusQuery.data.run.totals.fetched} sheets fetched</span>
               <span>{statusQuery.data.run.totals.created} created</span>
               <span>{statusQuery.data.run.totals.updated} updated</span>
+              <span>{statusQuery.data.run.totals.unchanged ?? 0} unchanged</span>
               <span>{statusQuery.data.run.totals.failed} failed</span>
             </div>
             <RecordCountSummary records={statusQuery.data.run.totals.records} mode="live" />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Totals above cover finalized batches. Child “matched existing” counts include records needing no writes.
+            </p>
+            <div className="mt-2 space-y-1 text-sm text-muted-foreground" data-testid="import-recovery-status">
+              {recovery?.enabled ? (
+                <p>Automatic recovery enabled. After interruption, this background run resumes from saved progress at startup or a scheduler check (normally every ten minutes). The Cron Tick Emitter must be enabled for periodic checks.</p>
+              ) : (
+                <p>Automatic recovery is off for this run. Only an explicitly started background import enables it; test runs, single live batches, completed runs, failures, and deliberate stops do not restart automatically.</p>
+              )}
+              {recovery?.heartbeatStale && (
+                <p className="text-amber-700 dark:text-amber-400">
+                  No recent heartbeat: the worker may have been interrupted, but another instance may still hold its lock.
+                  {recovery.enabled ? " Recovery will check the lock before resuming." : " Use Stop safely to settle an interrupted run, then start a background import if needed."}
+                </p>
+              )}
+              {recovery?.deferredReason && <p className="text-amber-700 dark:text-amber-400">Recovery deferred: {recovery.deferredReason}</p>}
+              {recovery?.resumedAt && (
+                <p>Resumed {formatDate(recovery.resumedAt)} · {recovery.resumeCount} automatic recovery attempt(s). An interrupted page may be replayed; unchanged records are reconciled without rebuilding their rosters.</p>
+              )}
+            </div>
+            {currentBatch && (
+              <div className="mt-3 space-y-2 border-t pt-3" data-testid="import-current-batch">
+                <p className="text-sm font-medium">
+                  Batch {currentBatch.batchNumber} · {STATUS_LABELS[currentBatch.status]} · page {currentBatch.page}
+                </p>
+                <p className="text-sm">
+                  {currentBatch.phase === "fetching" ? "Fetching page from Freeman"
+                    : currentBatch.phase === "finished" ? `Finished this status page (${currentBatch.pageSize ?? 0} fetched)`
+                    : `Processing sheet ${currentBatch.sheet?.title ?? "—"}${currentBatch.sheet?.nid ? ` (Freeman ${currentBatch.sheet.nid})` : ""} · ${currentBatch.pageSize ?? 0} sheets fetched for this page`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {currentBatch.completedSheets} sheet attempts finished in this batch · {currentBatch.created} created · {currentBatch.updated} updated · {currentBatch.unchanged} unchanged · {currentBatch.failed} failed
+                  {" · "}last work update {formatDate(currentBatch.updatedAt)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Current-batch results are separate from finalized totals, not additional unique-sheet counts. An interrupted page is replayed on resume.
+                </p>
+                <details>
+                  <summary className="cursor-pointer text-sm">Current batch results and assignment omissions</summary>
+                  <div className="mt-2 max-h-64 space-y-2 overflow-auto">
+                    {currentBatch.outcomes.map((sheet, index) => (
+                      <div key={`${sheet.sourceStatus}:${index}`} className="rounded border p-2 text-xs">
+                        <SheetOutcomeBadge outcome={sheet.outcome} />{" "}
+                        {sheet.sheetId ? <Link href={`/go/${sheet.sheetId}`} className="underline">{sheet.title}</Link> : sheet.title}
+                        {" · "}{STATUS_LABELS[sheet.sourceStatus]}{" · Freeman "}{sheet.nid ?? "unknown"}
+                        {sheet.message && <p>{sheet.message} {sheet.details}</p>}
+                        {sheet.omittedAssignments?.map((omission, omissionIndex) => (
+                          <p key={omissionIndex} className="text-destructive">
+                            Crew {omission.crewIndex + 1}, assignment {omission.assignmentIndex + 1}: {omission.message} {omission.details}
+                          </p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            )}
             {lifecycle === "stopping" && (
               <p className="mt-2 text-sm text-muted-foreground" data-testid="text-import-stopping">
                 Finishing the active sheet transaction or page request. No new sheet will start.
@@ -512,7 +603,7 @@ export default function MigrateSheets() {
             </AlertDialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-background">
+                <Button variant="destructive" disabled={busy || (liveActive && !manualRestartAvailable) || statusQuery.isLoading} data-testid="button-import-background">
                   <Play className="mr-2 h-4 w-4" /> Start background import
                 </Button>
               </AlertDialogTrigger>
@@ -520,7 +611,7 @@ export default function MigrateSheets() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Start the background Freeman import?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This writes EDLS records and continues running batches in the background until the migration completes, fails, or is safely stopped. Each batch processes up to {validLimit} records for each legacy status.
+                    This writes EDLS records and continues running batches in the background until the migration completes, fails, or is safely stopped. It automatically resumes after a server restart. Each batch processes up to {validLimit} records for each legacy status.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -529,7 +620,7 @@ export default function MigrateSheets() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            <Button variant="destructive" onClick={() => stopMutation.mutate()} disabled={busy || !liveActive || lifecycle === "stopping"} data-testid="button-import-stop">
+            <Button variant="destructive" onClick={() => stopMutation.mutate()} disabled={stopMutation.isPending || !liveActive || lifecycle === "stopping"} data-testid="button-import-stop">
               {stopMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
               {lifecycle === "stopping" ? "Stopping…" : "Stop safely"}
             </Button>
@@ -678,6 +769,7 @@ export default function MigrateSheets() {
                         <span>{item.valid} succeeded</span>
                         <span>{item.created} {displayedRun.mode === "test" ? "would create" : "created"}</span>
                         <span>{item.updated} {displayedRun.mode === "test" ? "would update" : "updated"}</span>
+                        <span>{item.unchanged ?? 0} unchanged</span>
                         <span className={item.failed ? "font-medium text-destructive" : ""}>{item.failed} failed</span>
                       </div>
                       <RecordCountSummary records={item.records} mode={displayedRun.mode} />
