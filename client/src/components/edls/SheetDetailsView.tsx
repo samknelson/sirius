@@ -326,22 +326,22 @@ export function SheetDetailsView({
                     <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1" data-testid={`crew-time-${crew.id}`}>
                         <Clock className="h-4 w-4" />
-                        {formatTime(crew.startTime)} - {formatTime(crew.endTime)}
+                        <strong>{formatTime(crew.startTime)} - {formatTime(crew.endTime)}</strong>
                       </div>
                       {crew.location && (
                         <div className="flex items-center gap-1" data-testid={`crew-location-${crew.id}`}>
                           <MapPin className="h-4 w-4" />
-                          {crew.location}
+                          <strong>{crew.location}</strong>
                         </div>
                       )}
                       <div className="flex items-center gap-1" data-testid={`crew-supervisor-${crew.id}`}>
                         <User className="h-4 w-4" />
-                        Supervisor: {formatUserName(crew.supervisorUser)}
+                        Supervisor: <strong>{formatUserName(crew.supervisorUser)}</strong>
                       </div>
                       {crew.task && (
                         <div className="flex items-center gap-1" data-testid={`crew-task-${crew.id}`}>
                           <ClipboardList className="h-4 w-4" />
-                          Task: {crew.task.name}
+                          Task: <strong>{crew.task.name}</strong>
                         </div>
                       )}
                       {freemanEnabled && (() => {
@@ -355,13 +355,30 @@ export function SheetDetailsView({
                             data-testid={`crew-lead-${crew.id}`}
                           >
                             <UserCheck className="h-4 w-4" />
-                            Crew Lead: {lead ? lead.name : "Unknown"}
+                            Crew Lead: <strong>{lead ? lead.name : "Unknown"}</strong>
                           </div>
                         );
                       })()}
                     </div>
                     {crew.workerCount > 0 && (() => {
                       const leftCount = Math.ceil(crew.workerCount / 2);
+                      const showDisplayId = !snapshotMode && workerIdTypeConfigured;
+                      const getExtras = (assignment: AssignmentWithWorker) => {
+                        const data = (assignment.data as AssignmentExtra) || {};
+                        const parts: string[] = [];
+                        if (data.classificationId) {
+                          const classification = classificationsMap.get(data.classificationId);
+                          if (classification) parts.push(classification.code || classification.name);
+                        }
+                        if (data.startTime) parts.push(data.startTime.slice(0, 5));
+                        if (data.note) parts.push(data.note);
+                        return parts.join(" ");
+                      };
+                      const showExtras = crewAssignments.some((assignment) => !!getExtras(assignment));
+                      const slotStyle = {
+                        gridTemplateColumns: `2rem 3rem ${showDisplayId ? "4rem " : ""}minmax(0, 1fr)${showExtras ? " minmax(0, 0.65fr)" : ""}`,
+                      };
+                      const slotClassName = "grid min-h-8 text-sm border-b last:border-b-0 [&>span]:min-w-0 [&>span]:border-l [&>span:first-child]:border-l-0 [&>span]:px-2 [&>span]:py-1";
                       const renderSlot = (idx: number) => {
                         const positionNumber = idx + 1;
                         const assignment = crewAssignments[idx];
@@ -369,36 +386,42 @@ export function SheetDetailsView({
                           return (
                             <div
                               key={`empty-${crew.id}-${idx}`}
-                              className="flex items-center gap-3 text-sm text-muted-foreground"
+                              className={`${slotClassName} text-muted-foreground`}
+                              style={slotStyle}
                               data-testid={`position-empty-${crew.id}-${positionNumber}`}
                             >
-                              <span className="w-6 text-right tabular-nums">{positionNumber}.</span>
-                              <span className="flex-1">&nbsp;</span>
+                              <span className="text-right tabular-nums">{positionNumber}.</span>
+                              <span />
+                              {showDisplayId && <span />}
+                              <span>&nbsp;</span>
+                              {showExtras && <span />}
                             </div>
                           );
                         }
-                        const assignmentData = (assignment.data as AssignmentExtra) || {};
+                        const extras = getExtras(assignment);
                         const isOutOfPopulation =
                           !snapshotMode && eligibleLoaded && !!eligibleWorkerIds && !eligibleWorkerIds.has(assignment.workerId);
                         return (
                           <div
                             key={assignment.id}
-                            className="flex items-center gap-3 text-sm"
+                            className={slotClassName}
+                            style={slotStyle}
                             data-testid={`assignment-${assignment.id}`}
                           >
-                            <span className="text-muted-foreground w-6 text-right tabular-nums">
+                            <span className="text-muted-foreground text-right tabular-nums">
                               {positionNumber}.
                             </span>
                             <span
-                              className="w-12 text-left text-xs tabular-nums text-muted-foreground truncate"
+                              className="flex items-center text-left text-xs tabular-nums text-muted-foreground truncate"
                               title={assignment.worker.memberStatusName ?? undefined}
                               data-testid={`text-member-status-${assignment.id}`}
                             >
                               {assignment.worker.memberStatusCode ?? "—"}
                             </span>
-                            {!snapshotMode && workerIdTypeConfigured && (
+                            {showDisplayId && (
                               <span
-                                className="text-muted-foreground w-16 text-left tabular-nums"
+                                className="text-muted-foreground text-left tabular-nums truncate"
+                                title={displayIdValues[assignment.workerId]}
                                 data-testid={`text-assignment-display-id-${assignment.id}`}
                               >
                                 {displayIdValues[assignment.workerId] ?? "—"}
@@ -475,39 +498,25 @@ export function SheetDetailsView({
                               )}
                               <span className="truncate">{formatWorkerName(assignment.worker)}</span>
                             </span>
-                            <span className="flex-1" />
-                            {(() => {
-                              const parts: string[] = [];
-                              if (assignmentData.classificationId) {
-                                const c = classificationsMap.get(assignmentData.classificationId);
-                                if (c) parts.push(c.code || c.name);
-                              }
-                              if (assignmentData.startTime) {
-                                parts.push(assignmentData.startTime.slice(0, 5));
-                              }
-                              if (assignmentData.note) parts.push(assignmentData.note);
-                              if (parts.length === 0) return null;
-                              return (
-                                <span
-                                  className="text-xs text-muted-foreground truncate max-w-[200px]"
-                                  title={parts.join(" ")}
-                                  data-testid={`text-assignment-extras-${assignment.id}`}
-                                >
-                                  ({parts.join(" ")})
-                                </span>
-                              );
-                            })()}
+                            {showExtras && (
+                              <span
+                                className="text-xs text-muted-foreground truncate"
+                                title={extras || undefined}
+                                data-testid={`text-assignment-extras-${assignment.id}`}
+                              >
+                                {extras ? `(${extras})` : "\u00a0"}
+                              </span>
+                            )}
                           </div>
                         );
                       };
                       return (
-                        <div className="mt-3 pt-3 border-t">
-                          <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
+                        <div className="mt-3">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 print:grid-cols-2">
-                            <div className="space-y-1" data-testid={`column-left-${crew.id}`}>
+                            <div className="min-w-0 border" data-testid={`column-left-${crew.id}`}>
                               {Array.from({ length: leftCount }).map((_, i) => renderSlot(i))}
                             </div>
-                            <div className="space-y-1" data-testid={`column-right-${crew.id}`}>
+                            <div className="min-w-0 border border-t-0 md:border-t print:border-t empty:hidden" data-testid={`column-right-${crew.id}`}>
                               {Array.from({ length: crew.workerCount - leftCount }).map((_, i) => renderSlot(leftCount + i))}
                             </div>
                           </div>
