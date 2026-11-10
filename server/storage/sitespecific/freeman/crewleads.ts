@@ -1,5 +1,5 @@
-import { getClient } from "../../transaction-context";
-import { eq, getTableName } from "drizzle-orm";
+import { getClient, isInTransaction } from "../../transaction-context";
+import { eq, getTableName, sql } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "../../utils";
 import {
   sitespecificFreemanCrewleads,
@@ -20,12 +20,19 @@ export interface FreemanCrewleadsStorage {
   ): Promise<FreemanCrewlead | undefined>;
   delete(id: string): Promise<boolean>;
   tableExists(): Promise<boolean>;
+  lockForImport(): Promise<void>;
 }
 
 const tableName = getTableName(sitespecificFreemanCrewleads);
 
 export function createFreemanCrewleadsStorage(): FreemanCrewleadsStorage {
   return {
+    async lockForImport(): Promise<void> {
+      if (!isInTransaction()) throw new Error("Crew lead import lock requires a transaction");
+      // Blocks ordinary CRUD and concurrent imports until this import commits.
+      await getClient().execute(sql`SET LOCAL lock_timeout = '10s'`);
+      await getClient().execute(sql`LOCK TABLE ${sitespecificFreemanCrewleads} IN SHARE ROW EXCLUSIVE MODE`);
+    },
     async tableExists(): Promise<boolean> {
       return tableExistsUtil(tableName);
     },
