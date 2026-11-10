@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
+import { hasPendingOnlinePayment } from "@/lib/online-payment-refresh";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -69,6 +70,8 @@ function EAPaymentsContent() {
 
   const { data: payments, isLoading } = useQuery<LedgerPaymentWithCreatedDate[]>({
     queryKey: ["/api/ledger/payments/ea", id],
+    refetchOnMount: "always",
+    refetchInterval: query => hasPendingOnlinePayment(query.state.data) ? 5000 : false,
   });
 
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({

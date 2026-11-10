@@ -38,6 +38,7 @@ vi.mock("@/plugins/payment-gateway/registry", () => ({
 
 import Checkout from "@/pages/shared-checkout";
 import Receipt from "@/pages/shared-payment-receipt";
+import { hasPendingOnlinePayment } from "@/lib/online-payment-refresh";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;
@@ -917,6 +918,35 @@ describe("shared payment receipt", () => {
     amount: "12.50", currency: "USD", status, ...extra,
   });
 
+  it("refreshes the same pending payment and scoped lists after reconciliation, not unrelated accounts", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const affected = [
+      ["/api/ledger/payments", "ledger-1"],
+      ["/api/ledger/payments/ea", "ea-1"],
+      ["/api/ledger/accounts", "account-1", "payments"],
+      ["/api/ledger/ea", "ea-1", "balance"],
+      ["/api/ledger/ea/ea-1/transactions"],
+      ["checkout", "worker/worker-1", "ea-1"],
+    ];
+    const unrelated = ["/api/ledger/payments/ea", "ea-2"];
+    for (const key of [...affected, unrelated]) client.setQueryData(key, [{ status: "pending" }]);
+    apiRequest.mockResolvedValue(receipt("succeeded", {
+      ledgerPaymentId: "ledger-1", paymentStatus: "cleared", accountId: "account-1",
+    }));
+    await render("receipt", client);
+    expect(text()).toContain("Payment cleared");
+    for (const key of affected) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(unrelated)?.isInvalidated).toBe(false);
+  });
+
+  it("polls payment lists only while they contain a provider-backed pending payment", () => {
+    const pending = { status: "pending", details: { paymentAttemptId: "session-1" } };
+    expect(hasPendingOnlinePayment([pending])).toBe(true);
+    expect(hasPendingOnlinePayment([{ ...pending, status: "cleared" }])).toBe(false);
+    expect(hasPendingOnlinePayment([{ status: "pending", details: {} }])).toBe(false);
+    expect(hasPendingOnlinePayment(undefined)).toBe(false);
+  });
+
   it("refreshes only this payer's stale empty methods after delayed settlement, not processing", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const key = paymentMethodsKey("worker", "worker-1");
@@ -1031,7 +1061,7 @@ describe("shared payment receipt", () => {
     vi.useFakeTimers();
     focusManager.setFocused(true);
     try {
-      let current = receipt("succeeded");
+      let current = receipt("succeeded", { ledgerPaymentId: "ledger-1", paymentStatus: "pending" });
       apiRequest.mockImplementation(() => Promise.resolve(current));
       await render("receipt");
       current = receipt("succeeded", { ledgerPaymentId: "ledger-1", paymentStatus: "cleared" });

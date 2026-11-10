@@ -718,6 +718,7 @@ export function normalizeStripeWebhookEvent(
     type: normalizedType,
     providerEventType: event.type,
     providerRef: payment?.providerRef,
+    customerRef: payment?.customerRef,
     methodRef: payment?.methodRef,
     amountMinor: payment?.amountMinor,
     currency: payment?.currency,

@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCheckoutErrorMessage } from "@/lib/checkout-errors";
 
 type Receipt = {
-  id: string; entityType: string; entityId: string; eaId: string;
+   id: string; entityType: string; entityId: string; eaId: string; accountId?: string;
   amount: string; currency: string; status: string; failureMessage?: string | null;
   canCancel?: boolean;
   ledgerPaymentId?: string | null;
@@ -33,11 +33,35 @@ export default function SharedPaymentReceipt() {
     queryFn: () => apiRequest("GET", `${apiPath}/${encodeURIComponent(sessionId)}`),
     refetchInterval: query => {
       const data = query.state.data;
-      return terminal.has(data?.status ?? "") || (data?.status === "succeeded" && !!data.ledgerPaymentId) ? false : 5000;
+      return terminal.has(data?.status ?? "") || (data?.status === "succeeded" && data.paymentStatus === "cleared") ? false : 5000;
     },
     refetchOnMount: "always",
   });
   const value = receipt.data;
+   useEffect(() => {
+     // Reconciliation can change an existing pending row, not just create one.
+     // The app's indefinitely fresh query cache must not retain the old row
+     // when the payer returns to their payment list or account.
+     if (!value?.ledgerPaymentId) return;
+     const keys = [
+       ["/api/ledger/payments", value.ledgerPaymentId],
+       ["/api/ledger/payments/ea", value.eaId],
+       ["/api/ledger/ea", value.eaId],
+       [`/api/ledger/ea/${value.eaId}/transactions`],
+       [`/api/ledger/ea/${value.eaId}/invoices`],
+       ["checkout", `${value.entityType}/${value.entityId}`, value.eaId],
+       ["checkout", "admin-test", value.eaId, `${value.entityType}/${value.entityId}`],
+       ["checkout", "admin-assisted", value.eaId, `${value.entityType}/${value.entityId}`],
+       ["employer-checkout-entry", value.entityId, value.eaId],
+       [`${value.entityType}-online-pay-accounts`, value.entityId],
+       ...(value.entityType === "worker"
+         ? [[`/api/ledger/ea/entity/worker/${value.entityId}`]]
+         : [["/api/ledger/ea/entity/employer", value.entityId]]),
+       ...(value.accountId ? [["/api/ledger/accounts", value.accountId, "payments"]] : []),
+     ];
+     for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey });
+   }, [value?.ledgerPaymentId, value?.paymentStatus, value?.eaId, value?.accountId,
+     value?.entityType, value?.entityId, receipt.dataUpdatedAt, queryClient]);
    useEffect(() => {
      // A status read runs reconciliation before answering. Invalidate only
      // this payer, including when a retry finished saving after funds posted.

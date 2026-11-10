@@ -390,7 +390,7 @@ export function registerLedgerPaymentAttemptRoutes(
     }).strict(),
   }).strict();
   const safeAttempt = (a: any, extra: Record<string, unknown> = {}) => ({
-    id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId,
+    id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId, accountId: a.accountId,
     amount: a.amount, currency: a.currency, status: a.status,
     canCancel: a.status === "created" && !!a.providerIntentRef && !a.ledgerPaymentId,
     ledgerPaymentId: a.ledgerPaymentId ?? null,
@@ -1005,7 +1005,7 @@ export function registerLedgerPaymentAttemptRoutes(
         providerCreated: event.providerCreated ?? null,
         payload: {
           type: event.type, providerRef, amountMinor: event.amountMinor,
-          currency: event.currency, methodRef: event.methodRef,
+          currency: event.currency, methodRef: event.methodRef, customerRef: event.customerRef,
         },
       });
       receivedEventId = event.eventId;
@@ -1039,7 +1039,7 @@ export function registerLedgerPaymentAttemptRoutes(
     } catch (e) {
       if (receivedEventId) {
         if (e instanceof SettlementRefusal &&
-            ["Payment gateway mismatch", "Payment reference mismatch", "Payment amount or currency mismatch"].includes(e.message)) {
+            ["Payment gateway mismatch", "Payment reference mismatch", "Payment amount or currency mismatch", "Payment customer mismatch"].includes(e.message)) {
           await storage.ledger.paymentAttempts.markEventIgnored(req.params.gatewayConfigId, receivedEventId, e.message);
           return res.json({ received: true, ignored: true });
         }

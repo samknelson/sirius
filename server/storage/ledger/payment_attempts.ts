@@ -119,7 +119,7 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
       // Retain only normalized financial evidence, never raw provider objects.
       const payload: Record<string, unknown> = {};
       const source = input.payload && typeof input.payload === "object" ? input.payload as Record<string, unknown> : {};
-      for (const key of ["type", "providerIntentRef", "providerRef", "status", "amount", "amountMinor", "currency", "paymentMethodType", "methodRef", "failureCode"]) {
+      for (const key of ["type", "providerIntentRef", "providerRef", "customerRef", "status", "amount", "amountMinor", "currency", "paymentMethodType", "methodRef", "failureCode"]) {
         if (typeof source[key] === "string" || typeof source[key] === "number") payload[key] = source[key];
       }
       const [row] = await getClient().insert(ledgerPaymentAttemptEvents).values({ ...input, gatewayConfigId, payload })

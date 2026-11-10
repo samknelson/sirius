@@ -177,6 +177,7 @@ export interface NormalizedGatewayEvent {
   type: NormalizedGatewayEventType;
   providerEventType: string;
   providerRef?: string;
+  customerRef?: string;
   methodRef?: string;
   amountMinor?: number;
   currency?: string;

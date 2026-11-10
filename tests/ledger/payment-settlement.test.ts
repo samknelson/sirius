@@ -5,9 +5,13 @@ import { CHECKOUT_SAVE_METHOD_CONSENT } from "../../shared/ledger/checkout-save-
 import { ADMIN_PAYMENT_CONFIRMATION } from "../../shared/ledger/admin-payment-confirmation";
 
 const stripeSdk = vi.hoisted(() => ({ retrieve: vi.fn(), cancel: vi.fn() }));
-vi.mock("stripe", () => ({ default: class {
+vi.mock("stripe", async importOriginal => {
+  const { default: RealStripe } = await importOriginal<typeof import("stripe")>();
+  return { default: class {
   paymentIntents = stripeSdk;
-} }));
+  webhooks = new RealStripe("sk_test_fixture").webhooks;
+} };
+});
 vi.mock("../../server/plugins/ledger/payment-gateway/registry", () => ({ registerPaymentGatewayPlugin: vi.fn() }));
 
 let attempt: any;
@@ -386,12 +390,66 @@ describe("online settlement", () => {
 
   it.each([
     { gateway: "another-gateway" }, { providerRef: "another-ref" },
-    { amountMinor: 10001 }, { currency: "CAD" },
+    { amountMinor: 10001 }, { currency: "CAD" }, { customerRef: "wrong-customer" },
   ])("refuses mismatched gateway, reference, amount and currency: %j", async mismatch => {
     const { gateway, ...event } = mismatch;
     await expect(processPaymentEvidence("attempt-1", gateway ?? "gateway-1", success(event)))
       .rejects.toThrow();
     expect(paymentCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("reconciles signed Stripe ACH processing→success with save consent %s", async save => {
+    attempt.status = "requires_action";
+    attempt.saveMethod = save;
+    attempt.amount = "25.00";
+    attempt.statementSelection = [{ invoiceNumber: "INV-JAN", amount: "25.00" }];
+    retrieve.mockResolvedValue({
+      providerRef: "ref-1", status: "succeeded", amountMinor: 2500, currency: "USD",
+      methodRef: "pm-bank", customerRef: "customer-1", reusableMethod: true,
+      methodType: "us_bank_account",
+    });
+    const ctx = { apiKey: "sk_test_fixture", webhookSecret: "whsec_fixture",
+      config: { id: "gateway-1", data: {} } } as PaymentGatewayContext;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signed = (status: string, created: number) => {
+      const body = Buffer.from(JSON.stringify({
+        id: `evt-${status}`, type: `payment_intent.${status}`, created,
+        data: { object: { object: "payment_intent", id: "ref-1", status,
+          amount: 2500, currency: "usd", customer: "customer-1",
+          payment_method: "pm-bank", metadata: { attemptId: attempt.id } } },
+      }));
+      const signature = createHmac("sha256", ctx.webhookSecret!).update(`${timestamp}.${body}`).digest("hex");
+      return { body, headers: { "stripe-signature": `t=${timestamp},v1=${signature}` } };
+    };
+    const processing = signed("processing", timestamp - 10);
+    expect(() => stripePaymentGatewayPlugin.verifyWebhook!(ctx, processing.body, {
+      "stripe-signature": `t=${timestamp},v1=invalid`,
+    })).toThrow();
+    expect(paymentCreate).not.toHaveBeenCalled();
+    const apply = async (event: ReturnType<typeof signed>) =>
+      processPaymentEvidence(attempt.id, "gateway-1", stripePaymentGatewayPlugin.verifyWebhook!(ctx, event.body, event.headers));
+    await apply(processing);
+    const received = ledgerPayment.dateReceived;
+    const intended = structuredClone(ledgerPayment.details.proposedAllocation);
+    expect(ledgerPayment.status).toBe("pending");
+    expect(methodUpsert).not.toHaveBeenCalled();
+    // A transient reconciliation failure keeps the same pending payment.
+    retrieve.mockRejectedValueOnce(new Error("temporary provider outage"));
+    expect((await recoverOnlinePayments()).failures).toBe(1);
+    expect(ledgerPayment.status).toBe("pending");
+    const succeeded = signed("succeeded", timestamp);
+    await apply(succeeded);
+    await apply(succeeded);
+    await apply(processing);
+    await apply(signed("canceled", timestamp + 1));
+    expect(ledgerPayment).toMatchObject({ id: "payment-1", status: "cleared", amount: "25.00", dateReceived: received });
+    expect(ledgerPayment.details.proposedAllocation).toEqual(intended);
+    expect(paymentCreate).toHaveBeenCalledOnce();
+    expect(paymentUpdate).toHaveBeenCalledOnce();
+    expect(allocation).toHaveBeenCalledOnce();
+    expect(methodUpsert).toHaveBeenCalledTimes(save ? 1 : 0);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
   });
 
   it("resumes a failed allocation without completing the attempt", async () => {

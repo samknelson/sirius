@@ -1,5 +1,140 @@
 # Worker Stripe payments
 
+## Successful ACH reconciliation investigation (2026-11-10)
+
+Read-only correlation used the complete reported PaymentIntent
+`pi_3UaH7F1Z2bZd5PSQ13kZbSTS`, not an amount search. In the accessible
+**development** database, it maps to attempt
+`6b719f74-956f-4344-b3f6-19f27f282347`, Stripe gateway
+`9ed024e7-213a-4ea4-96a1-35dd654159ca`, and the **same** $25 USD ledger
+payment `e8222a02-ec09-4230-8881-55693493f2e1`. The payment was received at
+15:38:14 UTC and cleared at 15:50:00 UTC. Its intended allocation is $25
+to September 2026; the payment has one linked ledger entry. No new charge,
+manual settlement, cancellation, broad recovery, or configuration write was
+performed during this investigation.
+
+Read-only Stripe retrieval through that gateway's configured credential
+confirmed this exact intent, matching attempt metadata, `succeeded`,
+2500 cents USD, `livemode: false`, `us_bank_account`, the matching local
+customer, method ownership, and `setup_future_usage: off_session`.
+The corresponding succeeded event exists, with `pending_webhooks: 0`.
+The legacy `/v1/webhook_endpoints` list is empty (no further pages), but
+that list alone is **not** a complete inventory of Stripe event destinations.
+After the user supplied their configured URL, a read-only
+`/v2/core/event_destinations` check found an **enabled test-mode destination
+at that exact URL**. Its payload is `thin`; its subscriptions are exclusively
+`v2.core.account.*` and `v2.core.account_person.*`, with no PaymentIntent
+events. The earlier claim that this account had no webhook endpoint was
+incorrect: the existing destination does not subscribe to the payment
+updates this application consumes. Zero pending deliveries is not proof of
+successful payment-event delivery. The local event inbox also has no
+matching receipts. There is no evidence of a local signature
+or settlement refusal for this payment. Later application reconciliation
+completed settlement and the separately consented method-save effect; the
+persisted save stamp is at 15:50:00 UTC. A second read-only correlation using
+the intent's exact method reference found exactly one active owned local method,
+with the persisted separate save-consent fields matching the attempt.
+The available rows do not prove
+whether a scheduled run or an authorized status read caused that transition.
+
+The local record is already cleared, so no financial repair is warranted.
+A separate confirmed presentation defect allowed cached Pending rows to
+survive reconciliation: the client defaults to indefinitely fresh queries,
+receipt reconciliation invalidated only saved methods, and open payment
+lists did not refresh pending online rows. Receipts now invalidate the
+affected payment, EA/account lists and balance/checkout queries. EA/account
+payment lists and payment detail refresh every five seconds while a
+provider-backed payment remains pending, and re-read when reopened.
+Receipt polling stops at a cleared ledger state, not merely a payment link.
+No new payment or allocation is created by these display refreshes.
+
+The payment type is `online-card`, a configured financial ledger classification
+chosen independently of the Stripe instrument. It is **not** evidence the
+bank transfer used a card. Historical payment types are unchanged. If staff
+want a neutral name for future display, review the financial option's
+configuration and reporting consequences deliberately; do not bulk-reclassify
+historical payments based on the screenshot.
+
+### Safe operator remediation
+
+1. The existing enabled destination at the user-supplied URL receives thin
+   account/account-person events, not payment updates. Preserve it if those
+   notifications are needed. With operator approval, configure a **snapshot
+   payment-event destination** in the **same Stripe test account** for the
+   intended environment at
+   `POST /api/ledger/payment-gateways/9ed024e7-213a-4ea4-96a1-35dd654159ca/webhook`.
+   Use that environment's verified externally reachable HTTPS origin, not
+   a guessed hostname or a different database's gateway ID.
+2. The app currently consumes signed snapshot PaymentIntent payloads, not
+   v2 thin account notifications. Subscribe the payment destination to
+   `payment_intent.processing`, `payment_intent.succeeded`,
+   `payment_intent.payment_failed`, and `payment_intent.canceled`. Store the
+   endpoint's own signing secret securely under the gateway's configured
+   `webhookSecretName`. An existing secret's presence does not prove it
+   belongs to an active endpoint. Do not copy test settings into live mode.
+3. Verify external reachability and signature acceptance. Do not weaken
+   signatures to work around access controls. No published deployment is
+   registered for this fork, and authenticated production database access was
+   unavailable; no production origin or delivery configuration was verified.
+   Both the supplied development hostname and the task preview hostname
+   answered HTTP HEAD with 200/HTML. That is only reachability evidence for
+   a non-POST request; it does not prove signed webhook acceptance or delivery,
+   and their different hostnames alone do not establish a fault.
+4. For an unsettled record, first correlate full intent, gateway/account,
+   amount, currency, customer and local ledger link read-only. The checkout
+   creator's existing authorized receipt status check reconciles **that
+   payment only**, using retrieval rather than charging again. It also retries
+   a separately consented save. Do not call the broad recovery function merely
+   to investigate one intent: it can recreate or cancel unrelated attempts.
+5. The existing Online Payment Recovery job runs every five minutes by
+   default, only in live cron execution mode. Its attempt scan selects rows
+   older than ten minutes; pending inbox receipts become eligible after one
+   minute. These are eligibility intervals, not a promised posting time.
+   Verify its actual enabled state/schedule/mode before relying on it.
+   Processing ACH is not expired simply because it is old.
+   The development startup check in this investigation confirmed the recovery
+   job enabled on `*/5 * * * *` with cron execution allowed; this does not
+   establish the production job's state or the historical run's execution mode.
+6. Treat HTTP 200 and event receipt as ingestion evidence, not proof that funds
+   posted. A receipt with an error and no processed time remains retryable.
+   Require the same linked payment to be cleared, original receipt timing and
+   allocation retained, and no duplicate payment/entry. Require separate
+   persisted save consent and provider ownership/reusability before saving.
+
+### Regression and verification boundaries
+
+The focused settlement, provider, receipt, storage and method-persistence
+suites exercise real Stripe signature verification with locally signed
+fixtures, processing→success on the same payment, invalid signatures,
+wrong gateway/reference/customer/amount/currency, duplicate and stale events,
+transient failures, authorized status reconciliation, scheduled missed-delivery
+recovery, and independent consent. The disposable PostgreSQL persistence suite
+uses production attempt/inbox/method storage and `settleOnline`; its payment
+creation and allocation dispatcher remain controlled SQL fixtures, not the
+complete accounting plugin system. The credit-posting suite separately uses
+production ledger-entry storage for allocation/replay and rollback.
+Rendered receipt and EA/account list tests use the production components and
+infinitely fresh caches to reproduce the stale display and verify refresh.
+All 262 tests across the nine focused suites passed, including authorized
+receipt recovery of a missed success and rollback/replay after an allocation
+failure.
+`npm run check`, all 16 `npm run lint` rules, and `git diff --check` passed.
+The application restarted and reported fully initialized/ready. The unsigned
+preview rendered the sign-in page, not a signed-in payment receipt.
+
+Built-in `system:online-payment-receipt` at `/pay/receipt/%` now explains
+same-payment reconciliation, retained dates/allocation, pending-list refresh,
+and separate save recovery. Checkout and worker saved-method help remain
+accurate: both already explain opt-in saving, successful settlement, ACH delay,
+and no automatic future-charge authority. No local help records were changed.
+
+No external Stripe test charge, bank-linking flow, webhook endpoint creation,
+provider event replay, or authenticated deployed-browser visit was performed.
+The read-only provider checks above are real Stripe observations, not a new
+end-to-end test. Protected payment pages and Help dialogs cannot be verified
+by the unsigned preview screenshot; component and help route/sanitization
+tests are the evidence for those surfaces.
+
 ## Non-production worker sign-in fixture
 
 The dedicated worker fixture is **not** the break-glass admin, an Okta user, or

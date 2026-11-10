@@ -155,3 +155,4 @@
 - [Enrollment self-service authority](enrollment-self-service-authority.md) — worker scope limits worker accounts; staff may still complete guided enrollment for any worker without their own worker link.
 - [DC correction authority](disability-credit-correction-authority.md) — a threshold-only removal releases capacity, not reserves it; restoration uses the saved threshold and never displaces other months.
 - [Admin-assisted payments](admin-assisted-payment-authority.md) — admins need real payments on a worker's behalf, not test-only authority tied to system mode.
+- [Stripe delivery evidence](stripe-delivery-evidence.md) — check v1 endpoints AND v2 destinations, payloads and subscriptions; zero pending deliveries does not prove payment delivery.

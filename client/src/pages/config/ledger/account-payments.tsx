@@ -15,8 +15,9 @@ import { Download, ArrowUpDown, Filter, X, Plus } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { stringify } from "csv-stringify/browser/esm/sync";
+import { hasPendingOnlinePayment } from "@/lib/online-payment-refresh";
 
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
+const paymentStatuses = ["draft", "pending", "canceled", "cleared", "error"] as const;
 const ITEMS_PER_PAGE = 100;
 
 function getAllocatedEntities(payment: LedgerPaymentWithEntity): AllocatedEntity[] {
@@ -69,6 +70,8 @@ function AccountPaymentsContent() {
 
   const { data: payments, isLoading } = useQuery<LedgerPaymentWithEntity[]>({
     queryKey: ["/api/ledger/accounts", id, "payments"],
+    refetchOnMount: "always",
+    refetchInterval: query => hasPendingOnlinePayment(query.state.data) ? 5000 : false,
   });
 
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({

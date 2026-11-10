@@ -1,5 +1,6 @@
 import { createContext, useContext, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { hasPendingOnlinePayment } from "@/lib/online-payment-refresh";
 import { useParams, Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LedgerPayment, LedgerPaymentType } from "@shared/schema";
@@ -42,6 +43,8 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
 
   const { data: payment, isLoading: isLoadingPayment, error: paymentError } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
+    refetchOnMount: "always",
+    refetchInterval: query => hasPendingOnlinePayment(query.state.data ? [query.state.data] : []) ? 5000 : false,
   });
 
   const { data: paymentTypes = [], isLoading: isLoadingTypes } = useQuery<LedgerPaymentType[]>({

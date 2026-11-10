@@ -27,7 +27,16 @@ vi.mock("../../server/storage/unified-options", () => ({
 }));
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({ resolveGateway: vi.fn() }));
 vi.mock("../../server/modules/ledger/payments", () => ({
-  createPaymentFromRequestBody: async (body: any) => ({ ok: true, payment: { ...body, id: `posted-${body.details.paymentAttemptId}` } }),
+  createPaymentFromRequestBody: async (body: any) => {
+    const payment = { ...body, id: `posted-${body.details.paymentAttemptId}` };
+    fixture.tables.ledger_payments.push({
+      id: payment.id, status: payment.status, amount: payment.amount,
+      ledger_ea_id: payment.ledgerEaId, payment_type: payment.paymentType,
+      date_received: payment.dateReceived, date_cleared: payment.dateCleared,
+      details: payment.details, allocated: payment.allocated, memo: payment.memo,
+    });
+    return { ok: true, payment };
+  },
   triggerPaymentChargePlugins: async (payment: any) => {
     if (fixture.failCashPosting) throw new Error("injected cash posting failure");
     for (const [index, allocation] of payment.details.proposedAllocation.entries()) {

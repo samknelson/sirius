@@ -12,7 +12,7 @@ import { storageLogger } from "../../logger";
 import { checkoutMinor, type CheckoutCreditTransfer } from "@shared/ledger/checkout-selection";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 
-type Evidence = Omit<Pick<NormalizedGatewayEvent, "type" | "providerRef" | "amountMinor" | "currency" | "methodRef" | "methodSummary" | "providerCreated" | "failureCode">, "type"> & {
+type Evidence = Omit<Pick<NormalizedGatewayEvent, "type" | "providerRef" | "customerRef" | "amountMinor" | "currency" | "methodRef" | "methodSummary" | "providerCreated" | "failureCode">, "type"> & {
   type: NormalizedGatewayEvent["type"] | "payment.created" | "payment.requires_action";
 };
 const types = createUnifiedOptionsStorage();
@@ -29,7 +29,7 @@ export function evidenceFromPayment(payment: NormalizedPayment): Evidence {
   return {
     type: `payment.${payment.status}` as Evidence["type"],
     providerRef: payment.providerRef, amountMinor: payment.amountMinor,
-    currency: payment.currency, methodRef: payment.methodRef,
+    currency: payment.currency, methodRef: payment.methodRef, customerRef: payment.customerRef,
     methodSummary: payment.methodSummary, failureCode: payment.failureCode,
   };
 }
@@ -72,6 +72,13 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
     // Validate all outcomes, not only successes: a forged/incorrect failure
     // must not release the reservation of a different amount.
     if (!paymentEventMatchesAmount(attempt, evidence)) throw new SettlementRefusal("Payment amount or currency mismatch");
+    // Anonymous one-time payments legitimately have no customer. When the
+    // provider names one, it must be this payer's customer at this gateway.
+    if (evidence.customerRef) {
+      const customer = await storage.ledger.gatewayCustomers.get(attempt.entityType, attempt.entityId, gatewayId);
+      if (!customer || customer.customerRef !== evidence.customerRef)
+        throw new SettlementRefusal("Payment customer mismatch");
+    }
     if (!shouldApplyPaymentEvent(attempt.status, attempt.lastProviderEventCreated, status, evidence.providerCreated)) return "stale";
     if (status === "processing" || status === "succeeded") {
       // A linked row is the durable receipt timestamp. Never replace it on
