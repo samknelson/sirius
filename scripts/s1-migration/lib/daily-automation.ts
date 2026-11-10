@@ -1,4 +1,5 @@
 import { validatedCoverageCutoff, type WmbEventPhase } from "./wmb-event-phase";
+import { financialIdentitySummary, type FinancialIdentitySummary } from "./financial-sync-contract";
 
 export const DAILY_SYNC_COMMAND = [
   "npx",
@@ -23,6 +24,10 @@ export const FORBIDDEN_SCHEDULED_FLAGS = [
   "--allow-findings",
   "--keep-going",
   "--dry-run",
+  "--approve-payment-links",
+  "--approve-ledger-links",
+  "--approve-financial-links",
+  "--financial-links-checkpoint",
 ] as const;
 
 export type DailySyncReport = {
@@ -39,6 +44,9 @@ export type DailySyncReport = {
   fleetTotals?: unknown;
   findingsByKind?: unknown;
   wmbEvents?: unknown;
+  dryRun?: unknown;
+  financialIdentity?: unknown;
+  financialLinkApprovals?: unknown;
 };
 
 export type SanitizedDailySummary = {
@@ -49,6 +57,7 @@ export type SanitizedDailySummary = {
   counters: Record<string, number>;
   findingsByKind: Record<string, number>;
   wmbEvents: WmbEventPhase;
+  financialIdentity: FinancialIdentitySummary | null;
 };
 
 function stringMap(value: unknown): Record<string, string> {
@@ -128,6 +137,11 @@ export function sanitizedWmbEvents(value: unknown): WmbEventPhase {
 export function assertScheduledDailyReport(report: DailySyncReport): void {
   const violations: string[] = [];
   if (report.command !== "sync") violations.push("command must be sync");
+  if (report.dryRun !== false) violations.push("dryRun must be false");
+  const approvals = report.financialLinkApprovals as { payment?: unknown; ar?: unknown } | undefined;
+  if (!approvals || approvals.payment !== false || approvals.ar !== false) {
+    violations.push("scheduled sync must not use financial-link approvals");
+  }
   if (report.mode !== "daily") violations.push("mode must be daily");
   if (report.profile !== "production") violations.push("profile must be production");
   if (report.forceReconcile !== false) violations.push("forceReconcile must be false");
@@ -142,8 +156,11 @@ export function assertScheduledDailyReport(report: DailySyncReport): void {
   }
   if (report.result === "PASS") {
     const gates = stringMap(report.gates);
-    for (const gate of ["stage", "fleet", "parity"]) {
+    for (const gate of ["stage", "fleet", "parity", "financialIdentity"]) {
       if (gates[gate] !== "pass") violations.push(`PASS requires ${gate} gate to pass`);
+    }
+    if (financialIdentitySummary(report.financialIdentity).status !== "pass") {
+      violations.push("PASS requires financial identity evidence to pass");
     }
   }
   if (violations.length) throw new Error(`scheduled daily report contract failed: ${violations.join("; ")}`);
@@ -164,6 +181,8 @@ export function sanitizeDailySummary(report: DailySyncReport): SanitizedDailySum
     counters: numberMap(report.fleetTotals),
     findingsByKind,
     wmbEvents: sanitizedWmbEvents(report.wmbEvents),
+    financialIdentity: report.financialIdentity && "counts" in (report.financialIdentity as object)
+      ? financialIdentitySummary(report.financialIdentity) : null,
   };
 }
 

@@ -119,6 +119,9 @@ The fleet accepts `--financial-links-checkpoint <same-label>` plus
 `--approve-payment-links <payment-stream-hash>` and/or
 `--approve-ledger-links <ar-stream-hash>` and forwards them only to the
 respective money loader. These are per-run approvals, never profile defaults.
+The fleet refuses missing, repeated, malformed or unpaired approval arguments
+before staging or target writes. Approvals require `--skip-stage`; a run
+cannot restage and silently consume evidence reviewed against the old snapshot.
 The loader rechecks the hash and refuses blockers, then permits only the
 exact reviewed old-row/old-EA/new-entity/fund coordinates through standard
 in-place reconciliation. Identity drift forces reconciliation even when the
@@ -165,3 +168,8 @@ That record distinguishes the verified link correction from checks the operator
 elected not to continue and retains the unresolved missing-payment count.
 Correct links for future payments belong to the existing daily-sync integration
 follow-up, not to a recurring invocation of the historical wet repair.
+
+The recurring integration and its local regression coverage are documented in
+[daily operation and operator proof](financial-worker-daily-proof.md).
+The separately approved real daily-path proof remains pending; successful
+link-only repair is not daily-sync acceptance.

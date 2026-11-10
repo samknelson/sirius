@@ -24,7 +24,10 @@ const passing = {
   skipStage: false,
   skipSeeders: true,
   keepGoing: false,
-  gates: { stage: "pass", fleet: "pass", findingsMode: "pass", parity: "pass", wmbEvents: "disabled" },
+  dryRun: false,
+  financialLinkApprovals: { payment: false, ar: false },
+  financialIdentity: { blocked: 0, mismatched: 0, counts: { attribution_mismatches: 0 } },
+  gates: { stage: "pass", fleet: "pass", findingsMode: "pass", parity: "pass", financialIdentity: "pass", wmbEvents: "disabled" },
   wmbEvents: disabledWmb,
   fleetTotals: { created: 1, unchanged: 20, rejected: 0 },
   findingsByKind: {},
@@ -59,6 +62,9 @@ describe("scheduled S1 daily automation", () => {
       "--allow-findings",
       "--keep-going",
       "--dry-run",
+      "--approve-payment-links",
+      "--approve-ledger-links",
+      "--financial-links-checkpoint",
     ]) {
       expect(() => assertNoForbiddenScheduledFlags([flag])).toThrow(/operator-only/);
     }
@@ -80,6 +86,13 @@ describe("scheduled S1 daily automation", () => {
   });
 
   it("fails closed on an unsafe or malformed report", () => {
+    expect(() => assertScheduledDailyReport({ ...passing, dryRun: true })).toThrow(/dryRun/);
+    expect(() => assertScheduledDailyReport({ ...passing, financialLinkApprovals: { payment: true, ar: false } }))
+      .toThrow(/approvals/);
+    expect(() => assertScheduledDailyReport({ ...passing, financialIdentity: undefined })).toThrow(/identity evidence missing/);
+    expect(() => assertScheduledDailyReport({ ...passing,
+      financialIdentity: { blocked: 0, mismatched: 0, counts: { attribution_mismatches: 2 } } }))
+      .toThrow(/identity evidence to pass/);
     expect(() => assertScheduledDailyReport({ ...passing, skipStage: true })).toThrow(/skipStage/);
     expect(() => assertScheduledDailyReport({ ...passing, skipSeeders: false })).toThrow(/skipSeeders/);
     const { skipSeeders: _omitted, ...withoutSkipSeeders } = passing;

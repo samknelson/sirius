@@ -35,7 +35,9 @@ async function run(): Promise<void> {
     });
 
     const report = JSON.parse(await readFile(resultPath, "utf8")) as DailySyncReport;
-    const summary = sanitizeDailySummary(report);
+    // A stale/incorrect PASS file must never produce a success alert when the
+    // actual sync process failed (including terminal cleanup failures).
+    const summary = sanitizeDailySummary(childExit === 0 ? report : { ...report, result: "FAIL" });
     const message = summaryMessage(summary);
     console.log(`[scheduled-daily] SANITIZED_SUMMARY ${message}`);
 

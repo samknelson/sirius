@@ -94,6 +94,7 @@ import {
 const MIGRATION_LOCK_KEY = 727001; // same key as bootstrap-target/seed-trust-config
 import { assertFleetVersions } from "./lib/fleet-version-check";
 import { emptyWmbPhase, runWmbEventPhase } from "./lib/wmb-event-phase";
+import { parseFinancialSyncApprovals, financialApprovalArgs, financialIdentitySummary } from "./lib/financial-sync-contract";
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -259,6 +260,7 @@ function noteCleanupFailure(failures: string[], operation: string, error: unknow
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
+  const financialApprovals = parseFinancialSyncApprovals(process.argv.slice(2));
   validateSyncConfig();
   // Check the entire shipped fleet, even optional seeders, before staging or
   // acquiring the app write fence. Runtime envelope validation still applies.
@@ -320,6 +322,7 @@ async function main() {
     skipSeeders: SKIP_SEEDERS,
     keepGoing: KEEP_GOING,
     stageResumeGeneration: STAGE_RESUME_GENERATION,
+    financialLinkApprovals: { payment: !!financialApprovals.payment, ar: !!financialApprovals.ar },
     openEndThrough: horizon,
     parityMonths: months,
     timeZone, // aggregate runtime evidence — diagnose a mismatched run from s1_staging.runs alone
@@ -418,12 +421,7 @@ async function main() {
       if (step.extraArgs?.length) args.push(...step.extraArgs);
       if (pol.extraArgs?.length) args.push(...pol.extraArgs);
       // Explicit per-stream operator review; never a profile default.
-      const financialApproval = step.id === "payments" ? argValue("--approve-payment-links")
-        : step.id === "ledger" ? argValue("--approve-ledger-links") : undefined;
-      if (financialApproval) {
-        args.push("--approve-financial-links", financialApproval,
-          "--financial-links-checkpoint", argValue("--financial-links-checkpoint") ?? "");
-      }
+      args.push(...financialApprovalArgs(step.id, financialApprovals));
 
       console.log(`\n[sync] ── ${step.id} (${step.script}${args.length ? " " + args.join(" ") : ""})`);
       const run = runChild(step.script, args, path.join(tmpDir, `${step.id}.json`));
@@ -431,9 +429,18 @@ async function main() {
       if (step.id === "benefit-history") coverageDetail = env?.detail ?? null;
 
       const stepFailures: string[] = [];
+      let stepIdentity: ReturnType<typeof financialIdentitySummary> | undefined;
       if (run.exitCode !== 0) stepFailures.push(`process exit ${run.exitCode}`);
       for (const ce of contractErrors) stepFailures.push(`result contract: ${ce}`);
       if (env) {
+        if (!DRY_RUN && (step.id === "payments" || step.id === "ledger")) {
+          try {
+            stepIdentity = financialIdentitySummary(env.detail.financialIdentity);
+            if (stepIdentity.status !== "pass") stepFailures.push("financial identity/attribution audit failed");
+          } catch (error) {
+            stepFailures.push(conciseError(error));
+          }
+        }
         if (env.rejectGate.status === "fail") {
           stepFailures.push(`disallowed rejects: ${env.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}`);
         }
@@ -468,6 +475,10 @@ async function main() {
         verify: env ? env.verify : null,
         findingsByKind: env ? countByKind(env.findings) : null,
         blockingFindings: env ? env.blockingFindings.length : null,
+        financialIdentity: stepIdentity,
+        remediation: stepFailures.length && (step.id === "payments" || step.id === "ledger")
+          ? "Review stream-specific repair-financial-links read-only inventory at the retained checkpoint; resolve blockers and separately approve exact evidence before reconciliation. Force does not authorize reassignment."
+          : undefined,
       });
 
       if (stepFailures.length > 0) {
@@ -599,8 +610,18 @@ async function main() {
       if (profile.parity.allowMismatches.length) balArgs.push("--allow-mismatches", profile.parity.allowMismatches.join(","));
       console.log(`\n[sync] ── balance parity (${balArgs.join(" ")})`);
       const bal = runChild("verify-balance-parity.ts", balArgs, path.join(tmpDir, "parity-balance.json"));
-      const balRes = (bal.result ?? {}) as { result?: string };
-      const balOk = bal.exitCode === 0 && balRes.result === "PASS";
+      const balRes = (bal.result ?? {}) as { result?: string; financialIdentity?: unknown };
+      let identityError: string | null = null;
+      let identity: ReturnType<typeof financialIdentitySummary> | null = null;
+      try {
+        identity = financialIdentitySummary(balRes.financialIdentity);
+        if (identity.status !== "pass") identityError = "financial participant/payer identity or per-worker attribution mismatch";
+      } catch (error) {
+        identityError = conciseError(error);
+      }
+      report.financialIdentity = identity ?? { status: "fail", reason: identityError };
+      if (identityError) failures.push(`financial identity: ${identityError}`);
+      const balOk = bal.exitCode === 0 && balRes.result === "PASS" && !identityError;
       if (!balOk) failures.push(`balance parity FAILED (exit ${bal.exitCode}${bal.resultError ? `, ${bal.resultError}` : ""})`);
 
       // Month parity mirrors the benefit-history allowances EXACTLY (§6).
@@ -619,7 +640,7 @@ async function main() {
       }
       report.parity = {
         status: balOk && monthRecords.every((m) => m.status === "pass") ? "pass" : "fail",
-        balance: { status: balOk ? "pass" : "fail", exitCode: bal.exitCode, durationSec: bal.durationSec, toleranceCents: profile.parity.toleranceCents },
+        balance: { status: balOk ? "pass" : "fail", exitCode: bal.exitCode, durationSec: bal.durationSec, toleranceCents: profile.parity.toleranceCents, financialIdentity: identity, identityError },
         months: monthRecords,
         allowUnresolved,
       };
@@ -668,6 +689,7 @@ async function main() {
             : "pass"
           : "pass (daily: ruled findings surface for triage)",
       parity: (report.parity as { status?: string } | undefined)?.status ?? "not-run",
+      financialIdentity: (report.financialIdentity as { status?: string } | undefined)?.status ?? "not-run",
       wmbEvents: (report.wmbEvents as { status: string }).status,
     };
     report.gates = gates;

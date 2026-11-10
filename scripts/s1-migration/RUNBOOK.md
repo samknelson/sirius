@@ -13,6 +13,11 @@ stream-specific inventory hashes may be supplied with
 refusal rules.
 Compare source and staging at the same verified checkpoint; a newer live AR
 count is not a linkage-repair acceptance target. Real remote proof is pending.
+For the ordinary scheduler path, exceptional approval procedure, and the
+separately authorized daily-run proof still required after the applied repair,
+see [daily financial-link operation and proof](../../docs/s1-migration/financial-worker-daily-proof.md).
+The existing production rollout task retains image/connectivity and schedule
+enablement ownership; this work never authorizes enabling a schedule.
 
 # Daily bounded range staging (Task 540)
 

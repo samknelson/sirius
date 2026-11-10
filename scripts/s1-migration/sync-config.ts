@@ -579,6 +579,17 @@ const YM_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** Fail-closed config validation — refuses to run on any inconsistency. */
 export function validateSyncConfig(): void {
+  // Financial approvals can come ONLY from the reviewed operator invocation,
+  // not a standing profile or fleet default.
+  const configuredArgs = [
+    ...FLEET.flatMap(step => step.extraArgs ?? []),
+    ...Object.values(PROFILES).flatMap(profile => [
+      ...profile.stageArgs, ...Object.values(profile.steps).flatMap(step => step.extraArgs ?? []),
+    ]),
+  ];
+  if (configuredArgs.some(arg => /^--(approve-.*links|financial-links-checkpoint)(=|$)/.test(arg))) {
+    throw new Error("sync-config: financial-link approvals must never be configured defaults");
+  }
   const ids = new Set<string>();
   for (const s of FLEET) {
     if (ids.has(s.id))
