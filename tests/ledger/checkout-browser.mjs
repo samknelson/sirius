@@ -363,6 +363,64 @@ try {
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
   assert.deepEqual(submittedBodies.filter(body => body.saveMethod).map(body => body.paymentMethodType),
     ["us_bank_account", "card"], "browser submits the explicit save choice for both new method types");
+
+   const saveLabel = "Save this payment method for future payments";
+   const authorizationLabel = "I authorize this payment.";
+   const checked = async text => page.evaluate(labelText =>
+     [...document.querySelectorAll("label")].find(label => label.textContent.includes(labelText))
+       ?.querySelector('[role="checkbox"]')?.getAttribute("aria-checked") === "true", text);
+   for (const entityType of ["worker", "employer"]) {
+     activeCheckout = { ...checkout, entityType, entityId: `fixture-${entityType}` };
+     for (const order of ["save-first", "authorization-first"]) {
+       await page.goto(`${origin}/pay/fixture-ea`, { waitUntil: "domcontentloaded" });
+       await page.waitForSelector('main[aria-label="Checkout"]');
+       for (const label of order === "save-first"
+         ? [saveLabel, authorizationLabel] : [authorizationLabel, saveLabel]) await clickLabel(label);
+       assert.equal(await checked(saveLabel), true, `${entityType} ${order}: save remains selected`);
+       assert.equal(await checked(authorizationLabel), true);
+       await clickButton("Review payment");
+       await clickLabel(authorizationLabel);
+       assert.equal(await reviewDisabled(), true, "clearing authorization blocks review");
+       assert.equal(await checked(saveLabel), true, "clearing authorization preserves saving");
+       assert.equal(await page.$('xpath/.//button[normalize-space()="Continue to secure confirmation"]'), null);
+       await clickLabel(authorizationLabel);
+       await clickButton("Review payment");
+       await clickLabel(saveLabel);
+       assert.equal(await checked(authorizationLabel), true, "clearing saving preserves authorization");
+       assert.equal(await reviewDisabled(), false);
+       await clickLabel(saveLabel);
+       await clickButton("Review payment");
+       await clickButton("Continue to secure confirmation");
+       await page.waitForSelector('[data-testid="fixture-provider"]');
+       assert.equal(submittedBodies.at(-1).saveMethod, true);
+       assert.equal(submittedBodies.at(-1).saveMethodConsent.accepted, true);
+       assert.deepEqual(submittedBodies.at(-1).consent, { ...checkout.authorization, accepted: true });
+     }
+
+     // Both method and allocation changes must discard old consents/review;
+     // renewing only payment authorization must still submit a one-time payment.
+     await page.goto(`${origin}/pay/fixture-ea`, { waitUntil: "domcontentloaded" });
+     await page.waitForSelector('main[aria-label="Checkout"]');
+     for (const change of ["New US bank transfer", "Pay selected statements"]) {
+       await clickLabel(saveLabel);
+       await clickLabel(authorizationLabel);
+       await clickButton("Review payment");
+       await clickLabel(change);
+       assert.equal(await checked(saveLabel), false, `${entityType}: ${change} clears saving`);
+       assert.equal(await checked(authorizationLabel), false);
+       assert.equal(await reviewDisabled(), true);
+     }
+     await clickLabel("COBRA-APR");
+     await clickLabel(authorizationLabel);
+     await clickButton("Review payment");
+     await clickButton("Continue to secure confirmation");
+     await page.waitForSelector('[data-testid="fixture-provider"]');
+     assert.equal(submittedBodies.at(-1).saveMethod, false);
+     assert.equal(submittedBodies.at(-1).saveMethodConsent, undefined);
+     assert.deepEqual(submittedBodies.at(-1).selection, { mode: "statements", invoiceNumbers: ["COBRA-APR"] });
+     assert.equal(submittedBodies.at(-1).amount, "267.35");
+   }
+   assert.deepEqual(failures, [], "independent worker/employer consents have no browser errors");
   // Real router and apiRequest, isolated network answers: no provider or DB.
   activeCheckout = fullBalance("worker", "125.00");
   htmlFailure = "preview";

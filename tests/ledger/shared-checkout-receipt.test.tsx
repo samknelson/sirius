@@ -140,11 +140,15 @@ async function submit() {
    await act(async () => { button("Continue to secure confirmation").click(); });
   await settle();
 }
-async function clickCheckboxContaining(label: string) {
+function checkboxContaining(label: string) {
   const labelNode = Array.from(container?.querySelectorAll("label") ?? []).find(node => node.textContent?.includes(label));
   expect(labelNode).toBeTruthy();
-  const checkbox = labelNode!.querySelector('[role="checkbox"]') as HTMLElement | null;
-  await act(async () => { (checkbox ?? labelNode!).click(); });
+  const checkbox = labelNode!.querySelector('[role="checkbox"]') as HTMLElement;
+  expect(checkbox).toBeTruthy();
+  return checkbox;
+}
+async function clickCheckboxContaining(label: string) {
+  await act(async () => { checkboxContaining(label).click(); });
 }
 
 beforeEach(() => {
@@ -365,27 +369,85 @@ describe("shared checkout", () => {
      expect(text()).toContain("New card entry");
    });
 
-   it.each([
-     ["card", "New credit/debit card"],
-     ["us_bank_account", "New US bank transfer"],
-   ] as const)("offers and submits separate save consent for a new %s", async (paymentType, label) => {
+   it.each(
+     (["worker", "employer"] as const).flatMap(entityType =>
+       (["card", "us_bank_account"] as const).flatMap(paymentType =>
+         (["save-first", "authorization-first"] as const).map(order => ({ entityType, paymentType, order })))),
+   )("submits independent consents for $entityType $paymentType in $order order", async ({ entityType, paymentType, order }) => {
+      if (entityType === "employer") employerFixture = { ...checkout, entityType, entityId: "employer-1" };
      await render();
      const checkboxLabel = CHECKOUT_SAVE_METHOD_CONSENT.text;
      expect(text()).toContain(checkboxLabel);
-     const consentControl = Array.from(container!.querySelectorAll("label"))
-       .find(node => node.textContent?.includes(checkboxLabel))!
-       .querySelector('[role="checkbox"]') as HTMLElement;
-     expect(consentControl.getAttribute("aria-checked")).toBe("false");
-     if (paymentType === "us_bank_account") await selectRadio(label);
-     await clickCheckboxContaining("I authorize");
-     await clickCheckboxContaining(checkboxLabel);
+      expect(checkboxContaining(checkboxLabel).getAttribute("aria-checked")).toBe("false");
+      if (paymentType === "us_bank_account") await selectRadio("New US bank transfer");
+      for (const label of order === "save-first" ? [checkboxLabel, "I authorize"] : ["I authorize", checkboxLabel]) {
+        await clickCheckboxContaining(label);
+      }
+      expect(checkboxContaining(checkboxLabel).getAttribute("aria-checked")).toBe("true");
+      expect(checkboxContaining("I authorize").getAttribute("aria-checked")).toBe("true");
      await submit();
      expect(postBody()).toMatchObject({
        paymentMethodType: paymentType,
        saveMethod: true,
        saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true },
+        consent: { ...checkout.authorization, accepted: true },
      });
+      expect(apiRequest).toHaveBeenCalledWith("POST", `/api/ledger/checkout/${entityType}/${entityType}-1/ea-1/sessions`, postBody());
    });
+
+    it.each(["worker", "employer"])("lets %s independently clear either consent and submit one-time", async entityType => {
+      if (entityType === "employer") employerFixture = { ...checkout, entityType, entityId: "employer-1" };
+      await render();
+      await clickCheckboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text);
+      await clickCheckboxContaining("I authorize");
+      await act(async () => { button("Review payment").click(); });
+      await clickCheckboxContaining("I authorize");
+      expect(button("Review payment").disabled).toBe(true);
+      expect(checkboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text).getAttribute("aria-checked")).toBe("true");
+      expect(text()).not.toContain("Continue to secure confirmation");
+      noPost();
+      await clickCheckboxContaining("I authorize");
+      await act(async () => { button("Review payment").click(); });
+      await clickCheckboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text);
+      expect(checkboxContaining("I authorize").getAttribute("aria-checked")).toBe("true");
+      expect(button("Review payment").disabled).toBe(false);
+      expect(text()).not.toContain("Continue to secure confirmation");
+      await submit();
+      expect(postBody().saveMethod).toBe(false);
+      expect(postBody()).not.toHaveProperty("saveMethodConsent");
+      expect(postBody().consent).toEqual({ ...checkout.authorization, accepted: true });
+    });
+
+    it.each(
+      ["worker", "employer"].flatMap(entityType =>
+        ["method", "allocation", "statement"].map(change => ({ entityType, change }))),
+    )("invalidates both consents and review on $entityType $change changes", async ({ entityType, change }) => {
+      if (entityType === "employer") employerFixture = { ...checkout, entityType, entityId: "employer-1" };
+      await render();
+      if (change === "statement") {
+        await selectRadio("Pay selected statements");
+        await clickCheckboxContaining("INV-100");
+      }
+      await clickCheckboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text);
+      await clickCheckboxContaining("I authorize");
+      await act(async () => { button("Review payment").click(); });
+      if (change === "statement") await clickCheckboxContaining("INV-101");
+      else await selectRadio(change === "method" ? "New US bank transfer" : "Pay selected statements");
+      expect(checkboxContaining("I authorize").getAttribute("aria-checked")).toBe("false");
+      expect(checkboxContaining(CHECKOUT_SAVE_METHOD_CONSENT.text).getAttribute("aria-checked")).toBe("false");
+      expect(button("Review payment").disabled).toBe(true);
+      expect(text()).not.toContain("Continue to secure confirmation");
+      noPost();
+      if (change === "allocation") await clickCheckboxContaining("INV-100");
+      await clickCheckboxContaining("I authorize");
+      await submit();
+      expect(postBody().saveMethod).toBe(false);
+      expect(postBody()).not.toHaveProperty("saveMethodConsent");
+      expect(postBody().paymentMethodType).toBe(change === "method" ? "us_bank_account" : "card");
+      expect(postBody().selection).toEqual(change === "method"
+        ? { mode: "full", invoiceNumbers: [] }
+        : { mode: "statements", invoiceNumbers: change === "statement" ? ["INV-100", "INV-101"] : ["INV-100"] });
+    });
 
    it("clears save consent and omits it after switching to a saved method", async () => {
      await render();

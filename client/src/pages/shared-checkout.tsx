@@ -117,6 +117,13 @@ export default function SharedCheckoutPage() {
   const managementUrl = data?.entityType === "worker" ? `/workers/${data.entityId}/ledger/payment-methods` : `/employers/${data?.entityId}/ledger/payment_methods`;
   const Pay = data?.payComponentId && hasPaymentGatewayPayComponent(data.payComponentId) ? resolvePaymentGatewayPayComponent(data.payComponentId) : null;
   const frozen = !!session || submitting.current;
+  const changeAuthorization = (value: boolean | "indeterminate") => {
+    if (frozen) return;
+    // Authorization and optional saving are independent choices. Only changes
+    // to the payment details below invalidate both consents.
+    setReview(false);
+    setAccepted(value === true);
+  };
   const change = (update: () => void) => {
     if (frozen) return;
     generation.current++;
@@ -249,12 +256,12 @@ export default function SharedCheckoutPage() {
         {!method && !Pay && <Alert variant="destructive"><AlertDescription>Secure payment entry is unavailable for this account. Contact support before starting a new payment.</AlertDescription></Alert>}
       </CardContent></Card>
       <Card><CardContent className="space-y-4 pt-6">
-        {isAdminAssisted ? <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>{ADMIN_PAYMENT_CONFIRMATION.text}</span></label> : isAdminTest ? <div className="space-y-3">
-          <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>I confirm this is an administrator test only. I understand that success posts a test payment to the selected ledger, and this does not record payer consent or prove real funds.</span></label>
+        {isAdminAssisted ? <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={changeAuthorization} /><span>{ADMIN_PAYMENT_CONFIRMATION.text}</span></label> : isAdminTest ? <div className="space-y-3">
+          <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={changeAuthorization} /><span>I confirm this is an administrator test only. I understand that success posts a test payment to the selected ledger, and this does not record payer consent or prove real funds.</span></label>
           <label className="block space-y-1 text-sm font-medium">Test purpose
             <input className="w-full rounded-md border bg-background px-3 py-2 font-normal" value={purpose} maxLength={500} disabled={frozen} onChange={event => change(() => setPurpose(event.target.value))} placeholder="For example, verify the test gateway setup" />
           </label>
-        </div> : !authReady ? <Alert variant="destructive"><AlertDescription>Payment authorization wording has not been configured. An administrator must finish ledger payment settings before online payments can be made.{isAdmin && <> <Link href="/config/ledger/settings#payment-authorization" className="font-medium underline">Open payment authorization settings</Link></>}</AlertDescription></Alert> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>{data.authorization?.text}</span></label>}
+        </div> : !authReady ? <Alert variant="destructive"><AlertDescription>Payment authorization wording has not been configured. An administrator must finish ledger payment settings before online payments can be made.{isAdmin && <> <Link href="/config/ledger/settings#payment-authorization" className="font-medium underline">Open payment authorization settings</Link></>}</AlertDescription></Alert> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={changeAuthorization} /><span>{data.authorization?.text}</span></label>}
           {review ? <div className="space-y-3"><h2 className="font-semibold">Review {isAdminTest ? "test payment" : "payment"}</h2><p className="text-sm">{shownBreakdown && `${money(shownBreakdown.amount, currency)} to ${data.account.name}`} using a {methodDescription}{!isAdminTest && canSaveMethod && saveMethodAccepted ? " (save for future use)" : ""}.</p>{isAdminTest ? <p className="text-sm font-medium">If the provider confirms this test, {money(shownBreakdown?.amount ?? "0", currency)} will post to this ledger account and apply to the statement/account allocation shown above. This is not payer consent and does not prove real funds.</p> : <p className="text-sm text-muted-foreground">Starting the secure step does not complete your payment. Confirm it with the payment provider next.</p>}<div className="flex flex-col gap-2 sm:flex-row"><Button onClick={() => void submit()} disabled={busy || frozen || !canReview || !accepted || (isAdminTest && !purpose.trim())}>{busy ? "Starting…" : isAdminTest ? "Start test payment" : "Continue to secure confirmation"}</Button><Button variant="outline" onClick={() => setReview(false)} disabled={busy || frozen}>Edit</Button></div></div> : <Button onClick={() => setReview(true)} disabled={!canReview || !accepted || (isAdminTest && !purpose.trim())}>{isAdminTest ? "Review test payment" : "Review payment"}</Button>}
          {error && !session && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       </CardContent></Card>
