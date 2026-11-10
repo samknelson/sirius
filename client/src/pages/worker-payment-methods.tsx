@@ -36,7 +36,7 @@ function WorkerPaymentMethodsContent() {
   const { worker } = useWorkerLayout();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-   const key = paymentMethodsKey("worker", worker.id);
+  const key = paymentMethodsKey("worker", worker.id);
   const [addOpen, setAddOpen] = useState(false);
   const [gatewayId, setGatewayId] = useState<string>();
   const [setup, setSetup] = useState<Setup>();
@@ -47,7 +47,7 @@ function WorkerPaymentMethodsContent() {
   const setupAttempt = useRef<{ id: number; key: string } | null>(null);
   const [deleteId, setDeleteId] = useState<string>();
 
-   const methods = useQuery<PaymentMethod[]>({ queryKey: key, queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}`), ...paymentMethodsFreshness });
+  const methods = useQuery<PaymentMethod[]>({ queryKey: key, queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}`), ...paymentMethodsFreshness });
   const gateways = useQuery<Gateway[]>({ queryKey: [...key, "gateways"], queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}/gateways`) });
   const capabilities = useQuery<{ canManageMethods: boolean }>({
     queryKey: [...key, "capabilities"],
@@ -89,8 +89,13 @@ function WorkerPaymentMethodsContent() {
   };
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `${BASE}/worker/${worker.id}/${id}`),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: key });
+    onSuccess: (_result, id) => {
+      queryClient.setQueryData<PaymentMethod[]>(key, (current) =>
+        current?.map((method) => method.id === id
+          ? { ...method, isActive: false, isDefault: false }
+          : method),
+      );
+      void queryClient.invalidateQueries({ queryKey: key, exact: true });
       setDeleteId(undefined);
       toast({ title: "Payment method removed" });
     },
@@ -168,6 +173,7 @@ function WorkerPaymentMethodsContent() {
   const AddComponent = setup?.componentId && hasPaymentGatewayComponent(setup.componentId)
     ? resolvePaymentGatewayComponent(setup.componentId)
     : null;
+  const visibleMethods = methods.data?.filter((method) => method.isActive) ?? [];
 
   return (
     <>
@@ -182,7 +188,7 @@ function WorkerPaymentMethodsContent() {
           {capabilities.isError && <Alert variant="destructive"><AlertDescription>Unable to verify payment method permissions. Management controls are unavailable.</AlertDescription></Alert>}
           {methods.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> :
             methods.isError ? <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(methods.error, "Unable to load saved payment methods.")}<Button variant="link" className="h-auto p-0 ml-1" onClick={() => methods.refetch()}>Retry</Button></AlertDescription></Alert> :
-            methods.data?.length ? methods.data.map((method) => {
+              visibleMethods.length ? visibleMethods.map((method) => {
               const card = method.providerDetails?.card;
               const bank = method.providerDetails?.us_bank_account;
               return <div key={method.id} className="flex items-center justify-between gap-3 rounded-lg border p-4" data-testid={`worker-payment-method-${method.id}`}>
@@ -197,8 +203,8 @@ function WorkerPaymentMethodsContent() {
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                   {canManage && !method.isDefault && !method.providerError && <Button size="sm" variant="ghost" onClick={() => setDefault.mutate(method.id)} aria-label="Set default"><Star className="h-4 w-4" /></Button>}
-                   {canManage && <Button size="sm" variant="ghost" onClick={() => setDeleteId(method.id)} aria-label="Remove"><Trash2 className="h-4 w-4" /></Button>}
+                    {canManage && !method.isDefault && !method.providerError && <Button size="sm" variant="ghost" onClick={() => setDefault.mutate(method.id)} aria-label="Set default"><Star className="h-4 w-4" /></Button>}
+                    {canManage && <Button size="sm" variant="ghost" onClick={() => { remove.reset(); setDeleteId(method.id); }} aria-label="Remove"><Trash2 className="h-4 w-4" /></Button>}
                 </div>
               </div>;
             }) : <p className="text-sm text-muted-foreground" data-testid="text-worker-no-payment-methods">No saved payment methods yet.</p>}
@@ -224,9 +230,22 @@ function WorkerPaymentMethodsContent() {
             <Alert variant="destructive"><AlertDescription>This payment provider is not available.</AlertDescription></Alert>}
         </DialogContent>
       </Dialog>
-       <AlertDialog open={Boolean(deleteId) && canManage} onOpenChange={() => setDeleteId(undefined)}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove payment method?</AlertDialogTitle><AlertDialogDescription>You can add it again later.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteId && remove.mutate(deleteId)}>Remove</AlertDialogAction></AlertDialogFooter>
+        <AlertDialog open={Boolean(deleteId) && canManage} onOpenChange={(open) => {
+          if (!open && !remove.isPending) setDeleteId(undefined);
+        }}>
+         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove payment method?</AlertDialogTitle><AlertDialogDescription>You can add it again later.</AlertDialogDescription></AlertDialogHeader>
+           {remove.isError && <Alert variant="destructive" role="alert"><AlertDescription>{getApiErrorMessage(remove.error, "Could not remove payment method. Try again.")}</AlertDescription></Alert>}
+           <AlertDialogFooter>
+             <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+             {remove.isError && <Button variant="outline" onClick={() => deleteId && remove.mutate(deleteId)} disabled={remove.isPending || !deleteId}>Try again</Button>}
+             <AlertDialogAction
+               disabled={remove.isPending || !deleteId}
+               onClick={(event) => {
+                 event.preventDefault();
+                 if (deleteId && !remove.isPending) remove.mutate(deleteId);
+               }}
+             >{remove.isPending ? "Removing…" : "Remove"}</AlertDialogAction>
+           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

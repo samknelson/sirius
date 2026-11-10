@@ -34,6 +34,9 @@ try {
   const failures = [];
   const mutations = [];
   let failAttach = true;
+  let failRemove = true;
+  let methodActive = true;
+  let methodDefault = false;
   browser = await puppeteer.launch({ executablePath, headless: true, timeout: 90_000,
     args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const page = await browser.newPage();
@@ -57,7 +60,11 @@ try {
     };
     let status = 200;
     let data;
-    if (method === "GET" && Object.hasOwn(answers, url.pathname)) data = answers[url.pathname];
+    if (method === "GET" && Object.hasOwn(answers, url.pathname)) {
+      data = url.pathname === base
+        ? [{ ...answers[base][0], isActive: methodActive, isDefault: methodDefault }]
+        : answers[url.pathname];
+    }
     else if (method === "POST" && url.pathname === `${base}/setup`) {
       const payload = JSON.parse(request.postData());
       assert.equal(payload.consent.accepted, true);
@@ -77,9 +84,18 @@ try {
         data = { id: "saved-2" };
       }
     } else if (method === "POST" && url.pathname.endsWith("/set-default")) {
-      mutations.push("default"); data = {};
+      mutations.push("default"); methodDefault = true; data = {};
     } else if (method === "DELETE" && url.pathname.endsWith("/saved-1")) {
-      mutations.push("remove"); data = {};
+      mutations.push("remove");
+      if (failRemove) {
+        failRemove = false;
+        status = 503;
+        data = { message: "Temporary removal failure" };
+      } else {
+        methodActive = false;
+        methodDefault = false;
+        data = { success: true };
+      }
     } else {
       failures.push(`Unexpected API request: ${method} ${url.pathname}`);
       return request.abort();
@@ -88,6 +104,11 @@ try {
   });
   const dialog = '[data-testid="dialog-worker-add-payment-method"]';
   const add = '[data-testid="button-confirm-payment-method"]';
+  const clickButtonText = async (scope, text) => page.$eval(scope, (element, wanted) => {
+    const button = [...element.querySelectorAll("button")].find(item => item.textContent?.trim() === wanted);
+    if (!button) throw new Error(`button "${wanted}" is present`);
+    button.click();
+  }, text);
   const geometry = async () => page.$eval(dialog, element => {
     const box = element.getBoundingClientRect();
     return { top: box.top, bottom: box.bottom, left: box.left, right: box.right,
@@ -148,15 +169,40 @@ try {
     page.waitForResponse(response => response.url().endsWith("/saved-1/set-default")),
     page.click('button[aria-label="Set default"]'),
   ]);
+  await page.waitForSelector('[data-testid="worker-payment-method-saved-1"]');
+  await page.click('button[aria-label="Remove"]');
+  await page.waitForSelector('[role="alertdialog"]');
+  await clickButtonText('[role="alertdialog"]', "Cancel");
+  await page.waitForFunction(() => !document.querySelector('[role="alertdialog"]'));
+  assert.equal(mutations.filter(value => value === "remove").length, 0,
+    "canceling leaves the saved method unchanged");
+  assert.ok(await page.$('[data-testid="worker-payment-method-saved-1"]'),
+    "canceled method remains listed");
+
   await page.click('button[aria-label="Remove"]');
   await page.waitForSelector('[role="alertdialog"]');
   await Promise.all([
     page.waitForResponse(response => response.url().endsWith("/saved-1") && response.request().method() === "DELETE"),
     page.click('[role="alertdialog"] button:last-child'),
   ]);
+  await page.waitForSelector('[role="alert"]');
+  assert.match(await page.$eval('[role="alert"]', element => element.textContent || ""), /Temporary removal failure/);
+  assert.ok(await page.$('[data-testid="worker-payment-method-saved-1"]'),
+    "a failed removal keeps the method visible");
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith("/saved-1") && response.request().method() === "DELETE" && response.status() === 200),
+    clickButtonText('[role="alertdialog"]', "Try again"),
+  ]);
   await page.waitForFunction(() => !document.querySelector('[role="alertdialog"]'));
-  assert.ok(mutations.includes("default") && mutations.includes("remove"),
-    "saved method actions remain usable after closing the dialog");
+  await page.waitForSelector('[data-testid="text-worker-no-payment-methods"]');
+  assert.equal(await page.$('[data-testid="worker-payment-method-saved-1"]'), null,
+    "successful removal hides the method");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="text-worker-no-payment-methods"]');
+  assert.equal(await page.$('button[aria-label="Remove"]'), null,
+    "inactive methods remain hidden after reload");
+  assert.ok(mutations.includes("default") && mutations.filter(value => value === "remove").length === 2,
+    "default, cancel, failed removal and retry followed the expected path");
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
   console.log("Worker payment method browser fixture passed (desktop short and narrow viewport)");
 } finally {

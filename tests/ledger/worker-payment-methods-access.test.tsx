@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const apiRequest = vi.hoisted(() => vi.fn());
+const toast = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/queryClient", async () => {
   const actual = await vi.importActual<typeof import("@/lib/queryClient")>("@/lib/queryClient");
   return { ...actual, apiRequest };
@@ -17,7 +18,40 @@ vi.mock("@/plugins/payment-gateway/registry", () => ({
   hasPaymentGatewayComponent: () => false,
   resolvePaymentGatewayComponent: () => null,
 }));
-vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast }) }));
+vi.mock("@/components/ui/alert-dialog", async () => {
+  const ReactModule = await import("react");
+  type DialogContextValue = { onOpenChange: (open: boolean) => void };
+  const DialogContext = ReactModule.createContext<DialogContextValue | null>(null);
+  const useDialog = () => {
+    const value = ReactModule.useContext(DialogContext);
+    if (!value) throw new Error("Alert dialog control used outside its provider");
+    return value;
+  };
+  return {
+    AlertDialog: ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode }) =>
+      open ? <DialogContext.Provider value={{ onOpenChange }}><div role="alertdialog">{children}</div></DialogContext.Provider> : null,
+    AlertDialogContent: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+    AlertDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    AlertDialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+    AlertDialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
+    AlertDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    AlertDialogCancel: ({ children, onClick, disabled }: React.ButtonHTMLAttributes<HTMLButtonElement>) => {
+      const dialog = useDialog();
+      return <button type="button" disabled={disabled} onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented && !disabled) dialog.onOpenChange(false);
+      }}>{children}</button>;
+    },
+    AlertDialogAction: ({ children, onClick, disabled, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => {
+      const dialog = useDialog();
+      return <button type="button" {...props} disabled={disabled} onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented && !disabled) dialog.onOpenChange(false);
+      }}>{children}</button>;
+    },
+  };
+});
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode }) => open
     ? <div>{children}<button type="button" data-testid="close-add-dialog" onClick={() => onOpenChange(false)}>Close</button></div>
@@ -80,6 +114,7 @@ afterEach(async () => {
   root = null;
   container = null;
   apiRequest.mockReset();
+  toast.mockReset();
 });
 
 const authorization = { version: "current-v1", text: "I authorize saving this payment method.", accepted: true as const };
@@ -114,6 +149,42 @@ async function renderPaymentMethodsPage(existingClient?: QueryClient) {
     root!.render(<QueryClientProvider client={queryClient}><WorkerPaymentMethodsPage /></QueryClientProvider>);
   });
   await flush();
+}
+
+function savedMethod(id: string, options: { active?: boolean; default?: boolean; bank?: boolean } = {}) {
+  return {
+    id,
+    isActive: options.active ?? true,
+    isDefault: options.default ?? false,
+    gatewayConfigId: "gateway-1",
+    ...(options.bank
+      ? { providerDetails: { us_bank_account: { bank_name: "Fixture Bank", last4: "6789", account_type: "checking" } } }
+      : { providerDetails: { card: { brand: "Visa", last4: "4242", expMonth: 12, expYear: 2030 } } }),
+  };
+}
+
+function configureRemovalApi(initialMethods: ReturnType<typeof savedMethod>[], deleteHandler?: (id: string) => Promise<unknown>) {
+  let currentMethods = initialMethods.map((method) => ({ ...method }));
+  const deleteRequests: string[] = [];
+  apiRequest.mockImplementation(async (method: string, url: string) => {
+    if (url.endsWith("/capabilities")) return { canManageMethods: true };
+    if (url.endsWith("/authorization")) return { authorization };
+    if (url.endsWith("/gateways")) return [];
+    if (url === "/api/ledger/payment-methods/worker/worker-1" && method === "GET") {
+      return currentMethods.map((item) => ({ ...item }));
+    }
+    const methodId = url.split("/").at(-1)!;
+    if (method === "DELETE") {
+      deleteRequests.push(methodId);
+      if (deleteHandler) await deleteHandler(methodId);
+      currentMethods = currentMethods.map((item) => item.id === methodId
+        ? { ...item, isActive: false, isDefault: false }
+        : item);
+      return { success: true };
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  });
+  return { deleteRequests, getMethods: () => currentMethods };
 }
 
 describe("checkout-saved methods refresh", () => {
@@ -178,6 +249,110 @@ describe("worker saved method management controls", () => {
     expect(!!container.querySelector('button[aria-label="Remove"]')).toBe(canManageMethods);
     expect(!!container.querySelector('button[aria-label="Set default"]')).toBe(canManageMethods);
     expect(apiRequest.mock.calls.some(([, url]) => String(url).endsWith("/authorization"))).toBe(canManageMethods);
+  });
+
+  it.each([
+    ["card", false],
+    ["bank account", true],
+  ])("removes a saved %s from the list and keeps it inactive after reload", async (_label, bank) => {
+    const fixture = configureRemovalApi([savedMethod("saved-1", { active: true, default: true, bank })]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await renderPaymentMethodsPage(client);
+    expect(container!.textContent).toContain(bank ? "Fixture Bank •••• 6789" : "Visa •••• 4242");
+
+    await click(container!.querySelector('button[aria-label="Remove"]'));
+    expect(container!.querySelector('[role="alertdialog"]')).not.toBeNull();
+    await click([...container!.querySelectorAll('[role="alertdialog"] button')].find((button) => button.textContent === "Remove") ?? null);
+    await flush();
+
+    expect(fixture.deleteRequests).toEqual(["saved-1"]);
+    expect(fixture.getMethods()).toMatchObject([{ id: "saved-1", isActive: false, isDefault: false }]);
+    expect(client.getQueryData(paymentMethodsKey("worker", "worker-1"))).toMatchObject([
+      { id: "saved-1", isActive: false, isDefault: false },
+    ]);
+    expect(container!.textContent).not.toContain("Visa •••• 4242");
+    expect(container!.textContent).not.toContain("Fixture Bank •••• 6789");
+    expect(container!.textContent).toContain("No saved payment methods yet.");
+    expect(container!.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(toast).toHaveBeenCalledWith({ title: "Payment method removed" });
+
+    await act(async () => { root?.unmount(); });
+    container?.remove();
+    root = null;
+    container = null;
+    await renderPaymentMethodsPage(client);
+    expect(container!.textContent).toContain("No saved payment methods yet.");
+    expect(container!.querySelector('button[aria-label="Remove"]')).toBeNull();
+    client.clear();
+  });
+
+  it("leaves a saved method unchanged when removal is canceled", async () => {
+    const fixture = configureRemovalApi([savedMethod("saved-1")]);
+    await renderPaymentMethodsPage();
+    await click(container!.querySelector('button[aria-label="Remove"]'));
+    await click([...container!.querySelectorAll('[role="alertdialog"] button')].find((button) => button.textContent === "Cancel") ?? null);
+    await flush();
+
+    expect(fixture.deleteRequests).toEqual([]);
+    expect(container!.textContent).toContain("Visa •••• 4242");
+    expect(container!.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(toast).not.toHaveBeenCalledWith({ title: "Payment method removed" });
+  });
+
+  it("shows a retryable error without hiding the method or announcing success", async () => {
+    let shouldFail = true;
+    const fixture = configureRemovalApi([savedMethod("saved-1")], async () => {
+      if (shouldFail) {
+        shouldFail = false;
+        throw new Error("Temporary removal failure");
+      }
+    });
+    await renderPaymentMethodsPage();
+    await click(container!.querySelector('button[aria-label="Remove"]'));
+    await click([...container!.querySelectorAll('[role="alertdialog"] button')].find((button) => button.textContent === "Remove") ?? null);
+    await flush();
+
+    expect(fixture.deleteRequests).toEqual(["saved-1"]);
+    expect(container!.textContent).toContain("Temporary removal failure");
+    expect(container!.textContent).toContain("Try again");
+    expect(container!.textContent).toContain("Visa •••• 4242");
+    expect(toast).not.toHaveBeenCalledWith({ title: "Payment method removed" });
+
+    await click([...container!.querySelectorAll('[role="alertdialog"] button')].find((button) => button.textContent === "Try again") ?? null);
+    await flush();
+    expect(fixture.deleteRequests).toEqual(["saved-1", "saved-1"]);
+    expect(container!.textContent).toContain("No saved payment methods yet.");
+    expect(toast).toHaveBeenCalledWith({ title: "Payment method removed" });
+  });
+
+  it("prevents duplicate removal submissions while the request is pending", async () => {
+    let finishRemoval!: () => void;
+    const fixture = configureRemovalApi([savedMethod("saved-1")], () => new Promise<void>((resolve) => { finishRemoval = resolve; }));
+    await renderPaymentMethodsPage();
+    await click(container!.querySelector('button[aria-label="Remove"]'));
+    const confirm = [...container!.querySelectorAll('[role="alertdialog"] button')].find((button) => button.textContent === "Remove") ?? null;
+    await click(confirm);
+    await flush();
+
+    expect(fixture.deleteRequests).toEqual(["saved-1"]);
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    expect(confirm!.textContent).toBe("Removing…");
+    await click(confirm);
+    expect(fixture.deleteRequests).toEqual(["saved-1"]);
+
+    finishRemoval();
+    await flush();
+    expect(container!.textContent).toContain("No saved payment methods yet.");
+  });
+
+  it("does not show already inactive methods or their default and remove controls", async () => {
+    configureRemovalApi([savedMethod("inactive", { active: false, default: true })]);
+    await renderPaymentMethodsPage();
+
+    expect(container!.textContent).toContain("No saved payment methods yet.");
+    expect(container!.querySelector('[data-testid="worker-payment-method-inactive"]')).toBeNull();
+    expect(container!.querySelector('button[aria-label="Remove"]')).toBeNull();
+    expect(container!.querySelector('button[aria-label="Set default"]')).toBeNull();
   });
 
   it("continues setup when the provider is selected before authorization", async () => {

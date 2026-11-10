@@ -908,6 +908,19 @@ describe("online checkout HTTP contract", () => {
     }));
   });
 
+  it("rejects an inactive saved worker method before contacting the provider", async () => {
+    mocks.storage.ledger.paymentMethods.get.mockResolvedValue({
+      id: "method-1", isActive: false, entityType: "worker", entityId: "worker-1",
+      gatewayConfigId: "gw-1", providerMethodRef: "pm-1",
+    });
+    const response = await checkout(valid({ paymentMethodId: "method-1", paymentMethodType: undefined }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ message: "Saved payment method is unavailable" });
+    expect(gateway.plugin.getMethodSummary).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a replay that changes the selected payment type", async () => {
     mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockResolvedValue({
       id: "old", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1", gatewayConfigId: "gw-1",

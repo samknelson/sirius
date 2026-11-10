@@ -295,10 +295,20 @@ describe("worker payment method setup routes", () => {
       isActive: false,
       isDefault: false,
     });
+    expect(h.storage.ledger.paymentMethods.delete).not.toHaveBeenCalled();
     expect(h.plugin.detachMethod).toHaveBeenCalledWith(
       expect.anything(),
       "pm_visa_4444",
     );
+    const afterRemoval = await request("/api/ledger/payment-methods/worker/worker-1");
+    expect(afterRemoval.status).toBe(200);
+    const retainedRows = await afterRemoval.json();
+    expect(retainedRows).toHaveLength(2);
+    expect(retainedRows.find((method: { id: string }) => method.id === "method-2")).toMatchObject({
+      id: "method-2",
+      isActive: false,
+      isDefault: false,
+    });
 
     expect(h.plugin.createCustomer).toHaveBeenCalledTimes(1);
     expect(h.storage.ledger.gatewayCustomers.upsert).toHaveBeenCalledTimes(1);

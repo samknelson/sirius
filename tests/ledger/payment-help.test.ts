@@ -122,7 +122,10 @@ describe("online payment help content safety", () => {
     expect(receiptDetails).not.toMatch(/Continue to secure confirmation|Pay selected statements|New credit\/debit card/);
     const methodDetails = getSystemHelp(methods)!.details!;
     expect(methodDetails.indexOf("does not cancel, reverse, or refund")).toBeLessThan(methodDetails.indexOf("<ol>"));
-    expect(methodDetails).toContain("can remain listed");
+    expect(methodDetails).toContain("disappears from this saved-method list");
+    expect(methodDetails).toContain("historical record and its payment-attempt references are retained");
+    expect(methodDetails).toContain("does not cancel, reverse, or refund a payment");
+    expect(methodDetails).not.toContain("can remain listed");
     expect(methodDetails).toContain("does not guarantee the provider has removed it");
   });
 });
