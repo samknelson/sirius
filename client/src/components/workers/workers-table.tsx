@@ -39,6 +39,7 @@ import { ContextualWorkerFilters } from "@/components/workers/contextual-worker-
 import { useAuth } from "@/contexts/AuthContext";
 import { useTerminology } from "@/contexts/TerminologyContext";
 import { normalizeWorkerDirectoryFilters, type WorkerDirectoryFilters } from "@shared/worker-directory-filters";
+import { getDisplayedWorkerEmployers } from "./employer-display";
 
 export interface WorkerFilters extends Omit<Partial<WorkerDirectoryFilters>, "workStatusActive" | "isSteward"> {
   employerId: string;
@@ -1575,6 +1576,7 @@ export function WorkersTable({
               {sortedWorkers.map((worker, index) => {
                 const isDisabled = selectable && disabledIds?.has(worker.contactId);
                 const isSelected = selectable && selectedIds?.has(worker.contactId);
+                const employerIndicators = getDisplayedWorkerEmployers(worker.employers ?? []);
                 return (
                 <tr key={worker.id} className={`hover:bg-muted/30 transition-colors ${isDisabled ? 'opacity-50' : ''}`} data-testid={`row-worker-${worker.id}`}>
                   {selectable && (
@@ -1942,8 +1944,8 @@ export function WorkersTable({
                   <td className="px-3 py-4 whitespace-nowrap">
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
-                        {worker.employers && worker.employers.length > 0 ? (
-                          [...worker.employers].sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0)).map((employer) => (
+                        {employerIndicators.length > 0 ? (
+                          [...employerIndicators].sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0)).map((employer) => (
                             <Tooltip key={employer.id}>
                               <TooltipTrigger asChild>
                                 <span 
