@@ -45,9 +45,11 @@ describe("wizard run progress (database)", () => {
   it("recovers an abandoned run after lease expiry and ignores its late writes", async () => {
     const expired = new Date(Date.now() - 3 * 60_000).toISOString();
     await storage.wizards.writeStepProgress(wizardId, "validate", "abandoned",
-      { status: "in_progress", heartbeatAt: expired, startedAt: expired }, true);
+      { status: "in_progress", heartbeatAt: expired, startedAt: expired }, true, {}, undefined, undefined,
+      "bao_monthly_hours", "validation-lease");
     const fresh = await storage.wizards.writeStepProgress(wizardId, "validate", "restarted",
-      { status: "in_progress", heartbeatAt: new Date().toISOString(), percentComplete: 0 }, true);
+      { status: "in_progress", heartbeatAt: new Date().toISOString(), percentComplete: 0 }, true, {}, undefined, undefined,
+      "bao_monthly_hours", "validation-lease");
     expect(fresh).toBeDefined();
     expect(await storage.wizards.writeStepProgress(wizardId, "validate", "abandoned",
       { status: "completed" })).toBeUndefined();
@@ -61,6 +63,39 @@ describe("wizard run progress (database)", () => {
     expect((refreshed?.data as any).progress.validate.status).toBe("failed");
     expect((refreshed?.data as any).progress.validate.error).toBe("Source file unavailable");
     expect((refreshed?.data as any).validationResults.totalRows).toBe(2);
+  });
+
+  it("serializes an untouched-draft type change against the first progress write", async () => {
+    const fresh = await storage.wizards.create({
+      type: "bao_monthly_hours", status: "draft", currentStep: null, data: {},
+    });
+    const [changed, started] = await Promise.all([
+      storage.wizards.update(fresh.id, { type: "gbhet_legal_workers" }, "bao_monthly_hours"),
+      storage.wizards.writeStepProgress(
+        fresh.id, "validate", "first-run", { status: "in_progress" }, true,
+        {}, undefined, undefined, "bao_monthly_hours", "initial",
+      ),
+    ]);
+    expect(Boolean(changed) !== Boolean(started)).toBe(true);
+    const saved = await storage.wizards.getById(fresh.id);
+    if (started) {
+      expect(saved?.type).toBe("bao_monthly_hours");
+      expect((saved?.data as any).progress.validate.runId).toBe("first-run");
+    } else {
+      expect(saved?.type).toBe("gbhet_legal_workers");
+      expect((saved?.data as any).progress).toBeUndefined();
+    }
+    await storage.wizards.delete(fresh.id);
+  });
+
+  it("refuses storage-level retyping after progress or side-effect output exists", async () => {
+    const wizard = await storage.wizards.create({
+      type: "bao_monthly_hours", status: "draft", currentStep: null,
+      data: { progress: { validate: { status: "completed" } } },
+    });
+    expect(await storage.wizards.update(wizard.id, { type: "gbhet_legal_workers" })).toBeUndefined();
+    expect((await storage.wizards.getById(wizard.id))?.type).toBe("bao_monthly_hours");
+    await storage.wizards.delete(wizard.id);
   });
 
   it("does not mark a run completed when its terminal payload cannot be saved", async () => {

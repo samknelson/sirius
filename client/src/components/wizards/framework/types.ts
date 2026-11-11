@@ -18,6 +18,7 @@ export interface WizardStepManifest {
   state: WizardStepState;
   requiredComponent?: string;
   requiredPolicy?: string;
+  retrySafe?: boolean;
   progress?: {
     status?: string;
     percentComplete?: number;
@@ -30,6 +31,13 @@ export interface WizardStepManifest {
     total?: number;
     rowIssues?: number;
     partialPostingRisk?: boolean;
+    attempts?: Array<{
+      runId?: string;
+      status?: string;
+      error?: string;
+      startedAt?: string;
+      completedAt?: string;
+    }>;
   };
 }
 

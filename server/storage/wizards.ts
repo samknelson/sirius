@@ -57,11 +57,22 @@ export interface WizardStorage {
   findMonthlyWizardsForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard[]>;
   /** The completed wizard of `type` for a given employer + reporting period, if any. */
   findCompletedMonthlyWizardForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard | undefined>;
-  update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined>;
+  update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string): Promise<Wizard | undefined>;
   /** Merge top-level wizard data keys without replacing concurrent progress writes. */
   mergeData(id: string, patch: Record<string, unknown>, activeStep?: string, runId?: string): Promise<Wizard | undefined>;
   /** Atomic, run-scoped progress write; late writes cannot revive a terminal run. */
-  writeStepProgress(id: string, step: string, runId: string, patch: Record<string, unknown>, start?: boolean, dataPatch?: Record<string, unknown>, wizardStatus?: string, leasePid?: number): Promise<Wizard | undefined>;
+  writeStepProgress(
+    id: string,
+    step: string,
+    runId: string,
+    patch: Record<string, unknown>,
+    start?: boolean,
+    dataPatch?: Record<string, unknown>,
+    wizardStatus?: string,
+    leasePid?: number,
+    expectedType?: string,
+    startPolicy?: "initial" | "safe-retry" | "validation-lease" | "process-once",
+  ): Promise<Wizard | undefined>;
   delete(id: string): Promise<boolean>;
   saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData>;
   getReportData(wizardId: string): Promise<WizardReportData[]>;
@@ -182,8 +193,15 @@ export function createWizardStorage(): WizardStorage {
       return row?.wizard;
     },
 
-    async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined> {
+    async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string): Promise<Wizard | undefined> {
       validate.validateOrThrow(updates);
+      if (updates.type !== undefined && expectedType !== undefined &&
+          updates.type !== expectedType &&
+          Object.keys(updates).some((key) => key !== "type")) {
+        return undefined;
+      }
+      const typeMixedUpdate = updates.type !== undefined &&
+        Object.keys(updates).some((key) => key !== "type");
       const client = getClient();
       const [wizard] = await client
         .update(wizards)
@@ -192,8 +210,15 @@ export function createWizardStorage(): WizardStorage {
           // A type-only PATCH must not turn admitted BAO evidence into an
           // unprotected wizard. This is checked against the stored row.
           updates.type !== undefined
-            ? or(eq(wizards.type, updates.type), processDeletionAllowed())
+            ? or(eq(wizards.type, updates.type), sql`${wizards.status} = 'draft'
+                AND ${wizards.currentStep} IS NULL
+                AND ${wizards.entityId} IS NULL
+                AND ((${wizards.data} IS NULL) OR ${wizards.data} = '{}'::jsonb)
+                AND NOT EXISTS (SELECT 1 FROM ${wizardReportData} WHERE ${wizardReportData.wizardId} = ${wizards.id})
+                AND NOT EXISTS (SELECT 1 FROM ${wizardEmployerMonthly} WHERE ${wizardEmployerMonthly.wizardId} = ${wizards.id})`)
             : undefined,
+          expectedType ? eq(wizards.type, expectedType) : undefined,
+          typeMixedUpdate && !expectedType ? eq(wizards.type, updates.type!) : undefined,
           updates.status === "deleting"
             ? and(eq(wizards.id, id), processDeletionAllowed())
             : and(eq(wizards.id, id), ne(wizards.status, "deleting"),
@@ -221,30 +246,42 @@ export function createWizardStorage(): WizardStorage {
       return wizard;
     },
 
-    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid) {
+    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid, expectedType, startPolicy = "initial") {
       const current = sql`coalesce(${wizards.data}, '{}'::jsonb)`;
       const entry = sql`coalesce(${current} #> ARRAY['progress', ${step}::text]::text[], '{}'::jsonb)`;
+      const startEntry = start && (startPolicy === "safe-retry" || startPolicy === "validation-lease")
+        ? sql`CASE WHEN coalesce(${entry}->>'status', '') <> ''
+            THEN jsonb_set(${entry}, '{attempts}',
+              coalesce(${entry}->'attempts', '[]'::jsonb) || jsonb_build_array(${entry} - 'attempts'), true)
+            ELSE ${entry} END`
+        : entry;
       const next = sql`jsonb_set(${current} || ${JSON.stringify(dataPatch)}::jsonb,
         '{progress}'::text[],
         coalesce(${current}->'progress', '{}'::jsonb) ||
-          jsonb_build_object(${step}::text, ${entry} || ${JSON.stringify({ ...patch, runId })}::jsonb), true)`;
+          jsonb_build_object(${step}::text, ${startEntry} || ${JSON.stringify({ ...patch, runId })}::jsonb), true)`;
       const [wizard] = await getClient().update(wizards).set({
         data: next,
         ...(wizardStatus ? { status: wizardStatus } : {}),
       })
         .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+          start && expectedType ? eq(wizards.type, expectedType) : undefined,
           leasePid !== undefined ? sql`exists (select 1 from pg_locks where locktype = 'advisory'
             and pid = ${leasePid} and granted and classid = 1350
             and objid = hashtext(${'wizard-validation:' + id})::oid and objsubid = 2)` : undefined,
           step !== "process" ? sql`NOT (${wizards.type} = 'bao_monthly_hours'
             AND coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1')` : undefined,
           start
-            ? patch.protocol === "bao-process-v1"
+            ? startPolicy === "process-once" || patch.protocol === "bao-process-v1"
               ? sql`coalesce(${entry}->>'status', '') = ''
                   AND ${wizards.type} = 'bao_monthly_hours'
                   AND NOT (coalesce(${wizards.data}, '{}'::jsonb) ? 'processResults')`
-              : sql`(coalesce(${entry}->>'status', '') <> 'in_progress'
-                OR coalesce((${entry}->>'heartbeatAt')::timestamptz < now() - interval '2 minutes', true))`
+              : startPolicy === "safe-retry"
+                ? sql`coalesce(${entry}->>'status', '') = ''
+                    OR ${entry}->>'status' IN ('failed', 'completed')`
+                : startPolicy === "validation-lease"
+                  ? sql`coalesce(${entry}->>'status', '') <> 'in_progress'
+                      OR coalesce((${entry}->>'heartbeatAt')::timestamptz < now() - interval '2 minutes', true)`
+                  : sql`coalesce(${entry}->>'status', '') = ''`
             : sql`${entry}->>'runId' = ${runId} AND ${entry}->>'status' = 'in_progress'`
         )).returning();
       return wizard;

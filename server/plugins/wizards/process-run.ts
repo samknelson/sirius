@@ -36,7 +36,7 @@ export async function startProcessRun(
       status: "in_progress", percentComplete: 0, startedAt: now, heartbeatAt: now,
       phase: "load", protocol: PROCESS_PROTOCOL, error: null, completedAt: null,
       partialPostingRisk: true,
-    }, true, {}, undefined, lease.backendPid));
+    }, true, {}, undefined, lease.backendPid, wizard.type, "process-once"));
     if (!started) { await lease.release(); return false; }
     unsaved.delete(wizard.id);
     void runOutsideTransaction(async () => {

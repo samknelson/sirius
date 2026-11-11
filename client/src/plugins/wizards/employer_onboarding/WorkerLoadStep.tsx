@@ -64,17 +64,21 @@ export function WorkerLoadStep({ wizardId, step, data }: WizardStepComponentProp
   const currentYear = new Date().getFullYear();
   const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
-  const { data: liveWizard } = useQuery<any>({
+  const { data: liveWizard, error: statusReadError } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
-    refetchInterval: isStarting ? 2500 : false,
+    refetchInterval: (query) =>
+      isStarting || (query.state.data as any)?.data?.progress?.[step.id]?.status === "in_progress"
+        ? 2500 : false,
   });
 
   const wdata = liveWizard?.data ?? data ?? {};
   const employerId = wdata.employerId;
   const processingResults = wdata.processingResults;
   const childWizardId = wdata.childWizardId;
-  const runProgress = wdata.progress?.worker_load;
+  const runProgress = statusReadError ? undefined : wdata.progress?.worker_load;
   const runFailed = runProgress?.status === "failed";
+  const runActive = runProgress?.status === "in_progress";
+  const runTerminal = runFailed || runProgress?.status === "completed";
 
   // Stop the "creating" spinner (and polling) once the employer exists or
   // the run failed.
@@ -157,6 +161,13 @@ export function WorkerLoadStep({ wizardId, step, data }: WizardStepComponentProp
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {statusReadError && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Cannot read employer creation status</AlertTitle>
+              <AlertDescription>The employer may already have been partly created. Refresh status before taking action; do not create it again.</AlertDescription>
+            </Alert>
+          )}
           <Alert>
             <Building2 className="h-4 w-4" />
             <AlertTitle>Ready to Create Employer</AlertTitle>
@@ -173,8 +184,22 @@ export function WorkerLoadStep({ wizardId, step, data }: WizardStepComponentProp
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Processing Failed</AlertTitle>
               <AlertDescription>
-                {runProgress?.error || "The employer could not be created."}
+                {runProgress?.error || "The employer could not be created."} The employer, contacts, users, or ledger links may have been partly created. Do not start this step again; ask an administrator to reconcile the result.
               </AlertDescription>
+            </Alert>
+          )}
+          {runActive && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Employer creation may still be running</AlertTitle>
+              <AlertDescription>A missing or stale heartbeat is not proof that work stopped. Refresh status and do not start this step again.</AlertDescription>
+            </Alert>
+          )}
+          {runProgress?.status === "completed" && !employerId && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Employer creation result is incomplete</AlertTitle>
+              <AlertDescription>The run completed, but its employer record was not saved into this wizard. Ask an administrator to reconcile it instead of repeating the creation.</AlertDescription>
             </Alert>
           )}
 
@@ -221,7 +246,7 @@ export function WorkerLoadStep({ wizardId, step, data }: WizardStepComponentProp
 
           <Button
             onClick={() => processMutation.mutate()}
-            disabled={processMutation.isPending || isStarting}
+            disabled={processMutation.isPending || isStarting || !!statusReadError || !!runProgress?.status}
             className="w-full sm:w-auto"
           >
             {processMutation.isPending || isStarting ? (
@@ -231,8 +256,8 @@ export function WorkerLoadStep({ wizardId, step, data }: WizardStepComponentProp
               </>
             ) : (
               <>
-                <Building2 size={16} className="mr-2" />
-                Create Employer & Process
+              <Building2 size={16} className="mr-2" />
+              {runTerminal ? "Manual recovery required" : "Create Employer & Process"}
               </>
             )}
           </Button>

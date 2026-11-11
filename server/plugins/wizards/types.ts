@@ -123,6 +123,12 @@ export interface WizardStepHandler {
     ctx: WizardStepContext,
   ) => Promise<WizardStepResult | void> | WizardStepResult | void;
   /**
+   * Explicitly permits a new run after a previous run has reached a terminal
+   * state. Omitted steps require manual recovery; heartbeat expiry alone
+   * never authorizes another generic run.
+   */
+  retrySafe?: boolean;
+  /**
    * Generic computed step output, read via GET .../dispatch/:stepId/data
    * and exported via .../export. When present the dispatcher calls it and
    * returns its payload verbatim; the payload should carry `columns` and
@@ -272,6 +278,8 @@ export interface WizardStepManifestEntry {
   state: WizardStepState;
   requiredComponent?: string;
   requiredPolicy?: string;
+  /** True only when the handler explicitly permits a retry after a terminal attempt. */
+  retrySafe?: boolean;
   progress?: {
     status?: string;
     percentComplete?: number;
@@ -284,6 +292,13 @@ export interface WizardStepManifestEntry {
     total?: number;
     rowIssues?: number;
     partialPostingRisk?: boolean;
+    attempts?: Array<{
+      runId?: string;
+      status?: string;
+      error?: string;
+      startedAt?: string;
+      completedAt?: string;
+    }>;
   };
 }
 

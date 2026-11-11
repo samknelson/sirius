@@ -64,6 +64,7 @@ function buildVerifyStep(): WizardStepHandler {
     description:
       "Confirm or reject creation of workers whose SSN is not in the system",
     kind: "run",
+    retrySafe: true,
     component: "VerifyNewWorkers",
     getState: (wizard) => {
       const data = (wizard.data as any) || {};
@@ -242,6 +243,7 @@ function buildPreviewStep(): WizardStepHandler {
     description:
       "Preview per-worker hours, billing impact, and expected withholding before processing",
     kind: "run",
+    retrySafe: true,
     component: "BaoPreview",
     getState: (wizard) => {
       const data = (wizard.data as any) || {};

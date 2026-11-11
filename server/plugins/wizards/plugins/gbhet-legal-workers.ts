@@ -107,6 +107,7 @@ export function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
     name: "Validate",
     description: "Validate rows and map any unrecognized employment statuses",
     kind: "run",
+    retrySafe: true,
     component: "GbhetValidate",
     getState: (wizard) => {
       const data = (wizard.data as any) || {};

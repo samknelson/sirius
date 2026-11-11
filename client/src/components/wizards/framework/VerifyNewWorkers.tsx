@@ -76,6 +76,12 @@ export function VerifyNewWorkers({ wizardId, step }: WizardStepComponentProps) {
 
   const verify = stepData?.verifyNewWorkers ?? null;
   const rows = verify?.rows ?? [];
+  const runProgress = step.progress;
+  const runFailed = runProgress?.status === "failed";
+  const runActive = runProgress?.status === "in_progress";
+  const heartbeatTime = Date.parse(runProgress?.heartbeatAt ?? "");
+  const staleRun = runActive &&
+    (!Number.isFinite(heartbeatTime) || Date.now() - heartbeatTime > 120_000);
 
   const pollForCompletion = async () => {
     for (let attempt = 0; attempt < 60; attempt++) {
@@ -185,6 +191,22 @@ export function VerifyNewWorkers({ wizardId, step }: WizardStepComponentProps) {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          {runFailed && (
+            <Alert variant="destructive" data-testid="alert-verify-run-failed">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Worker scan failed</AlertTitle>
+              <AlertDescription>
+                {runProgress?.error || "The read-only scan did not finish."} This scan is safe to retry after reviewing the failure details.
+              </AlertDescription>
+            </Alert>
+          )}
+          {staleRun && (
+            <Alert data-testid="alert-verify-run-stale">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Worker scan may still be running</AlertTitle>
+              <AlertDescription>A stale heartbeat is not proof that the scan stopped. Refresh status before retrying.</AlertDescription>
+            </Alert>
+          )}
 
           {isScanning && (
             <div className="flex flex-col items-center justify-center p-12 space-y-4">
@@ -205,10 +227,11 @@ export function VerifyNewWorkers({ wizardId, step }: WizardStepComponentProps) {
               <Button
                 onClick={startScan}
                 size="lg"
+                disabled={runActive}
                 data-testid="button-start-scan"
               >
                 <Play className="mr-2 h-4 w-4" />
-                Scan for New Workers
+                {runFailed ? "Retry Scan" : "Scan for New Workers"}
               </Button>
             </div>
           )}
@@ -242,10 +265,11 @@ export function VerifyNewWorkers({ wizardId, step }: WizardStepComponentProps) {
                   variant="outline"
                   size="sm"
                   onClick={startScan}
+                  disabled={runActive}
                   data-testid="button-rescan"
                 >
                   <Play className="mr-2 h-4 w-4" />
-                  Re-scan
+                  {runFailed ? "Retry Scan" : "Re-scan"}
                 </Button>
               </div>
 

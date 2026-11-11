@@ -101,6 +101,7 @@ export const reportEdlsScheduledTooSoonPlugin: WizardPlugin = {
       name: "Run",
       description: "Execute the report and generate results",
       kind: "run",
+      retrySafe: true,
       component: "RunView",
       getState: (wizard) => {
         const data = (wizard.data as any) || {};

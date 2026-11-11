@@ -67,7 +67,10 @@ describe.skipIf((databaseSourceInfo as any).source !== "isolated-test").sequenti
   });
 
   it("does not admit a stale BAO snapshot after an earlier type change wins", async () => {
-    const wizard = await create();
+    const wizard = await storage.wizards.create({
+      type: "bao_monthly_hours", status: "draft", currentStep: null, data: {},
+    });
+    ids.push(wizard.id);
     expect(await storage.wizards.update(wizard.id, { type: "gbhet_legal_workers_monthly" })).toBeDefined();
     const business = vi.fn(async () => {});
     expect(await startProcessRun(wizard, step(business), ctx)).toBe(false);

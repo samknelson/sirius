@@ -34,6 +34,7 @@ export const btuDuesAllocationPlugin: WizardPlugin = {
     buildValidateStep(feed),
     buildProcessStep(feed),
     buildFeedResultsStep({
+      retrySafe: true,
       run: async (ctx: WizardStepContext) => {
         // rescanComparison persists the refreshed comparison report itself;
         // the dispatcher marks this run step completed when it resolves.

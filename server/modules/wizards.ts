@@ -416,6 +416,20 @@ export function registerWizardRoutes(
         if (!wizardPluginRegistry.get(validatedData.type)) {
           return res.status(400).json({ message: `Unknown wizard type: ${validatedData.type}` });
         }
+        if (validatedData.type !== existing.type) {
+          const existingData = existing.data as Record<string, unknown> | null;
+          const untouched =
+            existing.status === "draft" &&
+            existing.currentStep === null &&
+            existing.entityId == null &&
+            (!existingData || (typeof existingData === "object" && Object.keys(existingData).length === 0)) &&
+            Object.keys(validatedData).every((key) => key === "type");
+          if (!untouched) {
+            return res.status(409).json({
+              message: "Wizard type is fixed after setup or work begins. Create a new wizard with the correct type instead.",
+            });
+          }
+        }
       }
       
       // Validate that only report wizards can have retention settings
@@ -471,9 +485,11 @@ export function registerWizardRoutes(
         }
       }
       
-      const wizard = await storage.wizards.update(id, validatedData);
+      const wizard = await storage.wizards.update(id, validatedData, existing.type);
       if (!wizard) {
-        return res.status(409).json({ message: "Wizard is being deleted or its admitted Process identity/data is protected and cannot be changed" });
+        return res.status(409).json({ message: validatedData.type && validatedData.type !== existing.type
+          ? "Wizard type is fixed after setup or work begins. Create a new wizard with the correct type instead."
+          : "Wizard is being deleted or its admitted Process identity/data is protected and cannot be changed" });
       }
       res.json(wizard);
     } catch (error) {

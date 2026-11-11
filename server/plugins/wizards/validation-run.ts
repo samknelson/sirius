@@ -66,7 +66,7 @@ export async function startValidationRun(
       status: "in_progress", percentComplete: 0, error: null, completedAt: null,
       startedAt: now, heartbeatAt: now, phase: "validating",
       protocol: "validation-v2",
-    }, true));
+    }, true, {}, undefined, undefined, wizard.type, "validation-lease"));
     if (!started) { await lease.release(); return false; }
     unsaved.delete(wizard.id);
     void runOutsideTransaction(async () => {

@@ -147,6 +147,7 @@ const runStep: WizardStepHandler = {
   name: "Generate",
   description: "Generate the EDI file rows",
   kind: "run",
+  retrySafe: true,
   component: "RunView",
   getState: (wizard) => {
     const data = (wizard.data as any) || {};

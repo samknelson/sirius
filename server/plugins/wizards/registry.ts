@@ -150,6 +150,7 @@ export class WizardPluginRegistry extends PluginRegistry<
         state: this.stepState(plugin, step, wizard),
         requiredComponent: step.requiredComponent,
         requiredPolicy: step.requiredPolicy,
+        retrySafe: !!step.run && step.retrySafe === true,
         progress: progress
           ? {
               status: progress.status,
@@ -163,6 +164,15 @@ export class WizardPluginRegistry extends PluginRegistry<
               rowIssues: progress.rowIssues,
               partialPostingRisk: progress.partialPostingRisk,
               total: progress.total,
+              attempts: Array.isArray(progress.attempts)
+                ? progress.attempts.map((attempt: any) => ({
+                    runId: attempt.runId,
+                    status: attempt.status,
+                    error: attempt.error,
+                    startedAt: attempt.startedAt,
+                    completedAt: attempt.completedAt,
+                  }))
+                : undefined,
             }
           : undefined,
       };

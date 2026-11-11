@@ -157,6 +157,7 @@ function buildStepContext(
  */
 async function persistStepResult(
   wizardId: string,
+  expectedType: string,
   stepId: string,
   result: WizardStepResult | void,
 ): Promise<Wizard | undefined> {
@@ -171,7 +172,7 @@ async function persistStepResult(
   };
   const updates: Record<string, unknown> = { data };
   if (result && result.status) updates.status = result.status;
-  return storage.wizards.update(wizardId, updates);
+  return storage.wizards.update(wizardId, updates, expectedType);
 }
 
 function csvEscape(value: unknown): string {
@@ -223,7 +224,7 @@ export function registerWizardDispatcherRoutes(
         }
         const ctx = buildStepContext(loaded.wizard, step.id, input, req);
         const out = await step.submit(ctx);
-        const updated = await persistStepResult(loaded.wizard.id, step.id, out);
+        const updated = await persistStepResult(loaded.wizard.id, loaded.plugin.id, step.id, out);
         res.json(updated);
       } catch (error) {
         // Storage-level election validation failures (e.g. the cross-
@@ -287,7 +288,7 @@ export function registerWizardDispatcherRoutes(
         }
         const ctx = buildStepContext(loaded.wizard, step.id, {}, req, file);
         const out = await step.submit(ctx);
-        const updated = await persistStepResult(loaded.wizard.id, step.id, out);
+        const updated = await persistStepResult(loaded.wizard.id, loaded.plugin.id, step.id, out);
         res.json(updated);
       } catch (error) {
         logger.error("Wizard dispatch upload failed", {
@@ -344,15 +345,31 @@ export function registerWizardDispatcherRoutes(
           return res.status(503).json({ message: "Process admission could not be confirmed. Refresh status before taking any action; do not automatically resubmit." });
         }
       }
+      const previousProgress = (loaded.wizard.data as any)?.progress?.[step.id];
+      const previousStatus = previousProgress?.status;
+      if (previousStatus === "in_progress") {
+        return res.status(409).json({
+          message: "This run is still marked in progress. A stale or unreadable heartbeat does not confirm that it stopped; refresh status and ask an administrator to investigate before retrying.",
+        });
+      }
+      const retryingTerminal = previousStatus === "failed" || previousStatus === "completed";
+      if (retryingTerminal && !step.retrySafe) {
+        return res.status(409).json({
+          message: "This run is not marked safe to repeat. Preserve its failure evidence and ask an administrator to reconcile any partial effects before taking further action.",
+        });
+      }
+      if (previousStatus && !retryingTerminal) {
+        return res.status(409).json({ message: "The run status is not recognized as a safe starting point. Refresh status before taking action." });
+      }
       const runId = randomUUID();
       const started = await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
         status: "in_progress",
         percentComplete: 0,
-         error: null,
-         startedAt: new Date().toISOString(),
-         heartbeatAt: new Date().toISOString(),
-      }, true);
-      if (!started) return res.status(409).json({ message: "This step is already running. Wait for it to finish, or retry if progress has stopped for two minutes." });
+        error: null,
+        startedAt: new Date().toISOString(),
+        heartbeatAt: new Date().toISOString(),
+      }, true, {}, undefined, undefined, loaded.plugin.id, step.retrySafe ? "safe-retry" : "initial");
+      if (!started) return res.status(409).json({ message: "This run changed before it could start. Refresh status; only explicitly safe steps can be retried after a confirmed terminal result." });
       // Kick off the work and respond immediately.
       res.status(202).json({ started: true });
 
@@ -591,7 +608,7 @@ export function registerWizardDispatcherRoutes(
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: next.id,
             ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL ? {} : { data }),
-          });
+          }, plugin.id);
           return res.json(updated);
         }
 
@@ -614,7 +631,7 @@ export function registerWizardDispatcherRoutes(
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: prev.id,
             ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL ? {} : { data }),
-          });
+          }, plugin.id);
           return res.json(updated);
         }
 

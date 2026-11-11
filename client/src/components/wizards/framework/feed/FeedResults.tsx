@@ -34,7 +34,7 @@ import type { WizardStepComponentProps } from "@/components/wizards/framework/ty
 interface ResultsData {
   processResults: any | null;
   validationResults: any | null;
-  progress?: { status?: string; percentComplete?: number; error?: string } | null;
+  progress?: { status?: string; percentComplete?: number; error?: string; heartbeatAt?: string } | null;
 }
 
 function Stat({
@@ -77,9 +77,11 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
   const { toast } = useToast();
   const [actionRunning, setActionRunning] = useState(false);
 
-  const { data, isLoading } = useQuery<ResultsData>({
+  const { data, isLoading, error: statusReadError } = useQuery<ResultsData>({
     queryKey: ["/api/wizards", wizardId, "dispatch", step.id, "data"],
-    refetchInterval: actionRunning ? 1500 : false,
+    refetchInterval: (query) =>
+      actionRunning || (query.state.data as ResultsData | undefined)?.progress?.status === "in_progress"
+        ? 1500 : false,
   });
 
   // The bespoke run action (reprocess / rescan) returns 202 immediately and
@@ -100,7 +102,12 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
     }
   }, [actionRunning, data?.progress?.status, data?.progress?.error, wizardId, toast]);
 
-  const running = actionRunning || step.progress?.status === "in_progress";
+  const runProgress = statusReadError ? undefined : (data?.progress ?? step.progress);
+  const running = actionRunning || runProgress?.status === "in_progress";
+  const runFailed = runProgress?.status === "failed";
+  const heartbeatTime = Date.parse(runProgress?.heartbeatAt ?? "");
+  const staleRun = running &&
+    (!Number.isFinite(heartbeatTime) || Date.now() - heartbeatTime > 120_000);
 
   const actionMutation = useMutation({
     mutationFn: async () =>
@@ -135,6 +142,24 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
           <CardTitle>{step.name}</CardTitle>
         </CardHeader>
         <CardContent>
+          {statusReadError && (
+            <Alert variant="destructive" className="mb-3">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Cannot read action status</AlertTitle>
+              <AlertDescription>The action may still be running. Refresh status before taking action; unreadable status is not proof of failure.</AlertDescription>
+            </Alert>
+          )}
+          {runFailed ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Run failed</AlertTitle>
+              <AlertDescription>
+                {runProgress?.error || "The action failed."} {step.retrySafe
+                  ? "This action is marked safe to retry; use the offered action after reviewing the saved failure."
+                  : "This action is not marked safe to repeat. Preserve this failure and ask an administrator to reconcile any partial effects."}
+              </AlertDescription>
+            </Alert>
+          ) : (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>No results yet</AlertTitle>
@@ -142,6 +167,14 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
               Run the process step first to generate results.
             </AlertDescription>
           </Alert>
+          )}
+          {staleRun && (
+            <Alert className="mt-3">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Action may still be running</AlertTitle>
+              <AlertDescription>A stale heartbeat is not proof that the action stopped. Refresh status before taking action.</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
     );
@@ -173,6 +206,24 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {runFailed && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Last action failed</AlertTitle>
+              <AlertDescription>
+                {runProgress?.error || "The action failed."} {step.retrySafe
+                  ? "Review the saved failure before using the retry action."
+                  : "Do not repeat this action. Ask an administrator to reconcile possible partial effects."}
+              </AlertDescription>
+            </Alert>
+          )}
+          {staleRun && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Action may still be running</AlertTitle>
+              <AlertDescription>A stale heartbeat does not confirm failure. Refresh status before taking action.</AlertDescription>
+            </Alert>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Stat label="Total Rows" value={r.totalRows ?? 0} />
             <Stat label="Created" value={r.createdCount ?? 0} tone="success" />
@@ -225,7 +276,7 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
                 <Button
                   variant="outline"
                   onClick={() => actionMutation.mutate()}
-                  disabled={running || actionMutation.isPending}
+                  disabled={running || !!statusReadError || actionMutation.isPending || (runFailed && !step.retrySafe)}
                   data-testid="button-reprocess-unmatched"
                 >
                   {running || actionMutation.isPending ? (
@@ -233,7 +284,7 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
                   ) : (
                     <RefreshCw className="h-4 w-4 mr-2" />
                   )}
-                  Reprocess unmatched
+                  {runFailed ? "Retry reprocess" : "Reprocess unmatched"}
                 </Button>
               )}
             </div>
@@ -402,7 +453,7 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => actionMutation.mutate()}
-                  disabled={running || actionMutation.isPending}
+                  disabled={running || !!statusReadError || actionMutation.isPending || (runFailed && !step.retrySafe)}
                   data-testid="button-rescan-comparison"
                 >
                   {running || actionMutation.isPending ? (
@@ -410,7 +461,7 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
                   ) : (
                     <RefreshCw className="h-4 w-4 mr-2" />
                   )}
-                  Rescan
+                  {runFailed ? "Retry rescan" : "Rescan"}
                 </Button>
               )}
             </div>

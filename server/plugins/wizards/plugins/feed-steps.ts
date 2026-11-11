@@ -299,6 +299,7 @@ export function buildValidateStep(
     name: "Validate",
     description,
     kind: "run",
+    retrySafe: true,
     component,
     getState: (wizard) => {
       const data = (wizard as any).data || {};
@@ -385,6 +386,7 @@ export function buildFeedResultsStep(opts?: {
   run?: (
     ctx: WizardStepContext,
   ) => Promise<WizardStepResult | void> | WizardStepResult | void;
+  retrySafe?: boolean;
 }): WizardStepHandler {
   const id = opts?.id ?? "results";
   const handler: WizardStepHandler = {
@@ -407,6 +409,7 @@ export function buildFeedResultsStep(opts?: {
     },
   };
   if (opts?.run) handler.run = opts.run;
+  if (opts?.retrySafe) handler.retrySafe = true;
   return handler;
 }
 

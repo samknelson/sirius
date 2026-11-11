@@ -98,6 +98,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
 
   const [results, setResults] = useState<ValidationResults | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mappingError, setMappingError] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [statusMappings, setStatusMappings] = useState<Record<string, string>>(
     {},
@@ -159,6 +160,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
   const startValidation = async () => {
     setIsValidating(true);
     setError(null);
+    setMappingError(null);
     setStartError(null);
     setResults(null);
     setStatusMappings({});
@@ -195,7 +197,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
     if (mappingsToSave.length === 0) return;
 
     setIsSavingMappings(true);
-    setError(null);
+    setMappingError(null);
     try {
       await apiRequest(
         "POST",
@@ -204,7 +206,7 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
       );
       setMappingSaveSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save mappings");
+      setMappingError(err instanceof Error ? err.message : "Failed to save mappings");
     } finally {
       setIsSavingMappings(false);
     }
@@ -259,6 +261,14 @@ export function GbhetValidate({ wizardId, step }: WizardStepComponentProps) {
         <Alert variant="destructive">
           <AlertTitle>Could not confirm validation started</AlertTitle>
           <AlertDescription>{startError} Refresh status before retrying.</AlertDescription>
+        </Alert>
+      )}
+      {mappingError && (
+        <Alert variant="destructive">
+          <AlertTitle>Could not save mappings</AlertTitle>
+          <AlertDescription>
+            {mappingError} Your selected mappings remain available to edit; correct the issue and save again.
+          </AlertDescription>
         </Alert>
       )}
       {stepData?.persistenceProblem && (

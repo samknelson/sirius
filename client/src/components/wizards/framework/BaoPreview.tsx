@@ -87,6 +87,12 @@ export function BaoPreview({ wizardId, step }: WizardStepComponentProps) {
   const [error, setError] = useState<string | null>(null);
 
   const preview = stepData?.previewResults ?? null;
+  const runProgress = step.progress;
+  const runFailed = runProgress?.status === "failed";
+  const runActive = runProgress?.status === "in_progress";
+  const heartbeatTime = Date.parse(runProgress?.heartbeatAt ?? "");
+  const staleRun = runActive &&
+    (!Number.isFinite(heartbeatTime) || Date.now() - heartbeatTime > 120_000);
 
   const pollForCompletion = async () => {
     for (let attempt = 0; attempt < 60; attempt++) {
@@ -169,6 +175,22 @@ export function BaoPreview({ wizardId, step }: WizardStepComponentProps) {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          {runFailed && (
+            <Alert variant="destructive" data-testid="alert-preview-run-failed">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Preview run failed</AlertTitle>
+              <AlertDescription>
+                {runProgress?.error || "The read-only preview did not finish."} This preview is safe to retry after reviewing the failure details.
+              </AlertDescription>
+            </Alert>
+          )}
+          {staleRun && (
+            <Alert data-testid="alert-preview-run-stale">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Preview may still be running</AlertTitle>
+              <AlertDescription>A stale heartbeat is not proof that the run stopped. Refresh status before retrying.</AlertDescription>
+            </Alert>
+          )}
 
           {isRunning && (
             <div className="flex flex-col items-center justify-center p-12 space-y-4">
@@ -187,10 +209,11 @@ export function BaoPreview({ wizardId, step }: WizardStepComponentProps) {
               <Button
                 onClick={startPreview}
                 size="lg"
+                disabled={runActive}
                 data-testid="button-start-preview"
               >
                 <Play className="mr-2 h-4 w-4" />
-                Compute Preview
+                {runFailed ? "Retry Preview" : "Compute Preview"}
               </Button>
             </div>
           )}
@@ -227,10 +250,11 @@ export function BaoPreview({ wizardId, step }: WizardStepComponentProps) {
                   variant="outline"
                   size="sm"
                   onClick={startPreview}
+                  disabled={runActive}
                   data-testid="button-recompute-preview"
                 >
                   <Play className="mr-2 h-4 w-4" />
-                  Recompute
+                  {runFailed ? "Retry Preview" : "Recompute"}
                 </Button>
               </div>
 

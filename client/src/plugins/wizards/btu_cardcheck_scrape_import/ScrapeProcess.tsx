@@ -57,14 +57,24 @@ export function ScrapeProcess({
     enabled: !!data?.cardcheckDefinitionId && !initialProcessing && !processResults,
   });
 
-  const { data: wizard } = useQuery<any>({
+  const { data: wizard, error: statusError } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
-    refetchInterval: initialProcessing || isStarting ? 5000 : false,
+    refetchInterval: (query) => {
+      const status = (query.state.data as any)?.data?.progress?.[step.id]?.status;
+      return initialProcessing || isStarting || status === "in_progress" ? 5000 : false;
+    },
   });
 
+  const runProgress = statusError ? undefined : (wizard?.data?.progress?.[step.id] ?? step.progress);
+  const runFailed = runProgress?.status === "failed";
+  const runActive = runProgress?.status === "in_progress";
+  const runTerminal = runFailed || runProgress?.status === "completed";
+  const runHeartbeat = Date.parse(runProgress?.heartbeatAt ?? "");
+  const staleRun = runActive &&
+    (!Number.isFinite(runHeartbeat) || Date.now() - runHeartbeat > 120_000);
   const liveProgress: ProcessProgress | null =
     wizard?.data?.processProgress || initialProgress;
-  const liveIsProcessing = liveProgress?.status === "processing";
+  const liveIsProcessing = liveProgress?.status === "processing" || runActive;
   const progressPercent =
     liveProgress && liveProgress.total > 0
       ? Math.round((liveProgress.current / liveProgress.total) * 100)
@@ -116,7 +126,37 @@ export function ScrapeProcess({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!liveIsProcessing && !isStarting && !hasCompleted && (
+          {statusError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Cannot read run status</AlertTitle>
+              <AlertDescription>The fetch may still be running. Refresh status before taking action; unreadable status is not proof of failure.</AlertDescription>
+            </Alert>
+          )}
+          {runFailed && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Signature fetch failed</AlertTitle>
+              <AlertDescription>
+                {runProgress?.error || "Some PDFs may already have been fetched or attached."} Do not repeat this action; ask an administrator to reconcile the existing card checks and attachments.
+              </AlertDescription>
+            </Alert>
+          )}
+          {staleRun && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Signature fetch may still be running</AlertTitle>
+              <AlertDescription>A stale heartbeat is not proof that work stopped. Refresh status before taking action.</AlertDescription>
+            </Alert>
+          )}
+          {runProgress?.status === "completed" && !liveResults && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Fetch result is not available</AlertTitle>
+              <AlertDescription>The run completed without saved results. Do not repeat it; ask an administrator to reconcile existing attachments.</AlertDescription>
+            </Alert>
+          )}
+          {!liveIsProcessing && !isStarting && !hasCompleted && !runTerminal && !statusError && (
             <div className="flex flex-col items-center justify-center p-12 space-y-4">
               <Globe className="h-12 w-12 text-muted-foreground" />
               <div className="text-center space-y-2">
