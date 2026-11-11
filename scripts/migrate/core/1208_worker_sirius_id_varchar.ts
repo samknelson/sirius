@@ -25,7 +25,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1207,
+  version: 1208,
   name: "worker_sirius_id_varchar",
   description: "Convert worker Sirius IDs to varchar while preserving values and policy-gated allocation.",
   up,

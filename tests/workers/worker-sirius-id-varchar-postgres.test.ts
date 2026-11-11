@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { db } from "../../server/storage/db";
-import { applyWorkerSiriusIdVarcharMigration } from "../../scripts/migrate/core/1207_worker_sirius_id_varchar";
+import { applyWorkerSiriusIdVarcharMigration } from "../../scripts/migrate/core/1208_worker_sirius_id_varchar";
 import {
   workerSiriusIdDefaultFunctionSql,
   workerSiriusIdSequenceCreateSql,

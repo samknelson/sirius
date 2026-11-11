@@ -57,12 +57,12 @@ describe("worker Sirius ID authority", () => {
   });
 
   it("converts existing worker IDs without changing their text values", async () => {
-    const migration = await import("../../scripts/migrate/core/1207_worker_sirius_id_varchar");
-    expect(migration.default.version).toBe(1207);
+    const migration = await import("../../scripts/migrate/core/1208_worker_sirius_id_varchar");
+    expect(migration.default.version).toBe(1208);
     // The migration uses a direct integer-to-varchar cast and does not rewrite
     // identifiers, remove uniqueness, or remove the policy-aware default.
     const source = await import("node:fs/promises").then((fs) =>
-      fs.readFile(new URL("../../scripts/migrate/core/1207_worker_sirius_id_varchar.ts", import.meta.url), "utf8"),
+      fs.readFile(new URL("../../scripts/migrate/core/1208_worker_sirius_id_varchar.ts", import.meta.url), "utf8"),
     );
     expect(source).toContain("TYPE varchar USING sirius_id::varchar");
     expect(source).toContain("SET DEFAULT worker_sirius_id_default()");

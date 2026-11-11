@@ -21,7 +21,7 @@
  * Exits 0 on pass, 1 on failure.
  */
 import { execSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { rehearseProcessProvenanceMigrations } from "./migration-contracts/process-provenance";
 
@@ -82,7 +82,8 @@ function addedFiles(base: string | undefined): string[] {
   } catch {
     // ignore
   }
-  const candidates = Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)));
+  const candidates = Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)))
+    .filter((file) => existsSync(file));
   if (!base) return candidates;
 
   // A re-parented carrying branch can contain the same migration path at its
@@ -134,7 +135,7 @@ function checkCoreVersionCollisions(base: string | undefined): void {
   let allCore: string[] = [];
   try {
     allCore = execSync("git ls-files scripts/migrate/core", { encoding: "utf8" })
-      .split("\n").map(s => s.trim()).filter(Boolean);
+      .split("\n").map(s => s.trim()).filter((file) => Boolean(file) && existsSync(file));
   } catch {
     // ignore
   }
