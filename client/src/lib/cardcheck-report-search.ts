@@ -1,6 +1,6 @@
 export interface SearchableCardcheckReportItem {
   workerName: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
 }
 
 export function matchesCardcheckReportSearch(

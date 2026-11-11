@@ -21,7 +21,7 @@ import {
 
 interface EligibleWorker {
   id: string;
-  siriusId: number;
+  siriusId: string | null;
   displayName: string;
 }
 

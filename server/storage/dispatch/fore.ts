@@ -23,7 +23,7 @@ export const validate = createNoopValidator<InsertDispatchJobFore, DispatchJobFo
 export interface DispatchJobForeWithWorker extends DispatchJobFore {
   worker?: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     contact?: {
       id: string;
       given: string | null;
@@ -35,7 +35,7 @@ export interface DispatchJobForeWithWorker extends DispatchJobFore {
 
 export interface ForeEligibleWorker {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
 }
 

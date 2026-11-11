@@ -32,7 +32,7 @@ const PAGE_SIZE = 50;
 
 interface OfferRow {
   id: string;
-  siriusId: number;
+  siriusId: string | null;
   name: string;
   interview: { id: string; status: string } | null;
 }

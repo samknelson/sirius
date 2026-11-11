@@ -28,7 +28,7 @@ const GRIEVANCE_BACK_LINK = {
 
 export interface GrievanceLinkedWorker {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   primary: boolean;
 }

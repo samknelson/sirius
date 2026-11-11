@@ -64,7 +64,7 @@ export interface CommSummary {
 export interface DispatchWithRelations extends Dispatch {
   worker?: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     contact?: {
       id: string;
       given: string | null;

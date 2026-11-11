@@ -11,7 +11,7 @@ import { EmploymentStatus } from "@/lib/entity-types";
 
 interface EmployerWorker {
   workerId: string;
-  workerSiriusId: number;
+  workerSiriusId: string | null;
   contactName: string;
   employmentHistoryId: string;
   employmentStatusId: string | null;

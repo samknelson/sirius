@@ -78,7 +78,7 @@ export interface EdlsPassportAssignment {
   id: string;
   workerGiven: string | null;
   workerFamily: string | null;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   /** Member status code in the industry of the sheet's employer. */
   memberStatusCode: string | null;
   /** Value of the worker id whose type has sirius id `freeman_ein`. */
@@ -137,7 +137,7 @@ interface RawAssignmentRow {
   crewId: string;
   data: unknown;
   workerId: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   given: string | null;
   family: string | null;
   memberStatusCode: string | null;

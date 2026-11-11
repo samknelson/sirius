@@ -404,7 +404,7 @@ export interface BaoDisabilityCreditStorage {
   /** Display references (nullable Sirius ID + name) for the given workers. */
   getWorkerRefs(
     workerIds: string[],
-  ): Promise<Array<{ workerId: string; siriusId: number | null; name: string }>>;
+  ): Promise<Array<{ workerId: string; siriusId: string | null; name: string }>>;
   /** Most recent DC event per listed worker (latest-activity context). */
   getLatestEventPerWorker(
     workerIds: string[],
@@ -1743,7 +1743,7 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
 
     async getWorkerRefs(
       workerIds: string[],
-    ): Promise<Array<{ workerId: string; siriusId: number | null; name: string }>> {
+    ): Promise<Array<{ workerId: string; siriusId: string | null; name: string }>> {
       if (workerIds.length === 0) return [];
       const rows = await getClient()
         .select({

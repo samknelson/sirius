@@ -43,7 +43,7 @@ interface VerifyRow {
   dateOfBirth: string | null;
   candidates: Array<{
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     displayName: string | null;
     given: string | null;
     family: string | null;

@@ -338,7 +338,7 @@ async function main() {
     const ssnRepair = runT3();
     check("source-missing stale SSN owner repair exits 0", ssnRepair.status === 0, ssnRepair.result?.rejectGate);
     check("SSN repair applied once", ssnRepair.result?.detail?.ssnOwnershipRepairs?.applied === 1, ssnRepair.result?.detail?.ssnOwnershipRepairs);
-    const afterRepair = await rows<{ id: string; sirius_id: number; ssn: string | null }>(
+    const afterRepair = await rows<{ id: string; sirius_id: string; ssn: string | null }>(
       sql`SELECT id, sirius_id, ssn FROM workers WHERE id IN (${w3.s2Id}, ${w4.s2Id})`,
     );
     check(
@@ -349,8 +349,8 @@ async function main() {
     check(
       "SSN-only transfer preserves both workers and Sirius IDs",
       afterRepair.length === 2 &&
-        Number(afterRepair.find((r) => r.id === w3.s2Id)?.sirius_id) === 99901013 &&
-        Number(afterRepair.find((r) => r.id === w4.s2Id)?.sirius_id) === 99901014,
+        afterRepair.find((r) => r.id === w3.s2Id)?.sirius_id === "99901013" &&
+        afterRepair.find((r) => r.id === w4.s2Id)?.sirius_id === "99901014",
       afterRepair.map((r) => ({ id: r.id, siriusId: r.sirius_id, hasSsn: r.ssn != null })),
     );
 
@@ -359,8 +359,7 @@ async function main() {
     check("ct1 email loaded", contact1?.email === "sync-doe-999@example.com");
     check("ct1 dob from worker", String(contact1?.birth_date).startsWith("1980-01-01"), contact1?.birth_date);
     const worker1 = (await rows<any>(sql`SELECT sirius_id FROM workers WHERE id = ${w1.s2Id}`))[0];
-    // workers.sirius_id is a serial (integer) column — compare numerically
-    check("wk1 sirius_id", Number(worker1?.sirius_id) === 99901011, worker1?.sirius_id);
+    check("wk1 sirius_id", worker1?.sirius_id === "99901011", worker1?.sirius_id);
     const phones1 = await rows<any>(sql`SELECT phone_number, friendly_name FROM contact_phone WHERE contact_id = ${c1.s2Id} ORDER BY friendly_name`);
     check("ct1 has Primary + Alt phones", phones1.length === 2 && phones1.some((p) => p.friendly_name === "Primary" && p.phone_number === "+16175550101") && phones1.some((p) => p.friendly_name === "Alt" && p.phone_number === "+16175550102"), phones1);
     // deleteContactPostal soft-deletes (is_active=false) — assert active rows only

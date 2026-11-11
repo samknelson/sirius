@@ -78,7 +78,7 @@ interface QueueEntry {
   completedAt: string | null;
   lastError: string | null;
   resultSummary: any;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   workerDisplayName: string | null;
 }
 

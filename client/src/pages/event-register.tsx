@@ -18,7 +18,7 @@ import { UserPlus, Search } from "lucide-react";
 
 interface WorkerWithDetails {
   id: string;
-  sirius_id: number | null;
+  sirius_id: string | null;
   contact_id: string;
   contact_name: string | null;
   given: string | null;

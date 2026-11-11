@@ -70,7 +70,7 @@ async function assertAvailableAllowed(workerId: string): Promise<void> {
 export interface WorkerDispatchStatusWithRelations extends WorkerDispatchStatus {
   worker?: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     contact?: {
       id: string;
       given: string | null;

@@ -14,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
   <BenefitDetailsModal open onClose={() => {}} entry={{
     id: "queue", workerId: "subscriber", status: failed ? "failed" : "success",
     triggerSource: "fixture", attempts: 1, completedAt: null, lastError: failed ? "Plugin error: fixture outage" : null,
-    workerSiriusId: 1, workerDisplayName: "Subscriber fixture",
+    workerSiriusId: "1", workerDisplayName: "Subscriber fixture",
     resultSummary: {
       policyName: "Fixture policy",
       people: [{ workerId: "child", sourceRelationId: "relation", name: "Child fixture" }],

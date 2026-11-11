@@ -42,7 +42,7 @@ import { Plus, Pencil, Trash2, Users } from "lucide-react";
 
 interface OtherWorker {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   given: string | null;
   family: string | null;
@@ -68,7 +68,7 @@ interface WorkerRelationType {
 }
 
 interface WorkerSearchResult {
-  workers: Array<{ id: string; siriusId: number | null; displayName: string }>;
+  workers: Array<{ id: string; siriusId: string | null; displayName: string }>;
   total: number;
 }
 

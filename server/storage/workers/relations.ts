@@ -29,7 +29,7 @@ import { enqueueWorkerBenefitRoleHistoryInvalidations } from "../trust/worker-be
 
 export interface WorkerRelationOtherWorker {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   given: string | null;
   family: string | null;

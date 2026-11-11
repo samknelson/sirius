@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { requireWorkerSiriusId } from "../../server/plugins/trust/provider-edi/base";
 
 describe("required EDI worker Sirius IDs", () => {
-  it.each([null, -1, 1.5])("rejects an invalid worker Sirius ID (%s)", (workerSiriusId) => {
+  it.each([null, "", " "])("rejects an invalid worker Sirius ID (%s)", (workerSiriusId) => {
     expect(() =>
       requireWorkerSiriusId(
         {
@@ -19,12 +19,12 @@ describe("required EDI worker Sirius IDs", () => {
     );
   });
 
-  it("returns the numeric Sirius ID as the carrier identifier", () => {
+  it("returns the string Sirius ID as the carrier identifier", () => {
     expect(
       requireWorkerSiriusId(
         {
           contactId: "contact-4172",
-          workerSiriusId: 4172,
+          workerSiriusId: "4172",
           givenName: "Covered",
           familyName: "Worker",
         },

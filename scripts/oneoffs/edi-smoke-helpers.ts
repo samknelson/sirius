@@ -94,7 +94,7 @@ export interface PersonSpec {
 export async function makePerson(
   created: Created,
   spec: PersonSpec,
-): Promise<{ workerId: string; contactId: string; siriusId: number }> {
+): Promise<{ workerId: string; contactId: string; siriusId: string }> {
   const [c] = await db
     .insert(contacts)
     .values({
@@ -112,6 +112,9 @@ export async function makePerson(
     .insert(workers)
     .values({ contactId: c.id, ssn: spec.ssn })
     .returning();
+  if (w.siriusId == null) {
+    throw new Error("EDI smoke workers need an allocated Sirius ID; enable S2 authority for this test database.");
+  }
   created.workerIds.push(w.id);
   if (spec.address) {
     const [p] = await db

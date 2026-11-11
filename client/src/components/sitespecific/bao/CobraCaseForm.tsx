@@ -38,7 +38,7 @@ interface TrustBenefitOption {
 interface WorkerSearchHit {
   id: string;
   displayName: string | null;
-  siriusId: number | null;
+  siriusId: string | null;
 }
 
 export interface CobraCaseFormValues {

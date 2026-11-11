@@ -22,13 +22,14 @@ describe("worker search clauses", () => {
     expect(planWorkerSearch("  smith  ", {}).name).toBe("smith");
   });
 
-  it("treats an all-digit input as a worker number", () => {
-    expect(planWorkerSearch("4172", {}).siriusId).toBe(4172);
+  it("preserves worker Sirius ID strings without parsing", () => {
+    expect(planWorkerSearch("004172", {}).siriusId).toBe("004172");
+    expect(planWorkerSearch("W-41A72", {}).siriusId).toBe("W-41A72");
   });
 
-  it("does not treat a mixed string as a worker number", () => {
-    expect(planWorkerSearch("41a72", {}).siriusId).toBeNull();
-    expect(planWorkerSearch("417-2", {}).siriusId).toBeNull();
+  it("drops the Sirius ID clause only for an empty query", () => {
+    expect(planWorkerSearch("", {}).siriusId).toBeNull();
+    expect(planWorkerSearch("  ", {}).siriusId).toBeNull();
   });
 
   it("drops the identifier clause when no id type is configured", () => {

@@ -24,13 +24,13 @@ export const validate = createNoopValidator();
 
 export interface EligibleWorker {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string;
   seniorityDate: Date | null;
 }
 
 export interface EligibleWorkersFilters {
-  siriusId?: number;
+  siriusId?: string;
   name?: string;
   excludeWithDispatches?: boolean; // Exclude workers who already have a dispatch for this job
   /**
@@ -72,7 +72,7 @@ export interface PluginCheckResult {
 export interface WorkerEligibilityCheckResult {
   workerId: string;
   workerName: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   isEligible: boolean;
   seniorityPosition: number | null;
   totalEligible: number | null;

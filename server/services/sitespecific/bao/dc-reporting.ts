@@ -47,7 +47,7 @@ import { addMonthsYmd } from "@shared/utils/date";
 
 export interface DcWorkerRef {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   name: string;
 }
 

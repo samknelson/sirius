@@ -21,7 +21,7 @@ import {
 import { getApiErrorMessage } from "@/lib/queryClient";
 import { formatYmdMonth } from "@shared/utils/date";
 
-type WorkerRef = { workerId: string; siriusId: number | null; name: string };
+type WorkerRef = { workerId: string; siriusId: string | null; name: string };
 
 type FmlaEligibleResponse = {
   fmlaEligible: Array<{ worker: WorkerRef; fmlaMonths: string[] }>;

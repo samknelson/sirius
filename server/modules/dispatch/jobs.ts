@@ -533,15 +533,12 @@ export function registerDispatchJobsRoutes(
         const offset = parseInt(offsetParam as string) || 0;
 
         const filters: {
-          siriusId?: number;
+          siriusId?: string;
           name?: string;
           excludeWithDispatches?: boolean;
         } = {};
-        if (siriusIdParam) {
-          const parsed = parseInt(siriusIdParam as string);
-          if (!isNaN(parsed)) {
-            filters.siriusId = parsed;
-          }
+        if (typeof siriusIdParam === "string" && siriusIdParam.trim()) {
+          filters.siriusId = siriusIdParam.trim();
         }
         if (nameParam && typeof nameParam === "string" && nameParam.trim()) {
           filters.name = nameParam.trim();
@@ -588,12 +585,9 @@ export function registerDispatchJobsRoutes(
         const limit = Math.min(parseInt(limitParam as string) || 100, 500);
         const offset = parseInt(offsetParam as string) || 0;
 
-        const filters: { siriusId?: number; name?: string } = {};
-        if (siriusIdParam) {
-          const parsed = parseInt(siriusIdParam as string);
-          if (!isNaN(parsed)) {
-            filters.siriusId = parsed;
-          }
+        const filters: { siriusId?: string; name?: string } = {};
+        if (typeof siriusIdParam === "string" && siriusIdParam.trim()) {
+          filters.siriusId = siriusIdParam.trim();
         }
         if (nameParam && typeof nameParam === "string" && nameParam.trim()) {
           filters.name = nameParam.trim();

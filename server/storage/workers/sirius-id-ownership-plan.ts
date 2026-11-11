@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-/** Hashes from the numeric-displacement planner are deliberately incompatible. */
-export const SIRIUS_ID_OWNERSHIP_PLAN_VERSION = "s1-sirius-id-ownership-v2-null-shell-retirement";
+/** Approval hashes predate the varchar worker-ID contract and are incompatible. */
+export const SIRIUS_ID_OWNERSHIP_PLAN_VERSION = "s1-sirius-id-ownership-v3-string-ids";
 
 export interface SiriusIdClaim {
   sourceNid: number;
@@ -13,10 +13,16 @@ export interface SiriusIdClaim {
   sourceContactProblem?: "missing" | "non_numeric" | "out_of_range" | null;
 }
 
+function numericSourceId(value: string | null): number | null {
+  if (value == null || !/^\d+$/.test(value)) return null;
+  const parsed = BigInt(value);
+  return parsed >= 1n && parsed <= 2_147_483_647n ? Number(parsed) : null;
+}
+
 export interface SiriusIdWorker {
   id: string;
-  /** Relationship shells may intentionally have no local numeric ID. */
-  siriusId: number | null;
+  /** Relationship shells may intentionally have no local Sirius ID. */
+  siriusId: string | null;
   /** UUID of the target contact, required to verify a relationship shell. */
   contactId?: string | null;
   data: Record<string, unknown> | null;
@@ -64,9 +70,9 @@ export type SiriusIdOwnershipAction =
 
 export interface SiriusIdRekey {
   workerId: string;
-  fromSiriusId: number | null;
+  fromSiriusId: string | null;
   /** NULL is intentional parking for a shell or for an exact authoritative swap. */
-  toSiriusId: number | null;
+  toSiriusId: string | null;
   reason: "mapped_rekey" | "retire_shell";
   sourceNid: number | null;
 }
@@ -101,7 +107,7 @@ export interface SiriusIdOwnershipPlan {
 
 export interface SiriusIdWorkerEvidence {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   contactId: string | null;
   shellContactNid: number | null;
   workerMappings: Array<{ sourceNid: number; stub: boolean; loader: string }>;
@@ -388,13 +394,16 @@ export function planSiriusIdOwnership(
     };
   }
 
-  const claimsById = new Map<number, SiriusIdClaim[]>();
+  const claimsById = new Map<string, SiriusIdClaim[]>();
   const claimByNid = new Map<number, SiriusIdClaim>();
   for (const claim of snapshot.claims) {
     claimByNid.set(claim.sourceNid, claim);
-    if (claim.siriusId != null) claimsById.set(claim.siriusId, [...(claimsById.get(claim.siriusId) ?? []), claim]);
+    if (claim.siriusId != null) {
+      const key = String(claim.siriusId);
+      claimsById.set(key, [...(claimsById.get(key) ?? []), claim]);
+    }
   }
-  const ownerBySiriusId = new Map<number, SiriusIdWorker>();
+  const ownerBySiriusId = new Map<string, SiriusIdWorker>();
   for (const worker of snapshot.workers) if (worker.siriusId != null) ownerBySiriusId.set(worker.siriusId, worker);
   const mappedWorkerBySource = new Map<number, SiriusIdWorker[]>();
   for (const worker of snapshot.workers) for (const mapping of worker.workerMappings) {
@@ -437,7 +446,7 @@ export function planSiriusIdOwnership(
         "The S1 worker mapping table is unavailable, so exact source ownership cannot be proven.");
       continue;
     }
-    if ((claimsById.get(claim.siriusId) ?? []).length !== 1) {
+    if ((claimsById.get(String(claim.siriusId)) ?? []).length !== 1) {
       decide(claim.sourceNid, claim.siriusId, "source_duplicate", null, null,
         "S1 has more than one staged claimant for this Sirius ID.");
       continue;
@@ -458,7 +467,8 @@ export function planSiriusIdOwnership(
         "The mapped S2 worker does not have one canonical, non-stub S1 worker mapping; exact source ownership is ambiguous.");
       continue;
     }
-    const owner = ownerBySiriusId.get(claim.siriusId) ?? null;
+    const claimedSiriusId = String(claim.siriusId);
+    const owner = ownerBySiriusId.get(claimedSiriusId) ?? null;
     if (!claimant) {
       if (!owner) decide(claim.sourceNid, claim.siriusId, "new_claim_reserved", null, null,
         "No S2 row owns this authoritative ID; reserve it for the new staged worker.");
@@ -482,7 +492,7 @@ export function planSiriusIdOwnership(
       }
       continue;
     }
-    if (claimant.id === owner?.id || claimant.siriusId === claim.siriusId) {
+    if (claimant.id === owner?.id || claimant.siriusId === claimedSiriusId) {
       decide(claim.sourceNid, claim.siriusId, "correct", claimant.id, owner?.id ?? null,
         "The exact mapped S2 worker already owns the authoritative ID.");
       continue;
@@ -523,7 +533,7 @@ export function planSiriusIdOwnership(
       }
     }
     requestedRekeys.set(claimant.id, {
-      workerId: claimant.id, fromSiriusId: claimant.siriusId, toSiriusId: claim.siriusId, reason: "mapped_rekey", sourceNid: claim.sourceNid,
+      workerId: claimant.id, fromSiriusId: claimant.siriusId, toSiriusId: claimedSiriusId, reason: "mapped_rekey", sourceNid: claim.sourceNid,
     });
     decide(claim.sourceNid, claim.siriusId, "mapped_rekey", claimant.id, owner?.id ?? null,
       owner ? "Exact S1 mappings prove both sides; workers are parked at NULL under lock before authoritative rekeys."
@@ -557,28 +567,28 @@ export function planSiriusIdOwnership(
       if (requestedRekeys.has(shell.id)) continue;
       const proof = shellProof(shell, contactMappings);
       if (proof === "missing_marker_or_mapping") {
-        decide(null, shell.siriusId, "blocked_shell_provenance_missing", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "blocked_shell_provenance_missing", null, shell.id,
           "Retirement requires the persisted migrationShell marker and a shell-worker mapping.");
       } else if (proof === "ambiguous_mapping" || proof === "has_worker_mapping") {
-        decide(null, shell.siriusId, "blocked_shell_provenance_ambiguous", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "blocked_shell_provenance_ambiguous", null, shell.id,
           "Retirement refuses ambiguous shell provenance or any S1 worker mapping.");
       } else if (proof === "authoritative_allocation") {
-        decide(null, shell.siriusId, "blocked_shell_authoritative_entitlement", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "blocked_shell_authoritative_entitlement", null, shell.id,
           "A shell marked as authoritative is never eligible for retirement.");
       } else if (proof === "marker_contact_mismatch" || proof === "noncanonical_mapping" || proof === "contact_mapping_unknown" || proof === "allocation_invalid") {
-        decide(null, shell.siriusId, "blocked_shell_provenance_missing", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "blocked_shell_provenance_missing", null, shell.id,
           "Retirement requires canonical marker, shell-worker/contact mappings, and a recognized allocation record when present.");
       } else if (shellHasCurrentSourceWorker(shell)) {
-        decide(null, shell.siriusId, "blocked_shell_authoritative_entitlement", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "blocked_shell_authoritative_entitlement", null, shell.id,
           "The shell contact now has a staged S1 worker; relationship resolution must retarget it before retirement.");
       } else if ((claimsById.get(shell.siriusId!) ?? []).length > 0) {
-        decide(null, shell.siriusId, "blocked_shell_authoritative_entitlement", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "blocked_shell_authoritative_entitlement", null, shell.id,
           "A staged authoritative S1 entitlement exists for this ID; review it through its exact source claim.");
       } else {
         requestedRekeys.set(shell.id, {
           workerId: shell.id, fromSiriusId: shell.siriusId!, toSiriusId: null, reason: "retire_shell", sourceNid: null,
         });
-        decide(null, shell.siriusId, "retire_shell", null, shell.id,
+        decide(null, numericSourceId(shell.siriusId), "retire_shell", null, shell.id,
           "Explicitly selected proven relationship shell has no staged authoritative entitlement and is cleared to NULL.");
       }
     }

@@ -17,7 +17,7 @@ export const validate = createNoopValidator<InsertEmployer, Employer>();
 
 export interface EmployerWorker {
   workerId: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   contactName: string | null;
   employmentHistoryId: string | null;
   employmentStatusId: string | null;

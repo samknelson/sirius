@@ -18,7 +18,7 @@ export const validate = createNoopValidator();
 export interface WorkerDispatchDncWithRelations extends WorkerDispatchDnc {
   worker?: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     contact?: {
       id: string;
       given: string | null;

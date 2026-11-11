@@ -59,7 +59,7 @@ import { logger } from "../logger";
 import { getEnvironmentVariable } from "../config/env-registry";
 import type { DatabaseState } from "./bringup-report";
 import {
-  workerSiriusIdDefaultFunctionSql,
+  workerSiriusIdVarcharDefaultFunctionSql,
   workerSiriusIdSequenceCreateSql,
   workerSiriusIdSequenceOwnershipSql,
 } from "./worker-sirius-id-default-sql";
@@ -354,11 +354,11 @@ export async function ensureEmptyDatabaseBootstrap(
     // must exist before the table DDL is parsed on a newly bootstrapped DB.
     // Its variables lookup is dynamic so the variables table can be created
     // later in this same transaction.
-    await storage.rawSql.execute(workerSiriusIdDefaultFunctionSql);
-    // `workers.sirius_id` is an integer rather than Drizzle's `serial` so
-    // its default can be policy-aware. Create and retain the serial-compatible
+    await storage.rawSql.execute(workerSiriusIdVarcharDefaultFunctionSql);
+    // `workers.sirius_id` is varchar rather than Drizzle's `serial` so its
+    // default can be policy-aware. Create and retain the integer allocation
     // sequence explicitly; the function resolves it through the ownership
-    // association after the workers table exists.
+    // association after the workers table exists, then returns its value as text.
     await storage.rawSql.execute(workerSiriusIdSequenceCreateSql);
 
     // ---- Execute: enums → tables (FK order) → indexes ----

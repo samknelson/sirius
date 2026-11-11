@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface WorkerSearchResult {
   id: string;
-  siriusId: number;
+  siriusId: string | null;
   displayName: string;
 }
 

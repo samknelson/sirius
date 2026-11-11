@@ -106,7 +106,7 @@ export interface GrievanceListItem extends Grievance {
 
 export interface GrievanceLinkedWorker {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   primary: boolean;
 }

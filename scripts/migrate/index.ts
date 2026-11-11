@@ -271,6 +271,7 @@ import "./core/1204_adopt_template_assets";
 import "./core/1205_index_wmb_dependent_results";
 import "./core/1206_lock_ledger_identity";
 import "./core/1207_normalize_trust_benefit_colors";
+import "./core/1207_worker_sirius_id_varchar";
 
 export {
   runMigrations,

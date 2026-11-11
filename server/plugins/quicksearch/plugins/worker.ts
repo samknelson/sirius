@@ -33,8 +33,8 @@ export type SsnPlan = { mode: "full" | "last4"; digits: string };
 export interface WorkerSearchPlan {
   /** Contains-match on the display name. Always applies. */
   name: string;
-  /** The whole worker number, or null when the input is not one. */
-  siriusId: number | null;
+  /** Exact worker Sirius ID, or null when the input is empty. */
+  siriusId: string | null;
   /** Configured id types to look in — empty means the clause is dropped. */
   workerIdTypeIds: string[];
   /** The exact identifier to look for, or null when the clause is dropped. */
@@ -68,9 +68,6 @@ export function planWorkerSearch(
     ? settings.idTypeIds.filter((v): v is string => typeof v === "string" && v.length > 0)
     : [];
 
-  // The worker number is the whole number, never a prefix of one.
-  const numeric = /^\d+$/.test(query) && Number.isSafeInteger(Number(query));
-
   // A worker ID matches exactly. A partial identifier is not an identifier, so
   // there is deliberately no prefix search here.
   const workerIdValue = idTypeIds.length > 0 && query.length > 0 ? query : null;
@@ -91,7 +88,7 @@ export function planWorkerSearch(
 
   return {
     name: query,
-    siriusId: numeric ? Number(query) : null,
+    siriusId: query || null,
     workerIdTypeIds: idTypeIds,
     workerIdValue,
     phoneDigits,

@@ -925,7 +925,7 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     // candidates from the Verify scan when we have them.
     const verifyRows = (data.verifyNewWorkers?.rows || []) as Array<{
       ssnDigits?: string;
-      candidates?: Array<{ displayName?: string | null; siriusId?: number | null }>;
+      candidates?: Array<{ displayName?: string | null; siriusId?: string | null }>;
     }>;
     const verifyRow = verifyRows.find((r) => r.ssnDigits === digits);
     const candidates = verifyRow?.candidates || [];

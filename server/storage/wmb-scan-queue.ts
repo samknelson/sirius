@@ -27,7 +27,7 @@ const ENQUEUE_WRITE_BATCH_SIZE = 500;
 export const validate = createNoopValidator();
 
 export interface QueueEntryWithWorker extends TrustWmbScanQueue {
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   workerDisplayName: string | null;
 }
 

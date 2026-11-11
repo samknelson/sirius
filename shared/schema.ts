@@ -334,7 +334,7 @@ export const workers = pgTable("workers", {
   // The policy-aware database default returns NULL while S1/external is
   // authoritative.  It only advances the retained serial sequence after the
   // administrator deliberately enables the S2 allocation authority.
-  siriusId: integer("sirius_id").default(sql`worker_sirius_id_default()`).unique(),
+  siriusId: varchar("sirius_id").default(sql`worker_sirius_id_default()`).unique(),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),

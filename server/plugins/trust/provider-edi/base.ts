@@ -324,7 +324,7 @@ export interface EdiPerson {
   ssn: string | null;
   contactId: string;
   /** Numeric worker Sirius ID (legacy `field_sirius_id`), when assigned. */
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   email: string | null;
   givenName: string | null;
   familyName: string | null;
@@ -669,15 +669,14 @@ export function requireWorkerSiriusId(
 ): string {
   if (
     person.workerSiriusId == null ||
-    !Number.isSafeInteger(person.workerSiriusId) ||
-    person.workerSiriusId < 0
+    !person.workerSiriusId.trim()
   ) {
     const name = displayName(person) || person.contactId;
     throw new Error(
       `${providerName} EDI report cannot be generated: worker "${name}" (${person.contactId}) has no Sirius ID.`,
     );
   }
-  return String(person.workerSiriusId);
+  return person.workerSiriusId;
 }
 
 /** Common postal → row fields (street/city/state/5-digit zip). */

@@ -79,11 +79,11 @@ export async function readSiriusIdOwnershipSnapshotWithClient(client: SqlClient)
       )) AS data
       FROM workers ORDER BY id
   `);
-  const workers = rowsOf<{ id: string; contact_id: string | null; sirius_id: number | string | null; data: Record<string, unknown> | null }>(workersResult)
+  const workers = rowsOf<{ id: string; contact_id: string | null; sirius_id: string | null; data: Record<string, unknown> | null }>(workersResult)
     .map((row) => ({
       id: String(row.id),
       contactId: row.contact_id == null ? null : String(row.contact_id),
-      siriusId: row.sirius_id == null ? null : Number(row.sirius_id),
+      siriusId: row.sirius_id == null ? null : String(row.sirius_id),
       data: row.data ?? null,
       workerMappings: [] as Array<{ sourceNid: number; stub: boolean; loader: string }>,
       shellMappings: [] as Array<{ sourceNid: number; stub: boolean; loader: string }>,
@@ -139,7 +139,15 @@ export async function advanceWorkerSequenceSafely(): Promise<void> {
       GREATEST(
         1,
         COALESCE(pg_sequence_last_value(pg_get_serial_sequence('workers', 'sirius_id')::regclass), 0),
-        (SELECT COALESCE(MAX(sirius_id), 0) FROM workers)
+       LEAST(
+         2147483647::numeric,
+         COALESCE((
+           SELECT MAX(sirius_id::numeric)
+             FROM workers
+            WHERE sirius_id ~ '^[0-9]{1,10}$'
+              AND sirius_id::numeric <= 2147483647
+         ), 0)
+       )::bigint
       ),
       true
     )
@@ -325,8 +333,8 @@ export async function applySiriusIdOwnershipPlan(
       SELECT id, sirius_id FROM workers
        WHERE id IN (${sql.join(workerIds.map((id) => sql`${id}`), sql`, `)})
     `);
-    const actualByWorker = new Map(rowsOf<{ id: string; sirius_id: number | string | null }>(actualIds)
-      .map((row) => [String(row.id), row.sirius_id == null ? null : Number(row.sirius_id)]));
+    const actualByWorker = new Map(rowsOf<{ id: string; sirius_id: string | null }>(actualIds)
+      .map((row) => [String(row.id), row.sirius_id == null ? null : String(row.sirius_id)]));
     if (plan.rekeys.some((rekey) => actualByWorker.get(rekey.workerId) !== rekey.toSiriusId)) {
       throw new Error("Sirius ID postcondition was changed by a database rule or trigger; no changes were committed.");
     }

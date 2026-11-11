@@ -129,7 +129,7 @@ export interface WorkerCurrentBenefits {
 
 export interface WorkerWithDetails {
   id: string;
-  sirius_id: number | null;
+  sirius_id: string | null;
   contact_id: string;
   ssn: string | null;
   denorm_ws_id: string | null;
@@ -215,7 +215,7 @@ export interface WorkersPaginationParams extends WorkerBenefitRoleFilters, Worke
 }
 
 export interface WorkerSearchResult {
-  workers: Array<{ id: string; siriusId: number | null; displayName: string }>;
+  workers: Array<{ id: string; siriusId: string | null; displayName: string }>;
   total: number;
 }
 
@@ -288,7 +288,7 @@ export interface WorkerStorage {
     employerId?: string | null;
   }): Promise<Array<{
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     displayName: string | null;
     given: string | null;
     family: string | null;
@@ -307,7 +307,7 @@ export interface WorkerStorage {
   getSmsContactsByWorkerIds(workerIdsList: string[]): Promise<WorkerSmsContact[]>;
   getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     contactId: string;
     displayName: string | null;
     given: string | null;
@@ -318,7 +318,7 @@ export interface WorkerStorage {
    * ID. Relationship shells explicitly persist a NULL Sirius ID; their UUID
    * remains the relationship identity. */
   createWorkerForMigration(input: {
-    siriusId?: number;
+    siriusId?: string;
     contactId: string;
     ssn: string | null;
     data?: Record<string, unknown> | null;
@@ -331,7 +331,7 @@ export interface WorkerStorage {
   applyMigrationSiriusIdOwnershipPlan(input: ApplySiriusIdOwnershipPlanInput): Promise<ApplySiriusIdOwnershipPlanResult>;
   /** S1-migration only: absorb a stub worker created by an earlier loader —
    * stamps the real sirius_id / ssn / data onto the existing row. */
-  updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined>;
+  updateWorkerForMigration(workerId: string, updates: { siriusId?: string; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined>;
   createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -970,35 +970,20 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {
       const client = getClient();
       const trimmedQuery = query.trim();
-      
-      const numericQuery = parseInt(trimmedQuery, 10);
-      const isNumeric = !isNaN(numericQuery);
-      
-      let results;
-      if (isNumeric) {
-        results = await client
-          .select({
-            id: workers.id,
-            siriusId: workers.siriusId,
-            displayName: contacts.displayName,
-          })
-          .from(workers)
-          .innerJoin(contacts, eq(workers.contactId, contacts.id))
-          .where(eq(workers.siriusId, numericQuery))
-          .limit(limit);
-      } else {
-        results = await client
-          .select({
-            id: workers.id,
-            siriusId: workers.siriusId,
-            displayName: contacts.displayName,
-          })
-          .from(workers)
-          .innerJoin(contacts, eq(workers.contactId, contacts.id))
-          .where(sql`${contacts.displayName} ILIKE ${'%' + trimmedQuery + '%'}`)
-          .orderBy(contacts.displayName)
-          .limit(limit);
-      }
+      const results = await client
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          displayName: contacts.displayName,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(or(
+          eq(workers.siriusId, trimmedQuery),
+          sql`${contacts.displayName} ILIKE ${'%' + trimmedQuery + '%'}`,
+        ))
+        .orderBy(contacts.displayName)
+        .limit(limit);
       
       return {
         workers: results.map(r => ({
@@ -1432,7 +1417,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       employerId?: string | null;
     }): Promise<Array<{
       id: string;
-      siriusId: number | null;
+      siriusId: string | null;
       displayName: string | null;
       given: string | null;
       family: string | null;
@@ -1625,7 +1610,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
       id: string;
-      siriusId: number | null;
+      siriusId: string | null;
       contactId: string;
       displayName: string | null;
       given: string | null;
@@ -1679,7 +1664,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async createWorkerForMigration(input: {
-      siriusId?: number;
+      siriusId?: string;
       contactId: string;
       ssn: string | null;
       data?: Record<string, unknown> | null;
@@ -1732,7 +1717,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return applySiriusIdOwnershipPlan(input);
     },
 
-    async updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined> {
+    async updateWorkerForMigration(workerId: string, updates: { siriusId?: string; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined> {
       const client = getClient();
       const set: Record<string, unknown> = {};
       if (updates.siriusId !== undefined) set.siriusId = updates.siriusId;

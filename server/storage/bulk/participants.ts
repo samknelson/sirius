@@ -20,7 +20,7 @@ export interface BulkParticipantWithRelations {
   contactGiven: string | null;
   contactFamily: string | null;
   workerId: string | null;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   commStatus: string | null;
 }
 

@@ -24,7 +24,7 @@ import type { BaoDcCase } from "@shared/schema";
 
 type RecentlyDeniedRow = {
   case: BaoDcCase;
-  worker: { workerId: string; siriusId: number | null; name: string };
+  worker: { workerId: string; siriusId: string | null; name: string };
   denialYmd: string;
 };
 

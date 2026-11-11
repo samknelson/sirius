@@ -26,7 +26,7 @@ import type { WizardStepComponentProps } from "@/components/wizards/framework/ty
 
 interface MatchCandidate {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   given: string | null;
   family: string | null;

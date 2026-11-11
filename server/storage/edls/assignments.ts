@@ -89,7 +89,7 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
   commStatus?: string | null;
   worker: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     displayName: string | null;
     given: string | null;
     family: string | null;
@@ -101,7 +101,7 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
 
 export interface AvailableWorkerForSheet {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   contactId: string;
   displayName: string | null;
   given: string | null;
@@ -129,7 +129,7 @@ export interface WorkerAssignmentDetail {
 
 export interface WorkerAssignmentDetails {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   given: string | null;
   family: string | null;
@@ -199,7 +199,7 @@ export interface OutOfPopulationAssignmentRow {
   sheetTitle: string;
   sheetYmd: string;
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   startTime: string | null;
   taskName: string | null;
@@ -454,7 +454,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         accepted: boolean | null;
         data: unknown;
         workerRowId: string;
-        siriusId: number | null;
+        siriusId: string | null;
         displayName: string | null;
         given: string | null;
         family: string | null;
@@ -1026,7 +1026,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       
       const worker = workerResult.rows[0] as {
         workerId: string;
-        siriusId: number | null;
+        siriusId: string | null;
         displayName: string | null;
         given: string | null;
         family: string | null;

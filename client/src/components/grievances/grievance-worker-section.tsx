@@ -12,14 +12,14 @@ import type { GrievanceCardinality } from "@shared/schema";
 
 export interface SectionWorker {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   primary: boolean;
 }
 
 export interface WorkerSearchHit {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
 }
 

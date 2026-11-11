@@ -56,7 +56,7 @@ export type ComplianceView = z.infer<typeof complianceViewSchema>;
 export interface WorkerCommsRow {
   workerId: string;
   contactId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   name: string;
   commId: string | null;
   status: string | null;

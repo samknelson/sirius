@@ -14,7 +14,7 @@ import { HeartPulse, Inbox } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 
-type WorkerRef = { workerId: string; siriusId: number | null; name: string };
+type WorkerRef = { workerId: string; siriusId: string | null; name: string };
 
 interface DcSummaryContent {
   /** Linked count only — the complete list lives on its own page. */

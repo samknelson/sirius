@@ -25,7 +25,7 @@ interface PluginCheckResult {
 interface WorkerEligibilityCheckResult {
   workerId: string;
   workerName: string;
-  workerSiriusId: number;
+  workerSiriusId: string | null;
   isEligible: boolean;
   seniorityPosition: number | null;
   totalEligible: number | null;
@@ -34,7 +34,7 @@ interface WorkerEligibilityCheckResult {
 
 interface WorkerSearchResult {
   id: string;
-  siriusId: number;
+  siriusId: string | null;
   displayName: string;
 }
 

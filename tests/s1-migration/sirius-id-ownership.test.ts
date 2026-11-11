@@ -9,16 +9,23 @@ import {
   type SiriusIdOwnershipPlan,
   type SiriusIdReferenceRetention,
   type SiriusIdOwnershipSnapshot,
+  type SiriusIdWorker,
 } from "../../server/storage/workers/sirius-id-ownership-plan";
 import { projectSiriusIdOwnershipDashboard } from "../../server/modules/s1-migration-dashboard";
 
-const snapshot = (partial: Partial<SiriusIdOwnershipSnapshot>): SiriusIdOwnershipSnapshot => ({
+type TestWorker = Omit<SiriusIdWorker, "siriusId"> & { siriusId: string | number | null };
+const snapshot = (
+  partial: Omit<Partial<SiriusIdOwnershipSnapshot>, "workers"> & { workers?: TestWorker[] },
+): SiriusIdOwnershipSnapshot => ({
   stagingPresent: true,
   idMapPresent: true,
   claims: [],
-  workers: [],
   contactMappings: [{ sourceNid: 91, s2Id: "contact-91", stub: false, loader: "t3t1-contacts-workers" }],
   ...partial,
+  workers: partial.workers?.map((worker) => ({
+    ...worker,
+    siriusId: worker.siriusId == null ? null : String(worker.siriusId),
+  })) ?? [],
 });
 
 const shell = (id: string, siriusId: number | null, data: Record<string, unknown> | null = {}) => ({
@@ -99,7 +106,7 @@ describe("Sirius ID ownership planner", () => {
     });
     expect(reviewed.hardBlockers).toBe(0);
     expect(reviewed.rekeys).toEqual([{
-      workerId: "shell", fromSiriusId: 100, toSiriusId: null, reason: "retire_shell", sourceNid: 10,
+      workerId: "shell", fromSiriusId: "100", toSiriusId: null, reason: "retire_shell", sourceNid: 10,
     }]);
   });
 
@@ -118,7 +125,7 @@ describe("Sirius ID ownership planner", () => {
     expect(plan.decisions).toMatchObject([{ action: "retire_shell", currentOwnerWorkerId: "historic-shell" }]);
     expect(plan.hardBlockers).toBe(0);
     expect(plan.rekeys).toEqual([{
-      workerId: "historic-shell", fromSiriusId: 1_009_147, toSiriusId: null, reason: "retire_shell", sourceNid: null,
+      workerId: "historic-shell", fromSiriusId: "1009147", toSiriusId: null, reason: "retire_shell", sourceNid: null,
     }]);
   });
 
@@ -227,8 +234,8 @@ describe("Sirius ID ownership planner", () => {
     const plan = planSiriusIdOwnership(state, undefined, new Set([10, 11]));
     expect(plan.hardBlockers).toBe(0);
     expect(plan.rekeys).toEqual([
-      { workerId: "a", fromSiriusId: 101, toSiriusId: 100, reason: "mapped_rekey", sourceNid: 10 },
-      { workerId: "b", fromSiriusId: 100, toSiriusId: 101, reason: "mapped_rekey", sourceNid: 11 },
+      { workerId: "a", fromSiriusId: "101", toSiriusId: "100", reason: "mapped_rekey", sourceNid: 10 },
+      { workerId: "b", fromSiriusId: "100", toSiriusId: "101", reason: "mapped_rekey", sourceNid: 11 },
     ]);
   });
 
@@ -299,7 +306,7 @@ describe("Sirius ID ownership planner", () => {
     });
 
     expect(plan.rekeys).toEqual([{
-      workerId: "valid-shell", fromSiriusId: 101, toSiriusId: null, reason: "retire_shell", sourceNid: null,
+      workerId: "valid-shell", fromSiriusId: "101", toSiriusId: null, reason: "retire_shell", sourceNid: null,
     }]);
     expect(plan.decisions.filter((decision) => decision.action === "blocked_shell_selection_missing"))
       .toMatchObject([
@@ -417,8 +424,8 @@ describe("Sirius ID ownership planner", () => {
       pendingRekeys: 7,
       rekeys: [{
         workerId: "worker-4",
-        fromSiriusId: 40,
-        toSiriusId: 4,
+        fromSiriusId: "40",
+        toSiriusId: "4",
         reason: "mapped_rekey",
         sourceNid: 4,
       }],

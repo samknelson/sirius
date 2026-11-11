@@ -28,7 +28,7 @@ interface JobInterviewRow extends T631InterviewRow {
   workerId: string;
   worker: {
     id: string;
-    siriusId: number;
+    siriusId: string | null;
     name: string;
     email: string | null;
     phone: string | null;

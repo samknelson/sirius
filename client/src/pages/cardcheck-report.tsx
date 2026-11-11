@@ -43,7 +43,7 @@ import { matchesCardcheckReportSearch } from "@/lib/cardcheck-report-search";
 interface CardcheckReportItem {
   cardcheckId: string;
   workerId: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   workerName: string;
   bargainingUnitId: string | null;
   bargainingUnitName: string | null;

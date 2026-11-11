@@ -17,7 +17,7 @@ import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
 export interface WorkerBanWithRelations extends WorkerBan {
   worker?: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     contact?: {
       id: string;
       given: string | null;

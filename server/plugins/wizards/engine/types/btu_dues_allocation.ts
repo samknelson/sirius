@@ -16,7 +16,7 @@ import { eq, sql } from 'drizzle-orm';
 
 export interface CardCheckComparisonEntry {
   workerId: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   workerName: string;
   bpsEmployeeId?: string | null;
   bargainingUnitName: string | null;
@@ -27,7 +27,7 @@ export interface CardCheckComparisonEntry {
 
 export interface AllocatedWorkerEntry {
   workerId: string;
-  workerSiriusId: number | null;
+  workerSiriusId: string | null;
   workerName: string;
   bpsEmployeeId: string;
   bargainingUnitId: string | null;

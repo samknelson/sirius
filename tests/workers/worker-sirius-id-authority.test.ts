@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { insertWorkerSchema, workers } from "../../shared/schema";
 import {
   DEFAULT_WORKER_SIRIUS_ID_AUTHORITY,
@@ -7,6 +8,7 @@ import {
 } from "../../shared/worker-sirius-id-authority";
 import {
   workerSiriusIdDefaultFunctionSql,
+  workerSiriusIdVarcharDefaultFunctionSql,
   workerSiriusIdSequenceCreateSql,
   workerSiriusIdSequenceOwnershipSql,
 } from "../../server/services/worker-sirius-id-default-sql";
@@ -30,7 +32,8 @@ describe("worker Sirius ID authority", () => {
     expect(workers.siriusId.notNull).toBe(false);
     expect(workers.siriusId.isUnique).toBe(true);
     // Imports preserve an exact source claim; shells deliberately send no SID.
-    expect(insertWorkerSchema.safeParse({ siriusId: 1009069 }).success).toBe(true);
+    expect(workers.siriusId.dataType).toBe("string");
+    expect(insertWorkerSchema.safeParse({ siriusId: "1009069" }).success).toBe(true);
     expect(insertWorkerSchema.safeParse({ siriusId: null }).success).toBe(true);
   });
 
@@ -42,11 +45,27 @@ describe("worker Sirius ID authority", () => {
     expect(workerSiriusIdDefaultFunctionSql).toContain(
       "RETURN nextval(pg_get_serial_sequence('workers', 'sirius_id'))::integer;",
     );
+    expect(workerSiriusIdVarcharDefaultFunctionSql).toContain("RETURNS varchar");
+    expect(workerSiriusIdVarcharDefaultFunctionSql).toContain(
+      "RETURN nextval(pg_get_serial_sequence('workers', 'sirius_id'))::varchar;",
+    );
     // The static variables query is intentionally dynamic: a missing
     // variables table fails rather than silently treating the policy as S2.
     expect(workerSiriusIdDefaultFunctionSql).toContain(
       "'SELECT value #>> ''{}'' FROM variables WHERE name = $1'",
     );
+  });
+
+  it("converts existing worker IDs without changing their text values", async () => {
+    const migration = await import("../../scripts/migrate/core/1207_worker_sirius_id_varchar");
+    expect(migration.default.version).toBe(1207);
+    // The migration uses a direct integer-to-varchar cast and does not rewrite
+    // identifiers, remove uniqueness, or remove the policy-aware default.
+    const source = await import("node:fs/promises").then((fs) =>
+      fs.readFile(new URL("../../scripts/migrate/core/1207_worker_sirius_id_varchar.ts", import.meta.url), "utf8"),
+    );
+    expect(source).toContain("TYPE varchar USING sirius_id::varchar");
+    expect(source).toContain("SET DEFAULT worker_sirius_id_default()");
   });
 
   it("retains a serial-compatible, owned sequence for fresh and migrated allocation", () => {
@@ -55,6 +74,22 @@ describe("worker Sirius ID authority", () => {
     );
     expect(workerSiriusIdSequenceOwnershipSql).toBe(
       "ALTER SEQUENCE workers_sirius_id_seq OWNED BY workers.sirius_id",
+    );
+  });
+
+  it("installs the varchar default and owned sequence during fresh bootstrap", () => {
+    const source = readFileSync(
+      new URL("../../server/services/empty-db-bootstrap.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain(
+      "await storage.rawSql.execute(workerSiriusIdVarcharDefaultFunctionSql)",
+    );
+    expect(source).toContain(
+      "await storage.rawSql.execute(workerSiriusIdSequenceCreateSql)",
+    );
+    expect(source).toContain(
+      "await storage.rawSql.execute(workerSiriusIdSequenceOwnershipSql)",
     );
   });
 });

@@ -28,7 +28,7 @@ export function buildDcYearUsage(
 }
 
 export interface DcActiveGrantSummaryInput {
-  worker: { workerId: string; siriusId: number | null; name: string };
+  worker: { workerId: string; siriusId: string | null; name: string };
   workMonthYmd: string;
   grantedHours: number | null;
   coverageMonthYmd: string | null;

@@ -31,7 +31,7 @@ interface WorkerAssignmentDetail {
 
 interface WorkerAssignmentDetails {
   workerId: string;
-  siriusId: number | null;
+  siriusId: string | null;
   displayName: string | null;
   given: string | null;
   family: string | null;
@@ -60,7 +60,7 @@ interface AssignmentWithWorker {
   data: AssignmentExtra | null;
   worker: {
     id: string;
-    siriusId: number | null;
+    siriusId: string | null;
     displayName: string | null;
     given: string | null;
     family: string | null;
@@ -588,7 +588,7 @@ function CrewsList() {
 
 interface AvailableWorker {
   id: string;
-  siriusId: number | null;
+  siriusId: string | null;
   contactId: string;
   displayName: string | null;
   given: string | null;

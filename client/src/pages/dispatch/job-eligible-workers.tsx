@@ -18,7 +18,7 @@ import { useTerm } from "@/contexts/TerminologyContext";
 
 interface EligibleWorker {
   id: string;
-  siriusId: number;
+  siriusId: string | null;
   displayName: string;
   seniorityDate: string | null;
 }
