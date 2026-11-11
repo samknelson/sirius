@@ -159,7 +159,7 @@ export function classifyBenefitPresence(rows: BenefitPresence[]) {
       group.set(name, {
         name,
         icon: row.benefitTypeIcon ?? null,
-        color: row.benefitTypeColor ?? null,
+        color: row.benefitColor ?? row.benefitTypeColor ?? null,
       });
     }
   }

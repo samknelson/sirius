@@ -6,6 +6,7 @@ import {
   optionsGender, 
   optionsWorkerIdType, 
   optionsTrustBenefitType, 
+  optionsColor,
   optionsLedgerPaymentType,
   ledgerPayments,
   optionsEmployerContactType,
@@ -64,6 +65,7 @@ export type OptionsTypeName =
   | "worker-id-type"
   | "gender"
   | "trust-benefit-type"
+  | "color"
   | "trust-provider-type"
   | "worker-ws"
   | "employment-status"
@@ -469,6 +471,23 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
       { name: "showOnEnrollmentWizards", label: "Show on enrollment wizards", inputType: "checkbox", required: false, default: true, helperText: "When off, benefits of this type are not offered for selection in the enrollment wizards", showInTable: true, columnHeader: "On wizards", dataField: true },
       { name: "onlyOne", label: "Only one of this type", inputType: "checkbox", required: false, default: false, helperText: "When on, a worker can select at most one benefit of this type in the enrollment wizards", showInTable: true, columnHeader: "One only", dataField: true },
+    ],
+  },
+  "color": {
+    table: optionsColor,
+    displayName: "Benefit Colors",
+    description: "Manage named colors used to tint trust benefit icons",
+    singularName: "Benefit Color",
+    pluralName: "Benefit Colors",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.colors",
+    requiredFields: ["name", "color"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Color name", showInTable: true, columnHeader: "Name" },
+      { name: "color", label: "Color", inputType: "color", required: true, helperText: "Choose a six-digit hex color", showInTable: true, columnHeader: "Color" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
     ],
   },
   "trust-provider-type": {

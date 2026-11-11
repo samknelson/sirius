@@ -11,14 +11,16 @@ import { getEntityFileContext } from "../services/entity-files/registry";
 import { jobTypeBullpenEnum } from "@shared/schema";
 import { storage } from "../storage";
 import { getOptionsStorage, type OptionsTypeConfig } from "./options-registry";
+import { isValidHexColor } from "@shared/utils/color";
 
 /**
  * Map a caught database error to a clear, user-facing message (or null if
  * unrecognized).
  */
 export function optionDbErrorMessage(error: any): { status: number; message: string } | null {
+  const code = error?.code ?? error?.cause?.code;
   // Unique violation — name the offending field when the constraint tells us.
-  if (error?.code === "23505") {
+  if (code === "23505") {
     const field = humanizeConstraintColumn(error);
     return {
       status: 400,
@@ -28,7 +30,7 @@ export function optionDbErrorMessage(error: any): { status: number; message: str
     };
   }
   // Not-null violation — name the missing column.
-  if (error?.code === "23502") {
+  if (code === "23502") {
     const column = error?.column ? String(error.column) : null;
     return {
       status: 400,
@@ -36,7 +38,7 @@ export function optionDbErrorMessage(error: any): { status: number; message: str
     };
   }
   // FK violation on insert/update — referenced record doesn't exist.
-  if (error?.code === "23503") {
+  if (code === "23503") {
     return { status: 400, message: "A referenced record does not exist" };
   }
   return null;
@@ -159,6 +161,17 @@ export async function validateOptionTypeSpecificData(
   }
   if (type === "worker-ban-type") {
     return await validateWorkerBanTypePlugins(data);
+  }
+  return null;
+}
+
+/** Validate fields whose values have domain-specific formats beyond JSON Schema. */
+export function validateOptionTypeSpecificFields(
+  type: string,
+  values: Record<string, unknown>,
+): string | null {
+  if (type === "color" && values.color !== undefined && !isValidHexColor(values.color)) {
+    return "Color must be a six-digit hex value such as #336699";
   }
   return null;
 }
@@ -318,6 +331,13 @@ export async function checkOptionDeleteGuard(
   type: string,
   id: string,
 ): Promise<{ status: number; message: string } | null> {
+  if (type === "color" && await storage.trustBenefits.isColorOptionReferenced(id)) {
+    return {
+      status: 409,
+      message: "This benefit color is in use and cannot be deleted. Choose another color or No color on each benefit that uses it.",
+    };
+  }
+
   // A grievance status that is referenced by any timeline-template step
   // cannot be deleted — the step stores status ids as plain arrays (no FK),
   // so we guard the delete here to avoid orphaning those references.

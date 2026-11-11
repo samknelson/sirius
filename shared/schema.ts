@@ -560,7 +560,7 @@ export const trustBenefits = pgTable("trust_benefits", {
   siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   benefitType: varchar("benefit_type").references(() => optionsTrustBenefitType.id, { onDelete: 'set null' }),
-  color: varchar("color"),
+  colorOptionId: varchar("color_option_id").references(() => optionsColor.id, { onDelete: "restrict" }),
   showOnWorkerList: boolean("show_on_worker_list").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   description: text("description"),
@@ -686,6 +686,18 @@ export const optionsTrustBenefitType = pgTable("options_trust_benefit_type", {
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
+
+export const optionsColor = pgTable("options_color", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  color: varchar("color").notNull(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+}, (table) => [
+  unique("options_color_color_unique").on(table.color),
+  check("options_color_color_format_check", sql`${table.color} ~ '^#[0-9A-Fa-f]{6}$'`),
+]);
 
 export const optionsLedgerPaymentType = pgTable("options_ledger_payment_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1862,6 +1874,10 @@ export const insertTrustBenefitSchema = createInsertSchema(trustBenefits).omit({
   id: true,
 });
 
+export const insertOptionsColorSchema = createInsertSchema(optionsColor).omit({
+  id: true,
+});
+
 export const insertTrustWmbSchema = createInsertSchema(trustWmb).omit({
   id: true,
 });
@@ -2154,6 +2170,19 @@ export type TrustProvider = typeof trustProviders.$inferSelect;
 
 export type InsertTrustBenefit = z.infer<typeof insertTrustBenefitSchema>;
 export type TrustBenefit = typeof trustBenefits.$inferSelect;
+export type TrustBenefitWithColor = TrustBenefit & {
+  color: string | null;
+  colorOptionName?: string | null;
+  benefitTypeName?: string | null;
+  benefitTypeIcon?: string | null;
+  benefitTypeSequence?: number | null;
+  benefitTypeData?: undefined;
+  benefitTypeShowOnEnrollmentWizards?: boolean | undefined;
+  benefitTypeOnlyOne?: boolean | undefined;
+};
+
+export type InsertOptionsColor = z.infer<typeof insertOptionsColorSchema>;
+export type OptionsColor = typeof optionsColor.$inferSelect;
 
 export type InsertTrustWmb = z.infer<typeof insertTrustWmbSchema>;
 export type TrustWmb = typeof trustWmb.$inferSelect;

@@ -1,6 +1,6 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient, runInTransaction } from '../transaction-context';
-import { trustBenefits, trustWmb, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
+import { trustBenefits, trustWmb, optionsColor, optionsTrustBenefitType, type TrustBenefit, type TrustBenefitWithColor, type InsertTrustBenefit } from "@shared/schema";
 import { eq, asc, sql } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import {
@@ -14,9 +14,10 @@ import {
 export const validate = createNoopValidator();
 
 export interface TrustBenefitStorage {
-  getAllTrustBenefits(): Promise<any[]>;
+  getAllTrustBenefits(): Promise<TrustBenefitWithColor[]>;
   getActiveTrustBenefitOptions(): Promise<{ id: string; name: string }[]>;
-  getTrustBenefit(id: string): Promise<any | undefined>;
+  getTrustBenefit(id: string): Promise<TrustBenefitWithColor | undefined>;
+  isColorOptionReferenced(colorOptionId: string): Promise<boolean>;
   createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit>;
   updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined>;
   deleteTrustBenefit(id: string): Promise<boolean>;
@@ -24,7 +25,7 @@ export interface TrustBenefitStorage {
 
 export function createTrustBenefitStorage(): TrustBenefitStorage {
   return {
-    async getAllTrustBenefits(): Promise<any[]> {
+    async getAllTrustBenefits(): Promise<TrustBenefitWithColor[]> {
       const client = getClient();
       const results = await client
         .select({
@@ -32,17 +33,20 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           siriusId: trustBenefits.siriusId,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
+          colorOptionId: trustBenefits.colorOptionId,
           benefitTypeName: optionsTrustBenefitType.name,
           benefitTypeSequence: optionsTrustBenefitType.sequence,
           benefitTypeData: optionsTrustBenefitType.data,
-          color: trustBenefits.color,
+          colorOptionName: optionsColor.name,
+          color: optionsColor.color,
           showOnWorkerList: trustBenefits.showOnWorkerList,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
           providerId: trustBenefits.providerId,
         })
         .from(trustBenefits)
-        .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id));
+        .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
+        .leftJoin(optionsColor, eq(trustBenefits.colorOptionId, optionsColor.id));
       
       return results.map(r => ({
         ...r,
@@ -63,7 +67,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       return results;
     },
 
-    async getTrustBenefit(id: string): Promise<any | undefined> {
+    async getTrustBenefit(id: string): Promise<TrustBenefitWithColor | undefined> {
       const client = getClient();
       const [result] = await client
         .select({
@@ -71,9 +75,11 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           siriusId: trustBenefits.siriusId,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
+          colorOptionId: trustBenefits.colorOptionId,
           benefitTypeName: optionsTrustBenefitType.name,
           benefitTypeData: optionsTrustBenefitType.data,
-          color: trustBenefits.color,
+          colorOptionName: optionsColor.name,
+          color: optionsColor.color,
           showOnWorkerList: trustBenefits.showOnWorkerList,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
@@ -81,6 +87,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
         })
         .from(trustBenefits)
         .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
+        .leftJoin(optionsColor, eq(trustBenefits.colorOptionId, optionsColor.id))
         .where(eq(trustBenefits.id, id));
       
       if (!result) return undefined;
@@ -90,6 +97,15 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
         benefitTypeIcon: (result.benefitTypeData as any)?.icon || null,
         benefitTypeData: undefined,
       };
+    },
+
+    async isColorOptionReferenced(colorOptionId: string): Promise<boolean> {
+      const [reference] = await getClient()
+        .select({ id: trustBenefits.id })
+        .from(trustBenefits)
+        .where(eq(trustBenefits.colorOptionId, colorOptionId))
+        .limit(1);
+      return Boolean(reference);
     },
 
     async createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit> {

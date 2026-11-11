@@ -14,6 +14,7 @@ import {
   optionDbErrorMessage,
   optionInUseDeleteMessage,
   validateOptionTypeSpecificData,
+  validateOptionTypeSpecificFields,
   validateBaoCaseStatusWrite,
 } from "./options-write-rules";
 import { registerOptionsTransferRoutes, getDisabledOptionFieldNames } from "./options-transfer";
@@ -392,6 +393,10 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       }
       const { data } = built;
 
+      const fieldValidationError = validateOptionTypeSpecificFields(type, data);
+      if (fieldValidationError) {
+        return res.status(400).json({ message: fieldValidationError });
+      }
       const validationError = await validateOptionTypeSpecificData(type, data.data);
       if (validationError) {
         return res.status(400).json({ message: validationError });
@@ -447,6 +452,11 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(400).json({ message: built.error });
       }
       const { updates } = built;
+
+      const fieldValidationError = validateOptionTypeSpecificFields(type, updates);
+      if (fieldValidationError) {
+        return res.status(400).json({ message: fieldValidationError });
+      }
       
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
@@ -589,7 +599,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       // FK RESTRICT violation: the option is still referenced by another
       // row (e.g. a grievance role assigned to people on a grievance).
       // Surface a clear 409 instead of an opaque 500.
-      if (error?.code === "23503") {
+      if ((error?.code ?? error?.cause?.code) === "23503") {
         return res.status(409).json({ message: optionInUseDeleteMessage(config?.name) });
       }
       res.status(500).json({ message: `Failed to delete option` });

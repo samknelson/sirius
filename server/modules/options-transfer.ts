@@ -32,6 +32,7 @@ import {
   optionDbErrorMessage,
   validateBaoCaseStatusWrite,
   validateOptionTypeSpecificData,
+  validateOptionTypeSpecificFields,
 } from "./options-write-rules";
 
 // ---------------------------------------------------------------------------
@@ -639,6 +640,8 @@ export async function runOptionsImport({
       if ("error" in built) {
         item.errors.push(built.error);
       } else {
+        const fieldValidationError = validateOptionTypeSpecificFields(type, built.data);
+        if (fieldValidationError) item.errors.push(fieldValidationError);
         const validationError = await validateOptionTypeSpecificData(type, built.data.data);
         if (validationError) {
           item.errors.push(validationError);
@@ -661,6 +664,8 @@ export async function runOptionsImport({
         item.errors.push(built.error);
       } else {
         const updates = built.updates;
+        const fieldValidationError = validateOptionTypeSpecificFields(type, updates);
+        if (fieldValidationError) item.errors.push(fieldValidationError);
         if (updates.data !== undefined) {
           const validationError = await validateOptionTypeSpecificData(type, updates.data);
           if (validationError) item.errors.push(validationError);

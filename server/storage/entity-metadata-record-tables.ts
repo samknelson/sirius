@@ -99,6 +99,7 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   sitespecific_btu_political_officials: context(coreSchema.sitespecificBtuPoliticalOfficials, "BTU Political Officials", null),
   sitespecific_freeman_crewleads: context(coreSchema.sitespecificFreemanCrewleads, "Freeman Crew Leads", null),
   sitespecific_t631_job_interviews: context(t631InterviewSchema.sitespecificT631JobInterviews, "T631 Job Interviews", null),
+  options_color: context(coreSchema.optionsColor, "Benefit Colors", null),
   trust_benefit_eligibility_exemptions: context(coreSchema.trustBenefitEligibilityExemptions, "Benefit Eligibility Exemptions", null),
   trust_benefits: context(coreSchema.trustBenefits, "Trust Benefits", "/trust-benefits/{id}"),
   trust_provider_contacts: context(coreSchema.trustProviderContacts, "Trust Provider Contacts", "/trust-provider-contacts/{id}"),

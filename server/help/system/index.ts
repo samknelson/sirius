@@ -2,6 +2,7 @@ import type { Help } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
 import { trustProvidersHelp } from "./trust-providers";
+import { trustBenefitColorOptionsHelp, trustBenefitColorSelectionHelp } from "./trust-benefit-colors";
 import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
 import { adminUserPermissionsHelp } from "./admin-user-permissions";
 import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefaultsHelp } from "./message-defaults";
@@ -49,6 +50,8 @@ const entries: SystemHelpEntry[] = [
   workerPaymentMethodsHelp,
   workerCommsComplianceHelp,
   trustProvidersHelp,
+  trustBenefitColorSelectionHelp,
+  trustBenefitColorOptionsHelp,
   workerBenefitsSummaryHelp,
   adminUserPermissionsHelp,
   emailMessageDefaultsHelp,

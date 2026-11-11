@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { BenefitColorSelect } from "./benefit-color-select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,7 +18,7 @@ export function AddTrustBenefitForm() {
   const [name, setName] = useState("");
   const [siriusId, setSiriusId] = useState("");
   const [benefitType, setBenefitType] = useState<string | undefined>(undefined);
-  const [color, setColor] = useState("");
+  const [colorOptionId, setColorOptionId] = useState<string | null>(null);
   const [showOnWorkerList, setShowOnWorkerList] = useState(true);
   const [isActive, setIsActive] = useState(true);
   const [description, setDescription] = useState("");
@@ -30,7 +31,7 @@ export function AddTrustBenefitForm() {
   });
 
   const addBenefitMutation = useMutation({
-    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; color?: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string }) => {
+    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; colorOptionId: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string }) => {
       return await apiRequest("POST", "/api/trust-benefits", benefitData);
     },
     onSuccess: () => {
@@ -38,7 +39,7 @@ export function AddTrustBenefitForm() {
       setName("");
       setSiriusId("");
       setBenefitType(undefined);
-      setColor("");
+      setColorOptionId(null);
       setShowOnWorkerList(true);
       setIsActive(true);
       setDescription("");
@@ -65,7 +66,7 @@ export function AddTrustBenefitForm() {
         name: name.trim(), 
         siriusId: siriusId.trim() || undefined,
         benefitType: benefitType || undefined,
-        color: color || null,
+        colorOptionId,
         showOnWorkerList,
         isActive,
         description: description.trim() || undefined
@@ -130,40 +131,12 @@ export function AddTrustBenefitForm() {
               </Select>
             </div>
 
-            <div>
-              <Label htmlFor="benefit-color" className="text-sm font-medium text-foreground mb-2 block">
-                Color
-              </Label>
-              <div className="flex items-center gap-3">
-                <input
-                  id="benefit-color"
-                  type="color"
-                  value={color || "#000000"}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
-                  data-testid="input-benefit-color"
-                />
-                {color ? (
-                  <>
-                    <span className="text-sm text-muted-foreground font-mono">{color}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setColor("")}
-                      data-testid="button-clear-benefit-color"
-                    >
-                      Clear
-                    </Button>
-                  </>
-                ) : (
-                  <span className="text-sm text-muted-foreground">No color set</span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Tints this benefit's icon so you can tell it apart from other benefits of the same type.
-              </p>
-            </div>
+            <BenefitColorSelect
+              id="benefit-color"
+              value={colorOptionId}
+              onChange={setColorOptionId}
+              testId="select-benefit-color"
+            />
 
             <div>
               <Label htmlFor="benefit-description" className="text-sm font-medium text-foreground mb-2 block">

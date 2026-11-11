@@ -2,6 +2,7 @@ import { getClient, runInTransaction } from '../transaction-context';
 import {
   trustWmb,
   trustBenefits,
+  optionsColor,
   employers,
   optionsTrustBenefitType,
   workerRelations,
@@ -40,6 +41,7 @@ export interface WorkerBenefitPresenceRow {
   /** Set when the month's coverage came through a relationship (dependent coverage). */
   sourceRelationId: string | null;
   benefitName: string | null;
+  benefitColor: string | null;
   benefitTypeId: string | null;
   benefitTypeName: string | null;
   benefitTypeSequence: number | null;
@@ -220,6 +222,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
       const hasRelationTypes = await tableExistsUtil("options_worker_relation_type");
       const hasBenefits = await tableExistsUtil("trust_benefits");
       const hasBenefitTypes = hasBenefits && await tableExistsUtil("options_trust_benefit_type");
+      const hasBenefitColors = hasBenefits && await tableExistsUtil("options_color");
       // LEFT joins preserve coverage even when its display metadata is missing.
       // Never filter relation dates: the WMB's source link is the ownership proof.
       let query = getClient().selectDistinct({
@@ -230,6 +233,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         relationship: hasRelationTypes ? optionsWorkerRelationType.name : sql<string | null>`null`,
         benefitId: trustWmb.benefitId,
         benefitName: hasBenefits ? trustBenefits.name : sql<string | null>`null`,
+        benefitColor: hasBenefitColors ? optionsColor.color : sql<string | null>`null`,
         benefitData: hasBenefitTypes ? optionsTrustBenefitType.data : sql<unknown>`null`,
       }).from(trustWmb)
         .innerJoin(workerRelations, eq(workerRelations.id, trustWmb.sourceRelationId))
@@ -238,6 +242,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         .$dynamic();
       if (hasRelationTypes) query = query.leftJoin(optionsWorkerRelationType, eq(optionsWorkerRelationType.id, workerRelations.relationType));
       if (hasBenefits) query = query.leftJoin(trustBenefits, eq(trustBenefits.id, trustWmb.benefitId));
+      if (hasBenefitColors) query = query.leftJoin(optionsColor, eq(optionsColor.id, trustBenefits.colorOptionId));
       if (hasBenefitTypes) query = query.leftJoin(optionsTrustBenefitType, eq(optionsTrustBenefitType.id, trustBenefits.benefitType));
       const rows = await query.where(and(
         eq(workerRelations.worker1, subscriberWorkerId),
@@ -256,7 +261,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
             personId: row.personId, year: row.year, month: row.month,
             name: row.name, relationship: row.relationship,
             benefitId: row.benefitId, benefitName: row.benefitName,
-            benefitIcon: data?.icon ?? null, benefitColor: data?.color ?? null,
+            benefitIcon: data?.icon ?? null, benefitColor: row.benefitColor ?? data?.color ?? null,
           });
         }
       }
@@ -376,6 +381,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
           month: trustWmb.month,
           sourceRelationId: trustWmb.sourceRelationId,
           benefitName: trustBenefits.name,
+          benefitColor: optionsColor.color,
           benefitTypeId: optionsTrustBenefitType.id,
           benefitTypeName: optionsTrustBenefitType.name,
           benefitTypeSequence: optionsTrustBenefitType.sequence,
@@ -383,6 +389,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         })
         .from(trustWmb)
         .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
+        .leftJoin(optionsColor, eq(trustBenefits.colorOptionId, optionsColor.id))
         .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
         .where(eq(trustWmb.workerId, workerId));
 
@@ -392,6 +399,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         month: r.month,
         sourceRelationId: r.sourceRelationId ?? null,
         benefitName: r.benefitName ?? null,
+        benefitColor: r.benefitColor ?? null,
         benefitTypeId: r.benefitTypeId ?? null,
         benefitTypeName: r.benefitTypeName ?? null,
         benefitTypeSequence: r.benefitTypeSequence ?? null,
@@ -419,6 +427,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         benefitTypeName: string | null;
         benefitTypeSequence: number | null;
         benefitTypeData: unknown;
+        benefitColor: string | null;
       }> = [];
       for (let offset = 0; offset < uniqueWorkerIds.length; offset += 500) {
         const workerIdChunk = uniqueWorkerIds.slice(offset, offset + 500);
@@ -430,6 +439,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
             month: trustWmb.month,
             sourceRelationId: trustWmb.sourceRelationId,
             benefitName: trustBenefits.name,
+            benefitColor: optionsColor.color,
             benefitTypeId: optionsTrustBenefitType.id,
             benefitTypeName: optionsTrustBenefitType.name,
             benefitTypeSequence: optionsTrustBenefitType.sequence,
@@ -437,6 +447,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
           })
           .from(trustWmb)
           .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
+          .leftJoin(optionsColor, eq(trustBenefits.colorOptionId, optionsColor.id))
           .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
           .where(
             and(
@@ -455,6 +466,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         month: r.month,
         sourceRelationId: r.sourceRelationId ?? null,
         benefitName: r.benefitName ?? null,
+        benefitColor: r.benefitColor ?? null,
         benefitTypeId: r.benefitTypeId ?? null,
         benefitTypeName: r.benefitTypeName ?? null,
         benefitTypeSequence: r.benefitTypeSequence ?? null,

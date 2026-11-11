@@ -827,13 +827,14 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
                   'name', tb.name,
                   'typeName', bt.name,
                   'typeIcon', bt.data->>'icon',
-                  'color', tb.color
+                  'color', color_option.color
                 ) AS obj,
                 bt.sequence AS seq,
                 tb.name AS nm
               FROM trust_wmb wmb
               INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
               INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              LEFT JOIN options_color color_option ON tb.color_option_id = color_option.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
                 AND tb.show_on_worker_list = true
@@ -1248,7 +1249,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
                     'name', tb.name,
                     'typeName', tbt.name,
                     'typeIcon', tbt.data->>'icon',
-                    'color', tb.color,
+                    'color', color_option.color,
                     'employerName', e.name
                   ) as benefit_data,
                   tbt.sequence as type_seq,
@@ -1256,6 +1257,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
                 FROM trust_wmb wmb
                 INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
                 LEFT JOIN options_trust_benefit_type tbt ON tb.benefit_type = tbt.id
+                LEFT JOIN options_color color_option ON tb.color_option_id = color_option.id
                 LEFT JOIN employers e ON wmb.employer_id = e.id
                 WHERE wmb.worker_id = w.id
                   AND wmb.month = ${currentMonth}

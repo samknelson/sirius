@@ -270,6 +270,7 @@ import "./core/1203_payment_type_direction";
 import "./core/1204_adopt_template_assets";
 import "./core/1205_index_wmb_dependent_results";
 import "./core/1206_lock_ledger_identity";
+import "./core/1207_normalize_trust_benefit_colors";
 
 export {
   runMigrations,

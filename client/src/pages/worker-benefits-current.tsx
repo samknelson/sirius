@@ -15,6 +15,7 @@ import {
 interface CurrentBenefitRow {
   benefitId: string;
   benefitName: string | null;
+  benefitColor: string | null;
   benefitType: {
     id: string | null;
     name: string | null;
@@ -67,7 +68,7 @@ function formatYmd(ymd: string | null): string {
 
 function BenefitCell({ row }: { row: CurrentBenefitRow }) {
   const dimmed = !row.activeInCurrentMonth;
-  const color = row.benefitType.color ?? undefined;
+  const color = row.benefitColor ?? row.benefitType.color ?? undefined;
   const iconEl = renderIcon(row.benefitType.icon ?? undefined, "h-4 w-4");
 
   return (

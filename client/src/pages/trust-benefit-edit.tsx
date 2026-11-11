@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { BenefitColorSelect } from "@/components/trust-benefits/benefit-color-select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Save } from "lucide-react";
@@ -22,7 +23,7 @@ function TrustBenefitEditContent() {
   const [editName, setEditName] = useState(benefit.name);
   const [editSiriusId, setEditSiriusId] = useState(benefit.siriusId || "");
   const [editBenefitType, setEditBenefitType] = useState(benefit.benefitType || undefined);
-  const [editColor, setEditColor] = useState(benefit.color || "");
+  const [editColorOptionId, setEditColorOptionId] = useState<string | null>(benefit.colorOptionId || null);
   const [editShowOnWorkerList, setEditShowOnWorkerList] = useState(benefit.showOnWorkerList ?? true);
   const [editIsActive, setEditIsActive] = useState(benefit.isActive);
   const [editDescription, setEditDescription] = useState(benefit.description || "");
@@ -39,7 +40,7 @@ function TrustBenefitEditContent() {
   });
 
   const updateBenefitMutation = useMutation({
-    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; color?: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string; providerId?: string | null }) => {
+    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; colorOptionId: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string; providerId?: string | null }) => {
       return await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
     },
     onSuccess: () => {
@@ -66,7 +67,7 @@ function TrustBenefitEditContent() {
         name: editName.trim(), 
         siriusId: editSiriusId.trim() || null,
         benefitType: editBenefitType || undefined,
-        color: editColor || null,
+        colorOptionId: editColorOptionId,
         showOnWorkerList: editShowOnWorkerList,
         isActive: editIsActive,
         description: editDescription.trim() || undefined,
@@ -153,40 +154,12 @@ function TrustBenefitEditContent() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-benefit-color" className="text-sm font-medium text-foreground">
-                Color
-              </Label>
-              <div className="flex items-center gap-3">
-                <input
-                  id="edit-benefit-color"
-                  type="color"
-                  value={editColor || "#000000"}
-                  onChange={(e) => setEditColor(e.target.value)}
-                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
-                  data-testid="input-edit-benefit-color"
-                />
-                {editColor ? (
-                  <>
-                    <span className="text-sm text-muted-foreground font-mono">{editColor}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditColor("")}
-                      data-testid="button-clear-benefit-color"
-                    >
-                      Clear
-                    </Button>
-                  </>
-                ) : (
-                  <span className="text-sm text-muted-foreground">No color set</span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Tints this benefit's icon so you can tell it apart from other benefits of the same type.
-              </p>
-            </div>
+            <BenefitColorSelect
+              id="edit-benefit-color"
+              value={editColorOptionId}
+              onChange={setEditColorOptionId}
+              testId="select-edit-benefit-color"
+            />
 
             <div className="space-y-2">
               <Label htmlFor="edit-benefit-description" className="text-sm font-medium text-foreground">

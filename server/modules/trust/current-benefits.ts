@@ -4,6 +4,7 @@ import type { WorkerBenefitPresenceRow } from "../../storage/trust/wmb";
 export interface CurrentBenefitRow {
   benefitId: string;
   benefitName: string | null;
+  benefitColor: string | null;
   benefitType: {
     id: string | null;
     name: string | null;
@@ -162,6 +163,7 @@ export async function getWorkerCurrentBenefits(workerId: string): Promise<Curren
     return {
       benefitId,
       benefitName: meta.benefitName,
+      benefitColor: meta.benefitColor,
       benefitType: {
         id: meta.benefitTypeId,
         name: meta.benefitTypeName,

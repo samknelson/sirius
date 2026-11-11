@@ -1,6 +1,12 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
 import { insertTrustBenefitSchema, type InsertTrustBenefit } from "@shared/schema";
+import { getOptionsStorage } from "../options-registry";
+
+async function colorOptionExists(colorOptionId: string | null | undefined): Promise<boolean> {
+  if (colorOptionId == null) return true;
+  return Boolean(await getOptionsStorage().get("color", colorOptionId));
+}
 
 export function registerTrustBenefitsRoutes(
   app: Express,
@@ -43,6 +49,9 @@ export function registerTrustBenefitsRoutes(
   // POST /api/trust-benefits - Create a new trust benefit (requires workers.manage permission)
   app.post("/api/trust-benefits", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
+      if (req.body?.color !== undefined) {
+        return res.status(400).json({ message: "Use colorOptionId to select a configured benefit color" });
+      }
       const parsed = insertTrustBenefitSchema.safeParse(req.body);
       
       if (!parsed.success) {
@@ -51,16 +60,23 @@ export function registerTrustBenefitsRoutes(
       
       const data = {
         ...parsed.data,
+        colorOptionId: parsed.data.colorOptionId || null,
         siriusId: typeof parsed.data.siriusId === "string" && parsed.data.siriusId.trim()
           ? parsed.data.siriusId.trim()
           : null,
       };
+      if (!(await colorOptionExists(data.colorOptionId))) {
+        return res.status(400).json({ message: "Select a configured benefit color or choose no color" });
+      }
       
       const benefit = await storage.trustBenefits.createTrustBenefit(data);
       res.status(201).json(benefit);
     } catch (error: any) {
       if (error?.message?.includes("ID already exists")) {
         return res.status(409).json({ message: "That ID is already in use by another trust benefit" });
+      }
+      if ((error?.code ?? error?.cause?.code) === "23503") {
+        return res.status(400).json({ message: "A selected benefit color, type, or provider no longer exists" });
       }
       res.status(500).json({ message: "Failed to create trust benefit" });
     }
@@ -70,7 +86,10 @@ export function registerTrustBenefitsRoutes(
   app.put("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, benefitType, color, showOnWorkerList, isActive, description, siriusId, providerId } = req.body;
+      if (req.body?.color !== undefined) {
+        return res.status(400).json({ message: "Use colorOptionId to select a configured benefit color" });
+      }
+      const { name, benefitType, colorOptionId, showOnWorkerList, isActive, description, siriusId, providerId } = req.body;
       
       const updates: Partial<InsertTrustBenefit> = {};
       
@@ -92,11 +111,16 @@ export function registerTrustBenefitsRoutes(
         updates.benefitType = benefitType;
       }
       
-      if (color !== undefined) {
-        if (color !== null && typeof color !== "string") {
-          return res.status(400).json({ message: "Color must be a string" });
+      if (colorOptionId !== undefined) {
+        if (colorOptionId !== null && typeof colorOptionId !== "string") {
+          return res.status(400).json({ message: "Color option must be an ID or null" });
         }
-        updates.color = typeof color === "string" && color.trim() ? color.trim() : null;
+        updates.colorOptionId = typeof colorOptionId === "string" && colorOptionId.trim()
+          ? colorOptionId.trim()
+          : null;
+        if (!(await colorOptionExists(updates.colorOptionId))) {
+          return res.status(400).json({ message: "Select a configured benefit color or choose no color" });
+        }
       }
       
       if (showOnWorkerList !== undefined) {
@@ -139,6 +163,9 @@ export function registerTrustBenefitsRoutes(
     } catch (error: any) {
       if (error?.message?.includes("ID already exists")) {
         return res.status(409).json({ message: "That ID is already in use by another trust benefit" });
+      }
+      if ((error?.code ?? error?.cause?.code) === "23503") {
+        return res.status(400).json({ message: "A selected benefit color, type, or provider no longer exists" });
       }
       res.status(500).json({ message: "Failed to update trust benefit" });
     }

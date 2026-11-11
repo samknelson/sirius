@@ -196,6 +196,26 @@ describe("worker monthly coverage history", () => {
     });
   });
 
+  it("uses the benefit's configured color before the benefit-type color", () => {
+    expect(classifyBenefitPresence([
+      {
+        benefitName: "Medical PPO",
+        benefitTypeName: "Medical",
+        benefitTypeIcon: "Stethoscope",
+        benefitTypeColor: "#123456",
+        benefitColor: "#abcdef",
+      },
+      {
+        benefitName: "Dental",
+        benefitTypeName: "Dental",
+        benefitTypeColor: "#654321",
+      },
+    ] as any)).toMatchObject({
+      medicalBenefitIcons: [{ name: "Medical PPO", color: "#abcdef" }],
+      dentalBenefitIcons: [{ name: "Dental", color: "#654321" }],
+    });
+  });
+
   it("uses exact monthly charge arithmetic and remembers a balance after it is paid", () => {
     const history = deriveChargeHistory([
       { accountId: "ee", ym: "2024-01", balanceDelta: "12.35", chargeTotal: "12.35" },
