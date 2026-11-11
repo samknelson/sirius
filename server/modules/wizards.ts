@@ -65,6 +65,7 @@ export function registerWizardRoutes(
           entityType: plugin.entityType,
           category: plugin.category,
           requiredComponent: plugin.requiredComponent,
+          requiredComponents: plugin.requiredComponents,
         });
       }
 

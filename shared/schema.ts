@@ -1691,6 +1691,17 @@ export {
 } from "./schema/worker/relations/schema";
 
 export {
+  openEnrollmentWindows,
+  insertOpenEnrollmentWindowSchema,
+  createOpenEnrollmentWindowRequestSchema,
+  updateOpenEnrollmentWindowRequestSchema,
+  type OpenEnrollmentWindow,
+  type InsertOpenEnrollmentWindow,
+  type CreateOpenEnrollmentWindowRequest,
+  type UpdateOpenEnrollmentWindowRequest,
+} from "./schema/sitespecific/bao/schema";
+
+export {
   workerTrustElections,
   insertWorkerTrustElectionSchema,
   createWorkerTrustElectionRequestSchema,
@@ -1702,14 +1713,6 @@ export {
   type InsertWorkerTrustElection,
   type CreateWorkerTrustElectionRequest,
   type UpdateWorkerTrustElectionRequest,
-  openEnrollmentWindows,
-  insertOpenEnrollmentWindowSchema,
-  createOpenEnrollmentWindowRequestSchema,
-  updateOpenEnrollmentWindowRequestSchema,
-  type OpenEnrollmentWindow,
-  type InsertOpenEnrollmentWindow,
-  type CreateOpenEnrollmentWindowRequest,
-  type UpdateOpenEnrollmentWindowRequest,
 } from "./schema/trust/elections-schema";
 
 export {

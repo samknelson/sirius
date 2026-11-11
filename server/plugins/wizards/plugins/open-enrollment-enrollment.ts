@@ -4,7 +4,6 @@ import {
   createEnrollmentFoundation,
   guardNoActiveCobraCase,
 } from "../enrollment/foundation";
-import { isComponentEnabledSync } from "../../../services/component-cache";
 
 const WIZARD_TYPE = "open_enrollment_enrollment";
 
@@ -18,8 +17,8 @@ function todayYmd(): string {
 /**
  * Open Enrollment.
  *
- * Offered only while today falls inside an admin-configured Open Enrollment
- * window (see the `open_enrollment_windows` table + its admin config page).
+ * Offered only when BAO, Trust Elections, and Trust Benefits are enabled and
+ * today falls inside an admin-configured Open Enrollment window.
  * The wizard reuses the shared enrollment foundation, so it presents every
  * benefit the worker is currently qualified for — including benefits they
  * have newly become eligible for — via the "start" eligibility scan.
@@ -37,12 +36,6 @@ const foundation = createEnrollmentFoundation({
   // the regular open-enrollment path while their COBRA case is active.
   guardWorker: guardNoActiveCobraCase,
   prepareCreateData: async (storage) => {
-    if (!isComponentEnabledSync("trust.elections")) {
-      return {
-        error:
-          "Open Enrollment is unavailable because the Trust Elections component is disabled.",
-      };
-    }
     const window = await storage.openEnrollmentWindows.getActiveWindow(
       todayYmd(),
     );
@@ -72,6 +65,7 @@ export const openEnrollmentEnrollmentPlugin: WizardPlugin = {
   description:
     "Run Open Enrollment for a worker while an enrollment window is open: pick the employer/policy, select from every benefit the worker currently qualifies for, add dependents, capture a signature, and post the election. The effective date is fixed to January 1 of the plan year.",
   requiredComponent: "trust.benefits",
+  requiredComponents: ["trust.elections", "sitespecific.bao"],
   entityType: "worker",
   entityAccessPolicy: "worker.mine",
   category: "enrollment",

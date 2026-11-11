@@ -15,6 +15,8 @@ export interface BasePluginMetadata {
   description: string;
   /** Component-feature-flag gate. Plugin is hidden / unavailable when off. */
   requiredComponent?: string;
+  /** Additional component gates; every listed component must be enabled. */
+  requiredComponents?: string[];
   /** Access-policy gate. User must satisfy this policy. */
   requiredPolicy?: string;
   /** Hide from default manifest listings (still registered/usable). */

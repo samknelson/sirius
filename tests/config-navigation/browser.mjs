@@ -57,6 +57,7 @@ const server = await createServer({
 
 const enabledComponents = [
   "trust.elections",
+  "sitespecific.bao",
   "ledger",
   "event",
   "dispatch",
@@ -314,8 +315,8 @@ try {
   await page.waitForSelector('[data-testid="nav-config-open-enrollment-windows"]');
   assert.ok(await page.$('[data-testid="nav-config-open-enrollment-windows"]'),
     "enabled Trust entries are visible");
-  assert.equal(await page.$('[data-testid="nav-config-bao-thresholds"]'), null,
-    "component-filtered Trust entries are absent");
+  assert.ok(await page.$('[data-testid="nav-config-bao-thresholds"]'),
+    "BAO Trust entries are visible when BAO is enabled");
   await page.click('[data-testid="nav-config-dropdown-lists"]');
   await page.waitForSelector('[data-testid="nav-config-options-gender"]');
   assert.equal(
@@ -404,8 +405,8 @@ try {
     "collapsed desktop navigation is a 56px rail");
   assert.ok(await page.$('[data-testid="nav-config-rail-system"]'),
     "collapsed rail exposes a trigger for each permitted section");
-  assert.equal(await page.$('[data-testid="nav-config-rail-sitespecific-bao"]'), null,
-    "component-filtered sections are absent from the rail");
+  assert.ok(await page.$('[data-testid="nav-config-rail-employers"]'),
+    "BAO sections are available in the rail when BAO is enabled");
   assert.match(
     await page.$eval('[data-testid="nav-config-rail-system"]', node => node.className),
     /before:bg-primary/,

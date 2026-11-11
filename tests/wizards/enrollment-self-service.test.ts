@@ -5,7 +5,8 @@ import type { AddressInfo } from "node:net";
 
 const state = vi.hoisted(() => ({
   rows: new Map<string, any>(), files: new Map<string, any>(),
-  component: true, cobra: false, medical: false, active: false, window: true,
+  component: true, components: {} as Record<string, boolean>,
+  cobra: false, medical: false, active: false, window: true,
   deadline: "2099-12-31", elected: false, caseClosed: false, related: true, matched: true,
   relationData: undefined as undefined | { availableToWorkersInElectionWizards: boolean },
 }));
@@ -31,12 +32,15 @@ vi.mock("../../server/services/access-policy-evaluator", async original => {
   };
 });
 vi.mock("../../server/modules/components", () => ({
-  isComponentEnabled: async () => state.component,
-  requireComponent: () => ((_req: any, res: any, next: any) =>
-    state.component ? next() : res.sendStatus(403)),
+  isComponentEnabled: async (componentId: string) =>
+    state.component && state.components[componentId] !== false,
+  requireComponent: (componentId: string) => ((_req: any, res: any, next: any) =>
+    state.component && state.components[componentId] !== false ? next() : res.sendStatus(403)),
 }));
 vi.mock("../../server/services/component-cache", async original => ({
-  ...await original<any>(), isComponentEnabledSync: () => state.component,
+  ...await original<any>(),
+  isComponentEnabledSync: (componentId: string) =>
+    state.component && state.components[componentId] !== false,
 }));
 vi.mock("../../server/plugins/wizards", async () =>
   await import("../../server/plugins/wizards/registry"));
@@ -70,6 +74,7 @@ import { checkAccessInline } from "../../server/services/access-policy-evaluator
 import { registerWizardRoutes } from "../../server/modules/wizards";
 import { registerWizardDispatcherRoutes } from "../../server/plugins/wizards/dispatcher";
 import { registerWorkerTrustElectionsRoutes } from "../../server/modules/trust/elections";
+import { registerOpenEnrollmentWindowsRoutes } from "../../server/modules/trust/open-enrollment-windows";
 import { benefitElectionEnrollmentPlugin } from "../../server/plugins/wizards/plugins/benefit-election-enrollment";
 import { openEnrollmentEnrollmentPlugin } from "../../server/plugins/wizards/plugins/open-enrollment-enrollment";
 import { lifeEventEnrollmentPlugin } from "../../server/plugins/wizards/plugins/life-event-enrollment";
@@ -169,6 +174,21 @@ beforeAll(async () => {
   vi.spyOn(storage.workers, "updateWorkerContactBirthDate").mockResolvedValue(undefined as any);
   vi.spyOn(storage.workers, "updateWorkerContactGender").mockResolvedValue(undefined as any);
   vi.spyOn(storage.contacts, "getContact").mockResolvedValue({ birthDate: "1990-01-01", displayName: "Private Name" } as any);
+  vi.spyOn(storage.openEnrollmentWindows, "tableExists").mockResolvedValue(true);
+  vi.spyOn(storage.openEnrollmentWindows, "getAll").mockResolvedValue([
+    { id: "window", planYear: 2027, startYmd: "2026-01-01", endYmd: "2026-12-31", notes: null, data: null },
+  ] as any);
+  vi.spyOn(storage.openEnrollmentWindows, "get").mockResolvedValue(
+    { id: "window", planYear: 2027, startYmd: "2026-01-01", endYmd: "2026-12-31", notes: null, data: null } as any,
+  );
+  vi.spyOn(storage.openEnrollmentWindows, "getByPlanYear").mockResolvedValue(undefined);
+  vi.spyOn(storage.openEnrollmentWindows, "create").mockResolvedValue(
+    { id: "window", planYear: 2027, startYmd: "2026-01-01", endYmd: "2026-12-31", notes: null, data: null } as any,
+  );
+  vi.spyOn(storage.openEnrollmentWindows, "update").mockResolvedValue(
+    { id: "window", planYear: 2027, startYmd: "2026-01-01", endYmd: "2026-12-31", notes: null, data: null } as any,
+  );
+  vi.spyOn(storage.openEnrollmentWindows, "delete").mockResolvedValue(true);
   vi.spyOn(storage.openEnrollmentWindows, "getActiveWindow").mockImplementation(async () => state.window
     ? { id: "window", planYear: 2027, startYmd: "2026-01-01", endYmd: "2099-12-31" } as any : undefined);
   const app = express();
@@ -187,6 +207,7 @@ beforeAll(async () => {
   registerWizardRoutes(app, requireAuth, key => requireAccess(key));
   registerWizardDispatcherRoutes(app, requireAuth);
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
+  registerOpenEnrollmentWindowsRoutes(app, requireAuth, key => requireAccess(key));
   registerWorkerRelationsRoutes(app, requireAuth, requireAccess);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
@@ -194,7 +215,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   state.rows.clear(); state.files.clear(); vi.clearAllMocks();
-  Object.assign(state, { component: true, cobra: false, medical: false, active: false,
+  Object.assign(state, { component: true, components: {}, cobra: false, medical: false, active: false,
     window: true, deadline: "2099-12-31", elected: false, caseClosed: false, related: true, matched: true,
     relationData: undefined });
 });
@@ -440,6 +461,98 @@ describe("worker-only enrollment authorization through real HTTP routes", () => 
     expect((await create(plugins[3].id)).status).toBe(400);
     state.component = false;
     expect((await create(plugins[0].id)).status).toBe(403);
+  });
+
+  it.each(["sitespecific.bao", "trust.elections", "trust.benefits"])(
+    "requires %s for Open Enrollment discovery, eligibility, launch, and continuation",
+    async componentId => {
+      state.components[componentId] = false;
+      const types = await (await request("/api/wizard-types", "GET", undefined, "admin")).json();
+      expect(types.some((type: any) => type.name === openEnrollmentEnrollmentPlugin.id)).toBe(false);
+      expect((await request(
+        `/api/wizard-types/${openEnrollmentEnrollmentPlugin.id}/launch-schema`,
+        "GET",
+        undefined,
+        "admin",
+      )).status).toBe(403);
+      expect((await request(
+        "/api/workers/own-worker/trust-elections/open-enrollment-eligibility",
+      )).status).toBe(403);
+      expect((await create(openEnrollmentEnrollmentPlugin.id, {}, "admin")).status).toBe(403);
+      expect(storage.wizards.create).not.toHaveBeenCalled();
+
+      state.rows.set("existing-open-enrollment", {
+        id: "existing-open-enrollment",
+        type: openEnrollmentEnrollmentPlugin.id,
+        status: "draft",
+        currentStep: "employer_policy",
+        entityId: "own-worker",
+        data: {
+          workerId: "own-worker",
+          launchArguments: { workerId: "own-worker" },
+          progress: {},
+        },
+      });
+      expect((await request(
+        "/api/wizards/existing-open-enrollment",
+        "GET",
+        undefined,
+        "admin",
+      )).status).toBe(403);
+      expect((await step(
+        "existing-open-enrollment",
+        "employer_policy",
+        { employerId: "employer" },
+        "admin",
+      )).status).toBe(403);
+    },
+  );
+
+  it.each(["sitespecific.bao", "trust.elections"])(
+    "blocks every Open Enrollment window API operation when %s is disabled",
+    async componentId => {
+      state.components[componentId] = false;
+      const cases: Array<[string, string, any?, string?]> = [
+        ["GET", "/api/trust/open-enrollment-windows/active", undefined, "staff"],
+        ["GET", "/api/trust/open-enrollment-windows", undefined, "staff"],
+        ["GET", "/api/trust/open-enrollment-windows/window", undefined, "staff"],
+        ["POST", "/api/trust/open-enrollment-windows", { planYear: 2028, startYmd: "2027-10-01", endYmd: "2027-10-31" }, "admin"],
+        ["PATCH", "/api/trust/open-enrollment-windows/window", { notes: "Changed" }, "admin"],
+        ["DELETE", "/api/trust/open-enrollment-windows/window", undefined, "admin"],
+      ];
+      for (const [method, path, body, actor] of cases) {
+        expect((await request(path, method, body, actor)).status, `${method} ${path}`).toBe(403);
+      }
+      for (const method of ["getAll", "get", "getByPlanYear", "create", "update", "delete"] as const) {
+        expect(storage.openEnrollmentWindows[method]).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("serves and mutates Open Enrollment windows when BAO and Trust Elections are enabled", async () => {
+    const record = {
+      id: "window", planYear: 2027, startYmd: "2026-01-01",
+      endYmd: "2026-12-31", notes: null, data: null,
+    };
+    expect((await request("/api/trust/open-enrollment-windows/active", "GET", undefined, "staff")).status).toBe(200);
+    expect((await request("/api/trust/open-enrollment-windows", "GET", undefined, "staff")).status).toBe(200);
+    expect((await request("/api/trust/open-enrollment-windows/window", "GET", undefined, "staff")).status).toBe(200);
+    expect((await request("/api/trust/open-enrollment-windows", "POST", {
+      planYear: 2027, startYmd: "2026-01-01", endYmd: "2026-12-31",
+    }, "admin")).status).toBe(201);
+    expect((await request("/api/trust/open-enrollment-windows/window", "PATCH", {
+      notes: "Updated",
+    }, "admin")).status).toBe(200);
+    expect((await request("/api/trust/open-enrollment-windows/window", "DELETE", undefined, "admin")).status).toBe(204);
+    expect(storage.openEnrollmentWindows.getActiveWindow).toHaveBeenCalled();
+    expect(storage.openEnrollmentWindows.create).toHaveBeenCalled();
+    expect(storage.openEnrollmentWindows.update).toHaveBeenCalled();
+    expect(storage.openEnrollmentWindows.delete).toHaveBeenCalled();
+  });
+
+  it("keeps unrelated Trust Elections routes available while BAO is disabled", async () => {
+    state.components["sitespecific.bao"] = false;
+    expect((await request("/api/workers/own-worker/trust-elections")).status).toBe(200);
   });
 
   it.each(plugins)("completes worker steps, evidence, signature, review and post for $id", async plugin => {

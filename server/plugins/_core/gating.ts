@@ -24,15 +24,22 @@ async function isComponentEnabled(componentId: string): Promise<boolean> {
  * before warm-up (extra-safe path).
  */
 export function isPluginComponentEnabledSync(meta: BasePluginMetadata): boolean {
-  if (!meta.requiredComponent) return true;
-  return isComponentEnabledSync(meta.requiredComponent);
+  if (meta.requiredComponent && !isComponentEnabledSync(meta.requiredComponent)) {
+    return false;
+  }
+  return (meta.requiredComponents ?? []).every(isComponentEnabledSync);
 }
 
 export async function isPluginComponentEnabledAsync(
   meta: BasePluginMetadata,
 ): Promise<boolean> {
-  if (!meta.requiredComponent) return true;
-  return isComponentEnabled(meta.requiredComponent);
+  if (meta.requiredComponent && !(await isComponentEnabled(meta.requiredComponent))) {
+    return false;
+  }
+  for (const componentId of meta.requiredComponents ?? []) {
+    if (!(await isComponentEnabled(componentId))) return false;
+  }
+  return true;
 }
 
 /**
@@ -62,13 +69,16 @@ export async function enforcePluginGating(
   meta: BasePluginMetadata,
   req: Request,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-  if (meta.requiredComponent) {
-    const enabled = await isComponentEnabled(meta.requiredComponent);
+  for (const componentId of [
+    ...(meta.requiredComponent ? [meta.requiredComponent] : []),
+    ...(meta.requiredComponents ?? []),
+  ]) {
+    const enabled = await isComponentEnabled(componentId);
     if (!enabled) {
       return {
         ok: false,
         status: 403,
-        message: `Component '${meta.requiredComponent}' not enabled`,
+        message: `Component '${componentId}' not enabled`,
       };
     }
   }
@@ -81,16 +91,19 @@ export async function enforcePluginGating(
  * directly rather than reading them off a plugin's metadata.
  */
 export async function enforceKindGating(
-  opts: { requiredComponent?: string; requiredPolicy?: string },
+  opts: { requiredComponent?: string; requiredComponents?: string[]; requiredPolicy?: string },
   req: Request,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-  if (opts.requiredComponent) {
-    const enabled = await isComponentEnabled(opts.requiredComponent);
+  for (const componentId of [
+    ...(opts.requiredComponent ? [opts.requiredComponent] : []),
+    ...(opts.requiredComponents ?? []),
+  ]) {
+    const enabled = await isComponentEnabled(componentId);
     if (!enabled) {
       return {
         ok: false,
         status: 403,
-        message: `Component '${opts.requiredComponent}' not enabled`,
+        message: `Component '${componentId}' not enabled`,
       };
     }
   }

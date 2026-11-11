@@ -13,10 +13,10 @@ const TABLE_NAME = getTableName(openEnrollmentWindows);
 
 /**
  * Storage for the admin-configured Open Enrollment windows table
- * (`open_enrollment_windows`), owned by the `trust.elections` component.
+ * (`open_enrollment_windows`), owned by the `sitespecific.bao` component.
  *
  * Mutations and single-record reads throw `COMPONENT_TABLE_NOT_FOUND` when
- * the component is disabled (its table absent). `getActiveWindow` instead
+ * BAO is disabled (its table absent). `getActiveWindow` instead
  * returns `undefined` in that case so the wizard gate degrades to "no open
  * window" rather than erroring.
  */

@@ -36,6 +36,29 @@ export const sitespecificBaoEmployerImmediateEligibility = pgTable(
   ],
 );
 
+/**
+ * Admin-configured Open Enrollment windows. BAO owns the schedule that
+ * controls when its Open Enrollment workflow is available. Existing rows
+ * are retained when the component ownership is adopted.
+ */
+export const openEnrollmentWindows = pgTable("open_enrollment_windows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planYear: integer("plan_year").notNull().unique(),
+  startYmd: date("start_ymd").notNull(),
+  endYmd: date("end_ymd").notNull(),
+  notes: varchar("notes"),
+  data: jsonb("data"),
+});
+
+export const insertOpenEnrollmentWindowSchema = createInsertSchema(
+  openEnrollmentWindows,
+).omit({ id: true });
+
+export type OpenEnrollmentWindow = typeof openEnrollmentWindows.$inferSelect;
+export type InsertOpenEnrollmentWindow = z.infer<
+  typeof insertOpenEnrollmentWindowSchema
+>;
+
 export const insertBaoEmployerImmediateEligibilitySchema = createInsertSchema(
   sitespecificBaoEmployerImmediateEligibility,
 ).omit({
@@ -373,6 +396,49 @@ function toYmdString(value: string | Date): string {
 const ymdOrDate = z
   .union([z.string(), z.coerce.date()])
   .transform((v) => toYmd(v) ?? String(v));
+
+export const createOpenEnrollmentWindowRequestSchema = z
+  .object({
+    planYear: z.coerce.number().int().min(1990).max(2100),
+    startYmd: ymdOrDate,
+    endYmd: ymdOrDate,
+    notes: z.string().trim().max(2000).nullable().optional(),
+    data: z.unknown().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.endYmd < val.startYmd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endYmd"],
+        message: "End date must be on or after the start date",
+      });
+    }
+  });
+
+export const updateOpenEnrollmentWindowRequestSchema = z
+  .object({
+    planYear: z.coerce.number().int().min(1990).max(2100).optional(),
+    startYmd: ymdOrDate.optional(),
+    endYmd: ymdOrDate.optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    data: z.unknown().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.startYmd && val.endYmd && val.endYmd < val.startYmd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endYmd"],
+        message: "End date must be on or after the start date",
+      });
+    }
+  });
+
+export type CreateOpenEnrollmentWindowRequest = z.infer<
+  typeof createOpenEnrollmentWindowRequestSchema
+>;
+export type UpdateOpenEnrollmentWindowRequest = z.infer<
+  typeof updateOpenEnrollmentWindowRequestSchema
+>;
 
 export const createBaoEmployerImmediateEligibilityRequestSchema = z
   .object({

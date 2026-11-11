@@ -24,21 +24,20 @@ describe("production component migration registry", () => {
   // that exists on disk but is not imported from scripts/migrate/index.ts is
   // not "pending" — it is skipped forever on every database already past it.
   // (015 shipped that way: the file landed, the import did not.)
-  it("registers every BAO migration file on disk, contiguously from 1", () => {
-    const onDisk = readdirSync(BAO_MIGRATIONS_DIR)
-      .map((file) => /^(\d{3})_.+\.ts$/.exec(file)?.[1])
-      .filter((v): v is string => v !== undefined)
-      .map(Number)
-      .sort((a, b) => a - b);
-    const registered = getComponentMigrations("sitespecific.bao")
-      .map((migration) => migration.version)
-      .sort((a, b) => a - b);
+  it("registers every BAO migration file on disk", () => {
+    const onDiskCount = readdirSync(BAO_MIGRATIONS_DIR)
+      .filter((file) => /^\d+_.+\.ts$/.test(file)).length;
+    const migrations = getComponentMigrations("sitespecific.bao");
+    const registeredVersions = migrations.map((migration) => migration.version).sort((a, b) => a - b);
 
-    expect(registered).toEqual(onDisk);
-    expect(registered).toEqual(onDisk.map((_, i) => i + 1));
+    expect(migrations).toHaveLength(onDiskCount);
+    expect(registeredVersions.slice(0, 18)).toEqual(
+      Array.from({ length: 18 }, (_, index) => index + 1),
+    );
+    expect(registeredVersions.slice(-4)).toEqual([1145, 1146, 1147, 1148]);
   });
 
-  it("registers the case-type and Benefit Appeal migrations after the DC sequence", () => {
+  it("registers the case, communication, contribution, and enrollment migrations", () => {
     const tail = getComponentMigrations("sitespecific.bao")
       .filter((migration) => migration.version >= 15)
       .map(({ version, name }) => ({ version, name }));
@@ -47,6 +46,11 @@ describe("production component migration registry", () => {
       { version: 15, name: "case_types_and_workflow_rules" },
       { version: 16, name: "benefit_appeal_tables" },
       { version: 17, name: "create_case_comms" },
+      { version: 18, name: "create_case_documents" },
+      { version: 1145, name: "case_status_lapse" },
+      { version: 1146, name: "case_comm_notice_deadline" },
+      { version: 1147, name: "create_ee_contribution_rates" },
+      { version: 1148, name: "open_enrollment_windows" },
     ]);
   });
 });

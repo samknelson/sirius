@@ -25,21 +25,24 @@ function todayYmd(): string {
 /**
  * Admin CRUD for Open Enrollment windows plus a staff-readable "is a window
  * open right now" endpoint used to gate launching the Open Enrollment
- * wizard. Owned by the `trust.elections` component.
+ * wizard. Owned by `sitespecific.bao`; Trust Elections is also required.
  */
 export function registerOpenEnrollmentWindowsRoutes(
   app: Express,
   requireAuth: AuthMiddleware,
   requirePermission: PermissionMiddleware,
 ) {
-  const componentMiddleware = requireComponent("trust.elections");
+  const componentMiddlewares = [
+    requireComponent("sitespecific.bao"),
+    requireComponent("trust.elections"),
+  ];
   const windowsStorage = storage.openEnrollmentWindows;
 
   const ensureTable = async (res: Response): Promise<boolean> => {
     if (await windowsStorage.tableExists()) return true;
     res.status(503).json({
       message:
-        "Open Enrollment windows are unavailable. Enable the Trust Elections component first.",
+        "Open Enrollment windows are unavailable. Enable BAO and Trust Elections first.",
     });
     return false;
   };
@@ -49,7 +52,7 @@ export function registerOpenEnrollmentWindowsRoutes(
     "/api/trust/open-enrollment-windows/active",
     requireAuth,
     requirePermission("staff"),
-    componentMiddleware,
+    ...componentMiddlewares,
     async (_req, res) => {
       try {
         const today = todayYmd();
@@ -69,7 +72,7 @@ export function registerOpenEnrollmentWindowsRoutes(
     "/api/trust/open-enrollment-windows",
     requireAuth,
     requirePermission("staff"),
-    componentMiddleware,
+    ...componentMiddlewares,
     async (_req, res) => {
       try {
         if (!(await ensureTable(res))) return;
@@ -89,7 +92,7 @@ export function registerOpenEnrollmentWindowsRoutes(
     "/api/trust/open-enrollment-windows/:id",
     requireAuth,
     requirePermission("staff"),
-    componentMiddleware,
+    ...componentMiddlewares,
     async (req, res) => {
       try {
         if (!(await ensureTable(res))) return;
@@ -113,7 +116,7 @@ export function registerOpenEnrollmentWindowsRoutes(
     "/api/trust/open-enrollment-windows",
     requireAuth,
     requirePermission("admin"),
-    componentMiddleware,
+    ...componentMiddlewares,
     async (req, res) => {
       try {
         if (!(await ensureTable(res))) return;
@@ -155,7 +158,7 @@ export function registerOpenEnrollmentWindowsRoutes(
     "/api/trust/open-enrollment-windows/:id",
     requireAuth,
     requirePermission("admin"),
-    componentMiddleware,
+    ...componentMiddlewares,
     async (req, res) => {
       try {
         if (!(await ensureTable(res))) return;
@@ -220,7 +223,7 @@ export function registerOpenEnrollmentWindowsRoutes(
     "/api/trust/open-enrollment-windows/:id",
     requireAuth,
     requirePermission("admin"),
-    componentMiddleware,
+    ...componentMiddlewares,
     async (req, res) => {
       try {
         if (!(await ensureTable(res))) return;

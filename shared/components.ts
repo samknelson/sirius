@@ -621,9 +621,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 2,
+      version: 3,
       schemaPath: "./shared/schema/trust/elections-schema.ts",
-      tables: ["worker_trust_elections", "open_enrollment_windows"]
+      tables: ["worker_trust_elections"]
     }
   },
   {
@@ -970,9 +970,10 @@ export const componentRegistry: ComponentDefinition[] = [
     ],
     managesSchema: true,
     schemaManifest: {
-      version: 19,
+      version: 20,
       schemaPath: "./shared/schema/sitespecific/bao/schema.ts",
       tables: [
+        "open_enrollment_windows",
         "sitespecific_bao_employer_immediate_eligibility",
         "sitespecific_bao_employer_rates",
         "sitespecific_bao_rate_sources",

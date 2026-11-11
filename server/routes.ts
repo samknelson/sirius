@@ -1932,7 +1932,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker trust elections routes (handles all access control internally)
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
 
-  // Register Open Enrollment windows admin routes (trust.elections component)
+  // Register Open Enrollment windows routes (BAO + Trust Elections components)
   registerOpenEnrollmentWindowsRoutes(app, requireAuth, requirePermission);
 
   // Register trust benefit eligibility exemptions routes (handles all access control internally)

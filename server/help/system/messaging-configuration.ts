@@ -133,11 +133,12 @@ export const messagingConfigurationHelp: SystemHelpEntry[] = [
   {
     id: "system:open-enrollment-windows",
     paths: ["/config/trust/open-enrollment-windows"],
-    summary: "Define the plan year and opening and closing dates that control when the Open Enrollment workflow is offered.",
+    summary: "Set the BAO Open Enrollment plan year and dates that control when staff can start the enrollment workflow for a worker.",
     details: `
-      <h3>Purpose</h3><p>Maintain dated Open Enrollment availability.</p>
-      <h3>Before you start</h3><p>Administrator access and Elections are required. A window is not a posted election for any worker.</p>
-      <h3>How to use this page</h3><ol><li>Review existing windows for the plan year.</li><li>Set <strong>Plan year</strong>, <strong>Opens on</strong>, and <strong>Closes on</strong>.</li><li>Check the dates before saving; changing or deleting a window can change which launches are offered.</li></ol>
-      <h3>Limitations and common problems</h3><p>Correct date validation errors before retrying. A window alone does not satisfy a worker's other enrollment guards or post an election. Existing drafts and recorded coverage must be reviewed separately.</p>`,
+      <h3>Purpose</h3><p>Control when staff can start BAO Open Enrollment for a worker. The enrollment takes effect on January 1 of the selected plan year.</p>
+      <h3>Before you start</h3><p>You need administrator access, BAO, Trust Elections, and Trust Benefits enabled. A window controls the available dates; it is not an election for any worker.</p>
+      <h3>How to use this page</h3><ol><li>Review the saved windows and their <strong>Open now</strong> or <strong>Closed</strong> status.</li><li>Select <strong>Add Window</strong>, or use the row's edit action to set <strong>Plan year</strong>, <strong>Opens on</strong>, <strong>Closes on</strong>, and optional <strong>Notes</strong>.</li><li>Save when the plan year and dates are correct. The close date must be on or after the open date, and only one window can exist for each plan year.</li><li>Before deleting a window, consider that it can stop new Open Enrollment launches during those dates. Confirm the delete prompt to remove it.</li></ol>
+      <h3>Results and status meanings</h3><p><strong>Open now</strong> means today's date is within the saved open and close dates, including both endpoints. Staff can then start the workflow if the worker also passes its enrollment checks. Editing or deleting a window does not change elections already posted.</p>
+      <h3>Limitations and common problems</h3><p>A window alone does not satisfy the worker's other enrollment checks, select benefits, or post an election. The enrollment wizard also requires the relevant components and refuses workers blocked by its existing eligibility or COBRA rules. Fix date or duplicate-plan-year errors before saving again.</p>`,
   },
 ];

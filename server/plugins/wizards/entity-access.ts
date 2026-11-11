@@ -41,6 +41,11 @@ export async function checkWizardRecordAccess(
       !(await componentEnabled(plugin.requiredComponent))) {
     return { ok: false, status: 403, message: "Access denied" };
   }
+  for (const componentId of plugin.requiredComponents ?? []) {
+    if (!(await componentEnabled(componentId))) {
+      return { ok: false, status: 403, message: "Access denied" };
+    }
+  }
   const identityError = enrollmentIdentityError(wizard);
   if (identityError) return { ok: false, status: 403, message: identityError };
   if (isEnrollmentWizard(wizard.type) && !wizard.entityId) {

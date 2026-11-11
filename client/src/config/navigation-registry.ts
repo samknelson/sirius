@@ -230,7 +230,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/plugin-configs/trust-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-trust-eligibility-plugins", permission: "admin" },
       { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
       { path: "/config/trust/sitespecific/bao/thresholds", label: "Member Status Thresholds", icon: Clock, testId: "nav-config-bao-thresholds", permission: "admin", requiresComponent: "sitespecific.bao" },
-      { path: "/config/trust/open-enrollment-windows", label: "Open Enrollment Windows", icon: CalendarClock, testId: "nav-config-open-enrollment-windows", permission: "admin", requiresComponent: "trust.elections" },
+      { path: "/config/trust/open-enrollment-windows", label: "Open Enrollment Windows", icon: CalendarClock, testId: "nav-config-open-enrollment-windows", permission: "admin", requiresComponents: ["sitespecific.bao", "trust.elections"] },
     ],
   },
   {

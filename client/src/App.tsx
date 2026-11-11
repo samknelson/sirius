@@ -2806,7 +2806,10 @@ function Router() {
       </Route>
 
       <Route path="/config/trust/open-enrollment-windows">
-        <ProtectedRoute permission="admin" component="trust.elections">
+        <ProtectedRoute
+          permission="admin"
+          componentAll={["sitespecific.bao", "trust.elections"]}
+        >
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <OpenEnrollmentWindowsPage />

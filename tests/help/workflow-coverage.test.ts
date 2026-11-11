@@ -145,6 +145,21 @@ describe("audited authenticated workflow help", () => {
     }
     expect(sanitizeHtml(help.details!, "rich-document")).toBe(help.details);
   });
+  it("documents BAO ownership, prerequisites, controls, and limits for Open Enrollment windows", () => {
+    const help = getSystemHelp("system:open-enrollment-windows")!;
+    expect(help.paths).toEqual(["/config/trust/open-enrollment-windows"]);
+    for (const text of [
+      "BAO", "Trust Elections", "Trust Benefits", "Plan year", "Opens on",
+      "Closes on", "Notes", "Open now", "Closed", "January 1",
+      "posted", "COBRA",
+    ]) {
+      expect(help.details).toContain(text);
+    }
+    expect(idsFor("/config/trust/open-enrollment-windows")).toContain(help.id);
+    expect(idsFor("/config/trust/open-enrollment-windows/extra")).not.toContain(help.id);
+    expect(idsFor("/trust/enrollment-queue")).not.toContain(help.id);
+    expect(sanitizeHtml(help.details!, "rich-document")).toBe(help.details);
+  });
   it("accounts for 47 missing families, with 45 backfill families and separate shipped payment ownership", () => {
     const expected = Array.from({ length: 48 }, (_, i) => `F${String(i + 1).padStart(2, "0")}`)
       .filter(id => id !== "F32");

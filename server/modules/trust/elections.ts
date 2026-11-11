@@ -178,6 +178,8 @@ export function registerWorkerTrustElectionsRoutes(
     "/api/workers/:id/trust-elections/open-enrollment-eligibility",
     requireAuth,
     electionsComponent,
+    requireComponent("sitespecific.bao"),
+    requireComponent("trust.benefits"),
     requireAccess('worker.mine', (req) => req.params.id),
     async (req: Request, res: Response) => {
       try {
