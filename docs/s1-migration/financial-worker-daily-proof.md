@@ -147,9 +147,58 @@ observations, not proof of identity failure or permission to create/reclassify
 them. The daily run must account for them through actual loader rejects and
 parity outcomes. Do not suppress a gate to manufacture a green proof.
 
-No new daily-run checkpoint, code/image identity or remote outcome is asserted
-here. Populate the proof record only from separately approved operator evidence.
-Scheduling remains gated by the existing rollout task after that review.
+No successful daily financial proof is established here. Scheduling remains
+gated by the existing rollout task after review of separately approved operator
+evidence.
+
+## Operator-supplied manual attempt — stopped before money loaders
+
+The operator reported configuring a new image/task definition and supplied a
+manual sync aggregate. Its extraction timestamps span
+`2026-11-10T23:02:12.784Z` through `2026-11-11T00:22:29.704Z`.
+This is operator-supplied evidence, not an assistant-executed remote action.
+No new remote action or retry is authorized by supplying this report.
+
+- Reported options: daily, production, wet, staging enabled, seeders skipped,
+  `keepGoing: false`, `forceReconcile: false`, and neither payment nor AR
+  financial-link approval present.
+- Stage reported PASS, zero mismatches and five accepted live drifts.
+  Contacts, workers and payments report `identityVerified: true`. Payments
+  staged `4731` rows, with `17` payloads extracted. Raw AR staged/extracted
+  `392237` rows with equal before/after counts, but this aggregate contains
+  no exact AR identity-set hash. Counts alone do not establish that proof.
+- The fleet stopped at `t16-elections` logic version `2`, exit code `1`:
+  `appeal_worker_unmapped=1` was a disallowed reject. Its local verification
+  PASS does not override the failed reject gate.
+- Local source inspection shows that rejection means an appeal had no usable
+  worker reference or no worker mapping for its reference. The aggregate does
+  not distinguish those causes or connect it to the contact/worker rejects.
+  Operator-side retained reject evidence and staged worker/mapping evidence
+  are needed before deciding remediation; no allowlist change is justified.
+- Overall result: FAIL; fleet gate failed; parity skipped;
+  `financialIdentity: not-run`; WMB processing skipped.
+  Reported duration was `8117.1` seconds. Earlier fleet steps did write:
+  aggregate totals include `293` created and `75` updated records. This is
+  not a no-write attempt or evidence of whole-run rollback.
+- Payments, hours and ledger were not reached. There is no loaded financial
+  identity, attribution, money-parity or reference-preservation result.
+  The earlier `107` missing payment targets remain unresolved; the new
+  staging count cannot identify their disposition.
+
+Still missing: full delivered code commit, immutable image and actual ECS task
+image digests, task-definition revision, exact launch command, task identity,
+overall task start/end and final container exit status. A child election exit
+and a sync FAIL report do not prove the wrapper's final exit or alert behavior.
+The supplied record does not establish whether the scheduled wrapper was used.
+The staging generation/range evidence and same-checkpoint inventory/parity
+comparison are also absent. No repeat-run evidence was supplied.
+
+Next: coordinate the missing runtime packet and upstream election triage with
+the existing rollout owner. Review an exact, separately approved operator
+diagnostic before any remote read, and separately approve any remediation or
+new daily run. Keep the election gate intact; do not use keep-going, new
+allowances, force-reconcile or a reused checkpoint label to obtain acceptance.
+The financial proof remains blocked, not complete.
 
 ## Local executable verification
 
