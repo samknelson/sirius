@@ -145,7 +145,7 @@
 - [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
 - [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
 - [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.
-- [Primary repository intent](primary-repository-intent.md) — user identifies grievance as origin; older project documentation names a different destination, so verify rather than silently reverting.
+- [Primary repository intent](primary-repository-intent.md) — origin targets samknelson/sirius, superseding the older grievance instruction; keep Freeman separate.
 - [Okta app-launch URLs](saml-app-launch-urls.md) — a /home URL alone does not diagnose broken SAML; the user’s working UAT uses this pattern too.
 - [Node runtime target](node-runtime-target.md) — user chose Node 24 LTS for the upgrade from 20; keep development, CI, and production aligned rather than following the newest major.
 - [Vendor destination policy](webclient-destination-policy-direction.md) — manifest defaults and deployment overrides; enforce within existing webclient, not a parallel framework.
