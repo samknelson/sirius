@@ -25,7 +25,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import type {
   SiriusIdOwnershipAction,
   SiriusIdOwnershipDecision,
-} from "../../../../server/storage/workers/sirius-id-ownership-plan";
+} from "../../../../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership-plan";
 import {
   Table,
   TableBody,
@@ -177,15 +177,16 @@ function isRepairableAction(action: SiriusIdOwnershipAction): boolean {
   return action === "mapped_rekey" || action === "retire_shell";
 }
 
-export default function S1MigrationDashboard() {
+export default function S1MigrationDashboard({ configId }: { configId?: string } = {}) {
   usePageTitle("S1 Migration");
   const [expandedRun, setExpandedRun] = useState<number | null>(null);
   const [ownershipOpen, setOwnershipOpen] = useState(false);
   const [stagingOpen, setStagingOpen] = useState(false);
 
-  const statusQ = useQuery<StatusPayload>({ queryKey: ["/api/s1-migration/status"] });
-  const collisionsQ = useQuery<CollisionsPayload>({ queryKey: ["/api/s1-migration/collisions"] });
-  const runsQ = useQuery<RunsPayload>({ queryKey: ["/api/s1-migration/runs"] });
+  const queryPath = (resource: string) => `/api/s1-migration/${resource}${configId ? `?configId=${encodeURIComponent(configId)}` : ""}`;
+  const statusQ = useQuery<StatusPayload>({ queryKey: [queryPath("status")] });
+  const collisionsQ = useQuery<CollisionsPayload>({ queryKey: [queryPath("collisions")] });
+  const runsQ = useQuery<RunsPayload>({ queryKey: [queryPath("runs")] });
 
   const status = statusQ.data;
   const collisions = collisionsQ.data;

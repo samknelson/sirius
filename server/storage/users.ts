@@ -1,28 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
-import {
-  users,
-  roles,
-  userRoles,
-  rolePermissions,
-  entityMetadata,
-  pluginConfigsDashboard,
-  pluginConfigsQuicksearch,
-  type User,
-  type InsertUser,
-  type UpsertUser,
-  type Role,
-  type InsertRole,
-  type UserRole,
-  type RolePermission,
-  type AssignRole,
-  type AssignPermission,
-} from "@shared/schema";
-import {
-  initializePermissions,
-  permissionRegistry,
-  type PermissionDefinition,
-} from "@shared/permissions";
+import { users, roles, userRoles, rolePermissions, entityMetadata, pluginConfigsDashboard, pluginConfigsQuicksearch, type User, type InsertUser, type UpsertUser, type Role, type InsertRole, type UserRole, type RolePermission, type AssignRole, type AssignPermission } from "@shared/schema";
+import { initializePermissions, permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { eq, and, sql, inArray, ilike, exists, count, arrayContains } from "drizzle-orm";
 import { esigs } from "@shared/schema";
 import { runInTransaction } from './transaction-context';
@@ -66,7 +45,6 @@ export interface UserStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
-  retireMigratedUserEmail(id: string, expectedEmail: string, retiredEmail: string): Promise<boolean>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
   deleteUserAccount(id: string): Promise<boolean>;
@@ -194,30 +172,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       }
       
       return user || undefined;
-    },
-
-    /**
-     * Release a unique login address from an already-inactive migrated
-     * account without propagating the account-only tombstone to contacts.
-     * The expected-email predicate makes the migration's collision check and
-     * write fail closed if the row changed in between.
-     */
-    async retireMigratedUserEmail(
-      id: string,
-      expectedEmail: string,
-      retiredEmail: string,
-    ): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .update(users)
-        .set({ email: retiredEmail })
-        .where(and(
-          eq(users.id, id),
-          eq(users.isActive, false),
-          sql`lower(${users.email}) = lower(${expectedEmail})`,
-        ))
-        .returning({ id: users.id });
-      return result.length === 1;
     },
 
     async updateUserLastLogin(id: string): Promise<User | undefined> {
@@ -871,14 +825,6 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
         
         return `Updated user "${userName}" (changed: ${changes.join(', ')})`;
       }
-    },
-    retireMigratedUserEmail: {
-      logArgs: (args) => [args[0], "<expected email redacted>", "<retired email redacted>"],
-      getHostEntityId: (args) => args[0],
-      getDescription: (args, result) =>
-        result
-          ? `Retired migration-owned login email for inactive user ${args[0]}`
-          : `Did not retire migration-owned login email for inactive user ${args[0]}`,
     },
     deleteUser: {
       getHostEntityId: (args, _result, beforeState) => beforeState?.id || args[0],

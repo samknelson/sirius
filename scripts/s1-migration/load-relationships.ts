@@ -1,3 +1,5 @@
+import { s1Workers } from '../../server/plugins/system/oneoff/plugins/s1-migration/workers';
+import { s1Relations } from '../../server/plugins/system/oneoff/plugins/s1-migration/relations';
 /**
  * T15 loader — sirius_contact_relationship → worker_relations. Milestone 3.
  *
@@ -85,7 +87,7 @@ import {
   parseForceReconcile,
   sweepDeletions,
 } from "./lib/sync";
-import { planSiriusIdOwnership } from "../../server/storage/workers/sirius-id-ownership-plan";
+import { planSiriusIdOwnership } from "../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership-plan";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -163,7 +165,7 @@ async function main() {
   // Shell allocation must see exactly the same source reservations and
   // ownership blockers as the contacts/workers loader. This entire decision
   // is read-only and runs before relationship, shell, or id-map domain writes.
-  const siriusOwnershipSnapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
+  const siriusOwnershipSnapshot = await s1Workers.getMigrationSiriusIdOwnershipSnapshot();
   const siriusOwnershipPlan = planSiriusIdOwnership(siriusOwnershipSnapshot);
   const ownershipActions = siriusOwnershipPlan.decisions.reduce<Record<string, number>>((counts, decision) => {
     counts[decision.action] = (counts[decision.action] ?? 0) + 1;
@@ -380,7 +382,7 @@ async function main() {
     // alt side retargeted to a worker-less contact included)
     const ensureShell = async (): Promise<string> => {
       const created = await withNotificationsSuppressed(() =>
-        storage.workers.createWorkerForMigration({
+        s1Workers.createWorkerForMigration({
           contactId: needShellForContactId!,
           ssn: null,
           data: { migrationShell: true, s1ContactNid: altNid },
@@ -437,7 +439,7 @@ async function main() {
       if (drift) {
         try {
           const updated = await withNotificationsSuppressed(() =>
-            storage.workerRelations.reconcileFromMigration(mapped.s2Id, {
+            s1Relations.reconcileFromMigration(mapped.s2Id, {
               worker1: w1.s2Id,
               worker2: w2Id!,
               startYmd,

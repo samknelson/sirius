@@ -1,3 +1,4 @@
+import { s1Workers } from './workers';
 /**
  * S1 → S2 migration dashboard routes (read-only).
  *
@@ -18,16 +19,12 @@
  * are returned. Gated: auth + component `sitespecific.bao.s1migration` +
  * admin access.
  */
-import type { Express, RequestHandler } from "express";
+import type { RequestHandler } from "express";
 import { sql } from "drizzle-orm";
-import { db } from "./../storage/db";
-import { storage } from "../storage/database";
-import {
-  planSiriusIdOwnership,
-} from "../storage/workers/sirius-id-ownership-plan";
-import { requireAccess } from "../services/access-policy-evaluator";
-import { requireComponent } from "./components";
-import { projectSiriusIdOwnershipDashboard } from "./s1-migration-dashboard";
+import { db } from "../../../../../storage/db";
+
+import { planSiriusIdOwnership } from "./sirius-id-ownership-plan";
+import { projectSiriusIdOwnershipDashboard } from "./dashboard-projection";
 
 export const S1_MIGRATION_COMPONENT_ID = "sitespecific.bao.s1migration";
 
@@ -119,15 +116,10 @@ function sanitizeRunJson(value: unknown, depth = 0): unknown {
   return value;
 }
 
-export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHandler) {
-  const gates: RequestHandler[] = [
-    requireAuth,
-    requireComponent(S1_MIGRATION_COMPONENT_ID),
-    requireAccess("admin"),
-  ];
+export function registerS1MigrationRoutes(get: (path: string, handler: RequestHandler) => void) {
 
   // Staging mirror + target readiness aggregates.
-  app.get("/api/s1-migration/status", ...gates, async (_req, res) => {
+  get("/api/s1-migration/status", async (_req, res) => {
     const started = performance.now();
     try {
       const statusPhase = performance.now();
@@ -208,12 +200,12 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
   // Read-only ownership planning for the fatal pre-write gate.  This calls
   // the same id_map-based planner as the CLI diagnostic and contacts/workers
   // loader — a numeric match is never taken as evidence two people are same.
-  app.get("/api/s1-migration/collisions", ...gates, async (_req, res) => {
+  get("/api/s1-migration/collisions", async (_req, res) => {
     try {
       const started = performance.now();
       const result = await ownershipPreflight(async () => {
           const snapshotStarted = performance.now();
-          const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
+          const snapshot = await s1Workers.getMigrationSiriusIdOwnershipSnapshot();
           const snapshotMs = phaseMs(snapshotStarted);
           if (!snapshot.stagingPresent) {
             const timings = { snapshotMs, plannerMs: 0, projectionMs: 0, totalMs: phaseMs(started) };
@@ -238,7 +230,7 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
 
   // Run history: stage runs, loader runs (rejects/rejectSamples/verify
   // counters), and parity harness results — whatever recordRun persisted.
-  app.get("/api/s1-migration/runs", ...gates, async (req, res) => {
+  get("/api/s1-migration/runs", async (req, res) => {
     const started = performance.now();
     try {
       if (!(await regclassPresent("s1_staging.runs"))) {

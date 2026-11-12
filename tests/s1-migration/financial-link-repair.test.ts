@@ -10,10 +10,12 @@ const fake = vi.hoisted(() => ({
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => ({ execute: fake.execute }), runInTransaction: fake.transaction,
 }));
+vi.mock("../../server/plugins/system/oneoff/plugins/s1-migration/payments", () => ({
+  s1Payments: { updateForMigration: fake.updatePayment },
+}));
 vi.mock("../../server/storage/database", () => ({
   storage: { ledger: {
     ea: { getOrCreate: fake.ea }, entries: { update: fake.updateEntry },
-    payments: { updateForMigration: fake.updatePayment },
   } },
 }));
 vi.mock("../../server/middleware/request-context", () => ({

@@ -433,6 +433,15 @@ describe("Oneoff runner authorization and lifecycle", () => {
     expect(state.lockCalls).toHaveLength(1);
   });
 
+  it("refuses preflight and execution for a dashboard with no actions before creating runs", async () => {
+    const readOnly = plugin({ actions: [] });
+    await expect(preflightOneoff(config, readOnly, "run-once", {}, "actor"))
+      .rejects.toMatchObject({ statusCode: 400, message: "Unknown Oneoff action" });
+    await expect(startOneoff(config, readOnly, "run-once", {}, "f".repeat(64), "actor"))
+      .rejects.toMatchObject({ statusCode: 400, message: "Unknown Oneoff action" });
+    expect(state.runs).toHaveLength(0);
+  });
+
   it("persists a cancellation request for a live run", async () => {
     const active = {
       id: "cancellable-run", pluginKind: "oneoff", pluginId: "test-plugin",

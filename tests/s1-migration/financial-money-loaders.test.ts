@@ -25,11 +25,13 @@ vi.mock("../../server/storage/db", () => ({
   db: { execute: io.execute }, pool: { end: async () => {} },
 }));
 vi.mock("../../server/storage/transaction-context", () => ({ getClient: () => ({ execute: io.execute }) }));
+vi.mock("../../server/plugins/system/oneoff/plugins/s1-migration/payments", () => ({
+  s1Payments: { createForMigration: io.createPayment, updateForMigration: io.updatePayment },
+}));
 vi.mock("../../server/storage/database", () => ({
   storage: { ledger: {
     ea: { getOrCreate: io.ea },
-    payments: { createForMigration: io.createPayment, updateForMigration: io.updatePayment,
-      getByIds: async (ids: string[]) => payments.filter(row => ids.includes(row.id)) },
+    payments: { getByIds: async (ids: string[]) => payments.filter(row => ids.includes(row.id)) },
     entries: { create: io.createEntry, update: io.updateEntry },
   } },
 }));

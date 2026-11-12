@@ -1,9 +1,4 @@
-import {
-  siriusIdPlanHash,
-  type SiriusIdOwnershipAction,
-  type SiriusIdOwnershipPlan,
-  type SiriusIdOwnershipSnapshot,
-} from "../storage/workers/sirius-id-ownership-plan";
+import { siriusIdPlanHash, type SiriusIdOwnershipAction, type SiriusIdOwnershipPlan, type SiriusIdOwnershipSnapshot } from "./sirius-id-ownership-plan";
 
 const DASHBOARD_DECISION_LIMIT = 200;
 const CLEAN_ACTIONS: ReadonlySet<SiriusIdOwnershipAction> = new Set([

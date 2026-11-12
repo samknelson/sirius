@@ -406,7 +406,6 @@ const AuthSettingsPage = lazy(() => import("@/pages/config/auth-settings"));
 const EnvPage = lazy(() => import("@/pages/config/env"));
 const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
-const S1MigrationPage = lazy(() => import("@/pages/config/s1-migration"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
@@ -4147,11 +4146,7 @@ function Router() {
 
       <Route path="/config/s1-migration">
         <ProtectedRoute permission="admin" component="sitespecific.bao.s1migration">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <S1MigrationPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
+          <Redirect to="/admin/oneoff/s1-migration" />
         </ProtectedRoute>
       </Route>
 
@@ -4303,6 +4298,16 @@ function Router() {
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/oneoff/:pluginId">
+        {params => <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OneoffAdminPage initialPluginId={params.pluginId} />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>}
       </Route>
 
       <Route path="/admin/oneoff">

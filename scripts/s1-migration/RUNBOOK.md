@@ -1,3 +1,23 @@
+## Read-only dashboard and internal operation ownership
+
+Open **One-off Jobs → S1 Migration** at `/admin/oneoff/s1-migration`.
+The previous `/config/s1-migration` link redirects there. Administrator access,
+the S1 migration component, and an enabled S1 Migration Oneoff configuration
+are required. The normal singleton configuration lifecycle creates it disabled;
+enable it through `/admin/plugin-configs/oneoff` when dashboard access is needed.
+Enabling this configuration does **not** enable imports or their schedule.
+
+Status, ownership/collisions, and run history remain read-only. The three
+`/api/s1-migration/{status,collisions,runs}` GET contracts remain available behind
+the Oneoff host's gates. No migration mutation is exposed as an HTTP action.
+
+Existing CLI filenames, arguments, and approval procedures remain unchanged.
+Their migration-only operations now live under
+`server/plugins/system/oneoff/plugins/s1-migration/`, rather than core storage.
+Import the individual operation module, not a CLI entrypoint or the plugin
+registration module. See [the ownership manifest](OWNERSHIP-RELOCATION.md)
+for the method/caller map and verification limitations.
+
 ## Historical financial-link correction — separate operator approval
 
 Before corrected wet money sync on an existing target, follow

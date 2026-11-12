@@ -43,7 +43,7 @@ function registerOneoffKind(): void {
     }),
     seedDefault: (plugin) => {
       const p = plugin as { metadata: { id: string; name: string; singleton?: boolean } };
-      if (!p.metadata.singleton || p.metadata.id !== "oneoff-test") return null;
+      if (!p.metadata.singleton) return null;
       return {
         pluginId: p.metadata.id,
         name: p.metadata.name,
@@ -65,3 +65,4 @@ export function initializeOneoffPluginSystem(): void {
 }
 
 import "./plugins/test";
+import "./plugins/s1-migration";

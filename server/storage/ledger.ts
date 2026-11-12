@@ -6,19 +6,8 @@ import { logger } from "../logger";
 import { entityMetadata, ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
 import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
-import type { 
-  LedgerAccount, 
-  InsertLedgerAccount,
-  SelectLedgerEa,
-  InsertLedgerEa,
-  LedgerPayment,
-  InsertLedgerPayment,
-  LedgerPaymentWithCreatedDate,
-  LedgerPaymentWithEntity,
-  Ledger,
-  InsertLedger
-} from "@shared/schema";
-import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt, ilike } from "drizzle-orm";
+import type { LedgerAccount, InsertLedgerAccount, SelectLedgerEa, InsertLedgerEa, LedgerPayment, InsertLedgerPayment, LedgerPaymentWithCreatedDate, LedgerPaymentWithEntity, Ledger, InsertLedger } from "@shared/schema";
+import { eq, and, desc, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt, ilike } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
@@ -82,17 +71,9 @@ export interface LedgerPaymentStorage {
     offset: number
   ): Promise<{ data: LedgerPaymentWithEntity[]; total: number }>;
   create(payment: InsertLedgerPayment): Promise<LedgerPayment>;
-  /** Migration-only: like create, but preserves a verbatim historical dateCreated. */
-  createForMigration(payment: InsertLedgerPayment & { dateCreated?: Date | null }): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
   /** Only the provider settlement path may move a linked online payment. */
   settleOnline(id: string, status: "cleared" | "canceled" | "error", clearedAt?: Date): Promise<LedgerPayment | undefined>;
-  /** Migration-only: like update, but the patch admits dateCreated (S1-wins
-   * sync re-writes the verbatim historical timestamp). */
-  updateForMigration(
-    id: string,
-    payment: Partial<InsertLedgerPayment> & { dateCreated?: Date },
-  ): Promise<LedgerPayment | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -853,21 +834,6 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       return payment;
     },
 
-    async createForMigration(insertPayment: InsertLedgerPayment & { dateCreated?: Date | null }): Promise<LedgerPayment> {
-      // Migration-only path: identical to create, but the input type admits a
-      // verbatim historical dateCreated (create's public type omits it so the
-      // column defaults to now() for app-originated payments). Skips the
-      // currency cross-check — the T19 loader preflights payment-type/account
-      // currency parity per row before calling this (currency_mismatch reject)
-      // and verifies every written row post-write.
-      validate.validateOrThrow(insertPayment);
-      const client = getClient();
-      const [payment] = await client.insert(ledgerPayments)
-        .values(insertPayment as any)
-        .returning();
-      return payment;
-    },
-
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
@@ -926,25 +892,6 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           inArray(ledgerPayments.status, ["pending", "canceled", "error"])))
         .returning();
       return payment;
-    },
-
-    async updateForMigration(
-      id: string,
-      paymentUpdate: Partial<InsertLedgerPayment> & { dateCreated?: Date },
-    ): Promise<LedgerPayment | undefined> {
-      // Migration-only path (T19 S1-wins sync): identical to update, but the
-      // patch type admits dateCreated so a changed S1 payment re-writes its
-      // verbatim historical timestamp (update's public type omits it). Skips
-      // the currency cross-check for the same reason createForMigration does —
-      // the loader preflights payment-type/account currency parity per row
-      // (currency_mismatch reject) and verifies every written row post-write.
-      validate.validateOrThrow(id);
-      const client = getClient();
-      const [payment] = await client.update(ledgerPayments)
-        .set(paymentUpdate as any)
-        .where(eq(ledgerPayments.id, id))
-        .returning();
-      return payment || undefined;
     },
 
     async delete(id: string): Promise<boolean> {

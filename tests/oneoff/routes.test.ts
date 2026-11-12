@@ -8,6 +8,8 @@ const {
   startOneoff,
   pluginConfigsGet,
   oneoffActiveRun,
+  readHandler,
+  pluginConfigsSearch,
 } = vi.hoisted(() => ({
   configState: { value: {} as any },
   pluginState: { value: {} as any },
@@ -19,11 +21,13 @@ const {
   startOneoff: vi.fn(),
   pluginConfigsGet: vi.fn(),
   oneoffActiveRun: vi.fn(),
+  readHandler: vi.fn((_req: any, res: any) => res.json({ readOnly: true })),
+  pluginConfigsSearch: vi.fn(),
 }));
 
 vi.mock("../../server/storage", () => ({
   storage: {
-    pluginConfigs: { get: pluginConfigsGet },
+    pluginConfigs: { get: pluginConfigsGet, search: pluginConfigsSearch },
     jobRuns: { list: vi.fn(async () => []), getById: vi.fn(async () => null) },
   },
 }));
@@ -33,7 +37,10 @@ vi.mock("../../server/plugins/_core/gating", () => ({
   enforcePluginGating: vi.fn(async () => gates.plugin),
 }));
 vi.mock("../../server/plugins/system/oneoff/registry", () => ({
-  oneoffPluginRegistry: { get: (id: string) => id === pluginState.value.metadata?.id ? pluginState.value : undefined },
+  oneoffPluginRegistry: {
+    listIds: () => pluginState.value.metadata ? [pluginState.value.metadata.id] : [],
+    get: (id: string) => id === pluginState.value.metadata?.id ? pluginState.value : undefined,
+  },
 }));
 vi.mock("../../server/modules/masquerade", () => ({
   getEffectiveUser: vi.fn(async () => ({ dbUser: { id: "admin-user" } })),
@@ -58,7 +65,6 @@ const app = {
   post: (path: string, ...handlers: Handler[]) => { posts.set(path, handlers.at(-1)!); },
 };
 
-registerOneoffRoutes(app as any, ((_req: any, _res: any, next: () => void) => next()) as any);
 
 function response() {
   const state: any = { statusCode: 200, headers: {}, body: undefined };
@@ -81,12 +87,13 @@ async function post(path: string, body: any) {
   return state;
 }
 
-async function get(path: string) {
+async function get(path: string, query: Record<string, unknown> = {}) {
   const { res, state } = response();
   await gets.get(path)!({
     params: { id: "config-identity-under-test" },
     session: {},
     user: {},
+    query,
   }, res);
   return state;
 }
@@ -101,7 +108,8 @@ beforeEach(() => {
   };
   pluginState.value = {
     metadata: { id: "same-plugin-id" },
-    actions: [],
+    actions: [{ id: "inspect" }],
+    registerReadRoutes: (get: (path: string, handler: typeof readHandler) => void) => get("/api/oneoff-read-fixture", readHandler),
     status: vi.fn(async () => ({ tableExists: true, rowCount: 7 })),
   };
   pluginConfigsGet.mockImplementation(async (id: string) => id === configState.value.id ? configState.value : null);
@@ -110,6 +118,41 @@ beforeEach(() => {
   preflightOneoff.mockResolvedValue({ message: "Ready", confirmationToken: "token" });
   startOneoff.mockResolvedValue({ id: "run-1" });
   oneoffActiveRun.mockResolvedValue(undefined);
+  pluginConfigsSearch.mockResolvedValue([{ config: configState.value }]);
+  registerOneoffRoutes(app as any, ((_req: any, _res: any, next: () => void) => next()) as any);
+});
+
+describe("Oneoff plugin-owned GET boundaries", () => {
+  it("reads through one enabled configuration without starting or reconciling runs", async () => {
+    const result = await get("/api/oneoff-read-fixture");
+    expect(result.body).toEqual({ readOnly: true });
+    expect(result.headers["Cache-Control"]).toBe("private, no-store");
+    expect(preflightOneoff).not.toHaveBeenCalled();
+    expect(startOneoff).not.toHaveBeenCalled();
+    expect(oneoffActiveRun).not.toHaveBeenCalled();
+  });
+
+  it("refuses disabled, ambiguous, wrong-plugin, and unavailable configurations", async () => {
+    configState.value.enabled = false;
+    expect((await get("/api/oneoff-read-fixture")).statusCode).toBe(409);
+    configState.value.enabled = true;
+    pluginConfigsSearch.mockResolvedValue([{ config: configState.value }, { config: configState.value }]);
+    expect((await get("/api/oneoff-read-fixture")).statusCode).toBe(409);
+    configState.value.pluginId = "another-plugin";
+    expect((await get("/api/oneoff-read-fixture", { configId: configState.value.id })).statusCode).toBe(404);
+    pluginState.value = {};
+    expect((await get("/api/oneoff-read-fixture")).statusCode).toBe(404);
+    expect(readHandler).not.toHaveBeenCalled();
+  });
+
+  it("refuses admin and component gate failures before invoking plugin reads", async () => {
+    gates.kind = { ok: false, status: 403, message: "Admin required" };
+    expect((await get("/api/oneoff-read-fixture")).statusCode).toBe(403);
+    gates.kind = { ok: true };
+    gates.plugin = { ok: false, status: 403, message: "Component unavailable" };
+    expect((await get("/api/oneoff-read-fixture")).statusCode).toBe(403);
+    expect(readHandler).not.toHaveBeenCalled();
+  });
 });
 
 describe("Oneoff route authorization and config identity", () => {

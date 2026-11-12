@@ -1,13 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
-import { getClient, runInTransaction } from "../transaction-context";
-import {
-  planSiriusIdOwnership,
-  assertSiriusIdReferenceRetention,
-  siriusIdPlanHash,
-  type SiriusIdOwnershipPlanOptions,
-  type SiriusIdReferenceRetention,
-  type SiriusIdOwnershipSnapshot,
-} from "./sirius-id-ownership-plan";
+import { getClient, runInTransaction } from "../../../../../storage/transaction-context";
+import { planSiriusIdOwnership, assertSiriusIdReferenceRetention, siriusIdPlanHash, type SiriusIdOwnershipPlanOptions, type SiriusIdReferenceRetention, type SiriusIdOwnershipSnapshot } from "./sirius-id-ownership-plan";
 
 type SqlClient = { execute(query: SQL): Promise<unknown> };
 const rowsOf = <T>(result: unknown): T[] => ((result as { rows?: T[] }).rows ?? []);

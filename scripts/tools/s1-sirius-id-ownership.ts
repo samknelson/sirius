@@ -1,3 +1,4 @@
+import { s1Workers } from '../../server/plugins/system/oneoff/plugins/s1-migration/workers';
 /**
  * Read-only Sirius-ID ownership diagnostic and explicitly approved repair.
  *
@@ -21,7 +22,7 @@ import {
   planSiriusIdOwnership,
   projectSiriusIdOwnershipEvidence,
   siriusIdPlanHash,
-} from "../../server/storage/workers/sirius-id-ownership-plan";
+} from "../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership-plan";
 
 const REPORTED_IDS = Array.from({ length: 17 }, (_, offset) => 1_009_069 + offset);
 const REPORTED_NIDS = Array.from({ length: 1_132 }, (_, offset) => 18_441_635 + offset);
@@ -87,7 +88,7 @@ async function main(): Promise<void> {
   // scope flag is exact and never silently broadens to the other report range.
   const ids = hasIds ? parsePositiveIntegerList("--ids", "integer Sirius IDs") : !hasNids ? REPORTED_IDS : undefined;
   const nids = hasNids ? parsePositiveIntegerList("--nids", "S1 node IDs") : !hasIds ? REPORTED_NIDS : undefined;
-  const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
+  const snapshot = await s1Workers.getMigrationSiriusIdOwnershipSnapshot();
   const plan = planSiriusIdOwnership(
     snapshot,
     ids ? new Set(ids) : undefined,
@@ -131,8 +132,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const result = await storage.workers.applyMigrationSiriusIdOwnershipPlan({
-    approvalHash,
+  const result = await s1Workers.applyMigrationSiriusIdOwnershipPlan({
+    // assertArgumentCombination above requires this on every --apply path.
+    approvalHash: approvalHash!,
     siriusIds: ids,
     sourceNids: nids,
     retireShells,

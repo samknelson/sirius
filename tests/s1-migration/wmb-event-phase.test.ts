@@ -1,7 +1,8 @@
+
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { runHistoricalBackfill } from "../../scripts/oneoffs/backfill-wmb-events";
-import type { TrustWmbEventsStorage } from "../../server/storage/trust/wmb-events";
+import type { S1TrustWmbEventsOperations } from "../../server/plugins/system/oneoff/plugins/s1-migration/wmb-events";
 import { emptyWmbPhase, runWmbEventPhase, validatedCoverageCutoff } from "../../scripts/s1-migration/lib/wmb-event-phase";
 import { PROFILES } from "../../scripts/s1-migration/sync-config";
 import { reviewedCoverageDetail } from "./wmb-coverage-fixture";
@@ -127,7 +128,7 @@ describe("post-import historical WMB phase", () => {
 
   it("validates workers before writes and treats a malformed worker decision as failure", async () => {
     const target = { pageHistoricalWorkers: vi.fn().mockResolvedValue(["z", "a"]),
-      reconcileHistoricalWorker: vi.fn() } as unknown as TrustWmbEventsStorage;
+      reconcileHistoricalWorker: vi.fn() } as unknown as S1TrustWmbEventsOperations;
     await expect(runHistoricalBackfill(["--cutoff=2031-03", "--live"], target)).rejects.toThrow("invalid-worker-page");
     expect(target.reconcileHistoricalWorker).not.toHaveBeenCalled();
     vi.mocked(target.pageHistoricalWorkers).mockResolvedValue(["a"]);

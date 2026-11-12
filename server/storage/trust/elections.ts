@@ -1,23 +1,8 @@
 import { getClient, runInTransaction, onAfterCommit } from '../transaction-context';
-import {
-  workerTrustElections,
-  workers,
-  policies,
-  employers,
-  contacts,
-  trustBenefits,
-  optionsTrustBenefitType,
-  workerRelations,
-  optionsWorkerRelationType,
-  createWorkerTrustElectionRequestSchema,
-  updateWorkerTrustElectionRequestSchema,
-  type WorkerTrustElection,
-  type WorkerTrustElectionView,
-  type EnrollmentType,
-} from '@shared/schema';
-import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlaps, sql, type SQL } from 'drizzle-orm';
-import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
-import { normalizeToDateOnly, getTodayDateOnly, getTodayYmd } from '@shared/utils';
+import { workerTrustElections, workers, policies, employers, contacts, trustBenefits, optionsTrustBenefitType, workerRelations, optionsWorkerRelationType, createWorkerTrustElectionRequestSchema, updateWorkerTrustElectionRequestSchema, type WorkerTrustElection, type WorkerTrustElectionView, type EnrollmentType } from '@shared/schema';
+import { eq, and, asc, desc, isNull, lte, gte, or, ne, inArray, arrayOverlaps, sql, type SQL } from 'drizzle-orm';
+import { defineLoggingConfig } from '../middleware/logging';
+import { getTodayDateOnly, getTodayYmd } from '@shared/utils';
 import { eventBus, EventType } from '../../services/event-bus';
 import { toYmd, addDaysYmd } from '@shared/utils/date';
 
@@ -40,7 +25,7 @@ export interface WorkerTrustElectionSearchParams {
  * enrollment type is carried on the payload so per-type notifiers can route
  * without re-reading the row (which is already gone for deletes).
  */
-function emitTrustElectionSaved(
+export function emitTrustElectionSaved(
   electionId: string,
   workerId: string,
   enrollmentType: EnrollmentType | null,
@@ -94,44 +79,8 @@ export interface WorkerTrustElectionsStorage {
   getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
   getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
   create(workerId: string, input: unknown): Promise<WorkerTrustElection>;
-  /**
-   * MIGRATION-ONLY create (S1→S2 T16 loader; cf. createWorkerForMigration).
-   * Historical elections must land VERBATIM: unlike `create`, this skips the
-   * dual-coverage assert and never auto-end-dates a prior open election —
-   * S1 is the system of record for its own history, and rewriting or
-   * rejecting it here would corrupt the import. FK existence and the
-   * end-after-start contract are still enforced, and TRUST_ELECTION_SAVED
-   * still fires after commit so denorm listeners observe the row. Never call
-   * this from application code — wizard/API paths must use `create`.
-   */
-  createForMigration(input: MigrationElectionInput): Promise<WorkerTrustElection>;
-  /**
-   * MIGRATION-ONLY update (S1→S2 T16 daily sync reconcile). During the
-   * dual-run S1 stays the system of record: when a mapped S1 election is
-   * edited there, the S2 row is overwritten VERBATIM with the re-resolved
-   * shape. Like createForMigration this skips the dual-coverage assert and
-   * never auto-end-dates other open elections; FK existence and the
-   * end-after-start contract are still enforced via validateElection.
-   * Emits TRUST_ELECTION_SAVED for the new shape, and additionally for the
-   * pre-update worker/range when they changed (retargets move the election
-   * between workers, not just between dates) so denorm listeners recompute
-   * months only the old shape covered. Never call from application code —
-   * staff edits must use `update`.
-   */
-  updateForMigration(id: string, input: MigrationElectionInput): Promise<WorkerTrustElection | undefined>;
   update(id: string, input: unknown): Promise<WorkerTrustElection | undefined>;
   delete(id: string): Promise<boolean>;
-}
-
-export interface MigrationElectionInput {
-  workerId: string;
-  employerId: string;
-  startYmd: string;
-  endYmd?: string | null;
-  benefitIds?: string[] | null;
-  relationshipIds?: string[] | null;
-  enrollmentType?: EnrollmentType | null;
-  data?: Record<string, unknown> | null;
 }
 
 /** Inclusive coverage predicate shared by every current/as-of election read. */
@@ -321,7 +270,7 @@ interface ValidationInput {
   endYmd?: Date | string | null;
 }
 
-async function validateElection(
+export async function validateElection(
   data: ValidationInput,
   existing?: WorkerTrustElection,
 ): Promise<{ workerId: string; employerId: string; policyId: string | null; startYmd: string; endYmd: string | null }> {
@@ -568,11 +517,11 @@ async function assertNoDualCoverage(
   }
 }
 
-interface ElectionBeforeState {
+export interface ElectionBeforeState {
   election: WorkerTrustElection | undefined;
 }
 
-async function describeElection(
+export async function describeElection(
   workerId: string | null | undefined,
   startYmd: string | null | undefined,
 ): Promise<string> {
@@ -603,12 +552,6 @@ export const workerTrustElectionsLoggingConfig = defineLoggingConfig<WorkerTrust
       getDescription: async (_args, result, beforeState) => {
         const r = result || (beforeState as ElectionBeforeState | undefined)?.election;
         return `Updated trust election for ${await describeElection(r?.workerId, r?.startYmd)}`;
-      },
-    },
-    updateForMigration: {
-      getDescription: async (_args, result, beforeState) => {
-        const r = result || (beforeState as ElectionBeforeState | undefined)?.election;
-        return `Updated trust election (S1 sync) for ${await describeElection(r?.workerId, r?.startYmd)}`;
       },
     },
     delete: {
@@ -800,106 +743,6 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           created.endYmd ?? null,
         );
         return created;
-      });
-    },
-
-    // MIGRATION-ONLY — see interface doc. Verbatim historical insert: no
-    // dual-coverage assert, no auto-end of prior open elections. FK + date
-    // contract still enforced via validateElection.
-    async createForMigration(input) {
-      const validated = await validateElection({
-        workerId: input.workerId,
-        employerId: input.employerId,
-        policyId: null,
-        startYmd: input.startYmd,
-        endYmd: input.endYmd ?? null,
-      });
-      return await runInTransaction(async () => {
-        const client = getClient();
-        const [created] = await client
-          .insert(workerTrustElections)
-          .values({
-            workerId: validated.workerId,
-            employerId: validated.employerId,
-            policyId: null,
-            startYmd: validated.startYmd,
-            endYmd: validated.endYmd,
-            benefitIds: input.benefitIds ?? null,
-            relationshipIds: input.relationshipIds ?? null,
-            enrollmentType: input.enrollmentType ?? null,
-            data: (input.data ?? null) as WorkerTrustElection['data'],
-          })
-          .returning();
-        emitTrustElectionSaved(
-          created.id,
-          created.workerId,
-          (created.enrollmentType ?? null) as EnrollmentType | null,
-          'created',
-          created.startYmd,
-          created.endYmd ?? null,
-        );
-        return created;
-      });
-    },
-
-    // MIGRATION-ONLY — see interface doc. Verbatim S1-wins overwrite: no
-    // dual-coverage assert, no auto-end of prior open elections. FK + date
-    // contract still enforced via validateElection.
-    async updateForMigration(id, input) {
-      const validated = await validateElection({
-        workerId: input.workerId,
-        employerId: input.employerId,
-        policyId: null,
-        startYmd: input.startYmd,
-        endYmd: input.endYmd ?? null,
-      });
-      return await runInTransaction(async () => {
-        const client = getClient();
-        const [existing] = await client
-          .select()
-          .from(workerTrustElections)
-          .where(eq(workerTrustElections.id, id));
-        if (!existing) return undefined;
-        const [updated] = await client
-          .update(workerTrustElections)
-          .set({
-            workerId: validated.workerId,
-            employerId: validated.employerId,
-            policyId: null,
-            startYmd: validated.startYmd,
-            endYmd: validated.endYmd,
-            benefitIds: input.benefitIds ?? null,
-            relationshipIds: input.relationshipIds ?? null,
-            enrollmentType: input.enrollmentType ?? null,
-            data: (input.data ?? null) as WorkerTrustElection['data'],
-          })
-          .where(eq(workerTrustElections.id, id))
-          .returning();
-        emitTrustElectionSaved(
-          updated.id,
-          updated.workerId,
-          (updated.enrollmentType ?? null) as EnrollmentType | null,
-          'updated',
-          updated.startYmd,
-          updated.endYmd ?? null,
-        );
-        // Also emit the pre-update shape when the covered worker OR range
-        // changed — months only the old shape covered must be recomputed.
-        if (
-          existing.workerId !== updated.workerId ||
-          existing.startYmd !== updated.startYmd ||
-          existing.endYmd !== updated.endYmd
-        ) {
-          emitTrustElectionSaved(
-            existing.id,
-            existing.workerId,
-            (existing.enrollmentType ?? null) as EnrollmentType | null,
-            'updated',
-            existing.startYmd,
-            existing.endYmd ?? null,
-          );
-        }
-        return updated;
       });
     },
 

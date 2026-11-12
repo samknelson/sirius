@@ -46,6 +46,7 @@ const pluginKinds = [
 ];
 const reportPaths = reportTypeHelp.flatMap(entry => entry.paths);
 function concretePaths(template: string): string[] {
+  if (template === "/admin/oneoff/:pluginId") return ["/admin/oneoff/s1-migration", "/admin/oneoff/example"];
   if (template === "/config/options/:type/list") {
     return ["/config/options/example/list", "/config/options/worker-relation-type/list"];
   }

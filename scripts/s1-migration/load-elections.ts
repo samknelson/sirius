@@ -1,3 +1,5 @@
+import { s1Elections } from '../../server/plugins/system/oneoff/plugins/s1-migration/elections';
+import { s1EligibilityExemptions } from '../../server/plugins/system/oneoff/plugins/s1-migration/eligibility-exemptions';
 /**
  * T16 loader — S1 trust worker elections → worker_trust_elections.
  * Load-order step: after T15 (relationships) and the policies adopt-mapper.
@@ -39,7 +41,7 @@
  *     end-dates the election from node.changed (same convention as T15).
  *   - Dates are D7 wall-time datetimes → date-only cast (toYmd, no tz math).
  *
- * Writes go through storage.workerTrustElections.createForMigration /
+ * Writes go through s1Elections.createForMigration /
  * updateForMigration / delete — verbatim history: FK + end>start contracts
  * enforced, but NO dual-coverage assert and NO auto-end of prior open
  * elections (S1 is the record of its own era). All writes stay inside
@@ -249,7 +251,7 @@ async function reconcileAppealExemptions(
   const stagedElectionNids = new Set<number>();
   const seenAppeals = new Set<number>();
   const ownedForDry = DRY_RUN
-    ? await storage.trustBenefitEligibilityExemptions.listByS1AppealElectionNids(ownedNids)
+    ? await s1EligibilityExemptions.listByS1AppealElectionNids(ownedNids)
     : [];
   let created = 0;
   let updated = 0;
@@ -347,7 +349,7 @@ async function reconcileAppealExemptions(
       continue;
     }
     try {
-      const result = await storage.trustBenefitEligibilityExemptions.upsertForS1AppealElection({
+      const result = await s1EligibilityExemptions.upsertForS1AppealElection({
         electionNid: row.nid,
         electionName: policyMatches[0]?.title ?? "",
         policyNid,
@@ -368,7 +370,7 @@ async function reconcileAppealExemptions(
     }
   }
   if (!DRY_RUN && expected.size > 0) {
-    const owned = await storage.trustBenefitEligibilityExemptions.listByS1AppealElectionNids([...expected.keys()]);
+    const owned = await s1EligibilityExemptions.listByS1AppealElectionNids([...expected.keys()]);
     for (const nid of expected.keys()) {
       const matches = owned.filter((e) => e.source?.kind === "s1_appeal_election" && Number(e.source.electionNid) === nid);
       const want = expected.get(nid)!;
@@ -426,7 +428,7 @@ async function reconcileAppealExemptions(
     deleted = deletedNids.length;
   } else {
     for (const nid of deletedNids) {
-      if (await storage.trustBenefitEligibilityExemptions.deleteForS1AppealElection(nid)) deleted++;
+      if (await s1EligibilityExemptions.deleteForS1AppealElection(nid)) deleted++;
     }
   }
   summary.created += created;
@@ -761,7 +763,7 @@ async function main() {
           try {
             await withNotificationsSuppressed(() =>
               withChargePluginsSuppressed(() =>
-                storage.workerTrustElections.updateForMigration(targetId, {
+                s1Elections.updateForMigration(targetId, {
                   workerId: r.workerId,
                   employerId: r.employerId,
                   startYmd: r.startYmd,
@@ -792,7 +794,7 @@ async function main() {
       try {
         const row = await withNotificationsSuppressed(() =>
           withChargePluginsSuppressed(() =>
-            storage.workerTrustElections.createForMigration({
+            s1Elections.createForMigration({
               workerId: r.workerId,
               employerId: r.employerId,
               startYmd: r.startYmd,

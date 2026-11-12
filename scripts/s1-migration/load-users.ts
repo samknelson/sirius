@@ -1,3 +1,4 @@
+import { s1Users } from '../../server/plugins/system/oneoff/plugins/s1-migration/users';
 /**
  * T27 loader — S1 `users`/`users_roles`/`role`/`authmap` → S2 `users`,
  * `roles`, `user_roles` (+ recorded worker pre-link). Closes T27.
@@ -467,7 +468,7 @@ async function main() {
             // contact-sync must not copy this account-only tombstone onto a
             // worker/contact record.
             const retiredEmail = `s1-retired-${clashUid}-${clash.id}@s1-retired.invalid`;
-            const released = await storage.users.retireMigratedUserEmail(clash.id, email, retiredEmail);
+            const released = await s1Users.retireMigratedUserEmail(clash.id, email, retiredEmail);
             if (released) {
               stats.staleEmailsReleased++;
               reconciliation.staleEmailReleases.push({ incomingUid: u.uid, retiredUid: clashUid });

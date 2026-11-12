@@ -43,7 +43,6 @@ export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export {
   type EntityNotesStorage,
   type EntityNoteWithDetails,
-  type MigrationNoteTarget,
   createEntityNotesStorage,
   entityNotesLoggingConfig,
 } from "./entity-notes";

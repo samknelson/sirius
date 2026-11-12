@@ -187,12 +187,13 @@ export const administrationHelp: SystemHelpEntry[] = [
   },
   {
     id: "system:s1-migration-monitoring",
-    paths: ["/config/s1-migration"],
-    summary: "Review migration configuration and retained progress evidence without treating a ready application or checkpoint as proof that every source relationship migrated.",
+    paths: ["/config/s1-migration", "/admin/oneoff/s1-migration"],
+    summary: "Review S1 migration status, Sirius ID ownership, and retained run history in the read-only One-off Jobs dashboard.",
     details: `
-      <h3>Purpose</h3><p>Inspect the available S1 migration administration surface.</p>
-      <h3>Before you start</h3><p>Administrator access and the S1 migration feature are required. Source and target authority, maintenance requirements, and operational approval must be established outside this help.</p>
-      <h3>How to use this page</h3><ol><li>Review the selected source/target context and saved progress.</li><li>Inspect refusal reasons and retained evidence before considering operational actions.</li><li>Before any run, reset, or cleanup action, follow the approved migration procedure; those controls can change data.</li></ol>
-      <h3>Limitations and common problems</h3><p>A checkpoint is not independent proof of full business reconciliation. Do not change worker identifier authority or reprocess financial records simply to dismiss a warning. Credentials and deployment-specific migration procedures do not belong in globally readable help.</p>`,
+      <h3>Purpose</h3><p>Inspect staging status, target readiness, Sirius ID ownership decisions, and retained import run reports. This dashboard does not execute migrations.</p>
+      <h3>Before you start</h3><p>You must be signed in as an administrator, the S1 migration component must be enabled, and the <strong>S1 Migration</strong> Oneoff configuration must be enabled. The normal configuration lifecycle creates it disabled. Use <a href="/admin/plugin-configs/oneoff">One-off plugin configurations</a> to enable it; this does not enable import execution or its schedule.</p>
+      <h3>How to use this page</h3><ol><li>Open <a href="/admin/oneoff/s1-migration">S1 Migration in One-off Jobs</a> and select its enabled configuration.</li><li>Review status, ownership blockers, and run history. Use the dashboard refresh controls to read current evidence.</li><li>Follow the separately approved CLI runbook for any import, repair, or cleanup. None of those operations can be started here.</li></ol>
+      <h3>Results and status meanings</h3><p>Missing staging is reported explicitly. A ready target or a completed run is not independent proof of full business reconciliation. Sensitive run-report values are redacted. Concurrent ownership reads share work only while the read is in flight.</p>
+      <h3>Limitations and common problems</h3><p>The old S1 Migration link redirects to this same Oneoff view. If access is refused, check administrator access, the required component, and configuration enablement. A failed read is not an empty history. Do not change worker identifier authority or reprocess financial records simply to dismiss a warning.</p>`,
   },
 ];

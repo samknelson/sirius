@@ -1,3 +1,4 @@
+import { s1WorkerHours } from '../../server/plugins/system/oneoff/plugins/s1-migration/worker-hours';
 /**
  * T20 loader — sirius_payperiod (staged) → S2 worker_hours. Milestone 1.
  *
@@ -44,7 +45,7 @@
  *
  * MIGRATION BULK WRITE PATH (Task 356): with --migration-mode (wet), monthly
  * aggregates are written in bounded multi-row upsert batches
- * (storage.workerHours.bulkUpsertWorkerHoursMigration) instead of the
+ * (s1WorkerHours.bulkUpsertWorkerHoursMigration) instead of the
  * per-row audited/eventful upsertWorkerHours round trip — the rehearsal
  * measured that path at ~45 groups/s (~22 h for 3.6M staged rows). The batch
  * statement updates ONLY migration-owned fields (hours,
@@ -514,7 +515,7 @@ async function main() {
         // ONLY migration-owned fields on conflict.
         for (const rows of chunk(rowsToWrite, BULK_WRITE_CHUNK)) {
           const persisted = await loaderScope(() =>
-            storage.workerHours.bulkUpsertWorkerHoursMigration(
+            s1WorkerHours.bulkUpsertWorkerHoursMigration(
               rows.map((r) => ({
                 workerId: r.workerId,
                 employerId: r.employerId,
