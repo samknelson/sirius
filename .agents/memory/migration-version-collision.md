@@ -62,8 +62,7 @@ migrations, only the single counter.
 
 **Renumbering existing migrations:** renumbered idempotent migrations simply
 re-run on databases whose counter already passed the old numbers — that's the
-point. The check compares against the base ref's committed tree, so renames
-must be committed before the check reports clean.
+point.
 
 **Hard rule reminder:** this project REFUSES `drizzle-kit push` / `npm run
 db:push` (gated behind `ALLOW_DB_PUSH=1`). Schema sync happens ONLY through the
