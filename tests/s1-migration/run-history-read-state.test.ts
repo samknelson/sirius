@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import S1MigrationDashboard from "@/pages/config/s1-migration";
+import S1MigrationDashboard from "@/plugins/oneoff/s1-migration/dashboard";
 
 vi.mock("@/contexts/PageTitleContext", () => ({ usePageTitle: () => {} }));
 

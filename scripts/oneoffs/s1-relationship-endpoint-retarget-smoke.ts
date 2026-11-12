@@ -1,3 +1,4 @@
+import { s1Relations } from '../../server/plugins/system/oneoff/plugins/s1-migration/relations';
 /**
  * DEV-ONLY regression smoke for S1 relationship endpoint reconciliation.
  *
@@ -87,7 +88,7 @@ async function main(): Promise<void> {
     );
 
     const retargeted = await withNotificationsSuppressed(() =>
-      storage.workerRelations.reconcileFromMigration(originalId, {
+      s1Relations.reconcileFromMigration(originalId, {
         worker1: workerA,
         worker2: workerC,
         relationType: relationTypeId!,
@@ -125,7 +126,7 @@ async function main(): Promise<void> {
     let overlapError: unknown;
     try {
       await withNotificationsSuppressed(() =>
-        storage.workerRelations.reconcileFromMigration(conflictId, {
+        s1Relations.reconcileFromMigration(conflictId, {
           worker1: workerA,
           worker2: workerC,
           relationType: relationTypeId!,

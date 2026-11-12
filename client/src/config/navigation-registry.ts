@@ -83,7 +83,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
       { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
       { path: "/admin/restart", label: "Restart & Reload", icon: Power, testId: "nav-config-restart", permission: "admin" },
-      { path: "/config/s1-migration", label: "S1 Migration", icon: Database, testId: "nav-config-s1-migration", permission: "admin", requiresComponent: "sitespecific.bao.s1migration" },
+      { path: "/admin/oneoff/s1-migration", label: "S1 Migration", icon: Database, testId: "nav-config-s1-migration", permission: "admin", requiresComponent: "sitespecific.bao.s1migration" },
     ],
   },
   {

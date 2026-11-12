@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createInFlightCoalescer } from "../../server/modules/s1-migration";
+import { createInFlightCoalescer } from "../../server/plugins/system/oneoff/plugins/s1-migration/routes";
 
 describe("S1 ownership preflight coalescing", () => {
   it("shares one execution for simultaneous callers, but not completed results", async () => {

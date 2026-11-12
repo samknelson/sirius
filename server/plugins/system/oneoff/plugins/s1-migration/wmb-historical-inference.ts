@@ -1,4 +1,4 @@
-import type { WorkerBenefitCoverage } from "../storage/trust/wmb-events";
+import type { WorkerBenefitCoverage } from "../../../../../storage/trust/wmb-events";
 
 export interface HistoricalEvent {
   eventType: "start" | "restart" | "terminate";

@@ -1,3 +1,4 @@
+import { s1Workers } from '../../server/plugins/system/oneoff/plugins/s1-migration/workers';
 /**
  * T3+T1 loader — sirius_contact → contacts (+ contact_phone, contact_postal),
  * sirius_worker → workers (+ worker_ids, contact updates). Milestone 2.
@@ -151,7 +152,7 @@ import {
   sweepDeletions,
   type SyncFinding,
 } from "./lib/sync";
-import { planSiriusIdOwnership } from "../../server/storage/workers/sirius-id-ownership-plan";
+import { planSiriusIdOwnership } from "../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership-plan";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Reject classes the operator explicitly allows for THIS run (comma-sep).
@@ -411,7 +412,7 @@ async function main() {
   // rekey itself: a repair plan is intentionally an operator-approved CLI
   // action so a number can never be treated as person identity.
   const siriusOwnershipPlan = planSiriusIdOwnership(
-    await storage.workers.getMigrationSiriusIdOwnershipSnapshot(),
+    await s1Workers.getMigrationSiriusIdOwnershipSnapshot(),
   );
   const ownershipActions = siriusOwnershipPlan.decisions.reduce<Record<string, number>>((counts, decision) => {
     counts[decision.action] = (counts[decision.action] ?? 0) + 1;
@@ -1239,11 +1240,11 @@ async function main() {
           await runInTransaction(async () => {
             if (approvedSsnTransfer) {
               await withNotificationsSuppressed(() =>
-                storage.workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
+                s1Workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
               );
             }
             await withNotificationsSuppressed(() =>
-              storage.workers.updateWorkerForMigration(mapped.s2Id, {
+              s1Workers.updateWorkerForMigration(mapped.s2Id, {
                 contactId: contactMapping.s2Id,
                 ssn,
                 data: dataPlan.value,
@@ -1289,11 +1290,11 @@ async function main() {
         await runInTransaction(async () => {
           if (approvedSsnTransfer) {
             await withNotificationsSuppressed(() =>
-              storage.workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
+              s1Workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
             );
           }
           await withNotificationsSuppressed(() =>
-            storage.workers.updateWorkerForMigration(mapped.s2Id, {
+            s1Workers.updateWorkerForMigration(mapped.s2Id, {
               contactId: contactMapping.s2Id,
               ssn,
               data: dataPlan.value,
@@ -1321,11 +1322,11 @@ async function main() {
         const created = await runInTransaction(async () => {
           if (approvedSsnTransfer) {
             await withNotificationsSuppressed(() =>
-              storage.workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
+              s1Workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
             );
           }
           return withNotificationsSuppressed(() =>
-            storage.workers.createWorkerForMigration({
+            s1Workers.createWorkerForMigration({
               siriusId: expectedSirius,
               contactId: contactMapping.s2Id,
               ssn,

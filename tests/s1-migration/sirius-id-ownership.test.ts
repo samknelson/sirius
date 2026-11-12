@@ -10,8 +10,8 @@ import {
   type SiriusIdReferenceRetention,
   type SiriusIdOwnershipSnapshot,
   type SiriusIdWorker,
-} from "../../server/storage/workers/sirius-id-ownership-plan";
-import { projectSiriusIdOwnershipDashboard } from "../../server/modules/s1-migration-dashboard";
+} from "../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership-plan";
+import { projectSiriusIdOwnershipDashboard } from "../../server/plugins/system/oneoff/plugins/s1-migration/dashboard-projection";
 
 type TestWorker = Omit<SiriusIdWorker, "siriusId"> & { siriusId: string | number | null };
 const snapshot = (

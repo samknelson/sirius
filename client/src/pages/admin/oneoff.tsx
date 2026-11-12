@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -43,6 +43,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { oneoffInputRenderers } from "./oneoff-input-registry";
+import { oneoffDashboards } from "./oneoff-dashboard-registry";
 
 type OneoffConfig = { id: string; pluginId: string; enabled: boolean; name: string };
 type OneoffAction = {
@@ -130,10 +131,10 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-export default function OneoffAdminPage() {
+export default function OneoffAdminPage({ initialPluginId }: { initialPluginId?: string }) {
   usePageTitle("One-off Jobs");
   const { toast } = useToast();
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedChoiceId, setSelectedId] = useState("");
   const [actionId, setActionId] = useState("");
   const [input, setInput] = useState<Record<string, unknown>>({});
   const [prepared, setPrepared] = useState<PreparedRun | null>(null);
@@ -148,7 +149,9 @@ export default function OneoffAdminPage() {
   });
   const configs = configsQuery.data ?? [];
   const enabledConfigs = useMemo(() => configs.filter((config) => config.enabled), [configs]);
+  const selectedId = selectedChoiceId || enabledConfigs.find(config => config.pluginId === initialPluginId)?.id || "";
   const selectedConfig = enabledConfigs.find((config) => config.id === selectedId);
+  const PluginDashboard = selectedConfig ? oneoffDashboards[selectedConfig.pluginId] : undefined;
   const actionsQuery = useQuery<OneoffAction[]>({
     queryKey: ["/api/oneoff/configs", selectedId, "actions"],
     queryFn: () => apiRequest("GET", `/api/oneoff/configs/${encodeURIComponent(selectedId)}/actions`) as Promise<OneoffAction[]>,
@@ -191,13 +194,13 @@ export default function OneoffAdminPage() {
   const statusQuery = useQuery<StatusResponse>({
     queryKey: ["/api/oneoff/configs", selectedId, "status"],
     queryFn: () => apiRequest("GET", `/api/oneoff/configs/${encodeURIComponent(selectedId)}/status`) as Promise<StatusResponse>,
-    enabled: !!selectedId,
+    enabled: !!selectedId && !PluginDashboard,
     refetchInterval: 4000,
   });
   const historyQuery = useQuery<OneoffRun[]>({
     queryKey: ["/api/oneoff/configs", selectedId, "runs"],
     queryFn: () => apiRequest("GET", `/api/oneoff/configs/${encodeURIComponent(selectedId)}/runs`) as Promise<OneoffRun[]>,
-    enabled: !!selectedId,
+    enabled: !!selectedId && !PluginDashboard,
     refetchInterval: 5000,
   });
 
@@ -298,6 +301,31 @@ export default function OneoffAdminPage() {
     submittingRef.current = true;
     runMutation.mutate(prepared);
   };
+
+  if (PluginDashboard || (initialPluginId && !selectedConfig)) {
+    return (
+      <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 md:px-8">
+        <h1 className="text-2xl font-semibold">One-off Jobs</h1>
+        <div className="max-w-xl space-y-2">
+          <Label htmlFor="oneoff-dashboard-config">Enabled configuration</Label>
+          <Select value={selectedId} onValueChange={selectConfig}>
+            <SelectTrigger id="oneoff-dashboard-config"><SelectValue placeholder="Select a configuration" /></SelectTrigger>
+            <SelectContent>
+              {enabledConfigs.map(config => <SelectItem key={config.id} value={config.id}>{config.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Link href="/admin/plugin-configs/oneoff" className="text-sm underline">Review One-off plugin configurations</Link>
+        </div>
+        {configsQuery.isLoading ? <p>Loading configurations…</p>
+          : configsQuery.isError ? <p role="alert">Could not load configurations. <button onClick={() => void configsQuery.refetch()}>Retry</button></p>
+          : !selectedConfig ? <p>No enabled configuration is available for this plugin. Configure and enable it before opening its dashboard.</p>
+          : actionsQuery.isError ? <p role="alert">This dashboard is unavailable. Check your access, the plugin configuration, and its required components. <button onClick={() => void actionsQuery.refetch()}>Retry</button></p>
+          : actionsQuery.isSuccess && PluginDashboard
+            ? <Suspense fallback={<p>Loading dashboard…</p>}><PluginDashboard key={selectedId} configId={selectedId} /></Suspense>
+            : <p>Checking dashboard access…</p>}
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-7 px-4 py-6 md:px-8 md:py-9">

@@ -5,7 +5,7 @@ import { getClient } from "../../server/storage/transaction-context";
 import { storage } from "../../server/storage/database";
 import { runHistoricalBackfill } from "../../scripts/oneoffs/backfill-wmb-events";
 import { isInferredTermination } from "../../server/storage/trust/wmb-events";
-import { inferHistoricalEvents, monthKey } from "../../server/services/wmb-historical-inference";
+import { inferHistoricalEvents, monthKey } from "../../server/plugins/system/oneoff/plugins/s1-migration/wmb-historical-inference";
 import { runWmbEventPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
 import { reviewedCoverageDetail } from "../s1-migration/wmb-coverage-fixture";
 import { sanitizeDailySummary } from "../../scripts/s1-migration/lib/daily-automation";

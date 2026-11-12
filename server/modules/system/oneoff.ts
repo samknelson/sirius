@@ -66,6 +66,45 @@ export function registerOneoffRoutes(app: Express, requireAuth: Auth): void {
     return { config, plugin };
   }
 
+  // Plugin-owned read endpoints use the same authoritative gates as actions.
+  // Legacy links may omit configId only when exactly one configuration exists;
+  // never authorize one record and read using another.
+  for (const pluginId of oneoffPluginRegistry.listIds()) {
+    const registered = oneoffPluginRegistry.get(pluginId)!;
+    registered.registerReadRoutes?.((path, handler) => {
+      app.get(path, requireAuth, async (req, res, next) => {
+        res.setHeader("Cache-Control", "private, no-store");
+        try {
+          if (!(await resolveKind(req, res))) return;
+          const plugin = oneoffPluginRegistry.get(pluginId);
+          if (!plugin || plugin !== registered) {
+            res.status(404).json({ message: "Oneoff plugin not registered" }); return;
+          }
+          const gate = await enforcePluginGating(plugin.metadata, req);
+          if (!gate.ok) { res.status(gate.status).json({ message: gate.message }); return; }
+          const supplied = req.query.configId;
+          if (supplied !== undefined && (typeof supplied !== "string" || !supplied)) {
+            res.status(400).json({ message: "Invalid Oneoff configuration" }); return;
+          }
+          const configs = supplied
+            ? [await storage.pluginConfigs.get(supplied)].filter(Boolean)
+            : (await storage.pluginConfigs.search("oneoff", { pluginId })).map(row => row.config);
+          if (configs.length !== 1) {
+            res.status(409).json({ message: "Configure exactly one Oneoff configuration before opening this dashboard" }); return;
+          }
+          const config = configs[0]!;
+          if (config.pluginKind !== "oneoff" || config.pluginId !== pluginId) {
+            res.status(404).json({ message: "Oneoff configuration not found" }); return;
+          }
+          if (!config.enabled) {
+            res.status(409).json({ message: "Enable this Oneoff configuration before using it" }); return;
+          }
+          await handler(req, res, next);
+        } catch (error) { fail(res, error); }
+      });
+    });
+  }
+
   app.get("/api/oneoff/configs/:id/actions", requireAuth, async (req, res) => {
     try {
       const target = await resolve(req, res);
@@ -82,7 +121,7 @@ export function registerOneoffRoutes(app: Express, requireAuth: Auth): void {
       if (!target) return;
       const [status, activeRun] = await Promise.all([
         target.plugin.status({ config: target.config, db }),
-        oneoffActiveRun(target.plugin.metadata.id),
+        target.plugin.actions.length ? oneoffActiveRun(target.plugin.metadata.id) : Promise.resolve(undefined),
       ]);
       res.setHeader("Cache-Control", "private, no-store");
       res.json({

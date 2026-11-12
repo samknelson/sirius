@@ -1,3 +1,4 @@
+import { s1Payments } from '../../../server/plugins/system/oneoff/plugins/s1-migration/payments';
 import { sql } from "drizzle-orm";
 import { storage } from "../../../server/storage/database";
 import { getClient, runInTransaction } from "../../../server/storage/transaction-context";
@@ -51,7 +52,7 @@ export async function repairFinancialLinks(options: { wet: boolean; checkpoint: 
         // annotations, payment/hour references or financial facts.
         const row = link.stream === "ar"
           ? await storage.ledger.entries.update(link.id, { eaId: link.eaId })
-          : await storage.ledger.payments.updateForMigration(link.id, { ledgerEaId: link.eaId });
+          : await s1Payments.updateForMigration(link.id, { ledgerEaId: link.eaId });
         if (!row) throw new FinancialRepairRefusal("Rebind target vanished; transaction rolled back");
       }
     }));

@@ -1,3 +1,4 @@
+import { s1EntityNotes } from '../../server/plugins/system/oneoff/plugins/s1-migration/entity-notes';
 /**
  * bulkReconcileForMigration: exact tag-set replacement including the
  * tagged → tagless transition (an empty desired set must DELETE existing
@@ -71,7 +72,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     created.tagIds.push(tagA.id, tagB.id);
 
     // Create two notes in one batch: A with two tags, B tagless.
-    const first = await storage.entityNotes.bulkReconcileForMigration({
+    const first = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [
         { ref: NID_BASE + 1, note: migrationNote(worker, noteType.id, NID_BASE + 1, "note A") as any, tagIds: [tagA.id, tagB.id] },
@@ -89,7 +90,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
 
     // Mixed update batch: A goes tagged → TAGLESS (stale tags must be
     // deleted), B goes tagless → tagged; bodies overwritten in place.
-    const second = await storage.entityNotes.bulkReconcileForMigration({
+    const second = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [
         { ref: NID_BASE + 1, noteId: aId, note: migrationNote(worker, noteType.id, NID_BASE + 1, "note A v2") as any, tagIds: [] },
@@ -112,13 +113,13 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
 
     // Adoption: a create (no noteId) whose nid already exists under this
     // loader updates the existing note instead of duplicating it.
-    const seeded = await storage.entityNotes.bulkReconcileForMigration({
+    const seeded = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [{ ref: NID_BASE + 3, note: migrationNote(worker, noteType.id, NID_BASE + 3, "orig") as any, tagIds: [] }],
     });
     const seededId = seeded.saved.get(NID_BASE + 3)!.noteId;
     created.noteIds.push(seededId);
-    const adopted = await storage.entityNotes.bulkReconcileForMigration({
+    const adopted = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [{ ref: NID_BASE + 3, note: migrationNote(worker, noteType.id, NID_BASE + 3, "adopted") as any, tagIds: [] }],
     });
@@ -136,7 +137,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
       userId: null,
     });
     created.noteIds.push(foreign.id);
-    const res = await storage.entityNotes.bulkReconcileForMigration({
+    const res = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [
         { ref: NID_BASE + 4, noteId: foreign.id, note: migrationNote(worker, noteType.id, NID_BASE + 4, "hijack") as any, tagIds: [] },
@@ -157,22 +158,22 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     if (!noteType || !worker?.id) return ctx.skip();
 
     const nid = NID_BASE + 6;
-    const first = await storage.entityNotes.bulkReconcileForMigration({
+    const first = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [{ ref: nid, note: migrationNote(worker, noteType.id, nid, "before cleanup") as any, tagIds: [] }],
     });
     const originalId = first.saved.get(nid)!.noteId;
     created.noteIds.push(originalId);
-    expect((await storage.entityNotes.getMigrationNoteTargets([originalId])).get(originalId))
+    expect((await s1EntityNotes.getMigrationNoteTargets([originalId])).get(originalId))
       .toMatchObject({ contextId: "worker", owner: LOADER, workerAttached: true });
 
     // Immediate or nightly entity-note cleanup can remove the note but not
     // the completed source mapping. A missing target is intentionally absent
     // from the bulk target map, so the loader can use its create path.
     await storage.entityNotes.delete(originalId);
-    expect(await storage.entityNotes.getMigrationNoteTargets([originalId])).toEqual(new Map());
+    expect(await s1EntityNotes.getMigrationNoteTargets([originalId])).toEqual(new Map());
 
-    const recreated = await storage.entityNotes.bulkReconcileForMigration({
+    const recreated = await s1EntityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [{ ref: nid, note: migrationNote(worker, noteType.id, nid, "after cleanup") as any, tagIds: [] }],
     });
@@ -180,14 +181,14 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     created.noteIds.push(recreatedId);
     expect(recreated.saved.get(nid)?.created).toBe(true);
     expect(recreatedId).not.toBe(originalId);
-    expect((await storage.entityNotes.getMigrationNoteTargets([recreatedId])).get(recreatedId))
+    expect((await s1EntityNotes.getMigrationNoteTargets([recreatedId])).get(recreatedId))
       .toMatchObject({ contextId: "worker", owner: LOADER, workerAttached: true });
 
     // The unresolved branch uses the same ownership-guarded bulk delete. If
     // cleanup won the race, the missing note is still a successful retirement
     // candidate and the caller removes its stale mapping.
     await storage.entityNotes.delete(recreatedId);
-    await expect(storage.entityNotes.bulkDeleteForMigration([recreatedId], LOADER))
+    await expect(s1EntityNotes.bulkDeleteForMigration([recreatedId], LOADER))
       .resolves.toEqual({ deleted: 0, missing: 1 });
   });
 });

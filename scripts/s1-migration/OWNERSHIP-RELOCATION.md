@@ -2,21 +2,24 @@
 
 ## Status
 
-Inventory refreshed against the working tree on 2026-11-12. **Relocation has
-not been implemented.** The destinations below are proposed ownership, not
-claims about delivered code. No import, repair, cleanup, cron enablement, or
-database mutation was run during this inventory.
+Relocation implemented and verified on 2026-11-12. The destinations below
+are the delivered owners. No live import, repair, destructive cleanup, cron
+enablement, production data change, or deployment was performed.
 
-The working tree was clean before this inventory. This document is the only
-change made during the inventory.
+The working tree was clean at implementation start; no unrelated working-tree
+changes were overwritten. Verification used synthetic test records and
+read-only HTTP/browser fixtures. Normal application startup created the
+disabled singleton configuration through the existing configuration lifecycle.
+No local help records were changed.
 
 ## Operations and direct consumers
 
-All proposed destinations are modules beneath
+All operation destinations are modules beneath
 `server/plugins/system/oneoff/plugins/s1-migration/`. A single registered
-`s1-migration` plugin should own them; they must not become HTTP actions.
+`s1-migration` plugin owns them; its action list is empty. CLI callers import
+individual operation modules, not the registration module or a core shim.
 
-| Current owner | Methods to relocate | Direct consumers found | Proposed destination |
+| Previous owner | Relocated methods | Updated direct consumers | Destination |
 | --- | --- | --- | --- |
 | `server/storage/entity-notes.ts` | `bulkDeleteForMigration`, `bulkReconcileForMigration`, `deleteForMigration`, `getMigrationNoteTargets`, `reconcileForMigration` | `scripts/s1-migration/load-log-notes.ts`; `tests/notes/bulk-reconcile-migration.test.ts` | `entity-notes.ts` |
 | `server/storage/trust/elections.ts` | `createForMigration`, `updateForMigration` | `scripts/s1-migration/load-elections.ts` | `elections.ts` |
@@ -26,33 +29,36 @@ All proposed destinations are modules beneath
 | `server/storage/ledger.ts` (payments factory) | `createForMigration`, `updateForMigration` | `scripts/s1-migration/load-payments.ts`; `scripts/s1-migration/lib/financial-link-repair.ts`; `tests/s1-migration/financial-link-storage-events.test.ts`; `tests/ledger/immutable-identity-postgres.test.ts`; mocks in `tests/s1-migration/financial-money-loaders.test.ts` and `tests/s1-migration/financial-link-repair.test.ts` | `payments.ts` |
 | `server/storage/worker-hours.ts` | `bulkUpsertWorkerHoursMigration` | `scripts/s1-migration/load-hours.ts` | `worker-hours.ts` |
 | `server/storage/workers.ts` | `createWorkerForMigration`, `updateWorkerForMigration` | `scripts/s1-migration/load-contacts-workers.ts`; create also in `scripts/s1-migration/load-relationships.ts` | `workers.ts` |
-| `server/storage/workers.ts` | `getMigrationSiriusIdOwnershipSnapshot`, `applyMigrationSiriusIdOwnershipPlan` | snapshot: contacts/workers loader, relationships loader, `scripts/tools/s1-sirius-id-ownership.ts`, `server/modules/s1-migration.ts`; apply: ownership CLI | `workers.ts` / ownership modules |
+| `server/storage/workers.ts` | `getMigrationSiriusIdOwnershipSnapshot`, `applyMigrationSiriusIdOwnershipPlan` | snapshot: contacts/workers loader, relationships loader, `scripts/tools/s1-sirius-id-ownership.ts`, plugin `routes.ts`; apply: ownership CLI | `workers.ts`, `sirius-id-ownership.ts` |
 | `server/storage/workers/relations.ts` | `reconcileFromMigration` | `scripts/s1-migration/load-relationships.ts`; `scripts/oneoffs/s1-relationship-endpoint-retarget-smoke.ts` | `relations.ts` |
 | `server/storage/comm.ts` | `updateInteractionWithCommForMigration` | `scripts/s1-migration/load-call-logs.ts`; direct factory call in `scripts/oneoffs/s1-sync-comms-statuses-smoke.ts` | `communications.ts` |
 
-`reconcileForMigration` has no current caller and must still move.
+`reconcileForMigration` has no current caller and was retained in the plugin.
 `updateInteractionWithCommForMigration` still exists; it is not retired.
 The refreshed method-name search found no additional application consumer
 outside the approved collisions route.
 
 ## Supporting ownership
 
-| Current location | Supporting code / consumer update |
+| Previous location | Supporting code / consumer update |
 | --- | --- |
-| `server/storage/entity-notes.ts` | Move `MigrationNoteTarget` and migration-only tag reconciliation SQL. Remove its re-export from `server/storage/index.ts`. Keep ordinary note display types, CRUD, orphan sweep, redaction, and ordinary note events in storage. |
-| `server/storage/trust/elections.ts` | Move `MigrationElectionInput` and migration-specific logging declarations. Normal election validation and ordinary CRUD remain shared/core; do not relocate dual-coverage rules. |
-| `server/storage/trust/eligibility-exemptions.ts` | Move `S1AppealElectionExemptionInput`, `S1AppealElectionExemptionResult`, and exclusive S1 ownership predicates. Preserve shared exemption view/CRUD contracts. |
-| `server/storage/trust/wmb-events.ts` | Move `EventChange` and `EventDecision`. Keep `WorkerBenefitCoverage`, `WorkerScanResultRow`, `TrustWmbEventInput`, inferred-termination recognition, and normal denorm storage behavior shared. |
-| `server/services/wmb-historical-inference.ts` | Historical inference is consumed by the historical reconciliation, standalone backfill, and `tests/wmb/wmb-historical-backfill.test.ts`; include its ownership decision in the completed manifest. |
-| `server/storage/worker-hours.ts` | Move `BulkMigrationHoursRow` and `BulkMigrationHoursPersistedRow` with the bounded bulk method. Keep normal hours operations and shared suppression infrastructure. |
-| `server/storage/workers/sirius-id-ownership.ts` | Move snapshot, apply, sequence, and exclusive SQL helpers; retain ambient transaction behavior. Update direct snapshot import in `tests/s1-migration/sirius-id-ownership-snapshot.test.ts`. |
-| `server/storage/workers/sirius-id-ownership-plan.ts` | Move planner and types. Update contacts/workers loader, relationships loader, ownership CLI, ownership tests, dashboard projection, routes, and client type imports. |
-| `server/modules/s1-migration-dashboard.ts` | Move dashboard projection with ownership planner; update `tests/s1-migration/sirius-id-ownership.test.ts`. |
-| `server/storage/database.ts` | Remove migration methods through the narrowed factory interfaces; inspect wrapper assembly rather than replacing logged calls with bare SQL. |
+| `server/storage/entity-notes.ts` | Moved `MigrationNoteTarget` and migration-only tag reconciliation SQL to plugin `entity-notes.ts`. Removed its re-export from `server/storage/index.ts`. Ordinary note display types, CRUD, orphan sweep, redaction, and ordinary note events stay in storage. |
+| `server/storage/trust/elections.ts` | Moved `MigrationElectionInput` and migration-specific logging declarations to plugin `elections.ts`. Normal election validation and ordinary CRUD remain shared/core; dual-coverage rules were not moved. |
+| `server/storage/trust/eligibility-exemptions.ts` | Moved `S1AppealElectionExemptionInput`, `S1AppealElectionExemptionResult`, and exclusive S1 ownership predicates to plugin `eligibility-exemptions.ts`. Shared exemption view/CRUD contracts are retained. |
+| `server/storage/trust/wmb-events.ts` | Moved `EventChange` and `EventDecision` to plugin `wmb-events.ts`. `WorkerBenefitCoverage`, `WorkerScanResultRow`, `TrustWmbEventInput`, inferred-termination recognition, and normal denorm storage behavior remain shared. |
+| `server/services/wmb-historical-inference.ts` | Moved unchanged into plugin `wmb-historical-inference.ts`; historical reconciliation, standalone backfill, and `tests/wmb/wmb-historical-backfill.test.ts` imports updated. |
+| `server/storage/worker-hours.ts` | Moved `BulkMigrationHoursRow` and `BulkMigrationHoursPersistedRow` to plugin `worker-hours.ts` with the bounded bulk method. Normal hours operations and shared suppression infrastructure are retained. |
+| `server/storage/workers/sirius-id-ownership.ts` | Moved snapshot, apply, sequence, and exclusive SQL helpers to plugin `sirius-id-ownership.ts`; ambient transaction behavior is retained. Updated direct snapshot import in `tests/s1-migration/sirius-id-ownership-snapshot.test.ts`. |
+| `server/storage/workers/sirius-id-ownership-plan.ts` | Moved planner and types to plugin `sirius-id-ownership-plan.ts`. Updated contacts/workers loader, relationships loader, ownership CLI, ownership tests, dashboard projection, routes, and client type imports. |
+| `server/modules/s1-migration-dashboard.ts` | Moved to plugin `dashboard-projection.ts`; updated `tests/s1-migration/sirius-id-ownership.test.ts`. |
+| `server/storage/database.ts` | Migration methods disappeared through the narrowed factory interfaces; ordinary storage assembly and its logging wrappers are unchanged. |
 
 ## Wrapper and behavioral checkpoints
 
-These are relocation checkpoints, not completed equivalence verification.
+All 22 extracted method bodies were compared with their previous implementations
+using TypeScript syntax nodes. They match exactly after normalizing relative
+dynamic import paths and the WMB call to the retained shared coverage reader.
+No migration method remains in core storage, its interfaces, or its exports.
 
 - The logging middleware binds calls to the underlying implementation.
   Internal `this.*` calls are not equivalent to calls through a wrapped
@@ -90,50 +96,67 @@ These are relocation checkpoints, not completed equivalence verification.
 
 ## Dashboard and host integration
 
-Current screen: `client/src/pages/config/s1-migration.tsx`.
-Current browser path: `/config/s1-migration`.
-Current navigation owner: `client/src/config/navigation-registry.ts`.
-Current lazy route owner: `client/src/App.tsx`.
+Previous screen: `client/src/pages/config/s1-migration.tsx` (removed).
+Delivered screen: `client/src/plugins/oneoff/s1-migration/dashboard.tsx`.
+Delivered browser path: `/admin/oneoff/s1-migration`.
+Old `/config/s1-migration` deep link redirects to the same host/view.
+Navigation in `client/src/config/navigation-registry.ts` uses the new path.
+`client/src/App.tsx` supplies the generic `/admin/oneoff/:pluginId` route.
 
-Current dedicated GET contracts, all in `server/modules/s1-migration.ts`:
+Unchanged dedicated GET contracts, now owned by plugin `routes.ts`:
 
 - `/api/s1-migration/status`
 - `/api/s1-migration/collisions`
 - `/api/s1-migration/runs`
 
-`server/routes.ts` currently registers the S1 module independently of oneoff.
-The completed move must remove that ownership and register the GET handlers
-through a generic oneoff integration. Retain authenticated admin and
-`sitespecific.bao.s1migration` gates, add unavailable/disabled plugin
-refusals, and preserve redaction, absent-staging responses, and in-flight
-ownership coalescing.
+`server/routes.ts` no longer imports or registers S1-specific routes.
+`server/modules/system/oneoff.ts` registers plugin GETs with authentication,
+admin and plugin/component checks. It resolves the supplied `configId` exactly,
+or resolves a legacy request only if one configuration exists. Disabled,
+wrong-plugin, missing/ambiguous and unavailable-plugin cases are refused.
+Response bodies, redaction, absent-staging behavior, and in-flight ownership
+coalescing are retained. Responses are private/no-store.
 
-The existing oneoff interface exposes actions and a simple table status,
-but has no dashboard extension. Add an explicit read-only dashboard
-extension rather than treating reads as preflight/execution actions.
-The plugin must have no migration mutation actions. The old browser link
-must reach the same plugin-owned view, not a second screen.
+`server/plugins/system/oneoff/types.ts` declares separate dashboard and GET
+registration extensions. `registry.ts` includes dashboard availability in its
+manifest. `index.ts` loads the S1 plugin and applies the existing disabled
+singleton default to all singleton Oneoff plugins, not just the example.
+The ordinary singleton lifecycle seeds configuration, never importer work.
 
-Existing built-in help to update with the delivered behavior:
+`client/src/pages/admin/oneoff-dashboard-registry.tsx` maps plugin IDs to lazy
+dashboard components. The Oneoff page renders a separate dashboard instead of
+action inputs, Execute, run monitor, or generic history. It does not poll
+execution status for a dashboard. The server likewise does not reconcile stale
+execution runs when a plugin with no actions receives a generic status read.
+The S1 component keys each of its three requests by the exact configuration.
+
+Updated built-in help:
 
 - `system:s1-migration-monitoring` in
-  `server/help/system/administration.ts`, currently `/config/s1-migration`.
+  `server/help/system/administration.ts`, matching `/config/s1-migration`
+  and `/admin/oneoff/s1-migration`.
 - `system:oneoff` in `server/help/system/oneoff.ts`, `/admin/oneoff`.
 
-No local help records have been read or changed.
+Matching, sanitization, read-only wording, built-in listing and fixture-local
+coexistence were checked. Local database help was not edited or migrated.
 
 ## Entry points, packaging, and retained exceptions
 
-Keep all existing loader filenames, `scripts/s1-migration/sync.ts`,
+Kept all existing loader filenames, `scripts/s1-migration/sync.ts`,
 `scripts/s1-migration/lib/wmb-event-phase.ts`,
 `scripts/tools/s1-sirius-id-ownership.ts`, and
 `scripts/oneoffs/backfill-wmb-events.ts` callable with their current arguments.
-Preserve the scheduled importer path without enabling it.
+The scheduled importer path is unchanged and was not enabled.
 
-`Dockerfile` has a migration image and explicit checks for the standalone
-WMB backfill and post-import phase. Verify the new server plugin files are
-included in that image. `tsconfig.scripts.json` is separate from app checks;
-changed loader/tool imports need script compilation verification as well.
+`Dockerfile` retains the source-inclusive migration image. Its file checks now
+also assert plugin workers/WMB operations and the ownership CLI are packaged.
+Its source COPY includes all operation modules. No container image was built
+in this environment.
+
+`tsconfig.scripts.json` now includes the standalone WMB backfill, ownership
+CLI, and both affected smoke entrypoints. The ownership CLI's already-validated
+approval hash now has an explicit non-null assertion for compilation; argument
+validation and runtime behavior are unchanged.
 
 Retain shared imported-coverage evidence reads, normal WMB denorm methods,
 generic CRUD, ordinary ledger validation, employer-rate bulk CRUD,
@@ -141,11 +164,66 @@ Sirius-ID lookup, denorm batch invalidation, `invalidateWorkerScansBulk`, and
 `setStorageLogSampling`. Freeman, core schema migrations, and generic boot
 reconciliation are not part of this move.
 
-## Verification still required
+## Shared helper and test adjustments
 
-No runtime or test-equivalence claim is made by this inventory.
-Implementation, before/after method absence checks, focused existing tests,
-script compilation, app checks, build, packaging verification, restart, and
-authenticated dashboard/help and refusal checks remain outstanding.
-The completed manifest must replace proposed destinations with actual paths
-and record checks and limitations without presenting skipped checks as passed.
+- Normal election validation, event emission and audit-description helpers stay
+  in core and are shared by explicit exports. The election migration logging
+  declaration and user retirement logging declaration live with their plugin
+  operations and still use `withStorageLogging`.
+- Relation validation, duplicate detection, event emission, sourced-WMB reads
+  and role-history invalidation remain shared. Two factory-local helpers became
+  shared top-level functions; ordinary methods are unchanged.
+- Worker row redaction moved to the shared pure leaf
+  `server/storage/workers/row-projection.ts` to avoid loading the entire workers
+  factory during plugin registration. Both owners use the same projection.
+- Existing source assertions and payment mocks now target plugin-owned payment
+  operations. WMB test targets use the narrowed plugin operation interface.
+- Existing `tests/s1-migration/ownership-preflight.test.ts` and
+  `run-history-read-state.test.ts` import plugin-owned routes/UI.
+- Existing Oneoff route/runner tests cover read gating, config identity,
+  private/no-store responses, no execution side effects, and refusal of actions
+  on an empty action list. Existing help tests cover the new exact path and
+  near misses. No broad permanent browser or migration suite was added.
+
+## Verification results and limitations
+
+- App server/client typecheck passed.
+- Vite production build and server esbuild bundles passed. The `npm run build`
+  wrapper was deliberately not used because it runs `db:push` first.
+- Storage-encapsulation architecture check passed.
+- Final focused run passed **232 tests in 24 files**, covering notes,
+  financial link/identity, ownership, WMB post-import, dashboard state, Oneoff,
+  and help read-route boundaries. The command was:
+  `npm test -- tests/s1-migration tests/oneoff tests/notes/bulk-reconcile-migration.test.ts tests/ledger/immutable-identity-postgres.test.ts tests/help/workflow-help-routes.test.ts --exclude '**/timezone-pin-structure.test.ts'`.
+  The excluded known-failing suite was run separately and reproduced on the
+  unchanged baseline, as detailed below.
+- All ten operation modules imported successfully without invoking CLI modules.
+  The ad-hoc CJS import harness logged an existing logger initialization warning;
+  application startup itself initialized successfully.
+- The unchanged standalone backfill entrypoint refused missing cutoff arguments;
+  the unchanged ownership CLI refused `--apply` without an approval hash before
+  reading/planning/applying ownership changes. Both exited 1 as expected.
+- Application restarted and registered the plugin; its configuration seeded
+  disabled. A direct unauthenticated status request returned 401. The preview
+  screenshot showed the expected sign-in screen, not an authenticated dashboard.
+- An ignored, one-time browser fixture rendered the actual Oneoff page,
+  dashboard, Help dialog and help listing at desktop/mobile widths. It verified
+  missing staging, failed history, disabled configuration, GET-only traffic,
+  exact config IDs, built-in help and fixture-local help coexistence.
+  A real signed-in application session was not verified.
+- Existing WMB database tests exercised stored coverage and correction
+  reconciliation; their final daily-summary assertion fails on missing financial
+  identity fixture evidence, identically before this relocation.
+- A detached unchanged baseline reproduced four existing failures across the
+  timezone structure and historical-WMB suites: outdated writing-entrypoint
+  inventory, old Docker stage-name assertion, duplicated zone literal, and
+  missing daily-summary financial identity evidence.
+- The existing full help coverage audit fails for
+  `system:contact-field-configuration` at `/config/phone-numbers`; the unchanged
+  baseline reproduces it. Targeted new help checks pass.
+- Script compilation still reports the same 16 baseline errors: 12 references
+  to retired `cronJobRuns` in the old write-fence smoke and four number/string
+  Sirius-ID mismatches in the contacts/workers loader. The newly included
+  ownership CLI type assertion was addressed. No migration business-rule fix
+  was folded into this relocation. Normalizing diagnostic line numbers gives
+  an exact before/after match for all 16 errors.

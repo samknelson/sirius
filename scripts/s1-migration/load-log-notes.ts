@@ -1,3 +1,4 @@
+import { s1EntityNotes } from '../../server/plugins/system/oneoff/plugins/s1-migration/entity-notes';
 /**
  * S1 sirius_log → S2 worker notes importer.
  *
@@ -594,7 +595,7 @@ async function main() {
     // (covers orphan cleanup, immutable repair, and disposition).
     const pageMappings = await getMappings(ID_MAP_ENTITY, classificationRows.map((item) => item.row.nid));
     const mappedNoteIds = [...new Set([...pageMappings.values()].map((mapping) => mapping.s2Id))];
-    const noteTargets = await storage.entityNotes.getMigrationNoteTargets(mappedNoteIds);
+    const noteTargets = await s1EntityNotes.getMigrationNoteTargets(mappedNoteIds);
     type WriteItem = (typeof classificationRows)[number] & { existing: MappingInfo | undefined };
     const orphanDeletes: Array<{ nid: number; s2Id: string }> = [];
     const verifyTargets: Array<{ nid: number; s2Id: string; workerId: string; fingerprint: string }> = [];
@@ -651,7 +652,7 @@ async function main() {
 
     // Batched orphan cleanup (ownership-guarded set-based delete + mapping removal).
     if (!DRY_RUN && orphanDeletes.length > 0) {
-      const result = await loaderScope(() => storage.entityNotes.bulkDeleteForMigration(
+      const result = await loaderScope(() => s1EntityNotes.bulkDeleteForMigration(
         orphanDeletes.map((o) => o.s2Id), LOADER,
       ));
       summary.deleted += result.deleted;
@@ -706,7 +707,7 @@ async function main() {
         };
       });
       try {
-        const { saved, failed } = await loaderScope(() => storage.entityNotes.bulkReconcileForMigration({
+        const { saved, failed } = await loaderScope(() => s1EntityNotes.bulkReconcileForMigration({
           loader: LOADER,
           rows: payload,
         }));
@@ -794,7 +795,7 @@ async function main() {
     policy: async (candidate: DeletionCandidate) => ({
       action: "delete",
       apply: async () => {
-         await loaderScope(() => storage.entityNotes.deleteForMigration(candidate.s2Id, LOADER));
+         await loaderScope(() => s1EntityNotes.deleteForMigration(candidate.s2Id, LOADER));
       },
     }),
   });

@@ -1,3 +1,4 @@
+import { s1Payments } from '../../server/plugins/system/oneoff/plugins/s1-migration/payments';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({
@@ -42,7 +43,7 @@ describe("actual ledger storage financial-link moves", () => {
     expect(await createLedgerEaStorage().getByEntity("worker", "worker")).toMatchObject([{ id: "canonical-worker-ea" }]);
     const set = vi.fn(() => ({ where: () => ({ returning: async () => [{ id: "payment", ledgerEaId: "canonical-worker-ea" }] }) }));
     f.getClient.mockReturnValue({ update: () => ({ set }) });
-    expect(await createLedgerPaymentStorage().updateForMigration("payment", { ledgerEaId: "canonical-worker-ea" }))
+    expect(await s1Payments.updateForMigration("payment", { ledgerEaId: "canonical-worker-ea" }))
       .toMatchObject({ id: "payment", ledgerEaId: "canonical-worker-ea" });
     expect(set).toHaveBeenCalledWith({ ledgerEaId: "canonical-worker-ea" });
     expect(f.emit).not.toHaveBeenCalled();

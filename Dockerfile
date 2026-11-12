@@ -211,7 +211,10 @@ ENV NODE_ENV=production
 ENV TZ=America/Los_Angeles
 WORKDIR /app
 RUN test -f scripts/oneoffs/backfill-wmb-events.ts \
-    && test -f scripts/s1-migration/lib/wmb-event-phase.ts
+    && test -f scripts/s1-migration/lib/wmb-event-phase.ts \
+    && test -f server/plugins/system/oneoff/plugins/s1-migration/workers.ts \
+    && test -f server/plugins/system/oneoff/plugins/s1-migration/wmb-events.ts \
+    && test -f scripts/tools/s1-sirius-id-ownership.ts
 USER node
 
 # No default command: every invocation is an explicit runbook step passed as

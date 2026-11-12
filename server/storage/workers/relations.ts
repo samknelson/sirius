@@ -1,29 +1,8 @@
 import { getClient, onAfterCommit, runInTransaction } from '../transaction-context';
 import { eventBus, EventType } from '../../services/event-bus';
-import {
-  workerRelations,
-  trustWmb,
-  optionsWorkerRelationType,
-  workers,
-  contacts,
-  type WorkerRelation,
-  type InsertWorkerRelation,
-} from '@shared/schema';
-import {
-  eq,
-  and,
-  or,
-  desc,
-  lte,
-  gte,
-  isNull,
-  inArray,
-  ne,
-  ilike,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
-import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
+import { workerRelations, trustWmb, optionsWorkerRelationType, workers, contacts, type WorkerRelation, type InsertWorkerRelation } from '@shared/schema';
+import { eq, and, or, desc, lte, gte, isNull, inArray, ne, ilike, sql, type SQL } from 'drizzle-orm';
+import { defineLoggingConfig } from '../middleware/logging';
 import { toYmd, getTodayYmd } from '@shared/utils/date';
 import { enqueueWorkerBenefitRoleHistoryInvalidations } from "../trust/worker-benefit-role-history-invalidation";
 
@@ -83,13 +62,6 @@ export interface WorkerRelationsStorage {
   listByIdsWithType(ids: string[]): Promise<WorkerRelationWithTypeName[]>;
   create(data: InsertWorkerRelation): Promise<WorkerRelation>;
   update(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined>;
-  /**
-   * Migration-only reconciliation path. Unlike the normal staff-facing
-   * update contract, this may retarget worker endpoints when S1 identity
-   * resolution changes (for example, replacing a migration shell with the
-   * real worker). The HTTP routes never expose this method.
-   */
-  reconcileFromMigration(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -108,7 +80,7 @@ interface ValidationInput {
   endYmd?: Date | string | null;
 }
 
-async function validateRelation(
+export async function validateRelation(
   data: ValidationInput,
   existing?: WorkerRelation,
 ): Promise<{ worker1: string; worker2: string; relationType: string; startYmd: string; endYmd: string | null }> {
@@ -170,7 +142,7 @@ async function validateRelation(
  * things each way. Non-overlapping windows (e.g. a past marriage that ended
  * and a new one) remain allowed.
  */
-async function assertNoDuplicateRelation(
+export async function assertNoDuplicateRelation(
   validated: { worker1: string; worker2: string; relationType: string; startYmd: string; endYmd: string | null },
   excludeId?: string,
 ): Promise<void> {
@@ -216,7 +188,7 @@ interface WorkerRelationsBeforeState {
  * new range (mirroring the trust-election pattern) so listeners can rescan
  * every affected period.
  */
-function emitWorkerRelationSaved(
+export function emitWorkerRelationSaved(
   relation: Pick<WorkerRelation, 'id' | 'worker1' | 'worker2' | 'startYmd' | 'endYmd'>,
   operation: 'created' | 'updated' | 'deleted',
 ): void {
@@ -262,13 +234,7 @@ export const workerRelationsLoggingConfig = defineLoggingConfig<WorkerRelationsS
     },
   },
 });
-
-export function createWorkerRelationsStorage(): WorkerRelationsStorage {
-  async function enqueueRoleHistoryInvalidations(workerIds: string[]): Promise<void> {
-    await enqueueWorkerBenefitRoleHistoryInvalidations(workerIds);
-  }
-
-  async function sourcedWmbWorkerIds(relationId: string): Promise<string[]> {
+export async function sourcedWmbWorkerIds(relationId: string): Promise<string[]> {
     const client = getClient();
     const rows = await client
       .select({ workerId: trustWmb.workerId })
@@ -276,6 +242,13 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       .where(eq(trustWmb.sourceRelationId, relationId));
     return rows.map((row) => row.workerId);
   }
+
+export async function enqueueRoleHistoryInvalidations(workerIds: string[]): Promise<void> {
+    await enqueueWorkerBenefitRoleHistoryInvalidations(workerIds);
+  }
+
+
+export function createWorkerRelationsStorage(): WorkerRelationsStorage {
 
   return {
     async searchWorkerRelations(params: SearchWorkerRelationsParams): Promise<WorkerRelationWithDetails[]> {
@@ -493,53 +466,6 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
         const rangeChanged =
           existing.startYmd !== updated.startYmd || existing.endYmd !== updated.endYmd;
         if (rangeChanged) emitWorkerRelationSaved(existing, 'updated');
-        emitWorkerRelationSaved(updated, 'updated');
-      }
-        if (updated) {
-          await enqueueRoleHistoryInvalidations([
-            existing.worker1, existing.worker2, updated.worker1, updated.worker2, ...sourcedWorkerIds,
-          ]);
-        }
-        return updated;
-      });
-    },
-
-    async reconcileFromMigration(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined> {
-      return runInTransaction(async () => {
-        const client = getClient();
-        const [existing] = await client.select().from(workerRelations).where(eq(workerRelations.id, id));
-        if (!existing) return undefined;
-        const sourcedWorkerIds = await sourcedWmbWorkerIds(id);
-
-      // Reuse every normal relation invariant (endpoint existence/distinctness,
-      // relation type, dates, and overlap). The only difference from update()
-      // is that migration reconciliation may replace worker_1/worker_2.
-      const validated = await validateRelation(data, existing);
-      await assertNoDuplicateRelation(validated, id);
-
-      const updateValues: Partial<InsertWorkerRelation> = {
-        worker1: validated.worker1,
-        worker2: validated.worker2,
-        relationType: validated.relationType,
-        startYmd: validated.startYmd,
-        endYmd: validated.endYmd,
-      };
-      if (data.data !== undefined) updateValues.data = data.data;
-
-      const [updated] = await client
-        .update(workerRelations)
-        .set(updateValues)
-        .where(eq(workerRelations.id, id))
-        .returning();
-      if (updated) {
-        // Retargeting must rescan both the old and new endpoint scopes, just as
-        // moving the date range must rescan both the old and new periods.
-        const scopeChanged =
-          existing.worker1 !== updated.worker1 ||
-          existing.worker2 !== updated.worker2 ||
-          existing.startYmd !== updated.startYmd ||
-          existing.endYmd !== updated.endYmd;
-        if (scopeChanged) emitWorkerRelationSaved(existing, 'updated');
         emitWorkerRelationSaved(updated, 'updated');
       }
         if (updated) {

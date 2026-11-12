@@ -1,6 +1,7 @@
 import type { PluginConfig } from "@shared/schema";
 import type { BasePluginMetadata } from "../../_core";
 import type { db } from "../../../storage/db";
+import type { RequestHandler } from "express";
 
 export interface OneoffPreflightResult {
   message: string;
@@ -43,6 +44,10 @@ export interface OneoffAction {
 export interface OneoffPlugin {
   metadata: BasePluginMetadata;
   actions: OneoffAction[];
+  /** Read-only view, separate from action inputs and execution/preflight. */
+  dashboard?: boolean;
+  /** The host registers only GETs and supplies authentication/config/plugin gates. */
+  registerReadRoutes?(get: (path: string, handler: RequestHandler) => void): void;
   status(ctx: {
     config: PluginConfig;
     db: typeof db;

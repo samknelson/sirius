@@ -1,3 +1,4 @@
+import { s1Payments } from '../../server/plugins/system/oneoff/plugins/s1-migration/payments';
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
@@ -264,7 +265,7 @@ describe("permanent ledger identity across HTTP, storage and PostgreSQL", () => 
   it("leaves transaction-level reconciliation and allocations writable, never EA ownership", async () => {
     await state.storage.ledger.entries.update("charge", { eaId: "destination" });
     // Approved source-proof repair uses this path, not ea.update.
-    await state.storage.ledger.payments.updateForMigration("payment", { ledgerEaId: "destination" });
+    await s1Payments.updateForMigration("payment", { ledgerEaId: "destination" });
     await state.storage.ledger.entries.update("allocation", { eaId: "destination" });
     expect(await state.storage.ledger.ea.getBalance("destination")).toBe("60.00");
     expect(await state.storage.ledger.ea.getBalance("ea")).toBe("0.00");
@@ -309,6 +310,6 @@ it("installs after bootstrap and before routes, and before enabling ledger acces
   expect(enable.indexOf("await installLedgerIdentityProtection()", branch)).toBeLessThan(enable.indexOf("await updateComponentCache(componentId, enabled)", branch));
   const repair = readFileSync("scripts/s1-migration/lib/financial-link-repair.ts", "utf8");
   expect(repair).toContain("storage.ledger.entries.update");
-  expect(repair).toContain("storage.ledger.payments.updateForMigration");
+  expect(repair).toContain("s1Payments.updateForMigration");
   expect(repair).not.toContain("storage.ledger.ea.update");
 });

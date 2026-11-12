@@ -1,3 +1,4 @@
+import { s1Payments } from '../../server/plugins/system/oneoff/plugins/s1-migration/payments';
 /**
  * T19 loader — S1 payment nodes → ledger_payments. Load-order step: after
  * T1/T3 (contacts/workers) and T7 (employers); BEFORE T18 (ledger charges)
@@ -402,7 +403,7 @@ async function main() {
         // memo is deliberately NOT touched (S2-side annotations survive).
         const row = await withNotificationsSuppressed(() =>
           withChargePluginsSuppressed(() =>
-            storage.ledger.payments.updateForMigration(targetId!, {
+            s1Payments.updateForMigration(targetId!, {
               status: mapped.status,
               allocated,
               amount,
@@ -430,7 +431,7 @@ async function main() {
 
       const row = await withNotificationsSuppressed(() =>
         withChargePluginsSuppressed(() =>
-          storage.ledger.payments.createForMigration({
+          s1Payments.createForMigration({
             status: mapped.status,
             allocated,
             amount,

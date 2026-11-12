@@ -1,3 +1,4 @@
+import { s1Communications } from '../../server/plugins/system/oneoff/plugins/s1-migration/communications';
 /**
  * N21 loader — sirius_log MSR call-reason rows → comm + comm_interaction.
  * Closes N21 (Option A, 06 §N21): S2 gets a structured member-interaction
@@ -478,7 +479,7 @@ async function main() {
         }
         try {
           const ok = await loaderScope(() =>
-            interactions.updateInteractionWithCommForMigration(mapped.s2Id, {
+            s1Communications.updateInteractionWithCommForMigration(mapped.s2Id, {
               contactId: resolvedContactId!,
               ...(occurredAt ? { occurredAt } : {}),
               channel,

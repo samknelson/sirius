@@ -5,6 +5,9 @@ export const oneoffHelp: SystemHelpEntry = {
   paths: ["/admin/oneoff"],
   summary: "Building a Oneoff plugin? Open the developer guide for registration, safe execution, scratch tables, and database access.",
   details: `
+    <h3>Read-only dashboards</h3>
+    <p>Some enabled plugins provide a read-only dashboard instead of execution actions. Select <strong>S1 Migration</strong> to inspect migration status, ownership, and run history. It requires administrator access, the S1 migration component, and an enabled S1 Migration configuration. Imports, repairs, and cleanup remain CLI-only; opening this dashboard does not start a run.</p>
+    <p>Plugin authors can declare a separate dashboard and register GET handlers through the Oneoff host. These handlers are protected by authentication, administrator access, plugin/component gates, and an enabled configuration. The S1 plugin also owns internal migration operations used by existing CLI tools; these are not browser actions and are not exposed by the host.</p>
     <h2>Building a Oneoff plugin</h2>
     <p>Oneoff plugins provide administrator-triggered operations with a preflight, an explicit confirmation, and a recorded run. Start with the working example in <strong>server/plugins/system/oneoff/plugins/test.ts</strong>.</p>
 

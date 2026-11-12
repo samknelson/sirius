@@ -1,10 +1,11 @@
+
 /**
  * Event-only historical WMB backfill. Preview is the default.
  * Usage: npx tsx scripts/oneoffs/backfill-wmb-events.ts --cutoff=2025-12
  *        npx tsx scripts/oneoffs/backfill-wmb-events.ts --cutoff=2025-12 --live
  */
-import { monthKey } from "../../server/services/wmb-historical-inference";
-import type { TrustWmbEventsStorage } from "../../server/storage/trust/wmb-events";
+import { monthKey } from "../../server/plugins/system/oneoff/plugins/s1-migration/wmb-historical-inference";
+import type { S1TrustWmbEventsOperations } from "../../server/plugins/system/oneoff/plugins/s1-migration/wmb-events";
 
 function options(argv: string[]) {
   const named = new Map<string, string>();
@@ -28,9 +29,9 @@ function options(argv: string[]) {
   };
 }
 
-export async function runHistoricalBackfill(argv: string[], suppliedTarget?: TrustWmbEventsStorage) {
+export async function runHistoricalBackfill(argv: string[], suppliedTarget?: S1TrustWmbEventsOperations) {
   const opts = options(argv);
-  const target = suppliedTarget ?? (await import("../../server/storage/database")).storage.trustWmbEvents;
+  const target = suppliedTarget ?? (await import("../../server/plugins/system/oneoff/plugins/s1-migration/wmb-events")).s1WmbEvents;
   const workers = await target.pageHistoricalWorkers(opts.after, opts.limit + 1, opts.benefit, opts.worker);
   if (!Array.isArray(workers) || workers.length > opts.limit + 1 ||
       workers.some((id, index) => typeof id !== "string" || !id ||

@@ -69,6 +69,8 @@ describe("backfilled guidance through existing authenticated read handlers", () 
     ["/edls/sheet/example/manage", "system:edls-scheduling"],
     ["/admin/denorm/example", "system:denorm-maintenance"],
     ["/config/helps", "system:help-text-listing"],
+    ["/admin/oneoff/s1-migration", "system:s1-migration-monitoring"],
+    ["/config/s1-migration", "system:s1-migration-monitoring"],
     ["/wizards/example", "system:enrollment-next"],
   ])("returns inline summary and expanded details for %s", async (path, id) => {
     const response = await read(`/api/helps/lookup?path=${encodeURIComponent(path)}`);
@@ -90,6 +92,18 @@ describe("enrollment Next help boundaries", () => {
     expect(help.details).toContain("Use this guidance for First-time Enrollment");
     expect(help.details).toContain("does not post");
     for (const path of ["/wizards", "/workers/example", "/trust/enrollment-queue", "/config/wizards", "/__mockup/"]) {
+      expect(help.paths.some(pattern => likePatternMatches(pattern, path))).toBe(false);
+    }
+  });
+});
+
+describe("S1 Oneoff help boundaries", () => {
+  it("describes the read-only enabled configuration without broad matching", () => {
+    const help = getAllSystemHelps().find(entry => entry.id === "system:s1-migration-monitoring")!;
+    expect(help.details).toBe(sanitizeHtml(help.details!, "rich-document"));
+    expect(help.details).toContain("CLI");
+    expect(help.details).toContain("creates it disabled");
+    for (const path of ["/admin/oneoff", "/admin/oneoff/other", "/admin/oneoff/s1-migration/extra", "/config/s1-migration-other"]) {
       expect(help.paths.some(pattern => likePatternMatches(pattern, path))).toBe(false);
     }
   });

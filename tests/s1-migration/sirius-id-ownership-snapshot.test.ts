@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readSiriusIdOwnershipSnapshotWithClient } from "../../server/storage/workers/sirius-id-ownership";
+import { readSiriusIdOwnershipSnapshotWithClient } from "../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership";
 
 describe("Sirius ID ownership snapshot query boundaries", () => {
   it("selects bounded planner evidence and narrows every mapping phase", async () => {

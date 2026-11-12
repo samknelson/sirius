@@ -7,6 +7,7 @@ export const oneoffPluginRegistry = new PluginRegistry<OneoffPlugin>({
   getMetadata: (plugin) => plugin.metadata,
   toManifestEntry: (plugin) => ({
     ...plugin.metadata,
+    dashboard: !!plugin.dashboard,
     actions: plugin.actions.map(({ id, label, description, destructive, background }) => ({
       id,
       label,

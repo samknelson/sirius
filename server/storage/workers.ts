@@ -1,48 +1,21 @@
 import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
-import {
-  workers,
-  contacts,
-  employers,
-  workerHours,
-  optionsWorkerWs,
-  workerMshDenorm,
-  workerWshDenorm,
-  workerEmploymentDenorm,
-  denorm,
-  trustWmb,
-  workerRelations,
-  type Worker,
-  type InsertWorker,
-  type TrustBenefit,
-  type Employer,
-} from "@shared/schema";
+import { stripWorkerData } from "./workers/row-projection";
+import { workers, contacts, employers, workerHours, workerMshDenorm, workerWshDenorm, workerEmploymentDenorm, denorm, trustWmb, workerRelations, type Worker } from "@shared/schema";
 import type { WorkerBenefitRoleFilters } from "@shared/worker-benefit-role-filters";
 import type { WorkerDirectoryFilters } from "@shared/worker-directory-filters";
 import { eq, sql, and, or, ne, isNull, inArray } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
-import { logger } from "../logger";
-import { 
-  type ValidationError,
-  createAsyncStorageValidator
-} from "./utils/validation";
+
+import { type ValidationError, createAsyncStorageValidator } from "./utils/validation";
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
 import { isComponentEnabledSync } from "../services/component-cache";
 import { provenanceCreatedDate } from "./system/entity-metadata-order";
 import { eventBus, EventType } from "../services/event-bus";
 import { tableExists } from "./utils";
-import {
-  affectedWorkerBenefitRoleHistoryWorkers,
-  enqueueWorkerBenefitRoleHistoryInvalidations,
-} from "./trust/worker-benefit-role-history-invalidation";
-import {
-  advanceWorkerSequenceSafely,
-  applySiriusIdOwnershipPlan,
-  readSiriusIdOwnershipSnapshot,
-  type ApplySiriusIdOwnershipPlanInput,
-  type ApplySiriusIdOwnershipPlanResult,
-} from "./workers/sirius-id-ownership";
-import type { SiriusIdOwnershipSnapshot } from "./workers/sirius-id-ownership-plan";
+import { affectedWorkerBenefitRoleHistoryWorkers, enqueueWorkerBenefitRoleHistoryInvalidations } from "./trust/worker-benefit-role-history-invalidation";
+
+
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string; allowSsaRuleInvalid?: boolean }, never, { ssn: string | null }>(
   async (data) => {
@@ -320,24 +293,6 @@ export interface WorkerStorage {
     family: string | null;
   }>>;
   createWorker(name: string): Promise<Worker>;
-  /** S1-migration only: source workers must supply their authoritative S1
-   * ID. Relationship shells explicitly persist a NULL Sirius ID; their UUID
-   * remains the relationship identity. */
-  createWorkerForMigration(input: {
-    siriusId?: string;
-    contactId: string;
-    ssn: string | null;
-    data?: Record<string, unknown> | null;
-    kind?: "relationship-shell";
-  }): Promise<Worker>;
-  /** Read-only source/target ownership evidence for migration preflight and
-   * operator diagnostics. */
-  getMigrationSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnershipSnapshot>;
-  /** Explicit hash-approved operator repair; ordinary loaders never call it. */
-  applyMigrationSiriusIdOwnershipPlan(input: ApplySiriusIdOwnershipPlanInput): Promise<ApplySiriusIdOwnershipPlanResult>;
-  /** S1-migration only: absorb a stub worker created by an earlier loader —
-   * stamps the real sirius_id / ssn / data onto the existing row. */
-  updateWorkerForMigration(workerId: string, updates: { siriusId?: string; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined>;
   createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -935,10 +890,6 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
 // storage layer. `data` (beneficiary PII, etc.) must never ride along on generic
 // worker responses; it is only exposed via the dedicated getData/baoBeneficiaries
 // paths. Applied to every method that returns a worker row to callers.
-function stripWorkerData<T extends { data?: unknown }>(row: T): Omit<T, "data"> {
-  const { data: _data, ...rest } = row;
-  return rest;
-}
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
   const storage = {
@@ -1680,79 +1631,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .returning();
       
       return stripWorkerData(worker);
-    },
-
-    async createWorkerForMigration(input: {
-      siriusId?: string;
-      contactId: string;
-      ssn: string | null;
-      data?: Record<string, unknown> | null;
-      kind?: "relationship-shell";
-    }): Promise<Worker> {
-      return runInTransaction(async () => {
-        const isRelationshipShell = input.kind === "relationship-shell";
-        if (!isRelationshipShell && input.siriusId == null) {
-          throw new Error("Migration source workers require an authoritative Sirius ID; no generated replacement is allowed.");
-        }
-        if (isRelationshipShell && input.siriusId != null) {
-          throw new Error("Relationship shell workers must retain a NULL Sirius ID.");
-        }
-        // Keep an explicit authoritative import serial-safe for a later S2
-        // cutover. Shells do not take this lock because they never consume or
-        // advance the sequence.
-        if (!isRelationshipShell) {
-          await getClient().execute(sql`LOCK TABLE workers IN EXCLUSIVE MODE`);
-        }
-        const data = isRelationshipShell
-          ? {
-              ...(input.data ?? {}),
-              migrationShell: true,
-            }
-          : input.data ?? null;
-        const [worker] = await getClient()
-          .insert(workers)
-          // Explicit NULL is critical: after S2 cutover the database default
-          // allocates omitted values, but a migration relationship shell must
-          // never receive one.
-          .values({
-            siriusId: isRelationshipShell ? null : input.siriusId!,
-            contactId: input.contactId,
-            ssn: input.ssn,
-            data,
-          })
-          .returning();
-        if (!isRelationshipShell) await advanceWorkerSequenceSafely();
-        return stripWorkerData(worker);
-      });
-    },
-
-    async getMigrationSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnershipSnapshot> {
-      return readSiriusIdOwnershipSnapshot();
-    },
-
-    async applyMigrationSiriusIdOwnershipPlan(
-      input: ApplySiriusIdOwnershipPlanInput,
-    ): Promise<ApplySiriusIdOwnershipPlanResult> {
-      return applySiriusIdOwnershipPlan(input);
-    },
-
-    async updateWorkerForMigration(workerId: string, updates: { siriusId?: string; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined> {
-      const client = getClient();
-      const set: Record<string, unknown> = {};
-      if (updates.siriusId !== undefined) set.siriusId = updates.siriusId;
-      if (updates.contactId !== undefined) set.contactId = updates.contactId;
-      if (updates.ssn !== undefined) set.ssn = updates.ssn;
-      if (updates.data !== undefined) set.data = updates.data;
-      if (Object.keys(set).length === 0) {
-        const [w] = await client.select().from(workers).where(eq(workers.id, workerId));
-        return w ? stripWorkerData(w) : undefined;
-      }
-      const [worker] = await client
-        .update(workers)
-        .set(set)
-        .where(eq(workers.id, workerId))
-        .returning();
-      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker> {

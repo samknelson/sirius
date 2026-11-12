@@ -1,3 +1,4 @@
+import { s1Communications } from '../../server/plugins/system/oneoff/plugins/s1-migration/communications';
 /**
  * Sync smoke — member statuses (T6) + call logs (N21) (Task 293).
  *
@@ -339,7 +340,7 @@ async function main() {
     check("incomplete-pair fixture seeded", Boolean(orphanId));
     if (orphanId) {
       const before = (await rows<any>(sql`SELECT contact_id, sent::text AS sent, data FROM comm WHERE id = ${orphanId}`))[0];
-      const ok = await createCommInteractionStorage().updateInteractionWithCommForMigration(orphanId, {
+      const ok = await s1Communications.updateInteractionWithCommForMigration(orphanId, {
         contactId: worker2ContactId,
         occurredAt: new Date("2026-03-03T00:00:00Z"),
         channel: "phone_in",
