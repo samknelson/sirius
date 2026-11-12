@@ -1,4 +1,5 @@
 import { FeedWizard, FeedField, FeedConfig, FeedData } from '../feed.js';
+import { defaultBlankHours } from '../blank-hours';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
@@ -1075,7 +1076,7 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
             year: wy,
             month: wm,
             day: wd,
-            hours: w.hours ?? 0,
+            hours: defaultBlankHours(w.hours),
           });
           hoursWritten++;
 

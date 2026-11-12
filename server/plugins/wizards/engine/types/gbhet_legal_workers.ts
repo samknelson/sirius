@@ -4,6 +4,7 @@ import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
 import { assertGbhetBenefitConfiguration } from "../../gbhet-legal-benefits";
+import { defaultBlankHours } from "../blank-hours";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -544,9 +545,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
 
     // Treat a blank "Number of Hours" as 0 so it passes the required-field
     // check; it is recorded as zero hours during processing.
-    if (row.numberOfHours === undefined || row.numberOfHours === null || row.numberOfHours === '') {
-      row.numberOfHours = 0;
-    }
+    row.numberOfHours = defaultBlankHours(row.numberOfHours);
     
     // Call parent validation to get standard field validation errors
     const errors = await super.validateRow(row, rowIndex, mode);
@@ -647,18 +646,13 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    */
   protected async processWorkerHours(workerId: string, row: Record<string, any>, wizard: any): Promise<void> {
 
-    const rawHours = row.numberOfHours;
+    const rawHours = defaultBlankHours(row.numberOfHours);
     const employmentStatusValue = row.employmentStatus;
 
-    // A blank/missing hours value is treated as 0 (recorded as a zero-hour
-    // entry) rather than being skipped.
-    const isBlankHours = rawHours === undefined || rawHours === null || rawHours === '';
-
-    // Parse hours as number
-    const hours = isBlankHours
-      ? 0
-      : (typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours)));
-    if (!isBlankHours && !isFinite(hours)) {
+    // Apply the same blank-cell default even when processing re-reads the file
+    // or this hook is invoked without the validation step's mutated row.
+    const hours = typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours));
+    if (!isFinite(hours)) {
       throw new Error(`Invalid hours value: ${rawHours}`);
     }
 
