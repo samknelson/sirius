@@ -2,6 +2,25 @@
 
 ## Status and boundaries
 
+### Operator acceptance: loaded EE worker links
+
+After reviewing the supplied payment and ledger reports, the operator explicitly
+narrowed acceptance to whether EE transactions were correctly linked to workers,
+not whether the entire daily sync passed.
+
+For that scope, the reports support acceptance: both wet importers independently
+report zero identity/ownership blockers, zero identity mismatches and zero
+per-entity/fund attribution mismatches. Loaded EE payments and ledger transactions
+therefore passed the supplied worker/fund linkage checks. The `107` payments
+without loaded targets are excluded from this conclusion.
+
+This closes the requested worker-link confirmation only. It does not establish
+overall daily-sync success, runtime code/image identity, scheduled-wrapper proof,
+historical reference completeness, exact historical missing-payment set equality,
+or unchanged repeat-run stability. Those broader proof requirements were removed
+from this acceptance scope, not silently passed. No remote action, deployment,
+repair or schedule change is authorized by this acceptance.
+
 The historical link-only repair and independent dry inventory are recorded in
 [the operator repair evidence](financial-worker-link-repair-evidence.md).
 That approval did **not** authorize a subsequent sync, restaging, deployment or
@@ -256,7 +275,8 @@ Ledger inventory evidence hash:
 Both use the generic label `current-local-staging`; it is not a verified
 shared extraction checkpoint or runtime identity.
 
-Still required: full sync aggregate and independent balance-parity report,
+Outstanding for the original broader proof, not required for the operator's
+narrowed loaded-EE worker-link acceptance: full sync aggregate and independent balance-parity report,
 hours importer evidence, runtime code/image/task identity and final exit,
 scheduled-wrapper command and alert evidence, verified staging generation and
 extraction-boundary proof, exact missing-payment disposition, historical
