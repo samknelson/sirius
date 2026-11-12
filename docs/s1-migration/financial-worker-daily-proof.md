@@ -2,6 +2,25 @@
 
 ## Status and boundaries
 
+### Operator acceptance: loaded EE worker links
+
+After reviewing the supplied payment and ledger reports, the operator explicitly
+narrowed acceptance to whether EE transactions were correctly linked to workers,
+not whether the entire daily sync passed.
+
+For that scope, the reports support acceptance: both wet importers independently
+report zero identity/ownership blockers, zero identity mismatches and zero
+per-entity/fund attribution mismatches. Loaded EE payments and ledger transactions
+therefore passed the supplied worker/fund linkage checks. The `107` payments
+without loaded targets are excluded from this conclusion.
+
+This closes the requested worker-link confirmation only. It does not establish
+overall daily-sync success, runtime code/image identity, scheduled-wrapper proof,
+historical reference completeness, exact historical missing-payment set equality,
+or unchanged repeat-run stability. Those broader proof requirements were removed
+from this acceptance scope, not silently passed. No remote action, deployment,
+repair or schedule change is authorized by this acceptance.
+
 The historical link-only repair and independent dry inventory are recorded in
 [the operator repair evidence](financial-worker-link-repair-evidence.md).
 That approval did **not** authorize a subsequent sync, restaging, deployment or
@@ -147,9 +166,122 @@ observations, not proof of identity failure or permission to create/reclassify
 them. The daily run must account for them through actual loader rejects and
 parity outcomes. Do not suppress a gate to manufacture a green proof.
 
-No new daily-run checkpoint, code/image identity or remote outcome is asserted
-here. Populate the proof record only from separately approved operator evidence.
-Scheduling remains gated by the existing rollout task after that review.
+No successful daily financial proof is established here. Scheduling remains
+gated by the existing rollout task after review of separately approved operator
+evidence.
+
+## Operator-supplied manual attempt — stopped before money loaders
+
+The operator reported configuring a new image/task definition and supplied a
+manual sync aggregate. Its extraction timestamps span
+`2026-11-10T23:02:12.784Z` through `2026-11-11T00:22:29.704Z`.
+This is operator-supplied evidence, not an assistant-executed remote action.
+No new remote action or retry is authorized by supplying this report.
+
+- Reported options: daily, production, wet, staging enabled, seeders skipped,
+  `keepGoing: false`, `forceReconcile: false`, and neither payment nor AR
+  financial-link approval present.
+- Stage reported PASS, zero mismatches and five accepted live drifts.
+  Contacts, workers and payments report `identityVerified: true`. Payments
+  staged `4731` rows, with `17` payloads extracted. Raw AR staged/extracted
+  `392237` rows with equal before/after counts, but this aggregate contains
+  no exact AR identity-set hash. Counts alone do not establish that proof.
+- The fleet stopped at `t16-elections` logic version `2`, exit code `1`:
+  `appeal_worker_unmapped=1` was a disallowed reject. Its local verification
+  PASS does not override the failed reject gate.
+- Local source inspection shows that rejection means an appeal had no usable
+  worker reference or no worker mapping for its reference. The aggregate does
+  not distinguish those causes or connect it to the contact/worker rejects.
+  Operator-side retained reject evidence and staged worker/mapping evidence
+  are needed before deciding remediation; no allowlist change is justified.
+- Overall result: FAIL; fleet gate failed; parity skipped;
+  `financialIdentity: not-run`; WMB processing skipped.
+  Reported duration was `8117.1` seconds. Earlier fleet steps did write:
+  aggregate totals include `293` created and `75` updated records. This is
+  not a no-write attempt or evidence of whole-run rollback.
+- Payments, hours and ledger were not reached. There is no loaded financial
+  identity, attribution, money-parity or reference-preservation result.
+  The earlier `107` missing payment targets remain unresolved; the new
+  staging count cannot identify their disposition.
+
+Still missing: full delivered code commit, immutable image and actual ECS task
+image digests, task-definition revision, exact launch command, task identity,
+overall task start/end and final container exit status. A child election exit
+and a sync FAIL report do not prove the wrapper's final exit or alert behavior.
+The supplied record does not establish whether the scheduled wrapper was used.
+The staging generation/range evidence and same-checkpoint inventory/parity
+comparison are also absent. No repeat-run evidence was supplied.
+
+Next: coordinate the missing runtime packet and upstream election triage with
+the existing rollout owner. Review an exact, separately approved operator
+diagnostic before any remote read, and separately approve any remediation or
+new daily run. Keep the election gate intact; do not use keep-going, new
+allowances, force-reconcile or a reused checkpoint label to obtain acceptance.
+The financial proof remains blocked, not complete.
+
+## Operator-supplied payment and ledger reports after election corrections
+
+The operator subsequently reported correcting the election references and
+supplied two wet importer reports from a manual daily run. These reports
+establish importer-level results, not overall sync or scheduled-wrapper
+completion. No remote command was executed by the assistant.
+
+| Evidence | Payments | Ledger |
+| --- | ---: | ---: |
+| Logic version | 2 | 3 |
+| Staged rows | 4741 | 392490 |
+| Matched target rows | 4634 | 392490 |
+| Created | 27 | 2252 |
+| Updated | 4607 | 390238 |
+| Unchanged | 0 | 0 |
+| Rejected | 107 (`amount_missing`) | 0 |
+| Identity/ownership blockers | 0 | 0 |
+| Identity mismatches | 0 | 0 |
+| Attribution mismatches | 0 | 0 |
+| Proven contact-worker rows | 1702 | 6474 |
+
+Both report local verification and reject gates passing, no blocking findings,
+`dryRun: false`, and `forceReconcile: false`. Payments used existing allowances
+`amount_missing` and `account_unensured`; only `amount_missing` occurred.
+Payments' three loaded account counts sum to `4634`; adding the `107` rejected
+rows reconciles to `4741` staged rows. The independent payment inventory also
+reports `107` missing targets. This accounts for the current count consistently
+with amount rejects, but the report's capped reject samples do not prove
+exact-set equality with the historical `107` missing targets or even a full
+reject-to-missing-target set comparison.
+
+Ledger's three account counts sum to `392490`, with expected and loaded sums
+and counts equal for each account. Its independent inventory additionally
+reports zero attribution mismatches, so fund-total equality is not the sole
+identity evidence.
+
+Reference preservation is not fully established: the ledger report lists
+`382990` hour references, `5691` payment references, `95` employer references
+and `3714` `s1-unknown` references. The pre-pass inspected `3710` degraded
+references, cleared none, and reported zero hour drift. The pre-pass and final
+unknown-reference counts describe different observations; their difference
+does not prove four newly broken links. Unresolved references require
+classification rather than being counted as resolved or silently repaired.
+
+These are not zero-change repeat results: both loaders report all matched
+targets as created or updated, with no unchanged rows. Fingerprints advanced
+for `4607` payments and `390238` ledger rows. No cause for those updates or
+repeat-run stability is inferred solely from the aggregate.
+
+Payment inventory evidence hash:
+`904c3ecf6482669d7cb2ac8a1aa9487118ef092624ff0f6a2d5cc7a54ef44e62`.
+Ledger inventory evidence hash:
+`9e4a6836b960e04d21093eb03272c787744ca87be72b0312756c2dc17959da9e`.
+Both use the generic label `current-local-staging`; it is not a verified
+shared extraction checkpoint or runtime identity.
+
+Outstanding for the original broader proof, not required for the operator's
+narrowed loaded-EE worker-link acceptance: full sync aggregate and independent balance-parity report,
+hours importer evidence, runtime code/image/task identity and final exit,
+scheduled-wrapper command and alert evidence, verified staging generation and
+extraction-boundary proof, exact missing-payment disposition, historical
+reference and independent payer/beneficiary evidence, and a separately approved
+repeat run. No schedule enablement or additional remote action is authorized.
 
 ## Local executable verification
 
