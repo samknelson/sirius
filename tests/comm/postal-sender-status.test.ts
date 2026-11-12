@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   getCommWithDetails: vi.fn(),
   renderLetterPdf: vi.fn(),
   downloadRemoteLetterPdf: vi.fn(),
+  hasWcVendorOperation: vi.fn(),
+  describeWcVendor: vi.fn(),
+  getCommBySendKey: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("../../server/services/comm/letter-pdf", async (importOriginal) => ({
@@ -27,6 +31,7 @@ vi.mock("../../server/storage/comm", () => ({
     updateComm: mocks.updateComm,
     lockComm: vi.fn(),
     getCommWithDetails: mocks.getCommWithDetails,
+    getCommBySendKey: mocks.getCommBySendKey,
   }),
   createCommPostalStorage: () => ({
     createCommPostal: mocks.createCommPostal,
@@ -42,15 +47,15 @@ vi.mock("../../server/storage", () => ({
 }));
 
 vi.mock("../../server/storage/transaction-context", () => ({
-  runInTransaction: (fn: () => unknown) => fn(),
+  runInTransaction: (fn: () => unknown) => { mocks.transaction(); return fn(); },
 }));
 
 vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
-  hasWcVendorOperation: async () => true,
-  describeWcVendor: async () => ({ configId: "lob-config", pluginId: "lob" }),
+  hasWcVendorOperation: mocks.hasWcVendorOperation,
+  describeWcVendor: mocks.describeWcVendor,
 }));
 vi.mock("../../server/services/webclient", () => ({
-  wcRequest: async ({ vendor, operation, args }: { vendor: unknown; operation: string; args: unknown }) => {
+  wcRequest: vi.fn(async ({ vendor, operation, args }: { vendor: unknown; operation: string; args: unknown }) => {
     expect(vendor).toEqual({ configId: "lob-config" });
     if (operation === "communications.postal.return-address.default") {
       return { outcome: "success", value: {
@@ -65,7 +70,7 @@ vi.mock("../../server/services/webclient", () => ({
       return { outcome: "success", value: await mocks.sendLetter(args) };
     }
     throw new Error(`Unexpected operation ${operation}`);
-  },
+  }),
 }));
 
 vi.mock("../../server/services/comm/validators/address-verification", () => ({
@@ -94,6 +99,7 @@ vi.mock("../../server/services/maintenance-flag", () => ({
 
 import { sendPostal } from "../../server/services/comm/senders/postal";
 import { LetterRenderQueue } from "../../server/services/comm/letter-render-queue";
+import { wcRequest } from "../../server/services/webclient";
 
 const toAddress = {
   name: "Test Recipient",
@@ -117,6 +123,11 @@ function deferred<T>() {
 describe("postal sender Lob acceptance status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createComm.mockReset();
+    mocks.renderLetterPdf.mockReset();
+    mocks.getCommBySendKey.mockReset();
+    mocks.hasWcVendorOperation.mockResolvedValue(true);
+    mocks.describeWcVendor.mockResolvedValue({ configId: "lob-config", pluginId: "lob" });
     mocks.createComm.mockResolvedValue({
       id: "comm-1",
       medium: "postal",
@@ -155,6 +166,74 @@ describe("postal sender Lob acceptance status", () => {
       commId: "comm-1",
       ...update,
     }));
+  });
+
+  it.each([
+    ["no deliverable vendor (Local Postal)", false, "No postal delivery operation assigned"],
+    ["disabled Lob connection", true, "Vendor configuration is disabled"],
+    ["missing Lob credential", true, "Vendor credential secret is not set"],
+  ])("records mailed-by-hand without resolving %s", async (_scenario, supported, error) => {
+    mocks.hasWcVendorOperation.mockResolvedValue(supported);
+    mocks.describeWcVendor.mockRejectedValue(new Error(error));
+    mocks.createComm.mockImplementationOnce(async (data) => ({ id: "comm-offline", ...data }));
+
+    const result = await sendPostal({
+      contactId: "contact-1", toAddress, file: "<p>Mailed by hand</p>",
+      sendOffline: true, sendKey: "offline:case-1",
+    });
+
+    expect(result).toMatchObject({ success: true, comm: { status: "offline", sendKey: "offline:case-1" } });
+    expect(result.comm?.sent).toBeInstanceOf(Date);
+    expect(mocks.renderLetterPdf).toHaveBeenCalledOnce();
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.createComm).toHaveBeenCalledWith(expect.objectContaining({
+      medium: "postal", status: "offline", sendKey: "offline:case-1",
+    }));
+    expect(mocks.createCommPostal).toHaveBeenCalledWith(expect.objectContaining({
+      commId: "comm-offline", body: expect.stringContaining("Mailed by hand"),
+    }));
+    expect(mocks.hasWcVendorOperation).not.toHaveBeenCalled();
+    expect(mocks.describeWcVendor).not.toHaveBeenCalled();
+    expect(wcRequest).not.toHaveBeenCalled();
+    expect(mocks.getPostalOptin).not.toHaveBeenCalled();
+    expect(mocks.sendLetter).not.toHaveBeenCalled();
+  });
+
+  it("still validates offline layout before claiming a send key without a delivery vendor", async () => {
+    mocks.hasWcVendorOperation.mockResolvedValue(false);
+    mocks.renderLetterPdf.mockRejectedValueOnce(new Error("Unsafe letter layout"));
+
+    const result = await sendPostal({
+      contactId: "contact-1", toAddress, file: "<p>Mailed by hand</p>",
+      sendOffline: true, sendKey: "offline:unsafe",
+    });
+
+    expect(result).toMatchObject({ success: false, error: "Unsafe letter layout" });
+    expect(mocks.renderLetterPdf).toHaveBeenCalledOnce();
+    expect(mocks.createComm).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.hasWcVendorOperation).not.toHaveBeenCalled();
+    expect(wcRequest).not.toHaveBeenCalled();
+  });
+
+  it("refuses an already-claimed offline send key without creating details or contacting a vendor", async () => {
+    mocks.hasWcVendorOperation.mockResolvedValue(false);
+    mocks.createComm.mockResolvedValueOnce(null);
+    mocks.getCommBySendKey.mockResolvedValueOnce({ id: "comm-existing", status: "offline" });
+
+    const result = await sendPostal({
+      contactId: "contact-1", toAddress, file: "<p>Mailed by hand</p>",
+      sendOffline: true, sendKey: "offline:spent",
+    });
+
+    expect(result).toMatchObject({
+      success: false, alreadySent: true, errorCode: "ALREADY_SENT", comm: { id: "comm-existing" },
+    });
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.createCommPostal).not.toHaveBeenCalled();
+    expect(mocks.hasWcVendorOperation).not.toHaveBeenCalled();
+    expect(wcRequest).not.toHaveBeenCalled();
+    expect(mocks.sendLetter).not.toHaveBeenCalled();
   });
 
   it("records a successful provider acceptance as queued without a sent timestamp", async () => {

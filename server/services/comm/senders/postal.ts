@@ -130,31 +130,6 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
     };
   }
 
-  let postalTarget: WcVendorTarget;
-  let postalPluginId: string;
-  try {
-    postalTarget = { any: true };
-    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
-    if (!(await hasWcVendorOperation("communications.postal.send"))) {
-      return {
-        success: false,
-        error: 'Postal sending is not supported by the current provider. Configure a provider with postal sending capability (e.g., Lob).',
-        errorCode: 'POSTAL_NOT_SUPPORTED',
-      };
-    }
-    const { describeWcVendor } = await import("../../webclient/wc-vendor-context");
-    const selected = await describeWcVendor(postalTarget, "communications.postal.send");
-    postalTarget = { configId: selected.configId };
-    postalPluginId = selected.pluginId;
-  } catch (error: any) {
-    if (isMaintenanceModeError(error)) throw error;
-    return {
-      success: false,
-      error: error?.message || 'Failed to resolve the postal provider',
-      errorCode: 'UNKNOWN_ERROR',
-    };
-  }
-
   if (sendOffline) {
     try {
       // Offline recording must refuse the same unsafe layouts as delivery.
@@ -228,6 +203,33 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         errorCode: 'UNKNOWN_ERROR',
       };
     }
+  }
+
+  // Recording mail sent by hand needs no delivery connection or credential.
+  // Resolve and pin the provider only for online delivery, after that branch.
+  let postalTarget: WcVendorTarget;
+  let postalPluginId: string;
+  try {
+    postalTarget = { any: true };
+    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("communications.postal.send"))) {
+      return {
+        success: false,
+        error: 'Postal sending is not supported by the current provider. Configure a provider with postal sending capability (e.g., Lob).',
+        errorCode: 'POSTAL_NOT_SUPPORTED',
+      };
+    }
+    const { describeWcVendor } = await import("../../webclient/wc-vendor-context");
+    const selected = await describeWcVendor(postalTarget, "communications.postal.send");
+    postalTarget = { configId: selected.configId };
+    postalPluginId = selected.pluginId;
+  } catch (error: any) {
+    if (isMaintenanceModeError(error)) throw error;
+    return {
+      success: false,
+      error: error?.message || 'Failed to resolve the postal provider',
+      errorCode: 'UNKNOWN_ERROR',
+    };
   }
 
   try {
