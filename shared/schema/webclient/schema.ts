@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, jsonb, timestamp, integer, date, index, unique } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, jsonb, timestamp, integer, date, index, unique, foreignKey } from "drizzle-orm/pg-core";
+import { pluginConfigsWcVendors } from "../../schema";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { isValidYmd } from "../../utils/date";
@@ -12,7 +13,7 @@ import { isValidYmd } from "../../utils/date";
  * is decided by the per-request canonicalizer in the behavior registry
  * (`server/services/webclient/registry.ts`), not by this table — the table
  * only stores whatever string that canonicalizer produced and enforces that
- * it is unique within its (service, request type).
+ * it is unique within its provider-neutral request type.
  */
 export const wcCacheOutcomeEnum = pgEnum("wc_cache_outcome", ["success", "failure"]);
 
@@ -42,6 +43,7 @@ export const wcCacheOutcomeEnum = pgEnum("wc_cache_outcome", ["success", "failur
 export const wcCache = pgTable("wc_cache", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   service: varchar("service", { length: 64 }).notNull(),
+  configurationId: varchar("configuration_id"),
   requestType: varchar("request_type", { length: 64 }).notNull(),
   requestKey: text("request_key").notNull(),
   requestKeyHash: varchar("request_key_hash", { length: 64 }).notNull(),
@@ -52,14 +54,18 @@ export const wcCache = pgTable("wc_cache", {
 }, (table) => ({
   // Named UNIQUE CONSTRAINT (not a unique index) so the startup drift gate
   // sees the same object the migration creates.
-  requestUnique: unique("wc_cache_service_type_key_hash_uniq").on(
-    table.service,
+  requestUnique: unique("wc_cache_type_key_hash_uniq").on(
     table.requestType,
     table.requestKeyHash,
   ),
+  configurationFk: foreignKey({
+    name: "wc_cache_configuration_id_fkey",
+    columns: [table.configurationId],
+    foreignColumns: [pluginConfigsWcVendors.id],
+  }).onDelete("set null"),
   // The sweep's access pattern: everything of one request type older than a
   // cutoff. The unique constraint's index already serves point lookups.
-  sweepIdx: index("wc_cache_sweep_idx").on(table.service, table.requestType, table.fetchedAt),
+  sweepIdx: index("wc_cache_sweep_idx").on(table.requestType, table.fetchedAt),
 }));
 
 /**
@@ -83,6 +89,7 @@ export const wcStats = pgTable("wc_stats", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   service: varchar("service", { length: 64 }).notNull(),
   requestType: varchar("request_type", { length: 64 }).notNull(),
+  configurationId: varchar("configuration_id"),
   ymd: date("ymd").notNull(),
   calls: integer("calls").notNull().default(0),
 }, (table) => ({
@@ -90,11 +97,19 @@ export const wcStats = pgTable("wc_stats", {
   // sees the same object the migration creates. It is also the conflict target
   // of the insert-or-increment, which is what stops concurrent calls losing
   // counts.
-  ymdUnique: unique("wc_stats_service_type_ymd_uniq").on(
+  ymdUnique: unique("wc_stats_service_type_configuration_ymd_uniq")
+    .on(
     table.service,
     table.requestType,
+    table.configurationId,
     table.ymd,
-  ),
+    )
+    .nullsNotDistinct(),
+  configurationFk: foreignKey({
+    name: "wc_stats_configuration_id_fkey",
+    columns: [table.configurationId],
+    foreignColumns: [pluginConfigsWcVendors.id],
+  }).onDelete("set null"),
 }));
 
 export const insertWcStatsSchema = createInsertSchema(wcStats, {

@@ -12,17 +12,35 @@ const ACCESS_TOKEN = "33333333-3333-4333-8333-333333333333";
 const REVOKED_TOKEN = "44444444-4444-4444-8444-444444444444";
 const ASSIGNMENT_ID = "55555555-5555-4555-8555-555555555555";
 const OTHER_ASSIGNMENT_ID = "66666666-6666-4666-8666-666666666666";
+const GENERATION_ID = "77777777-7777-4777-8777-777777777777";
+const REFILLED_GENERATION_ID = "88888888-8888-4888-8888-888888888888";
 
 interface Scenario {
   tokens: Record<string, { workerId: string } | undefined>;
-  visibleAssignments: Array<{ assignmentId: string; accepted: boolean | null }>;
+  visibleAssignments: Array<{
+    assignmentId: string;
+    generationId: string;
+    ymd: string;
+    sheetStatus: string;
+    accepted: boolean | null;
+    sheetTitle?: string;
+    crewTitle?: string;
+    location?: string;
+    supervisor?: { email: string };
+  }>;
   setAcceptedResult: boolean;
 }
 
 let scenario: Scenario;
-const { componentState, setAccepted } = vi.hoisted(() => ({
+const { componentState, setAccepted, getAssignmentsForWorker, getManyMetadata } = vi.hoisted(() => ({
   componentState: { enabled: {} as Record<string, boolean> },
   setAccepted: vi.fn(),
+  getAssignmentsForWorker: vi.fn(),
+  getManyMetadata: vi.fn(),
+}));
+
+vi.mock("../../server/storage/system/entity-metadata", () => ({
+  entityMetadataStorage: { getMany: getManyMetadata },
 }));
 
 vi.mock("../../server/storage", () => ({
@@ -38,9 +56,7 @@ vi.mock("../../server/storage", () => ({
         // test explicitly forbids that fallback for irreversible answers.
         return id === WORKER_ID ? { workerId: WORKER_ID } : undefined;
       },
-      async getAssignmentsForWorker() {
-        return scenario.visibleAssignments;
-      },
+      getAssignmentsForWorker,
       setAccepted,
     },
     workerEdls: {
@@ -108,15 +124,22 @@ vi.mock("../../server/logger", () => ({
   logger: { warn: vi.fn() },
 }));
 
+vi.mock("../../server/config/system-timezone", () => ({
+  getSystemTimeZone: () => "America/Los_Angeles",
+}));
+
 import { registerEdlsPublicScheduleRoutes } from "../../server/modules/edls/public-schedule";
 
 type Handler = (req: any, res: any) => Promise<void>;
 let answerHandler: Handler;
+let scheduleHandler: Handler;
 let answerMiddleware: Array<(req: any, res: any, next: () => void) => Promise<void> | void>;
 
 beforeAll(() => {
   registerEdlsPublicScheduleRoutes({
-    get() {},
+    get(...args: unknown[]) {
+      scheduleHandler = args.at(-1) as Handler;
+    },
     post(...args: unknown[]) {
       answerMiddleware = args.slice(1, -1) as typeof answerMiddleware;
       answerHandler = args.at(-1) as Handler;
@@ -128,14 +151,40 @@ beforeEach(() => {
   componentState.enabled = { edls: true, "worker.aat": true };
   scenario = {
     tokens: { [ACCESS_TOKEN]: { workerId: WORKER_ID } },
-    visibleAssignments: [{ assignmentId: ASSIGNMENT_ID, accepted: null }],
+    visibleAssignments: [{
+      assignmentId: ASSIGNMENT_ID,
+      generationId: GENERATION_ID,
+      ymd: "2026-09-26",
+      sheetStatus: "lock",
+      accepted: null,
+    }],
     setAcceptedResult: true,
   };
   setAccepted.mockReset();
   setAccepted.mockImplementation(async () => scenario.setAcceptedResult);
+  getAssignmentsForWorker.mockReset();
+  getAssignmentsForWorker.mockImplementation(async () => scenario.visibleAssignments);
+  getManyMetadata.mockReset();
+  getManyMetadata.mockResolvedValue(new Map());
 });
 
-async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted = true) {
+async function schedule(scheduleId = ACCESS_TOKEN) {
+  const res = {
+    set: vi.fn(),
+    vary: vi.fn(),
+    json: vi.fn(),
+    status: vi.fn().mockReturnThis(),
+  };
+  await scheduleHandler({ params: { id: scheduleId } }, res);
+  return res;
+}
+
+async function answer(
+  scheduleId: string,
+  assignmentId = ASSIGNMENT_ID,
+  accepted = true,
+  generationId: string | null = GENERATION_ID,
+) {
   const result: { status: number; body?: unknown } = { status: 200 };
   const res = {
     status(code: number) {
@@ -148,7 +197,14 @@ async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted
     },
   };
 
-  const req = { params: { id: scheduleId, assignmentId }, body: { accepted }, ip: "127.0.0.1" };
+  const req = {
+    params: { id: scheduleId, assignmentId },
+    body: {
+      accepted,
+      ...(generationId === null ? {} : { generationId }),
+    },
+    ip: "127.0.0.1",
+  };
   for (const middleware of answerMiddleware) {
     let nextCalled = false;
     await middleware(req, res, () => {
@@ -161,12 +217,167 @@ async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted
 }
 
 describe("public EDLS schedule answers", () => {
+  it("stamps each successful read with its completion instant and named site zone", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-11T18:15:00.000Z"));
+      const first = (await schedule()).json.mock.calls[0][0];
+      expect(first).toMatchObject({
+        readAt: "2026-07-11T18:15:00.000Z",
+        siteTimeZone: "America/Los_Angeles",
+      });
+
+      vi.setSystemTime(new Date("2026-07-11T18:17:00.000Z"));
+      expect((await answer(ACCESS_TOKEN)).status).toBe(200);
+      const second = (await schedule()).json.mock.calls[0][0];
+      expect(second.readAt).toBe("2026-07-11T18:17:00.000Z");
+      expect(second.siteTimeZone).toBe(first.siteTimeZone);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not expose a freshness claim for a denied schedule link", async () => {
+    const res = await schedule(REVOKED_TOKEN);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ message: "Access denied" });
+  });
+
+  it("offers Draft and Requested sheets in the same public schedule window", async () => {
+    const res = await schedule();
+
+    expect(getAssignmentsForWorker).toHaveBeenCalledWith(
+      WORKER_ID,
+      expect.objectContaining({ sheetStatuses: ["draft", "request", "lock", "reserved"] }),
+    );
+    expect(res.json).toHaveBeenCalled();
+  });
+
+  it.each(["draft", "request"])("does not disclose %s job or crew details in the public response", async (status) => {
+    scenario.visibleAssignments[0] = {
+      ...scenario.visibleAssignments[0],
+      sheetStatus: status,
+      sheetTitle: "PRIVATE JOB TITLE",
+      crewTitle: "PRIVATE CREW TITLE",
+      location: "PRIVATE LOCATION",
+      supervisor: { email: "PRIVATE SUPERVISOR" },
+    };
+
+    const res = await schedule();
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.assignments).toEqual([{
+      assignmentId: ASSIGNMENT_ID,
+      ymd: "2026-09-26",
+      sheetStatus: status,
+    }]);
+    expect(JSON.stringify(payload)).not.toContain("PRIVATE");
+    expect(getManyMetadata).toHaveBeenCalledWith([]);
+  });
+
+  it("still sends full details for a Scheduled assignment", async () => {
+    scenario.visibleAssignments[0].sheetTitle = "Confirmed job";
+    const res = await schedule();
+    expect(res.json.mock.calls[0][0].assignments[0].sheetTitle).toBe("Confirmed job");
+  });
+
+  it("returns only the assignment's modification date, without actor or unrelated metadata", async () => {
+    const date = new Date("2026-09-24T12:12:00.000Z");
+    getManyMetadata.mockResolvedValue(new Map([
+      [ASSIGNMENT_ID, {
+        contextId: "edls_assignments",
+        rev: 4,
+        modified: { date, personName: "Private Staff Name" },
+        created: { date: new Date("2020-01-01T00:00:00.000Z"), personName: null },
+      }],
+    ]));
+    const res = await schedule();
+    const payload = res.json.mock.calls[0][0];
+
+    expect(getManyMetadata).toHaveBeenCalledWith([ASSIGNMENT_ID]);
+    expect(payload.assignments[0].generationId).toBe(GENERATION_ID);
+    expect(payload.assignments[0].revision).toBe(4);
+    expect(payload.assignments[0].updatedAt).toBe("2026-09-24T12:12:00.000Z");
+    expect(JSON.stringify(payload)).not.toContain("Private Staff Name");
+    expect(JSON.stringify(payload)).not.toContain("2020-01-01");
+  });
+
+  it("does not invent revision or update date for missing, unrelated, or invalid metadata", async () => {
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: null, updatedAt: null }));
+    getManyMetadata.mockResolvedValue(new Map([
+      [ASSIGNMENT_ID, { contextId: "edls_sheets", rev: 9, modified: { date: new Date() } }],
+    ]));
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: null, updatedAt: null }));
+    getManyMetadata.mockResolvedValue(new Map([
+      [ASSIGNMENT_ID, { contextId: "edls_assignments", rev: 0, modified: { date: new Date(NaN) } }],
+    ]));
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: null, updatedAt: null }));
+  });
+
+  it("refreshes the revision and update date after a recorded answer, but not after a refused attempt", async () => {
+    let modifiedAt = new Date("2026-09-24T11:00:00.000Z");
+    let rev = 4;
+    getManyMetadata.mockImplementation(async () => new Map([
+      [ASSIGNMENT_ID, {
+        contextId: "edls_assignments",
+        rev,
+        modified: { date: modifiedAt },
+      }],
+    ]));
+    setAccepted.mockImplementation(async () => {
+      if (!scenario.setAcceptedResult) return false;
+      modifiedAt = new Date("2026-09-24T12:00:00.000Z");
+      rev++;
+      scenario.visibleAssignments[0].accepted = true;
+      return true;
+    });
+
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: 4, updatedAt: "2026-09-24T11:00:00.000Z" }));
+    expect((await answer(ACCESS_TOKEN)).status).toBe(200);
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: 5, updatedAt: "2026-09-24T12:00:00.000Z" }));
+
+    scenario.visibleAssignments[0].accepted = null;
+    scenario.setAcceptedResult = false;
+    expect((await answer(ACCESS_TOKEN)).status).toBe(403);
+    expect((await schedule()).json.mock.calls[0][0].assignments[0])
+      .toEqual(expect.objectContaining({ revision: 5, updatedAt: "2026-09-24T12:00:00.000Z" }));
+  });
+
   it("records an answer for an assignment shown to the current AAT token", async () => {
     await expect(answer(ACCESS_TOKEN, ASSIGNMENT_ID, false)).resolves.toEqual({
       status: 200,
       body: { assignmentId: ASSIGNMENT_ID, accepted: false },
     });
-    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, false);
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, false, GENERATION_ID);
+  });
+
+  it.each([true, false])("allows direct Reserved answers (accepted=%s)", async (accepted) => {
+    scenario.visibleAssignments[0].sheetStatus = "reserved";
+    expect(await answer(ACCESS_TOKEN, ASSIGNMENT_ID, accepted)).toEqual({
+      status: 200,
+      body: { assignmentId: ASSIGNMENT_ID, accepted },
+    });
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, accepted, GENERATION_ID);
+  });
+
+  it.each(["draft", "request"])("refuses direct %s answers", async (status) => {
+    scenario.visibleAssignments[0].sheetStatus = status;
+    const result = await answer(ACCESS_TOKEN);
+    expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
+    expect(setAccepted).not.toHaveBeenCalled();
+  });
+
+  it("refuses an answer if a Scheduled sheet turns Draft before the guarded write", async () => {
+    setAccepted.mockResolvedValueOnce(false); // Storage rechecks the sheet under its lock.
+    expect(await answer(ACCESS_TOKEN, ASSIGNMENT_ID, true)).toEqual({
+      status: 403,
+      body: { message: "Access denied" },
+    });
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, true, GENERATION_ID);
   });
 
   it.each([
@@ -181,6 +392,25 @@ describe("public EDLS schedule answers", () => {
 
   it("refuses an assignment that the token holder's schedule does not show", async () => {
     const result = await answer(ACCESS_TOKEN, OTHER_ASSIGNMENT_ID);
+
+    expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
+    expect(setAccepted).not.toHaveBeenCalled();
+  });
+
+  it("refuses an old page generation after the same assignment row is refilled", async () => {
+    scenario.visibleAssignments[0].generationId = REFILLED_GENERATION_ID;
+
+    const result = await answer(ACCESS_TOKEN, ASSIGNMENT_ID, true, GENERATION_ID);
+
+    expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
+    expect(setAccepted).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", null],
+    ["invalid", "not-a-uuid"],
+  ])("refuses a %s generation id in the answer body", async (_label, generationId) => {
+    const result = await answer(ACCESS_TOKEN, ASSIGNMENT_ID, true, generationId);
 
     expect(result).toEqual({ status: 403, body: { message: "Access denied" } });
     expect(setAccepted).not.toHaveBeenCalled();

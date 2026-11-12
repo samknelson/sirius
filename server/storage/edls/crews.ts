@@ -165,17 +165,23 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
 
     async delete(id: string): Promise<boolean> {
       return runInTransaction(async () => {
-        await validateCrewDelete(id);
         const client = getClient();
+        await client.execute(sql`SELECT id FROM edls_crews WHERE id = ${id} FOR UPDATE`);
+        await validateCrewDelete(id);
         const result = await client.delete(edlsCrews).where(eq(edlsCrews.id, id)).returning();
         return result.length > 0;
       });
     },
 
     async deleteBySheetId(sheetId: string): Promise<number> {
-      const client = getClient();
-      const result = await client.delete(edlsCrews).where(eq(edlsCrews.sheetId, sheetId)).returning();
-      return result.length;
+      return runInTransaction(async () => {
+        const crews = await this.getBySheetId(sheetId);
+        for (const crew of crews) {
+          await storage.edlsAssignments.deleteByCrewId(crew.id);
+          await this.delete(crew.id);
+        }
+        return crews.length;
+      });
     },
 
     async exportBySheetId(sheetId: string, industryId?: string | null): Promise<SnapshotNode[]> {

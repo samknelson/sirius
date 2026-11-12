@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   updateRun: vi.fn(),
   acquireFence: vi.fn(),
   schedule: vi.fn(),
+  execute: vi.fn(),
 }));
 
 vi.mock("node-cron", () => ({
@@ -21,7 +22,7 @@ vi.mock("../../server/storage", () => ({
       getByKindAndPlugin: vi.fn(),
       getWithSubsidiary: vi.fn(),
     },
-    cronJobRuns: {
+    jobRuns: {
       create: mocks.createRun,
       update: mocks.updateRun,
     },
@@ -47,7 +48,7 @@ vi.mock("../../server/plugins/system/cron", () => ({
     has: vi.fn(() => true),
     listIds: vi.fn(() => ["test-job"]),
   },
-  executeCronPlugin: vi.fn(),
+  executeCronPlugin: mocks.execute,
 }));
 
 import { CronScheduler } from "../../server/cron/scheduler";
@@ -125,5 +126,51 @@ describe("CronScheduler deployment policy enforcement", () => {
 
     expect(mocks.acquireFence).not.toHaveBeenCalled();
     expect(mocks.createRun).not.toHaveBeenCalled();
+  });
+  it("records a configuration-specific skipped run without executing while S1 owns the fence", async () => {
+    process.env.CRON_EXECUTION = "enabled";
+    mocks.acquireFence.mockResolvedValue(undefined);
+    mocks.createRun.mockResolvedValue({ id: "deferred-run" });
+    const result = await new CronScheduler().executeJob({
+      configId: "config-2", name: "test-job", schedule: "0 * * * *", enabled: true, settings: {},
+    }, true, "admin-1");
+    expect(result).toBe("deferred-run");
+    expect(mocks.createRun).toHaveBeenCalledWith(expect.objectContaining({
+      configurationId: "config-2", pluginKind: "cron", pluginId: "test-job",
+      operation: "execute", status: "skipped", triggeredBy: "admin-1",
+    }));
+    expect(mocks.updateRun).toHaveBeenCalledWith("deferred-run", expect.objectContaining({
+      status: "skipped", output: expect.stringContaining("s1-sync-deferred"),
+    }));
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+  it("executes the selected configuration under its lease and records success in jobRuns", async () => {
+    process.env.CRON_EXECUTION = "enabled";
+    const release = vi.fn().mockResolvedValue(undefined);
+    mocks.acquireFence.mockResolvedValue({ release });
+    mocks.createRun.mockResolvedValue({ id: "live-run" });
+    mocks.execute.mockResolvedValue({ message: "finished" });
+    await new CronScheduler().executeJob({
+      configId: "config-3", name: "test-job", schedule: "0 * * * *", enabled: true, settings: { chosen: true },
+    }, true, "admin-2", "test");
+    expect(mocks.execute).toHaveBeenCalledWith("test-job", expect.objectContaining({
+      configurationId: "config-3", isManual: true, mode: "test", settings: { chosen: true },
+    }));
+    expect(mocks.updateRun).toHaveBeenCalledWith("live-run", expect.objectContaining({ status: "success" }));
+    expect(release).toHaveBeenCalledOnce();
+  });
+  it("records plugin failure and releases the S1 lease without swallowing the error", async () => {
+    process.env.CRON_EXECUTION = "enabled";
+    const release = vi.fn().mockResolvedValue(undefined);
+    mocks.acquireFence.mockResolvedValue({ release });
+    mocks.createRun.mockResolvedValue({ id: "failed-run" });
+    mocks.execute.mockRejectedValue(new Error("plugin failed"));
+    await expect(new CronScheduler().executeJob({
+      configId: "config-4", name: "test-job", schedule: "0 * * * *", enabled: true, settings: {},
+    }, true)).rejects.toThrow("plugin failed");
+    expect(mocks.updateRun).toHaveBeenCalledWith("failed-run", expect.objectContaining({
+      status: "error", error: "plugin failed",
+    }));
+    expect(release).toHaveBeenCalledOnce();
   });
 });

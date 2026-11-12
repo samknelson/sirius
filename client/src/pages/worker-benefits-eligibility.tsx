@@ -311,7 +311,7 @@ function WorkerBenefitsEligibilityContent() {
       selectedBenefitId,
     ],
     queryFn: () =>
-      pluginSearch<"trust-eligibility", EligibilityConfigRow>("trust-eligibility", {
+      pluginSearch<EligibilityConfigRow>("trust-eligibility", {
         policy: selectedPolicyId,
         benefit: selectedBenefitId,
       }),

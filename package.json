@@ -15,6 +15,8 @@
     "test:browser:config-navigation": "node tests/config-navigation/browser.mjs",
     "test:browser:top-navigation": "node tests/top-navigation/browser.mjs",
     "test:browser:worker-comms-compliance": "node --import tsx tests/comm/compliance-browser.mjs",
+    "test:affected": "tsx scripts/tools/test-affected.ts",
+    "test:slow": "tsx scripts/tools/test-slow.ts",
     "test:watch": "vitest",
     "lint": "tsx scripts/dev/lint.ts",
     "db:push": "tsx scripts/db-push.ts",

@@ -1,5 +1,5 @@
 import type { LedgerPaymentAttempt } from "@shared/schema";
-import { PaymentInitiationRejected, type CreatePaymentSessionInput, type GatewayPaymentSession } from "../../plugins/ledger/payment-gateway/types";
+import { PaymentInitiationRejected, type CreatePaymentSessionInput, type GatewayPaymentSession } from "../../plugins/wc-vendors/payment-types";
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
 import type { resolveGateway } from "./payment-gateway-context";

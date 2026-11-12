@@ -46,6 +46,7 @@ const h = vi.hoisted(() => ({
     getByEntityWithBalance: vi.fn(),
   },
   storage: {
+    users: { getUser: vi.fn() },
     variables: { getByName: vi.fn() },
     workers: {
       getWorker: vi.fn(),
@@ -88,8 +89,30 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
   checkAccessInline: h.access,
   getComponentChecker: () => async () => true,
 }));
-vi.mock("../../server/plugins/ledger/payment-gateway", () => ({
-  getPaymentGatewayPlugin: h.getPlugin,
+vi.mock("../../server/plugins/wc-vendors", () => ({
+  getWcVendorPlugin: h.getPlugin,
+}));
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  describeWcVendor: async ({ configId }: { configId: string }) => ({
+    configId, pluginId: "stripe", addComponentId: "stripe:StripeAddPaymentMethod", operations: [],
+  }),
+  WcVendorError: class extends Error {},
+}));
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: async ({ operation, args }: { operation: string; args: any }) => {
+    const methods: Record<string, [keyof typeof h.plugin, any]> = {
+      "payments.customer.create": ["createCustomer", args],
+      "payments.setup-session.create": ["createSetupSession", args],
+      "payments.payment-method.attach": ["attachMethod", args],
+      "payments.payment-method.detach": ["detachMethod", args.methodRef],
+      "payments.payment-method.summary": ["getMethodSummary", args.methodRef],
+      "payments.payment-method.details": ["getMethodDetails", args.methodRef],
+      "payments.customer.details": ["getCustomerDetails", args.customerRef],
+    };
+    const [method, input] = methods[operation];
+    try { return { outcome: "success", value: await h.plugin[method]({}, input) }; }
+    catch (cause) { return { outcome: "failure", cause }; }
+  },
 }));
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({
   resolveGateway: h.resolveGateway,
@@ -152,7 +175,7 @@ beforeEach(() => {
   h.storage.pluginConfigs.getByKind.mockResolvedValue([
     {
       id: "gateway-1",
-      pluginKind: "payment-gateway",
+      pluginKind: "wc-vendors",
       pluginId: "stripe",
       enabled: true,
       name: "Fixture Stripe",
@@ -227,6 +250,12 @@ beforeEach(() => {
     context: { apiKey: "fixture" },
     plugin: {
       ...h.plugin,
+      isTestMode: () => true,
+      operations: Object.fromEntries([
+        "payments.customer.create", "payments.customer.retrieve", "payments.customer.details",
+        "payments.setup-session.create", "payments.payment-method.attach", "payments.payment-method.summary",
+        "payments.payment-method.details", "payments.payment-method.detach",
+      ].map(name => [name, {}])),
       addComponentId: "stripe:StripeAddPaymentMethod",
     },
   };
@@ -244,6 +273,29 @@ beforeEach(() => {
 });
 
 describe("worker payment method setup routes", () => {
+  it("does not expose consent, creator ids, creator email, or third-party billing identity", async () => {
+    h.methods.push({
+      id: "private-method", entityType: "worker", entityId: "worker-1",
+      gatewayConfigId: "gateway-1", paymentMethod: "pm_visa_4242",
+      createdBy: "admin-private", consent: { text: "private consent evidence" },
+    } as any);
+    h.storage.users.getUser.mockResolvedValue({ email: "admin-private@example.com" });
+    h.plugin.getMethodSummary.mockResolvedValue({
+      type: "card", card: { brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 },
+      billing_details: { name: "Third-party payer", email: "payer-private@example.com" },
+    });
+    const response = await request("/api/ledger/payment-methods/worker/worker-1");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body[0].providerDetails.card.last4).toBe("4242");
+    expect(body[0]).not.toHaveProperty("consent");
+    expect(body[0]).not.toHaveProperty("createdBy");
+    expect(JSON.stringify(body)).not.toContain("private@example.com");
+    expect(JSON.stringify(body)).not.toContain("Third-party payer");
+    const details = await request("/api/ledger/payment-methods/worker/worker-1/private-method/details");
+    expect(details.status).toBe(200);
+    expect(JSON.stringify(await details.json())).not.toContain("billing_details");
+  });
   it("supports setup, attach, list/default, and remove at zero debt without ledger activity", async () => {
     const setup = await post(
       "/api/ledger/payment-methods/worker/worker-1/setup",

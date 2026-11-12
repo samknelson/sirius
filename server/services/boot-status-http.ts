@@ -44,6 +44,8 @@ import { getEnvironmentVariable } from "../config/env-registry";
 // Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
 // under Node) and this module runs before the application exists.
 import { escapeHtml } from "../../shared/utils/html/escape";
+import { classifySystemServicePath } from "@shared/system-service-roles";
+import type { ResolvedServiceRoles } from "./service-roles";
 
 /**
  * Every address the boot status answers on.
@@ -65,7 +67,13 @@ export const BOOT_STATUS_PATHS = [
   "/boot-status",
   "/api/health",
   "/api/boot-status",
+  "/api/ws/health",
+  "/api/ws/boot-status",
 ] as const;
+
+function statusPathRole(path: (typeof BOOT_STATUS_PATHS)[number]): "static" | "api-user" | "api-ws" {
+  return classifySystemServicePath(path);
+}
 
 const PHASE_TITLE: Record<BootPhase, string> = {
   starting: "Application is starting",
@@ -103,6 +111,7 @@ export interface BootStatusPayload {
   driftCheck: string;
   bootId: string;
   startedAt: string;
+  serviceRoles: readonly string[];
   /** The address that answered — names WHICH service this is behind an ALB. */
   path?: string;
   details: "exposed" | "withheld";
@@ -118,7 +127,7 @@ export interface BootStatusPayload {
  * `bootId` / `startedAt` are what let two rolled tasks be told apart: the
  * same URL answered by a new process reports a different identity.
  */
-export function bootStatusPayload(path?: string): BootStatusPayload {
+export function bootStatusPayload(path?: string, serviceRoles: readonly string[] = []): BootStatusPayload {
   const { bootId, startedAt } = getBootIdentity();
   const exposed = exposeBootErrors();
   const payload: BootStatusPayload = {
@@ -128,6 +137,7 @@ export function bootStatusPayload(path?: string): BootStatusPayload {
     driftCheck: bootStatus.driftCheck,
     bootId,
     startedAt,
+    serviceRoles,
     ...(path ? { path } : {}),
     details: exposed ? "exposed" : "withheld",
   };
@@ -156,8 +166,8 @@ export function bootStatusPayload(path?: string): BootStatusPayload {
  * Only the "starting" phase auto-refreshes: a failed or report-only boot is
  * terminal, and re-fetching it forever just hides that fact.
  */
-export function renderBootStatusPage(path?: string): string {
-  const p = bootStatusPayload(path);
+export function renderBootStatusPage(path?: string, serviceRoles: readonly string[] = []): string {
+  const p = bootStatusPayload(path, serviceRoles);
   const failed = p.status === "init-failed";
   const rows: Array<[string, string]> = [
     ["state", p.status],
@@ -165,6 +175,7 @@ export function renderBootStatusPage(path?: string): string {
     ["drift check", p.driftCheck],
     ["boot id", p.bootId],
     ["started at", p.startedAt],
+    ["service roles", p.serviceRoles.join(", ") || "(not resolved)"],
   ];
   if (p.path) rows.push(["answered at", p.path]);
 
@@ -213,11 +224,19 @@ export function renderBootStatusPage(path?: string): string {
 }
 
 function wantsHtml(req: Request): boolean {
-  return (req.headers.accept || "").includes("text/html");
+  // Web-service callers must always receive a JSON status body, even while the
+  // process is starting and a generic HTTP client advertises text/html.
+  const isWebServicePath = req.path === "/api/ws" || req.path.startsWith("/api/ws/");
+  return !isWebServicePath && (req.headers.accept || "").includes("text/html");
 }
 
 /** Answer with the boot status, as a page for a browser and JSON otherwise. */
-export function sendBootStatus(req: Request, res: Response, statusCode: number): void {
+export function sendBootStatus(
+  req: Request,
+  res: Response,
+  statusCode: number,
+  serviceRoles: readonly string[] = [],
+): void {
   // Path only, never the query string: this field exists to name WHICH
   // address (and therefore which service) answered, not to echo the request.
   const path = (req.originalUrl || req.path).split("?")[0];
@@ -225,10 +244,10 @@ export function sendBootStatus(req: Request, res: Response, statusCode: number):
     res
       .status(statusCode)
       .set({ "Content-Type": "text/html" })
-      .send(renderBootStatusPage(path));
+       .send(renderBootStatusPage(path, serviceRoles));
     return;
   }
-  res.status(statusCode).json(bootStatusPayload(path));
+  res.status(statusCode).json(bootStatusPayload(path, serviceRoles));
 }
 
 /**
@@ -242,9 +261,11 @@ export function sendBootStatus(req: Request, res: Response, statusCode: number):
  * `/health` contract: the deployment must stabilize and keep the failure
  * observable instead of cycling the task. The body carries the truth.
  */
-export function registerBootStatusRoutes(app: Express): void {
+export function registerBootStatusRoutes(app: Express, roles?: ResolvedServiceRoles): void {
   for (const path of BOOT_STATUS_PATHS) {
-    app.get(path, (req, res) => sendBootStatus(req, res, 200));
+    if (!roles || roles.has(statusPathRole(path))) {
+      app.get(path, (req, res) => sendBootStatus(req, res, 200, roles?.ids));
+    }
   }
 }
 
@@ -258,10 +279,15 @@ export function registerBootStatusRoutes(app: Express): void {
  * honest about the request not having been served — but with a body that
  * names the actual phase instead of always claiming to be starting.
  */
-export function bootStatusGate(req: Request, res: Response, next: () => void): void {
+export function bootStatusGate(
+  req: Request,
+  res: Response,
+  next: () => void,
+  serviceRoles: readonly string[] = [],
+): void {
   if (bootStatus.phase === "ready") {
     next();
     return;
   }
-  sendBootStatus(req, res, req.path === "/" ? 200 : 503);
+  sendBootStatus(req, res, req.path === "/" ? 200 : 503, serviceRoles);
 }

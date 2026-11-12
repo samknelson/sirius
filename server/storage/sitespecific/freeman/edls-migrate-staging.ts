@@ -22,6 +22,11 @@ export interface StagedSheetData {
   /** Legacy field table name -> its rows for this node, deltas and all. */
   fields?: Record<string, LegacyRow[]>;
   fieldsFetchedAt?: string;
+  /** Latest row returned by the passport-export migration endpoint. */
+  passportSheet?: LegacyRow;
+  passportFetchedAt?: string;
+  /** Canonical EDLS sheet created or updated for this nid. */
+  targetSheetId?: string;
 }
 
 export interface StagedNodeInput {
@@ -36,6 +41,7 @@ export interface FreemanEdlsMigrateStagingStorage {
   listAll(): Promise<FreemanEdlsMigrateRow[]>;
   /** Just the staged node ids — what the field sweep filters legacy rows against. */
   listNids(): Promise<string[]>;
+  getByNid(nid: string): Promise<FreemanEdlsMigrateRow | undefined>;
   count(): Promise<number>;
   /**
    * Store fetched nodes, keyed on the legacy nid. Re-running a sweep updates
@@ -54,6 +60,12 @@ export interface FreemanEdlsMigrateStagingStorage {
    * absent, not linger from the previous sweep.
    */
   setFieldRows(nid: string, fields: Record<string, LegacyRow[]>): Promise<boolean>;
+  /** Preserve the fetched payload while recording the canonical target id. */
+  setTargetSheetId(
+    nid: string,
+    targetSheetId: string,
+    passportSheet: LegacyRow,
+  ): Promise<boolean>;
   /** Empty the staging table. Returns how many rows went. */
   deleteAll(): Promise<number>;
 }
@@ -98,6 +110,14 @@ export function createFreemanEdlsMigrateStagingStorage(): FreemanEdlsMigrateStag
         .select({ nid: sitespecificFreemanEdlsMigrate.nid })
         .from(sitespecificFreemanEdlsMigrate);
       return rows.map((r) => r.nid);
+    },
+
+    async getByNid(nid: string): Promise<FreemanEdlsMigrateRow | undefined> {
+      requireTable(await this.tableExists());
+      const client = getClient();
+      const [row] = await client.select().from(sitespecificFreemanEdlsMigrate)
+        .where(eq(sitespecificFreemanEdlsMigrate.nid, nid));
+      return row;
     },
 
     async count(): Promise<number> {
@@ -174,6 +194,35 @@ export function createFreemanEdlsMigrateStagingStorage(): FreemanEdlsMigrateStag
           data: sql`coalesce(${sitespecificFreemanEdlsMigrate.data}, '{}'::jsonb) || ${payload}::jsonb`,
         })
         .where(eq(sitespecificFreemanEdlsMigrate.nid, nid))
+        .returning({ id: sitespecificFreemanEdlsMigrate.id });
+      return result.length > 0;
+    },
+
+    async setTargetSheetId(
+      nid: string,
+      targetSheetId: string,
+      passportSheet: LegacyRow,
+    ): Promise<boolean> {
+      requireTable(await this.tableExists());
+      const client = getClient();
+      const passportFetchedAt = new Date().toISOString();
+      const payload = {
+        targetSheetId,
+        passportSheet,
+        passportFetchedAt,
+      };
+      const result = await client.insert(sitespecificFreemanEdlsMigrate)
+        .values({
+          nid,
+          type: "sirius_edls_sheet",
+          data: payload,
+        })
+        .onConflictDoUpdate({
+          target: sitespecificFreemanEdlsMigrate.nid,
+          set: {
+            data: sql`coalesce(${sitespecificFreemanEdlsMigrate.data}, '{}'::jsonb) || excluded.data`,
+          },
+        })
         .returning({ id: sitespecificFreemanEdlsMigrate.id });
       return result.length > 0;
     },

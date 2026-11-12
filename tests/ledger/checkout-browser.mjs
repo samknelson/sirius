@@ -36,7 +36,7 @@ const server = await createServer({
   }],
   resolve: {
     alias: [
-      { find: "@/plugins/payment-gateway/registry", replacement: path.join(root, "tests/ledger/checkout-browser-registry.ts") },
+      { find: "@/plugins/wc-vendors/registry", replacement: path.join(root, "tests/ledger/checkout-browser-registry.ts") },
       { find: "@/components/layouts/WorkerLayout", replacement: path.join(root, "tests/ledger/worker-method-browser-layout.tsx") },
       { find: "@shared", replacement: path.join(root, "shared") },
       { find: "@", replacement: path.join(root, "client/src") },
@@ -72,6 +72,7 @@ try {
     account: { name: "COBRA account", currency: "USD", gatewayConfigId: "fixture-gateway" },
     balance: "307.35", available: "307.35", invoices: selectionInput.invoices,
     paymentTypes: ["card", "us_bank_account"], payComponentId: "fixture:pay", reusableMethodsSupported: true,
+    reusablePaymentTypes: ["card", "us_bank_account"],
     settings: { allowPartial: true, minAmount: 1 },
     authorization: { version: "fixture-v1", text: "I authorize this payment." },
     readiness: {

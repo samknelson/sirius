@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import type { User } from "@shared/schema";
 
 /**
  * Generic entity notes framework — context registry.
@@ -39,6 +40,8 @@ export interface EntityNoteContext {
   entityExists(entityId: string): Promise<boolean>;
   /** Access callback: may this request view/manage this record's notes? */
   checkAccess(verb: EntityNotesVerb, entityId: string, req: Request): Promise<boolean>;
+  /** Same authorization for callers that already have an effective viewer (Go). */
+  checkAccessForUser?(verb: EntityNotesVerb, entityId: string, user: User | null): Promise<boolean>;
 }
 
 const contexts = new Map<string, EntityNoteContext>();

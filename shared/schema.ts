@@ -961,8 +961,8 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   paymentMethod: text("payment_method").notNull(),
   providerMethodRef: text("provider_method_ref"),
   consent: jsonb("consent"),
-  // Required link to the payment-gateway plugin config this method belongs to.
-  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // Required link to the wc-vendors plugin config this method belongs to.
+  // FK targets the wc-vendors subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs id. NOT NULL — a payment method is
   // unusable without knowing its gateway. ON DELETE RESTRICT prevents deleting
   // a gateway config that still has payment methods attached.
@@ -974,9 +974,9 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
 }, (table) => [
   unique("ledger_paymentmethods_gateway_provider_unique").on(table.gatewayConfigId, table.providerMethodRef),
   foreignKey({
-    name: "ledger_paymentmethods_gateway_config_id_plugin_configs_payment_",
+    name: "ledger_paymentmethods_gateway_config_id_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
 ]);
 
@@ -987,7 +987,7 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
-  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // FK targets the wc-vendors subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs base. ON DELETE RESTRICT mirrors the
   // payment-method link: a gateway config with customer mappings cannot be
   // deleted out from under them.
@@ -1002,9 +1002,9 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
     table.gatewayConfigId,
   ),
   fkGatewayConfigId: foreignKey({
-    name: "ledger_gateway_customers_gateway_config_id_plugin_configs_payme",
+    name: "ledger_gateway_customers_gateway_config_id_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
 }));
 
@@ -1025,16 +1025,16 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   // Optional external identifier, unique when present. NULLs don't collide
   // under Postgres UNIQUE semantics, so any number of accounts may have none.
   siriusId: varchar("sirius_id").unique(),
-  // Optional link to the payment-gateway plugin config this account uses. The
-  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // Optional link to the wc-vendors plugin config this account uses. The
+  // FK targets the wc-vendors subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs base, and is ON DELETE SET NULL so
   // deleting the gateway config simply unlinks the account.
   gatewayConfigId: varchar("gateway_config_id"),
 }, (table) => [
   foreignKey({
-    name: "ledger_accounts_gateway_config_id_plugin_configs_payment_gatewa",
+    name: "ledger_accounts_gateway_config_id_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("set null"),
 ]);
 
@@ -1087,7 +1087,7 @@ export const ledgerPaymentAttempts = pgTable("ledger_payment_attempts", {
   foreignKey({
     name: "ledger_payment_attempts_gateway_config_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
   foreignKey({
     name: "ledger_payment_attempts_payment_method_fkey",
@@ -1488,6 +1488,13 @@ export {
 } from "./schema/system/sftp-client-schema";
 
 export {
+  sessionHistory,
+  insertSessionHistorySchema,
+  type SessionHistory,
+  type InsertSessionHistory,
+} from "./schema/system/session-history-schema";
+
+export {
   pluginConfigsTrustProviderEdi,
   insertPluginConfigTrustProviderEdiSchema,
   type PluginConfigTrustProviderEdi,
@@ -1653,6 +1660,17 @@ export {
   type WorkerSkill,
   type InsertWorkerSkill,
 } from "./schema/worker/skills/schema";
+
+export {
+  optionsWorkerBadgeTypes,
+  insertOptionsWorkerBadgeTypeSchema,
+  workerBadgesDenorm,
+  insertWorkerBadgeDenormSchema,
+  type WorkerBadgeType,
+  type InsertWorkerBadgeType,
+  type WorkerBadgeDenorm,
+  type InsertWorkerBadgeDenorm,
+} from "./schema/worker/badges/schema";
 
 export {
   optionsCertifications,
@@ -2632,21 +2650,21 @@ export const insertPluginConfigQuicksearchSchema = createInsertSchema(pluginConf
 export type InsertPluginConfigQuicksearch = z.infer<typeof insertPluginConfigQuicksearchSchema>;
 export type PluginConfigQuicksearch = typeof pluginConfigsQuicksearch.$inferSelect;
 
-// Payment-gateway subsidiary — exists primarily as a type-safe FK target so
+// Webclient-vendor subsidiary — exists primarily as a type-safe FK target so
 // other tables (e.g. ledger_accounts.gateway_config_id) can reference a
-// specific payment-gateway config without pointing at the polymorphic
+// specific wc-vendors config without pointing at the polymorphic
 // plugin_configs base. It carries no columns of its own yet beyond the shared
-// id FK (meaningful columns may be added later). Every payment-gateway config
+// id FK (meaningful columns may be added later). Every wc-vendors config
 // gets exactly one row — created by the adapter's toRows on write and by an
 // idempotent boot-time backfill for pre-existing configs — so the generic
 // inner-joined search keeps returning them.
-export const pluginConfigsPaymentGateway = pgTable("plugin_configs_payment_gateway", {
+export const pluginConfigsWcVendors = pgTable("plugin_configs_wc_vendors", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
 });
 
-export const insertPluginConfigPaymentGatewaySchema = createInsertSchema(pluginConfigsPaymentGateway);
-export type InsertPluginConfigPaymentGateway = z.infer<typeof insertPluginConfigPaymentGatewaySchema>;
-export type PluginConfigPaymentGateway = typeof pluginConfigsPaymentGateway.$inferSelect;
+export const insertPluginConfigWcVendorsSchema = createInsertSchema(pluginConfigsWcVendors);
+export type InsertPluginConfigWcVendors = z.infer<typeof insertPluginConfigWcVendorsSchema>;
+export type PluginConfigWcVendors = typeof pluginConfigsWcVendors.$inferSelect;
 
 // Event-notifier subsidiary — hoists the per-config "active media" selection
 // out of the opaque settings blob into a real, filterable envelope column.
@@ -2898,29 +2916,41 @@ export const createRateHistorySchema = (minEntries = 1) => {
   return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
 };
 
-// Cron job run history. Configuration for cron jobs now lives in
-// plugin_configs (plugin_kind='cron') + plugin_configs_cron; `jobName` here is
-// the cron plugin id (the former cron_jobs.name). No FK — the legacy cron_jobs
-// table has been dropped and run history is retained independently.
-export const cronJobRuns = pgTable("cron_job_runs", {
+// Shared run history for configured jobs. Snapshots remain after a configuration
+// is deleted, while the nullable FK identifies the exact configuration when it
+// still exists. Cron runs use operation='execute'; Oneoffs can also use preflight.
+export const jobRuns = pgTable("job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobName: text("job_name").notNull(),
+  configurationId: varchar("configuration_id").references(() => pluginConfigs.id, { onDelete: "set null" }),
+  pluginKind: varchar("plugin_kind").notNull(),
+  pluginId: text("plugin_id").notNull(),
+  operation: varchar("operation").notNull().default("execute"),
   status: varchar("status").notNull(), // 'running', 'success', 'error'
   mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
   error: text("error"),
+  input: jsonb("input"),
+  progress: jsonb("progress"),
+  checkpoint: jsonb("checkpoint"),
+  heartbeatAt: timestamp("heartbeat_at"),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
+  confirmationHash: text("confirmation_hash"),
+  confirmationUsedAt: timestamp("confirmation_used_at"),
   startedAt: timestamp("started_at").default(sql`now()`).notNull(),
   completedAt: timestamp("completed_at"),
   triggeredBy: varchar("triggered_by"), // 'scheduler' or user id
-});
+}, (table) => [
+  index("job_runs_configuration_started_idx").on(table.configurationId, table.startedAt),
+  index("job_runs_kind_plugin_started_idx").on(table.pluginKind, table.pluginId, table.startedAt),
+]);
 
-export const insertCronJobRunSchema = createInsertSchema(cronJobRuns).omit({
+export const insertJobRunSchema = createInsertSchema(jobRuns).omit({
   id: true,
   startedAt: true,
 });
 
-export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
-export type CronJobRun = typeof cronJobRuns.$inferSelect;
+export type InsertJobRun = z.infer<typeof insertJobRunSchema>;
+export type JobRun = typeof jobRuns.$inferSelect;
 
 /**
  * Reusable tokenized message templates.
@@ -3457,7 +3487,7 @@ export const ledgerPaymentAttemptEvents = pgTable("ledger_payment_attempt_events
   foreignKey({
     name: "ledger_payment_attempt_events_gateway_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
   unique("ledger_payment_attempt_events_provider_event_unique").on(table.gatewayConfigId, table.providerEventId),
   index("ledger_payment_attempt_events_pending_idx").on(table.processedAt, table.receivedAt),

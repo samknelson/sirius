@@ -1,7 +1,7 @@
 import { assertAdminAssistedPaymentProvenance } from "./admin-assisted-payment";
 import { randomUUID } from "node:crypto";
 import type { LedgerPayment, LedgerPaymentAttempt } from "@shared/schema";
-import type { NormalizedGatewayEvent, NormalizedPayment } from "../../plugins/ledger/payment-gateway/types";
+import type { NormalizedGatewayEvent, NormalizedPayment } from "../../plugins/wc-vendors/payment-types";
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";

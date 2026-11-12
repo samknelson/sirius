@@ -1,18 +1,26 @@
 import { createContext, useContext, useMemo, ReactNode } from "react";
-import { FileSpreadsheet, Calendar, Users } from "lucide-react";
+import { FileSpreadsheet, Users } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatYmd } from "@shared/utils/date";
 import type { EdlsSheet } from "@shared/schema";
 import { useEdlsSheetTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
+}
+
+function sheetHeading(sheet: EdlsSheet): string {
+  // ymd is a date-only string; rearrange its parts without timezone conversion.
+  const [year, month, day] = sheet.ymd.split("-");
+  const title = sheet.title.trim();
+  const number = /^#?\s*(\d+)$/.exec(title);
+  return `${day}-${month}-${year} - ${number ? `#${number[1]}` : title}`;
 }
 
 interface EdlsSheetLayoutContextValue {
@@ -55,7 +63,8 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
   const activeRoot = useMemo(() => getActiveRoot(activeTab), [activeTab, getActiveRoot]);
   const subTabs = activeRoot?.children;
 
-  usePageTitle(sheet?.title);
+  const heading = sheet ? sheetHeading(sheet) : undefined;
+  usePageTitle(heading);
 
   const isLoading = sheetLoading;
   const isError = !!sheetError;
@@ -103,14 +112,10 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <RecordTitleBar
             variant="compact"
-            title={sheet.title}
+            title={heading}
             titleTestId="title-sheet"
             subtitle={
-              <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  {formatYmd(sheet.ymd, 'long')}
-                </span>
+              <div className="flex items-center mt-1 text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Users className="h-4 w-4" />
                   {sheet.workerCount} workers
@@ -123,67 +128,13 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
         </div>
       </section>
 
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-2 py-3">
-            {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab || tab.id === activeRoot?.id;
-              return isActive ? (
-                <Button
-                  key={tab.id}
-                  variant="default"
-                  size="sm"
-                  data-testid={`button-sheet-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              ) : (
-                <Link key={tab.id} href={tab.href}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid={`button-sheet-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {subTabs && subTabs.length > 0 && (
-        <section className="bg-muted/30 border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-              {subTabs.map((tab) => (
-                tab.id === activeTab ? (
-                  <Button
-                    key={tab.id}
-                    variant="secondary"
-                    size="sm"
-                    data-testid={`button-sheet-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      key={tab.id}
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`button-sheet-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                )
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+       <EntityTabNavigation
+         tabs={mainTabs}
+         activeTab={activeTab}
+         activeRootId={activeRoot?.id}
+         subTabs={subTabs}
+         testIdPrefix="button-sheet-"
+       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}

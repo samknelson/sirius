@@ -1,23 +1,62 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PostalAddress, SendLetterParams } from '../../server/services/comm/providers/postal';
 
-vi.mock('../../server/services/webclient', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../server/services/webclient')>();
-  return {
-    ...actual,
-    registerUncachedWcRequest: vi.fn(),
-    wcUncachedRequest: vi.fn(async (options: {
-      fetch: () => Promise<{ answered: boolean; value?: unknown; error?: string }>;
-    }) => {
-      const answer = await options.fetch();
-      return answer.answered
-        ? { value: answer.value }
-        : { error: answer.error };
-    }),
-  };
+import "../../server/plugins/wc-vendors/plugins/postal";
+import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
+import type { LetterSendResult } from "../../server/services/comm/providers/postal";
+import type { WcVendorContext } from "../../server/plugins/wc-vendors/types";
+import { wcRequest } from "../../server/services/webclient";
+import { storage } from "../../server/storage";
+import { wcCacheStorage } from "../../server/storage/wc-cache";
+import { MaintenanceModeError, setMaintenanceActive } from "../../server/services/maintenance-flag";
+
+const context = {
+  credential: { secretName: "LOB_TEST_SECRET", value: "test_key" },
+  config: { id: "lob-config", pluginKind: "wc-vendors", pluginId: "lob", enabled: true, ordering: 0, data: {} },
+} as WcVendorContext;
+const provider = {
+  sendLetter: (args: SendLetterParams) =>
+    getWcVendorHandler("lob", "communications.postal.send")!(context, args as never) as Promise<LetterSendResult>,
+};
+
+afterEach(() => {
+  setMaintenanceActive(false);
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
-import { LobPostalProvider } from '../../server/services/comm/providers/postal/lob';
+describe("Lob WC delivery safeguards", () => {
+  it("refuses delivery in maintenance before resolving a connection or contacting Lob", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    setMaintenanceActive(true);
+    await expect(wcRequest({
+      vendor: { pluginId: "lob" },
+      operation: "communications.postal.send",
+      args: params({ pdfFile: Buffer.from("%PDF-fixture") }),
+    })).rejects.toBeInstanceOf(MaintenanceModeError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not print a letter when the database cannot record the result", async () => {
+    vi.stubEnv("LOB_TEST_SECRET", "test_key");
+    vi.spyOn(storage.pluginConfigs, "get").mockResolvedValue({
+      ...context.config, data: { secretName: "LOB_TEST_SECRET" },
+    });
+    vi.spyOn(wcCacheStorage, "canStore").mockResolvedValue(false);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await wcRequest({
+      vendor: { configId: "lob-config" },
+      operation: "communications.postal.send",
+      args: params({ pdfFile: Buffer.from("%PDF-fixture") }),
+    });
+    expect(result.outcome).not.toBe("success");
+    expect(result.error).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 const ADDRESS: PostalAddress = {
   name: 'Test Person',
@@ -53,12 +92,9 @@ function lobResponse() {
 }
 
 describe('LobPostalProvider letter content', () => {
-  let provider: LobPostalProvider;
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    provider = new LobPostalProvider();
-    await provider.configure({ apiKey: 'test_key' });
     fetchMock = vi.fn(async () => lobResponse());
     vi.stubGlobal('fetch', fetchMock);
   });

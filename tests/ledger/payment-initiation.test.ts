@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LedgerPaymentAttempt } from "@shared/schema";
-import { PaymentInitiationRejected } from "../../server/plugins/ledger/payment-gateway/types";
+import { PaymentInitiationRejected } from "../../server/plugins/wc-vendors/payment-types";
 
 const mocks = vi.hoisted(() => ({
   row: {} as any,

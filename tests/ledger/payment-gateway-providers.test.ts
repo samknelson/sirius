@@ -1,20 +1,20 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
-import { dummyPaymentGatewayPlugin } from "../../server/plugins/ledger/payment-gateway/plugins/dummy";
+import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/wc-vendors/payment-types";
+import { dummyPaymentGatewayPlugin, stripePaymentGatewayPlugin } from "./payment-vendor-fixture";
 import {
   normalizeStripePaymentIntent,
   normalizeStripePaymentStatus,
   normalizeStripeWebhookEvent,
-  stripePaymentGatewayPlugin,
-} from "../../server/plugins/ledger/payment-gateway/plugins/stripe";
+} from "../../server/plugins/wc-vendors/plugins/stripe";
 
-const { stripeCreate, stripeRetrieve, stripeCancel } = vi.hoisted(() => ({
-  stripeCreate: vi.fn(), stripeRetrieve: vi.fn(), stripeCancel: vi.fn(),
+const { stripeCreate, stripeRetrieve, stripeCancel, stripeSetup } = vi.hoisted(() => ({
+  stripeCreate: vi.fn(), stripeRetrieve: vi.fn(), stripeCancel: vi.fn(), stripeSetup: vi.fn(),
 }));
 vi.mock("stripe", () => ({
   default: class {
     paymentIntents = { create: stripeCreate, retrieve: stripeRetrieve, cancel: stripeCancel };
+    setupIntents = { create: stripeSetup };
   },
 }));
 
@@ -24,6 +24,17 @@ const context = {
 } as PaymentGatewayContext;
 
 describe("payment gateway provider contract", () => {
+  it("separates checkout-only accepted types from reusable-method setup", async () => {
+    stripeSetup.mockReset().mockResolvedValue({ client_secret: "seti_test_secret" });
+    const ctx = { apiKey: "sk_test_fixture", config: { id: "stripe",
+      data: { publishableKey: "pk_test_fixture", paymentTypes: ["card", "paypal"] } } } as PaymentGatewayContext;
+    await stripePaymentGatewayPlugin.createSetupSession(ctx, { customerRef: "cus_fixture" });
+    expect(stripeSetup).toHaveBeenCalledWith({ customer: "cus_fixture", payment_method_types: ["card"] });
+    stripeSetup.mockClear();
+    ctx.config.data = { ...(ctx.config.data as Record<string, unknown>), paymentTypes: ["paypal"] };
+    await expect(stripePaymentGatewayPlugin.createSetupSession(ctx, { customerRef: "cus_fixture" })).rejects.toThrow("no payment types");
+    expect(stripeSetup).not.toHaveBeenCalled();
+  });
   it.each(["test", "live"])("cancels an unconfirmed %s administrator payment only after verifying its provider provenance", async mode => {
     const ctx = { apiKey: `sk_${mode}_fixture`, config: { id: "stripe",
       data: { publishableKey: `pk_${mode}_fixture` } } } as PaymentGatewayContext;

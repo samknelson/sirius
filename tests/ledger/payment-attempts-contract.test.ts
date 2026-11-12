@@ -72,7 +72,7 @@ describe("worker Stripe payment attempt backend", () => {
   });
 
   it("fails the gateway picker component gate closed when no checker exists", () => {
-    const source = readFileSync("server/modules/ledger/payment-methods.ts", "utf8");
+    const source = readFileSync("server/modules/ledger/payment-gateway-capability.ts", "utf8");
     expect(source).toContain(
       "(!checker || !(await checker(plugin.requiredComponent)))",
     );

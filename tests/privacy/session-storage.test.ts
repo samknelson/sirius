@@ -22,6 +22,7 @@ vi.mock("../../server/storage/maintenance", () => ({
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => fake.client,
+  runOutsideTransaction: async (fn: () => Promise<unknown>) => fn(),
   onAfterCommit: (fn: () => void) => fake.callbacks.push(fn),
   runInTransaction: async (fn: () => Promise<unknown>) => {
     const before = fake.tail;

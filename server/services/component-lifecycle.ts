@@ -237,6 +237,39 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
   let hasError = false;
 
   try {
+    // Retained tables can be older than the current declaration. Push verifies
+    // existing tables rather than altering them, so authored migrations must
+    // upgrade a complete retained schema before that verification. Missing
+    // tables still use the normal fresh-create path below.
+    const migrations = getComponentMigrations(componentId);
+    if (migrations.length > 0) {
+      const existingState = await getSchemaState(componentId);
+      const pending = migrations.some(m => m.version > (existingState?.migrationVersion ?? 0));
+      const tables = component.schemaManifest.tables;
+      if (pending && tables.length > 0 &&
+        (await Promise.all(tables.map(tableName => tableExists(tableName)))).every(Boolean)) {
+        if (!existingState) {
+          // Reflect actual retained tables, not a fabricated fresh installation.
+          // Idempotent migrations can recover their version from zero.
+          await saveSchemaState(componentId, {
+            manifestVersion: 0,
+            lastSyncedAt: now,
+            tables: tables.map(tableName => ({
+              tableName, status: "pending", appliedAt: null,
+              droppedAt: null, checksum: "v0",
+            })),
+            drift: null,
+            migrationVersion: 0,
+          });
+        }
+        const result = await runComponentMigrations(componentId);
+        if (result.errors.length > 0) {
+          const error = `Component migrations failed before schema verification: ${result.errors.join("; ")}`;
+          logLifecycleFailure("schema_enable", componentId, error, operations);
+          return { success: false, componentId, schemaOperations: operations, schemaState: null, error };
+        }
+      }
+    }
     const { pushComponentSchema } = await import("./component-schema-push");
     await pushComponentSchema(componentId);
     
@@ -322,7 +355,7 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
     // Run any per-component migrations that have been registered but not yet
     // applied to this deployment. The runner reads/updates the same
     // component_schema_state_<id> variable we just wrote.
-    if (getComponentMigrations(componentId).length > 0) {
+    if (getComponentMigrations(componentId).some(m => m.version > (schemaState.migrationVersion ?? 0))) {
       const result = await runComponentMigrations(componentId);
       if (result.errors.length > 0) {
         const error = `Component schema created, but migrations failed: ${result.errors.join("; ")}`;

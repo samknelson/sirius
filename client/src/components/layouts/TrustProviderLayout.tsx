@@ -1,12 +1,12 @@
-import { useParams, Link, useLocation } from "wouter";
+import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Shield } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { TrustProvider } from "@shared/schema";
 import { createContext, useContext, useMemo } from "react";
-import { useProviderTabAccess, ResolvedTab } from "@/hooks/useTabAccess";
+import { useProviderTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   RecordTitleBar,
@@ -43,8 +43,6 @@ interface TrustProviderLayoutProps {
 
 export default function TrustProviderLayout({ children, activeTab }: TrustProviderLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const [location] = useLocation();
-
   const { data: provider, isLoading: providerLoading, error } = useQuery<TrustProvider>({
     queryKey: ["/api/trust/provider", id],
     queryFn: async () => {
@@ -136,68 +134,13 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
           recordId={provider.id}
         />
 
-        {/* Main Tab Navigation - rendered dynamically from registry */}
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {mainTabs.map((tab) => {
-                const isActive = tab.id === activeRoot?.id;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-provider-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`button-provider-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
-        {subTabs && subTabs.length > 0 && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-                {subTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-provider-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-provider-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          activeRootId={activeRoot?.id}
+          subTabs={subTabs}
+          testIdPrefix="button-provider-"
+        />
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

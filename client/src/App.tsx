@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect, useLocation, useParams } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -11,8 +11,18 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiError, apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { ServerInjections } from "@/components/ServerInjections";
 
@@ -27,8 +37,21 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const RecordGoPage = lazy(() => import("@/pages/record-go"));
+function RecordGoResolverRoute() {
+  const navigationStarted = useRef(false);
+
+  useEffect(() => {
+    if (navigationStarted.current) return;
+    navigationStarted.current = true;
+    window.location.assign(window.location.href);
+  }, []);
+
+  return <PageLoader />;
+}
+
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
+const T631ArrivalPage = lazy(() => import("@/pages/sitespecific/t631-arrive"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
@@ -79,6 +102,7 @@ const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-ba
 const WorkerBaoCobra = lazy(() => import("@/pages/worker-sitespecific-bao-cobra"));
 const WorkerBaoDp = lazy(() => import("@/pages/worker-sitespecific-bao-dp"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerBadges = lazy(() => import("@/pages/workers/badges"));
 const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
 const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
@@ -236,6 +260,7 @@ const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-dele
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
 const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
+const UserSessionHistory = lazy(() => import("@/pages/admin/user-session-history"));
 
 const UserDashboardPage = lazy(() => import("@/pages/admin/user-dashboard"));
 const UserEmail = lazy(() => import("@/pages/admin/user-email"));
@@ -246,7 +271,6 @@ const UserSendSms = lazy(() => import("@/pages/admin/user-send-sms"));
 const UserSendEmail = lazy(() => import("@/pages/admin/user-send-email"));
 const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
 const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
-const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
 const LetterTemplatesPage = lazy(() => import("@/pages/admin/letter-templates"));
 const LetterTemplateDetailPage = lazy(() => import("@/pages/admin/letter-template-detail"));
@@ -260,20 +284,19 @@ const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
 import { isConfigurationRoute } from "@/config/navigation-registry";
+import UserRolesLayout from "@/components/layouts/UserRolesLayout";
 const UsersListPage = lazy(() => import("@/pages/config/users/list"));
 const RolesPage = lazy(() => import("@/pages/config/users/roles"));
 const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
 const PoliciesPage = lazy(() => import("@/pages/config/users/policies"));
-const EmployerUserSettingsPage = lazy(() => import("@/pages/config/users/employer-settings"));
-const TrustProviderUserSettingsPage = lazy(() => import("@/pages/config/users/trust-provider-settings"));
+// Fork compatibility URLs below reuse upstream role views instead of restoring
+// three removed, duplicate role editors.
 const OpenEnrollmentWindowsPage = lazy(() => import("@/pages/config/trust/open-enrollment-windows"));
-const WorkerUserSettingsPage = lazy(() => import("@/pages/config/users/worker-settings"));
 const WorkerListSettingsPage = lazy(() => import("@/pages/config/worker-list-settings"));
 const SessionsPage = lazy(() => import("@/pages/sessions"));
 const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
 const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
-const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
 const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
@@ -330,6 +353,9 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
+const WsClientFreemanBearerAuthorizationPage = lazy(
+  () => import("@/pages/config/ws/client-freeman-bearer-authorization"),
+);
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
@@ -382,14 +408,9 @@ const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const S1MigrationPage = lazy(() => import("@/pages/config/s1-migration"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
-const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
-const EmailConfigPage = lazy(() => import("@/pages/config/email"));
-const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
-const GatewayTestPage = lazy(() => import("@/pages/config/ledger/payment-gateway-test"));
 const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
-const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/payment-gateway-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
 // any navigation registry; reachable only via this route for verification.
@@ -398,15 +419,21 @@ const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-i
 const FileBrowserPage = lazy(() => import("@/pages/admin/file-browser"));
 const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-detail"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
+const DenormRelationshipsPage = lazy(() => import("@/pages/admin/denorm").then(m => ({ default: m.DenormRelationshipsPage })));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
+const OneoffAdminPage = lazy(() => import("@/pages/admin/oneoff"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const WcStatusPage = lazy(() => import("@/pages/admin/wc-status"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
+const WcInfoPage = lazy(() => import("@/pages/admin/wc-info"));
 const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
 const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
 const MetadataListPage = lazy(() => import("@/pages/admin/metadata-list"));
 const MetadataBackfillPage = lazy(() => import("@/pages/admin/metadata-backfill"));
 const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
+const EmailConfigPage = lazy(() => import("@/pages/config/email"));
+const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
 const LedgerAccountEdit = lazy(() => import("@/pages/config/ledger/account-edit"));
@@ -461,6 +488,7 @@ const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profi
 const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsTosPage = lazy(() => import("@/pages/edls/tos"));
+const EdlsWorkersPage = lazy(() => import("@/pages/edls/workers"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
 const EdlsSheetNextAssignmentsPage = lazy(() => import("@/pages/edls/sheet-next-assignments"));
@@ -551,6 +579,24 @@ function EdlsScheduleRoute() {
   }
 
   return <EdlsSchedulePage />;
+}
+
+function T631ArrivalRoute() {
+  const { isAuthenticated, authReady } = useAuth();
+
+  if (!authReady) {
+    return <PageLoader />;
+  }
+
+  if (isAuthenticated) {
+    return (
+      <AuthenticatedLayout>
+        <T631ArrivalPage />
+      </AuthenticatedLayout>
+    );
+  }
+
+  return <T631ArrivalPage />;
 }
 
 function Router() {
@@ -653,8 +699,14 @@ function Router() {
         <Route path="/auth-error" component={AuthErrorPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
         <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
+        <Route path="/sitespecific/t631/arrive" component={T631ArrivalRoute} />
 
       {/* Protected routes */}
+      <Route path="/go/:id">
+        <ProtectedRoute>
+          <RecordGoResolverRoute />
+        </ProtectedRoute>
+      </Route>
       <Route path="/go">
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -1039,6 +1091,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/badges">
+        <ProtectedRoute tabId="badges" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBadges />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/notes">
         <ProtectedRoute tabId="notes" entityType="worker">
           <AuthenticatedLayout>
@@ -1189,7 +1249,7 @@ function Router() {
       </Route>
 
       <Route path="/worker-certification/:id">
-        <ProtectedRoute component="worker.certifications">
+        <ProtectedRoute tabId="view" entityType="worker_certification">
           <AuthenticatedLayout>
             <WorkerCertificationView />
           </AuthenticatedLayout>
@@ -1197,7 +1257,7 @@ function Router() {
       </Route>
 
       <Route path="/worker-certification/:id/edit">
-        <ProtectedRoute component="worker.certifications" permission="staff">
+        <ProtectedRoute tabId="edit" entityType="worker_certification">
           <AuthenticatedLayout>
             <WorkerCertificationView defaultTab="edit" />
           </AuthenticatedLayout>
@@ -2764,7 +2824,39 @@ function Router() {
       <Route path="/admin/users/roles">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <RolesPage />
+            <UserRolesLayout activeTab="roles">
+              <RolesPage />
+            </UserRolesLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles/workers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserRolesLayout activeTab="worker-users">
+              <RolesPage view="workers" />
+            </UserRolesLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles/employers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserRolesLayout activeTab="employer-users">
+              <RolesPage view="employers" />
+            </UserRolesLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles/providers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserRolesLayout activeTab="provider-users">
+              <RolesPage view="providers" />
+            </UserRolesLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2789,7 +2881,7 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <EmployerUserSettingsPage />
+              <RolesPage view="employers" />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -2799,7 +2891,7 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <TrustProviderUserSettingsPage />
+              <RolesPage view="providers" />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -2822,7 +2914,7 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <WorkerUserSettingsPage />
+              <RolesPage view="workers" />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -2949,16 +3041,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EntityNotesConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/phone-numbers">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PhoneNumbersConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3182,7 +3264,7 @@ function Router() {
       </Route>
 
       <Route path="/admin/sitespecific/freeman/edls/migrate">
-        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman.edls_migrate"]}>
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman", "sitespecific.freeman.edls_migrate"]}>
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <FreemanEdlsMigratePage />
@@ -3428,6 +3510,14 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientIpRulesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/freeman-bearer-authorization">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientFreemanBearerAuthorizationPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3868,6 +3958,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/edls/workers">
+        <ProtectedRoute policy="edls.any" component="edls">
+          <AuthenticatedLayout>
+            <EdlsWorkersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/edls/tos">
         <ProtectedRoute policy="edls.any" component="worker.tos">
           <AuthenticatedLayout>
@@ -4087,36 +4185,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/twilio">
-        <ProtectedRoute policy="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TwilioConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/email">
-        <ProtectedRoute policy="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmailConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/postal">
-        <ProtectedRoute policy="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PostalConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/config/logs">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -4137,23 +4205,24 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/payment-gateways/test">
-        <ProtectedRoute policy="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <GatewayTestPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
+      <Route path="/config/wc-vendors/test">
+        <ProtectedRoute permission="admin"><Redirect to="/admin/wc/status" /></ProtectedRoute>
+      </Route>
+
+      <Route path="/config/email">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout><ConfigurationLayout><EmailConfigPage /></ConfigurationLayout></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/config/postal">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout><ConfigurationLayout><PostalConfigPage /></ConfigurationLayout></AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/payment-gateways/payment-types">
-        <ProtectedRoute policy="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PaymentTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
+      <Route path="/config/ledger/wc-vendors/payment-types">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/plugin-configs/wc-vendors" />
         </ProtectedRoute>
       </Route>
 
@@ -4226,6 +4295,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/admin/denorm/relationships">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormRelationshipsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/oneoff">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OneoffAdminPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/denorm/:plugin_config_id">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -4264,7 +4353,18 @@ function Router() {
           on the default tab. */}
       <Route path="/admin/wc">
         <ProtectedRoute permission="admin">
-          <Redirect to="/admin/wc/overview" />
+          <Redirect to="/admin/wc/status" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Current connectivity for each enabled outgoing connection. */}
+      <Route path="/admin/wc/status">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcStatusPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
@@ -4285,6 +4385,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WcCachePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/wc/info">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcInfoPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -4464,6 +4574,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/users/:id/session_history">
+        <ProtectedRoute tabId="session_history" entityType="user">
+          <AuthenticatedLayout>
+            <UserSessionHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* User Contact sub-tabs */}
       <Route path="/users/:id/contact/email">
         <ProtectedRoute tabId="email" entityType="user">
@@ -4558,16 +4676,6 @@ function Router() {
 
       <Route path="/config/ledger/accounts">
         <Redirect to="/ledger/accounts" />
-      </Route>
-
-      <Route path="/admin/roles">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <AdminLayout>
-              <AdminRolesPage />
-            </AdminLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
       </Route>
 
       <Route path="/admin/permissions">
@@ -4694,6 +4802,86 @@ function Router() {
   );
 }
 
+type SessionIdleStatus = {
+  enabled: boolean;
+  deadline: string | null;
+};
+
+function SessionIdleWarning() {
+  const { isAuthenticated } = useAuth();
+  const [now, setNow] = useState(() => Date.now());
+  const statusQuery = useQuery<SessionIdleStatus>({
+    queryKey: ["/api/auth/session-idle"],
+    enabled: isAuthenticated,
+    refetchInterval: 30_000,
+    staleTime: 0,
+    retry: false,
+  });
+  const continueMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/auth/session-idle/continue") as Promise<SessionIdleStatus>,
+    onSuccess: (status) => {
+      queryClient.setQueryData(["/api/auth/session-idle"], status);
+      setNow(Date.now());
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 401) {
+        window.location.assign("/api/logout");
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated || !statusQuery.data?.enabled) return;
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated, statusQuery.data?.enabled]);
+
+  useEffect(() => {
+    if (statusQuery.error instanceof ApiError && statusQuery.error.status === 401) {
+      window.location.assign("/api/logout");
+    }
+  }, [statusQuery.error]);
+
+  const deadlineMs = Date.parse(statusQuery.data?.deadline ?? "");
+  const remainingMs = deadlineMs - now;
+  const open =
+    isAuthenticated &&
+    statusQuery.data?.enabled === true &&
+    Number.isFinite(deadlineMs) &&
+    remainingMs <= 2 * 60_000;
+  const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1_000));
+  const remainingLabel =
+    remainingSeconds >= 60
+      ? `${Math.ceil(remainingSeconds / 60)} minute${Math.ceil(remainingSeconds / 60) === 1 ? "" : "s"}`
+      : `${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}`;
+
+  return (
+    <AlertDialog open={open}>
+      <AlertDialogContent data-testid="session-idle-warning">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Your session is about to expire</AlertDialogTitle>
+          <AlertDialogDescription>
+            You will be signed out after {remainingLabel} without authenticated activity.
+            Continue your session to avoid losing unsaved work.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction
+            data-testid="button-continue-session"
+            disabled={continueMutation.isPending}
+            onClick={(event) => {
+              event.preventDefault();
+              continueMutation.mutate();
+            }}
+          >
+            {continueMutation.isPending ? "Continuing..." : "Continue session"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -4703,6 +4891,7 @@ function App() {
             <PageTitleProvider>
               <Toaster />
               <ServerInjections />
+              <SessionIdleWarning />
               <WebSocketProvider>
                 <Router />
               </WebSocketProvider>

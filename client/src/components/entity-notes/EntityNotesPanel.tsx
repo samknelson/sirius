@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ import {
   isNoteExpanded,
   toggleNote,
 } from "./note-display";
+import { recordFocusElementId, useRecordFocus } from "@/hooks/use-record-focus";
 
 interface NoteTypeOption {
   id: string;
@@ -94,9 +95,14 @@ export default function EntityNotesPanel({ contextId, entityId }: NotesPanelProp
 
   const notesQueryKey = ["/api/entity-notes", contextId, entityId];
 
-  const { data: notes = [], isLoading } = useQuery<NoteRow[]>({
+  const { data: notes = [], isLoading, isFetching, isError } = useQuery<NoteRow[]>({
     queryKey: notesQueryKey,
   });
+  const focus = useRecordFocus(notes.map(note => note.id), `${contextId}:${entityId}`, isFetching, isError);
+  // A deep link must not land on an item hidden by a previous local type filter.
+  useEffect(() => {
+    if (focus.id) setTypeFilter(ALL_TYPES);
+  }, [focus.id, contextId, entityId]);
 
   const { data: allNoteTypes = [] } = useQuery<NoteTypeOption[]>({
     queryKey: ["/api/options/note-type"],
@@ -161,6 +167,12 @@ export default function EntityNotesPanel({ contextId, entityId }: NotesPanelProp
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: notesQueryKey });
+    if (contextId === "worker") {
+      // Prefix invalidation covers every viewer's separate source-enriched cache.
+      queryClient.invalidateQueries({
+        queryKey: [`/api/workers/${encodeURIComponent(entityId)}/badges`],
+      });
+    }
   };
 
   const createMutation = useMutation({
@@ -280,6 +292,8 @@ export default function EntityNotesPanel({ contextId, entityId }: NotesPanelProp
           </Button>
         </CardHeader>
         <CardContent>
+          {isError && <p role="alert" className="mb-4 text-destructive">Failed to load notes.</p>}
+          {focus.missing && <p role="status" className="mb-4 text-muted-foreground">The linked source record is no longer available on this page.</p>}
           {noTypesConfigured && (
             <p className="text-sm text-muted-foreground" data-testid="text-no-note-types">
               No note types apply to this kind of record yet. An administrator can add one under Dropdown Lists → Note Types.
@@ -336,17 +350,20 @@ export default function EntityNotesPanel({ contextId, entityId }: NotesPanelProp
                 </Button>
               </div>
               {visibleNotes.map((note) => (
+                <div key={note.id} id={recordFocusElementId(note.id)} tabIndex={-1}
+                  className={focus.matches(note.id) ? "rounded-md ring-2 ring-primary" : ""}>
                 <NoteCard
                   key={note.id}
                   note={note}
                   tagsEnabled={tagsEnabled}
                   contextId={contextId}
                   entityId={entityId}
-                  expanded={isNoteExpanded(displayState, note.id)}
+                  expanded={focus.matches(note.id) || isNoteExpanded(displayState, note.id)}
                   onToggleExpanded={() => setDisplayState((prev) => toggleNote(prev, note.id))}
                   onEdit={() => openEditDialog(note)}
                   onDelete={() => setDeletingNote(note)}
                 />
+                </div>
               ))}
             </div>
           )}

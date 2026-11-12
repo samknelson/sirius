@@ -61,6 +61,18 @@ import "./core/1116_add_trust_wmb_source_relation";
 import "./core/1117_create_comm_interaction";
 import "./core/1118_rename_member_status_scan_cron";
 import "./core/1119_cleanup_resurrected_member_status_scan";
+// Earlier upstream migrations are already registered below under fork versions.
+// New upstream 1111–1120 must run above this fork's existing 1208 counter.
+import "./core/1209_rename_payment_gateway_kind_to_wc_vendors";
+import "./core/1210_delete_legacy_comm_service_configs";
+import "./core/1211_retarget_twilio_lookup_usage_alerts";
+import "./core/1212_wc_stats_configuration";
+import "./core/1213_merge_wc_stats_on_configuration_delete";
+import "./core/1214_rename_btu_cardcheck_vendor";
+import "./core/1215_wc_cache_configuration";
+import "./core/1216_add_ws_clients_data";
+import "./core/1217_unify_job_runs";
+import "./core/1218_oneoff_run_state";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -146,14 +158,20 @@ import "./components/edls/003_add_assignment_comm_id";
 import "./components/edls/004_add_assignment_accepted";
 import "./components/edls/005_add_sheet_notifications_enabled";
 import "./components/edls/006_drop_sheet_created_by";
+import "./components/edls/007_index_assignments_by_worker_date";
+import "./components/edls/008_retain_assignments_on_crew_delete";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";
 import "./components/trust.elections/002_create_open_enrollment_windows";
 import "./components/trust.elections/003_policy_id_nullable";
 import "./components/worker.aat/001_create_worker_aat";
+import "./components/worker.badges/001_create_worker_badges";
 import "./components/bulk/001_drop_email_body_text";
 import "./components/bulk/002_add_postal_body_html";
+import "./components/system.session_history/001_create_session_history";
+import "./components/system.session_history/002_add_device_id";
+import "./components/system.session_history/003_require_user_id";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

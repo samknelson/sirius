@@ -1,267 +1,61 @@
-import type { Express, Request, Response } from "express";
-import { requireAccess } from "../services/access-policy-evaluator";
+import type { Express } from "express";
 import { z } from "zod";
-import { serviceRegistry } from "../services/service-registry";
-import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
-import { verifyPostalAddress } from "../services/comm/validators/address-verification";
+import { requireAccess } from "../services/access-policy-evaluator";
+import { storage } from "../storage";
+import { describeWcVendor, WcVendorError } from "../services/webclient/wc-vendor-context";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 import { registerMessageDefaultsRoutes } from "./message-defaults";
 
+const addressSchema = z.object({
+  name: z.string().optional(),
+  company: z.string().optional(),
+  addressLine1: z.string().min(1),
+  addressLine2: z.string().optional(),
+  city: z.string().min(1),
+  state: z.string().min(1),
+  zip: z.string().min(1),
+  country: z.string().default("US"),
+}).strict();
+
 export function registerPostalConfigRoutes(app: Express) {
   registerMessageDefaultsRoutes(app, "postal");
-  app.get(
-    "/api/config/postal",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        const config = await serviceRegistry.getCategoryConfig('postal');
-        const providers = await serviceRegistry.getProviderInfo('postal');
-        
-        const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        const providerConfig = await postalTransport.getConfiguration();
-        const connectionTest = await postalTransport.testConnection();
-        
-        res.json({
-          defaultProvider: config.defaultProvider,
-          providers,
-          currentProvider: {
-            id: postalTransport.id,
-            displayName: postalTransport.displayName,
-            supportedFeatures: postalTransport.supportedFeatures,
-            supportsPostal: postalTransport.supportsPostal(),
-            config: providerConfig,
-            connection: connectionTest,
-          },
-        });
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({ 
-          message: "Failed to get postal configuration",
-          error: error?.message 
-        });
-      }
+  // Edit the selected delivery connection, never resurrect legacy service_config.
+  app.get("/api/config/postal/return-address", requireAccess("admin"), async (_req, res) => {
+    try {
+      const selected = await describeWcVendor({ any: true }, "communications.postal.send");
+      const config = await storage.pluginConfigs.get(selected.configId);
+      const data = config?.data as Record<string, unknown> | undefined;
+      return res.set("Cache-Control", "no-store").json({
+        configId: selected.configId, configName: selected.configName,
+        returnAddress: data?.defaultReturnAddress,
+      });
+    } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
+      return res.status(error instanceof WcVendorError ? error.status : 500).json({
+        message: error instanceof Error ? error.message : "Unable to load return address.",
+      });
     }
-  );
-
-  app.post(
-    "/api/config/postal/test",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        serviceRegistry.invalidateCache('postal');
-        const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        const result = await postalTransport.testConnection();
-        
-        if (!result.success) {
-          return res.status(500).json(result);
-        }
-        
-        res.json(result);
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({
-          success: false,
-          error: error?.message || "Failed to connect to postal provider",
-        });
+  });
+  app.put("/api/config/postal/return-address", requireAccess("admin"), async (req, res) => {
+    try {
+      const { configId, returnAddress } = z.object({
+        configId: z.string().min(1), returnAddress: addressSchema,
+      }).strict().parse(req.body);
+      const selected = await describeWcVendor({ any: true }, "communications.postal.send");
+      if (selected.configId !== configId) {
+        return res.status(409).json({ message: "The postal delivery connection changed. Reload before saving." });
       }
+      const config = await storage.pluginConfigs.get(configId);
+      if (!config) return res.status(404).json({ message: "Postal connection no longer exists." });
+      await storage.pluginConfigs.update(configId, {
+        data: { ...(config.data as Record<string, unknown>), defaultReturnAddress: returnAddress },
+      });
+      return res.json({ configId, returnAddress });
+    } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
+      return res.status(error instanceof z.ZodError ? 400 : error instanceof WcVendorError ? error.status : 500).json({
+        message: error instanceof Error ? error.message : "Unable to save return address.",
+      });
     }
-  );
-
-  app.put(
-    "/api/config/postal/provider",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        const schema = z.object({
-          providerId: z.string().min(1),
-        });
-        
-        const { providerId } = schema.parse(req.body);
-        await serviceRegistry.setDefaultProvider('postal', providerId);
-        
-        res.json({ success: true, defaultProvider: providerId });
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        if (error instanceof z.ZodError) {
-          return res.status(400).json({ message: "Invalid request", errors: error.errors });
-        }
-        res.status(500).json({ 
-          message: "Failed to update postal provider",
-          error: error?.message 
-        });
-      }
-    }
-  );
-
-  app.get(
-    "/api/config/postal/return-address",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        const returnAddress = await postalTransport.getDefaultReturnAddress();
-        
-        res.json({ 
-          returnAddress,
-        });
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({ 
-          message: "Failed to get default return address",
-          error: error?.message 
-        });
-      }
-    }
-  );
-
-  app.put(
-    "/api/config/postal/return-address",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        const schema = z.object({
-          name: z.string().optional(),
-          company: z.string().optional(),
-          addressLine1: z.string().min(1),
-          addressLine2: z.string().optional(),
-          city: z.string().min(1),
-          state: z.string().min(1),
-          zip: z.string().min(1),
-          country: z.string().default("US"),
-        });
-        
-        const address = schema.parse(req.body) as PostalAddress;
-        
-        const config = await serviceRegistry.getCategoryConfig('postal');
-        const providerId = config.defaultProvider || 'lob';
-        
-        const settings = await serviceRegistry.getProviderSettings('postal', providerId);
-        await serviceRegistry.saveProviderSettings('postal', providerId, {
-          ...settings,
-          defaultReturnAddress: address,
-        });
-        
-        serviceRegistry.invalidateCache('postal');
-        
-        res.json({ success: true, returnAddress: address });
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        if (error instanceof z.ZodError) {
-          return res.status(400).json({ message: "Invalid request", errors: error.errors });
-        }
-        res.status(500).json({ 
-          message: "Failed to update default return address",
-          error: error?.message 
-        });
-      }
-    }
-  );
-
-  app.get(
-    "/api/config/lob",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        
-        if (postalTransport.id !== 'lob') {
-          return res.json({
-            connected: false,
-            error: 'Lob is not the active postal provider',
-            currentProvider: postalTransport.id,
-          });
-        }
-        
-        const providerConfig = await postalTransport.getConfiguration();
-        const returnAddress = await postalTransport.getDefaultReturnAddress();
-        
-        res.json({
-          connected: providerConfig.connected || false,
-          apiKeyConfigured: providerConfig.apiKeyConfigured || false,
-          isTestMode: providerConfig.isTestMode || false,
-          returnAddress,
-          error: providerConfig.error,
-        });
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({ 
-          message: "Failed to get Lob configuration",
-          error: error?.message 
-        });
-      }
-    }
-  );
-
-  app.post(
-    "/api/config/lob/test",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        serviceRegistry.invalidateCache('postal');
-        const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        
-        if (postalTransport.id !== 'lob') {
-          return res.json({
-            success: false,
-            error: 'Lob is not the active postal provider',
-          });
-        }
-        
-        const result = await postalTransport.testConnection();
-        
-        res.json({
-          success: result.success,
-          message: result.message,
-          error: result.error,
-          details: result.details,
-        });
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        res.json({
-          success: false,
-          error: error?.message || "Failed to connect to Lob",
-        });
-      }
-    }
-  );
-
-  app.post(
-    "/api/config/postal/verify-test-address",
-    requireAccess('admin'),
-    async (req: Request, res: Response) => {
-      try {
-        const schema = z.object({
-          addressLine1: z.string().min(1),
-          addressLine2: z.string().optional(),
-          city: z.string().min(1),
-          state: z.string().min(1),
-          zip: z.string().min(1),
-          country: z.string().default("US"),
-        });
-        
-        const addressInput = schema.parse(req.body);
-        const address = {
-          ...addressInput,
-          addressLine1: addressInput.addressLine1,
-        };
-        
-        const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        // A person on the config screen testing the provider: `force` because
-        // handing them a stored answer would report the vendor reachable
-        // without having reached it.
-        const result = await verifyPostalAddress(postalTransport, address, { mode: 'force' });
-        
-        res.json(result);
-      } catch (error: any) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        if (error instanceof z.ZodError) {
-          return res.status(400).json({ message: "Invalid address", errors: error.errors });
-        }
-        res.status(500).json({ 
-          message: "Failed to verify address",
-          error: error?.message 
-        });
-      }
-    }
-  );
+  });
 }

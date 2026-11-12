@@ -4,6 +4,7 @@ import path from "path";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
 import { getPlatformEnvironmentVariable } from "./config/env-registry";
+import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -119,7 +120,7 @@ export function serveStatic(app: Express) {
       if (!err) return;
       const code = (err as NodeJS.ErrnoException & { status?: number }).code;
       log(
-        `index.html send failed: ${req.method} ${req.originalUrl} headersSent=${res.headersSent} code=${code ?? "unknown"}`,
+        `index.html send failed: ${req.method} ${redactSensitiveUrlQuery(req.originalUrl)} headersSent=${res.headersSent} code=${code ?? "unknown"}`,
         "static",
       );
       if (res.headersSent) {

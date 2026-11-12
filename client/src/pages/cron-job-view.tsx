@@ -108,6 +108,11 @@ function CronJobViewContent() {
       <CardContent>
         {job?.latestRun ? (
           <div className="space-y-6">
+            {!job.latestRun.configurationId && (
+              <p className="text-sm text-muted-foreground">
+                Historical run: the original configuration cannot be identified.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Status</p>

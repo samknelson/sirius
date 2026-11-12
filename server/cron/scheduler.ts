@@ -254,7 +254,7 @@ export class CronScheduler {
     });
   }
 
-  async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
+  async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<string> {
     // This is intentionally repeated at the final shared execution boundary.
     // Scheduled callbacks, manual runs, and future direct callers all refuse
     // before fences, run records, plugin code, or any other side effect.
@@ -266,13 +266,13 @@ export class CronScheduler {
     // failed run: the next normal schedule remains eligible after the sync.
     const fenceLease = await tryAcquireAppWriteFence();
     if (!fenceLease) {
-      const run = await storage.cronJobRuns.create({
-        jobName: job.name,
+      const run = await storage.jobRuns.create({
+        configurationId: job.configId, pluginKind: "cron", pluginId: job.name, operation: "execute",
         status: "skipped",
         mode,
         triggeredBy: triggeredBy || null,
       });
-      await storage.cronJobRuns.update(run.id, {
+      await storage.jobRuns.update(run.id, {
         status: "skipped",
         completedAt: new Date(),
         output: JSON.stringify({ message: "Deferred: S1 sync write fence is active", reason: "s1-sync-deferred" }),
@@ -280,13 +280,13 @@ export class CronScheduler {
       logger.info(`Job deferred by S1 sync: ${job.name}`, {
         service: "cron-scheduler", jobName: job.name, runId: run.id, isManual, mode,
       });
-      return;
+      return run.id;
     }
 
     try {
       // Create run record - id and startedAt are auto-generated.
-      const run = await storage.cronJobRuns.create({
-        jobName: job.name,
+      const run = await storage.jobRuns.create({
+        configurationId: job.configId, pluginKind: "cron", pluginId: job.name, operation: "execute",
         status: 'running',
         mode,
         triggeredBy: triggeredBy || null,
@@ -320,13 +320,13 @@ export class CronScheduler {
             });
 
             // Update run as skipped
-            await storage.cronJobRuns.update(runId, {
+            await storage.jobRuns.update(runId, {
               status: 'skipped',
               completedAt: new Date(),
               output: JSON.stringify({ message: skipMessage, requiredComponent }),
             });
 
-            return;
+            return runId;
           }
         }
 
@@ -335,6 +335,7 @@ export class CronScheduler {
 
         // Execute the plugin
         const summary = await executeCronPlugin(job.name, {
+          configurationId: job.configId,
           jobId: job.name,
           jobName: job.name,
           triggeredBy,
@@ -354,7 +355,7 @@ export class CronScheduler {
         };
 
         // Update run as successful
-        await storage.cronJobRuns.update(runId, {
+        await storage.jobRuns.update(runId, {
           status: 'success',
           completedAt: new Date(),
           output: JSON.stringify(outputData),
@@ -367,11 +368,12 @@ export class CronScheduler {
           duration: executionTimeMs,
           summary,
         });
+        return runId;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         // Update run as failed
-        await storage.cronJobRuns.update(runId, {
+        await storage.jobRuns.update(runId, {
           status: 'error',
           completedAt: new Date(),
           error: errorMessage,
@@ -392,18 +394,18 @@ export class CronScheduler {
     }
   }
 
-  async manualRun(jobName: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
+  async manualRun(configurationId: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<string> {
     assertCronExecutionAllowed();
-    const configs = await storage.pluginConfigs.getByKindAndPlugin('cron', jobName);
-
-    if (configs.length === 0) {
+    const envelope = await storage.pluginConfigs.getWithSubsidiary(configurationId);
+    if (!envelope || envelope.config.pluginKind !== "cron") {
       logger.error('Attempted to run non-existent cron job', {
         service: 'cron-scheduler',
-        jobName,
+        configurationId,
       });
-      throw new Error(`Cron job not found: ${jobName}`);
+      throw new Error(`Cron job not found for configuration: ${configurationId}`);
     }
 
+    const jobName = envelope.config.pluginId;
     if (!cronPluginRegistry.has(jobName)) {
       logger.error('Attempted to run cron job with no registered plugin', {
         service: 'cron-scheduler',
@@ -416,15 +418,8 @@ export class CronScheduler {
       );
     }
 
-    // Non-singleton plugins may have several configs under one job name; a
-    // manual run executes each of them in turn (singletons have exactly one).
-    for (const config of configs) {
-      const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
-      const job = this.toScheduledJob(
-        envelope ?? { config, subsidiary: null },
-      );
-      await this.executeJob(job, true, triggeredBy, mode);
-    }
+    // Upstream addresses one configured instance; retain the fork execution fence.
+    return this.executeJob(this.toScheduledJob(envelope), true, triggeredBy, mode);
   }
 
   isJobScheduled(jobName: string): boolean {

@@ -178,7 +178,7 @@ async function withFtpClient<T>(
 }
 
 export async function testConnect(conn: ConnectionData, destinationId: string): Promise<TransferResult<ConnectInfo>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(async function testConnectTransport() {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const cwd = await client.cwd();
@@ -201,7 +201,7 @@ export async function testConnect(conn: ConnectionData, destinationId: string): 
 }
 
 export async function testList(conn: ConnectionData, remotePath: string, destinationId: string): Promise<TransferResult<FileEntry[]>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(async function testListTransport() {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const items = await client.list(remotePath || "/");
@@ -229,7 +229,7 @@ export async function testList(conn: ConnectionData, remotePath: string, destina
 }
 
 export async function testCd(conn: ConnectionData, remotePath: string, destinationId: string): Promise<TransferResult<{ path: string }>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(async function testCdTransport() {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const exists = await client.exists(remotePath);
@@ -256,7 +256,7 @@ export async function testUpload(
   content: Buffer,
   destinationId: string
 ): Promise<TransferResult<{ bytesWritten: number }>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(async function testUploadTransport() {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const fullPath = remotePath.endsWith("/")

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
+import { useWorkerCertificationTabAccess } from "@/hooks/useTabAccess";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
@@ -49,8 +50,7 @@ interface WorkerCertificationLayoutProps {
 
 export function WorkerCertificationLayout({ activeTab, children }: WorkerCertificationLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { hasPermission } = useAuth();
-  const canEdit = hasPermission('staff');
+  const { tabs } = useWorkerCertificationTabAccess(id);
 
   const { data: certification, isLoading: certLoading, error: certError } = useQuery<WorkerCertificationWithDetails>({
     queryKey: ["/api/worker-certifications", id],
@@ -74,11 +74,6 @@ export function WorkerCertificationLayout({ activeTab, children }: WorkerCertifi
 
   const isLoading = certLoading;
   const isError = !!certError;
-
-  const tabs = [
-    { id: "view" as const, label: "View", href: `/worker-certification/${id}` },
-    ...(canEdit ? [{ id: "edit" as const, label: "Edit", href: `/worker-certification/${id}/edit` }] : []),
-  ];
 
   if (certError) {
     return (
@@ -158,35 +153,11 @@ export function WorkerCertificationLayout({ activeTab, children }: WorkerCertifi
           recordId={certification.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {tabs.map((tab) => {
-                const isActive = tab.id === activeTab;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-certification-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-certification-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <EntityTabNavigation
+          tabs={tabs}
+          activeTab={activeTab}
+          testIdPrefix="button-certification-"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}

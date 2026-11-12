@@ -4,7 +4,7 @@ import { Building2, CreditCard, Loader2, Plus, Star, Trash2 } from "lucide-react
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { hasPaymentGatewayComponent, resolvePaymentGatewayComponent } from "@/plugins/payment-gateway/registry";
+import { hasWcVendorComponent as hasPaymentGatewayComponent, resolveWcVendorComponent as resolvePaymentGatewayComponent } from "@/plugins/wc-vendors/registry";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";

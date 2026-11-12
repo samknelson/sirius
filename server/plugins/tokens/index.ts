@@ -136,6 +136,7 @@ import "./plugins/system";
 import "./plugins/address";
 import "./plugins/bulk-participant";
 import "./plugins/event";
+import "./plugins/session";
 import "./plugins/sitespecific-t631-interview";
 import "./plugins/sitespecific-bao-case";
 import "./plugins/sitespecific-bao-appeal";

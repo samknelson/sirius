@@ -41,7 +41,7 @@ registerEnvironmentVariable({
 const STRATEGY_NAME = "okta";
 
 const getOidcConfig = memoize(
-  async (issuerUrl: string, clientId: string, clientSecret: string) => {
+  async function discoverOktaConfig(issuerUrl: string, clientId: string, clientSecret: string) {
     return await client.discovery(
       new URL(issuerUrl),
       clientId,

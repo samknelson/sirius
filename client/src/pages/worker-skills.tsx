@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Award, Plus, Trash2 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import type { WorkerSkill, OptionsSkill } from "@shared/schema";
+import { recordFocusElementId, useRecordFocus } from "@/hooks/use-record-focus";
 
 interface WorkerSkillWithDetails extends WorkerSkill {
   skill?: OptionsSkill | null;
@@ -33,9 +34,10 @@ function SkillsContent() {
   const [formMessage, setFormMessage] = useState<string>("");
   const [removeMessage, setRemoveMessage] = useState<string>("");
 
-  const { data: workerSkills = [], isLoading } = useQuery<WorkerSkillWithDetails[]>({
+  const { data: workerSkills = [], isLoading, isFetching, isError } = useQuery<WorkerSkillWithDetails[]>({
     queryKey: ["/api/worker-skills/worker", worker.id],
   });
+  const focus = useRecordFocus(workerSkills.map(skill => skill.id), worker.id, isFetching, isError);
 
   const { data: availableSkills = [] } = useQuery<OptionsSkill[]>({
     queryKey: ["/api/options/skill"],
@@ -172,6 +174,8 @@ function SkillsContent() {
         )}
       </CardHeader>
       <CardContent>
+        {isError && <p role="alert" className="mb-4 text-destructive">Failed to load skills.</p>}
+        {focus.missing && <p role="status" className="mb-4 text-muted-foreground">The linked source record is no longer available on this page.</p>}
         {workerSkills.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Award className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -196,7 +200,9 @@ function SkillsContent() {
             </TableHeader>
             <TableBody>
               {workerSkills.map((ws) => (
-                <TableRow key={ws.id} data-testid={`row-worker-skill-${ws.id}`}>
+                <TableRow key={ws.id} id={recordFocusElementId(ws.id)} tabIndex={-1}
+                  className={focus.matches(ws.id) ? "bg-accent ring-2 ring-inset ring-primary" : undefined}
+                  data-testid={`row-worker-skill-${ws.id}`}>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {ws.skill && (ws.skill.data as { icon?: string } | null)?.icon && renderIcon((ws.skill.data as { icon: string }).icon, "h-4 w-4 text-muted-foreground")}

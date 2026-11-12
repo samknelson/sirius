@@ -8,22 +8,55 @@ import { checkFlood, recordFloodEvent } from "../../flood/service";
 import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
 import { logger } from "../../logger";
 import type { AssignmentForWorker } from "../../storage/edls/assignments";
+import { entityMetadataStorage } from "../../storage/system/entity-metadata";
+import { getSystemTimeZone } from "../../config/system-timezone";
+import {
+  buildContext,
+  checkAccess,
+} from "../../services/access-policy-evaluator";
 
-/**
- * Sheet statuses a worker may see on the public schedule page. Draft/request
- * sheets are still being built and `trash` sheets are cancelled, so none of
- * them are anybody's schedule yet.
- */
-const PUBLIC_SHEET_STATUSES = ["lock", "reserved"];
+/** Draft and Requested assignments are review notices; Trash stays hidden. */
+const PUBLIC_SHEET_STATUSES = ["draft", "request", "lock", "reserved"];
+
+/** Draft and Requested are under review; Scheduled and Reserved can receive a final answer. */
+const ANSWERABLE_SHEET_STATUSES = ["lock", "reserved"];
 
 /** Number of calendar days shown, counting today. */
 const SCHEDULE_DAYS = 7;
 
+type ReviewScheduleAssignment = Pick<AssignmentForWorker, "assignmentId" | "ymd"> & {
+  sheetStatus: "draft" | "request";
+};
+
+type ConfirmedScheduleAssignment = AssignmentForWorker & {
+  sheetStatus: "lock" | "reserved";
+  revision: number | null;
+  updatedAt: string | null;
+};
+
 export interface PublicWorkerSchedule {
   workerName: string;
+  /** Instant at the end of this successful schedule read, not an assignment update time. */
+  readAt: string;
+  siteTimeZone: string;
   startYmd: string;
   endYmd: string;
-  assignments: AssignmentForWorker[];
+  assignments: Array<ReviewScheduleAssignment | ConfirmedScheduleAssignment>;
+  workerBackPath?: string;
+}
+
+async function getWorkerBackPath(
+  req: Request,
+  workerId: string,
+): Promise<string | undefined> {
+  try {
+    const context = await buildContext(req);
+    if (!context.user) return undefined;
+    const access = await checkAccess("worker.view", context.user, workerId);
+    return access.granted ? `/workers/${workerId}` : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Family-name-first display, e.g. "Banales, Gabriel". */
@@ -51,9 +84,8 @@ async function resolveScheduleWorkerId(id: string): Promise<string | null> {
 }
 
 /**
- * The window the page shows, resolved once so the read and the answer
- * endpoint agree on it: an assignment the page would not show is not one the
- * link may answer for.
+ * The window the page shows, resolved once so the read and answer endpoints
+ * agree on it. Visibility alone does not make a Requested assignment answerable.
  */
 function scheduleWindow(): { startYmd: string; endYmd: string } {
   const startYmd = getTodayYmd();
@@ -86,6 +118,7 @@ async function resolveVisibleAssignments(
 
 const answerSchema = z.object({
   accepted: z.boolean(),
+  generationId: z.string().uuid(),
 });
 
 export function registerEdlsPublicScheduleRoutes(app: Express) {
@@ -116,6 +149,8 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
     edlsComponent,
     aatComponent,
     async (req: Request, res: Response) => {
+      res.set("Cache-Control", "private, no-store");
+      res.vary("Cookie");
       const denied = () => res.status(403).json({ message: "Access denied" });
 
       try {
@@ -133,12 +168,54 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         }
         const contact = await storage.contacts.getContact(worker.contactId);
 
+        // Review notices must not expose unconfirmed job, crew, location, or
+        // other detail fields even in the public JSON response. Only confirmed
+        // assignments need an update age and revision.
+        const metadata = await entityMetadataStorage.getMany(
+          resolved.assignments
+            .filter((assignment) => assignment.sheetStatus === "lock" || assignment.sheetStatus === "reserved")
+            .map((assignment) => assignment.assignmentId),
+        );
+        const assignments: PublicWorkerSchedule["assignments"] = resolved.assignments.map((assignment) => {
+          if (assignment.sheetStatus === "draft" || assignment.sheetStatus === "request") {
+            return {
+              assignmentId: assignment.assignmentId,
+              ymd: assignment.ymd,
+              sheetStatus: assignment.sheetStatus,
+            };
+          }
+          // The storage read is restricted to PUBLIC_SHEET_STATUSES; never
+          // publish full details for a newly added or unexpected status.
+          if (assignment.sheetStatus !== "lock" && assignment.sheetStatus !== "reserved") {
+            throw new Error("Unexpected EDLS public schedule sheet status");
+          }
+          const record = metadata.get(assignment.assignmentId);
+          const ownMetadata = record?.contextId === "edls_assignments" ? record : null;
+          const modified = ownMetadata?.modified.date;
+          return {
+            ...assignment,
+            sheetStatus: assignment.sheetStatus,
+            revision: ownMetadata && Number.isSafeInteger(ownMetadata.rev) && ownMetadata.rev > 0
+              ? ownMetadata.rev
+              : null,
+            updatedAt: modified && Number.isFinite(modified.getTime())
+              ? modified.toISOString()
+              : null,
+          };
+        });
         const { startYmd, endYmd } = scheduleWindow();
+        const workerBackPath = await getWorkerBackPath(
+          req,
+          resolved.workerId,
+        );
         const payload: PublicWorkerSchedule = {
           workerName: formatWorkerName(contact),
+          readAt: new Date().toISOString(),
+          siteTimeZone: getSystemTimeZone(),
           startYmd,
           endYmd,
-          assignments: resolved.assignments,
+          assignments,
+          ...(workerBackPath ? { workerBackPath } : {}),
         };
         res.json(payload);
       } catch (error) {
@@ -153,8 +230,8 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
    * once.
    *
    * Every refusal — malformed or unknown credential, an assignment belonging
-   * to somebody else, one outside the week the page shows, one already
-   * answered — is the SAME generic access-denied body the read endpoint
+   * to somebody else, one outside the week the page shows, one on a Requested
+   * sheet, one already answered — is the SAME generic access-denied body the read endpoint
    * uses, so the endpoint never confirms which of those it was and cannot be
    * used to probe for assignment ids.
    *
@@ -163,8 +240,9 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
    * manually rotated; that trade-off is intentional for the AAT-based worker
    * access flow.
    *
-   * The assignment must be one this credential's own page would show, and the
-   * answer is recorded at most once, conditionally, in the storage write.
+    * The assignment must be one this credential's own page would show and on
+    * a confirmed sheet. Storage rechecks the status when writing so a sheet
+    * becoming Requested between this read and the write cannot be answered.
    */
   app.post(
     "/api/public/edls/schedule/:id/assignments/:assignmentId/answer",
@@ -221,12 +299,20 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         // The storage write is the real one-answer guard (its condition is
         // part of the UPDATE); this only saves a pointless write on the
         // common stale-tab case.
-        if (assignment.accepted !== null) {
+        if (
+          !ANSWERABLE_SHEET_STATUSES.includes(assignment.sheetStatus)
+          || assignment.accepted !== null
+          || assignment.generationId !== parsed.data.generationId
+        ) {
           denied();
           return;
         }
 
-        const recorded = await storage.edlsAssignments.setAccepted(assignmentId, parsed.data.accepted);
+        const recorded = await storage.edlsAssignments.setAccepted(
+          assignmentId,
+          parsed.data.accepted,
+          parsed.data.generationId,
+        );
         if (!recorded) {
           denied();
           return;

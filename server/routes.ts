@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import multer from "multer";
+import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
@@ -12,6 +13,7 @@ import { resolveLinkedWorkerId } from "./auth/worker-link";
 import { registerVariableRoutes } from "./modules/system/variables";
 import { buildTimeZoneContext } from "./modules/system/timezone";
 import { registerAuthSettingsRoutes } from "./modules/auth-settings";
+import { getSessionIdleTimeoutSettings } from "./auth/session-idle-timeout";
 import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
@@ -25,6 +27,7 @@ import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog"
 import { registerEntityNoteAreasCatalog } from "./services/entity-notes/catalog";
 import { registerRecordHistoryAreasCatalog } from "./storage/entity-metadata-record-catalog";
 import { registerOptionsListsCatalog } from "./storage/unified-options-catalog";
+import { registerPluginKindsCatalog } from "./plugins/_core/kinds-catalog";
 import { registerEntityFileRoutes } from "./modules/entity-files";
 import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
 import { registerRecordGoRoutes } from "./modules/record-go";
@@ -55,15 +58,13 @@ import {
   registerComponentRoutes,
   getEnabledComponentIds,
 } from "./modules/components";
-import { registerEmployerUserSettingsRoutes } from "./modules/employers/user-settings";
-import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provider/user-settings";
-import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerWizardDispatcherRoutes } from "./plugins/wizards";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
-import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
+import { registerLedgerWcVendorRoutes } from "./modules/ledger/wc-vendors";
+import { registerWcVendorRoutes } from "./modules/system/wc-vendors";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -80,9 +81,6 @@ import { registerEbsInspectionRoutes } from "./modules/system/ebs";
 import { registerSystemInfoRoutes } from "./modules/system/system-info";
 import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
-import { registerTwilioRoutes } from "./modules/twilio";
-import { registerEmailConfigRoutes } from "./modules/email-config";
-import { registerPostalConfigRoutes } from "./modules/postal-config";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
@@ -123,6 +121,7 @@ import { registerEntityNotesRoutes } from "./modules/entity-notes";
 import { assertNoteContextTablesComplete } from "./storage/entity-notes-context-tables";
 import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
+import { registerWorkerBadgesRoutes } from "./modules/workers/badges";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerOpenEnrollmentWindowsRoutes } from "./modules/trust/open-enrollment-windows";
@@ -158,6 +157,7 @@ import { registerBaoPremiumFilesRoutes } from "./modules/sitespecific/bao/premiu
 import { registerBaoWithholdingUploadsRoutes } from "./modules/sitespecific/bao/withholding-uploads";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerT631ArrivalRoutes } from "./modules/sitespecific/t631/arrive";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
@@ -168,9 +168,9 @@ import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
-import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyCatalog } from "./modules/terminology-catalog";
+import { registerSystemServiceRolesCatalog } from "./modules/system-service-roles-catalog";
 import { registerTokenContextsCatalog } from "./modules/token-contexts-catalog";
 import { registerNotifierTokenContexts } from "./plugins/event-notifier/token-contexts";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
@@ -178,8 +178,6 @@ import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
-import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
-import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 import {
@@ -190,37 +188,11 @@ import {
   isCacheInitialized,
   isComponentEnabledSync,
 } from "./services/component-cache";
+import { requirePermission, requirePermissionOrAdmin } from "./middleware/require-permission";
+import { registerWorkerDeleteRoute } from "./modules/workers/delete";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
-
-// Permission middleware
-const requirePermission = (permissionKey: string) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const user = req.user as any;
-    if (!user || !user.claims) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    
-    // Get database user ID from external ID, respecting masquerade
-    const session = req.session as any;
-    const { getEffectiveUser } = await import("./modules/masquerade");
-    const { dbUser } = await getEffectiveUser(session, user);
-    if (!dbUser) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    const hasPermission = await storage.users.userHasPermission(
-      dbUser.id,
-      permissionKey,
-    );
-    if (!hasPermission) {
-      return res.status(403).json({ message: "Insufficient permissions" });
-    }
-
-    next();
-  };
-};
 
 export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   // Unauthorized route for failed logins
@@ -326,6 +298,31 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  app.get("/api/auth/session-idle", requireAuth, async (req, res) => {
+    const settings = await getSessionIdleTimeoutSettings(storage);
+    const session = req.session as any;
+    session.sessionIdleReadOnlyCheck = true;
+    const lastActivityMs = Date.parse(session.sessionIdleLastActivityAt ?? "");
+    res.json({
+      enabled: settings.enabled,
+      deadline: settings.enabled && Number.isFinite(lastActivityMs)
+        ? new Date(lastActivityMs + settings.timeoutMinutes * 60_000).toISOString()
+        : null,
+    });
+  });
+
+  app.post("/api/auth/session-idle/continue", requireAuth, async (req, res) => {
+    const settings = await getSessionIdleTimeoutSettings(storage);
+    const now = new Date();
+    (req.session as any).sessionIdleLastActivityAt = now.toISOString();
+    res.json({
+      enabled: settings.enabled,
+      deadline: settings.enabled
+        ? new Date(now.getTime() + settings.timeoutMinutes * 60_000).toISOString()
+        : null,
+    });
+  });
+
   // Register access policy evaluation routes
   registerAccessPolicyRoutes(app);
 
@@ -342,15 +339,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerUserRoutes(app, requireAuth, requirePermission);
   registerLetterTemplateRoutes(app, requireAccess);
 
-  // Register employer user settings routes
-  registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
-
-  // Register trust provider user settings routes
-  registerTrustProviderUserSettingsRoutes(app, requireAuth, requirePermission);
-  
-  // Register worker user settings routes
-  registerWorkerUserSettingsRoutes(app, requireAuth, requirePermission);
-  
   // Register worker users routes (create/manage user accounts for workers)
   registerWorkerUsersRoutes(app, requireAuth, requirePermission);
   
@@ -375,6 +363,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoDcEntityFileContext();
   registerBaoCaseEntityFileContext();
   registerEntityFileAreasCatalog();
+  registerPluginKindsCatalog();
   assertFileContextTablesComplete();
   initEntityFilesDeleteCleanup();
   wireEntityFilesFileReadAccess();
@@ -384,6 +373,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Deliberately not behind `requireAuth`: a catalog that declares itself
   // readable before sign-in has to actually be readable before sign-in, and
   // every other one refuses an anonymous reader on its own.
+  registerSystemServiceRolesCatalog();
   registerCatalogRoutes(app);
   registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
 
@@ -482,8 +472,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register provider-generic ledger payment-method routes
   registerLedgerPaymentMethodRoutes(app, requireAuth);
 
-  // Register provider-generic ledger payment-gateway admin routes (connection test)
-  registerLedgerPaymentGatewayRoutes(app);
+  // Register the ledger-owned wc-vendors routes (accepted payment types). The
+  // component-neutral vendor list + connection test are registered separately,
+  // off /api/ledger/, so they survive the ledger component being off.
+  registerLedgerWcVendorRoutes(app);
+  registerWcVendorRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);
@@ -507,6 +500,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
+  const { registerOneoffRoutes } = await import("./modules/system/oneoff");
+  registerOneoffRoutes(app, requireAuth);
 
   // Register event bus introspection routes (debug component)
   registerEventBusIntrospectRoutes(app);
@@ -534,15 +529,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // specific routes.
   const { registerPluginsConfigRoutes } = await import("./modules/system/plugins-config");
   registerPluginsConfigRoutes(app, requireAuth);
-
-  // Register Twilio configuration routes
-  registerTwilioRoutes(app);
-
-  // Register Email configuration routes
-  registerEmailConfigRoutes(app);
-
-  // Register Postal configuration routes
-  registerPostalConfigRoutes(app);
 
   // Register terminology routes
   // Terminology has no routes of its own: the configured wording is read and
@@ -1248,22 +1234,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // DELETE /api/workers/:id - Delete a worker (requires staff permission)
-  app.delete("/api/workers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const deleted = await storage.workers.deleteWorker(id);
-      
-      if (!deleted) {
-        res.status(404).json({ message: "Worker not found" });
-        return;
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete worker" });
-    }
-  });
+  registerWorkerDeleteRoute(app, requireAuth, requirePermissionOrAdmin);
 
   // Employer routes (protected with authentication and permissions)
   
@@ -1551,159 +1522,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/variables/phone_validation_config - Get phone validation configuration
-  // Now derived from SMS provider selection, with stored settings for each provider
-  app.get(
-    "/api/variables/phone_validation_config",
-    requireAuth,
-    async (req, res) => {
-      try {
-        const smsConfig = await serviceRegistry.getCategoryConfig("sms");
-        const isTwilioMode = smsConfig.defaultProvider === "twilio";
-
-        // Get stored validation settings from both providers
-        const localSettings = await serviceRegistry.getProviderSettings(
-          "sms",
-          "local",
-        );
-        const twilioSettings = await serviceRegistry.getProviderSettings(
-          "sms",
-          "twilio",
-        );
-        const localValidation = (localSettings as any)?.phoneValidation || {};
-        const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-
-        // Return config in the legacy format for backward compatibility
-        // Fallback settings are stored with twilio provider since they control Twilio failure behavior
-        res.json({
-          mode: isTwilioMode ? "twilio" : "local",
-          local: {
-            enabled: !isTwilioMode,
-            defaultCountry: localValidation.defaultCountry || "US",
-            strictValidation: localValidation.strictValidation ?? true,
-          },
-          twilio: {
-            enabled: isTwilioMode,
-            lookupType: twilioValidation.lookupType || [
-              "line_type_intelligence",
-              "caller_name",
-            ],
-            revalidateAfterDays:
-              twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
-          },
-          fallback: {
-            useLocalOnTwilioFailure:
-              twilioValidation.useLocalOnTwilioFailure ?? true,
-            logValidationAttempts:
-              twilioValidation.logValidationAttempts ?? true,
-          },
-        });
-      } catch (error) {
-        res
-          .status(500)
-          .json({ message: "Failed to fetch phone validation configuration" });
-      }
-    },
-  );
-
-  // PUT /api/variables/phone_validation_config - Update phone validation configuration
-  // Now updates the SMS provider selection and stores validation settings for each provider
-  app.put("/api/variables/phone_validation_config", requireAuth, requireAccess('admin'), async (req, res) => {
-    try {
-      const { mode, local, twilio, fallback } = req.body;
-      
-      if (!mode || (mode !== "local" && mode !== "twilio")) {
-        return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
-      }
-
-      let revalidateAfterDays: number | undefined;
-      if (twilio?.revalidateAfterDays !== undefined && twilio.revalidateAfterDays !== null) {
-        revalidateAfterDays = Number(twilio.revalidateAfterDays);
-        if (!Number.isInteger(revalidateAfterDays) || revalidateAfterDays < 1) {
-          return res.status(400).json({ message: "Revalidation interval must be a whole number of days, at least 1." });
-        }
-      }
-      
-      // Store local-specific settings in the local provider
-      if (local) {
-        const localCurrentSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-        const existingLocalValidation = (localCurrentSettings as any)?.phoneValidation || {};
-        const localValidationSettings = {
-          ...existingLocalValidation,
-          defaultCountry: local.defaultCountry ?? existingLocalValidation.defaultCountry ?? 'US',
-          strictValidation: local.strictValidation ?? existingLocalValidation.strictValidation ?? true
-        };
-        await serviceRegistry.saveProviderSettings("sms", "local", {
-          ...localCurrentSettings,
-          phoneValidation: localValidationSettings,
-        });
-      }
-
-      // Store twilio-specific settings and fallback settings in the twilio provider
-      // Fallback settings belong with twilio since they control Twilio failure behavior
-      const twilioCurrentSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
-      const existingTwilioValidation = (twilioCurrentSettings as any)?.phoneValidation || {};
-      const twilioValidationSettings = {
-        ...existingTwilioValidation,
-        lookupType: twilio?.lookupType ?? existingTwilioValidation.lookupType ?? [
-          "line_type_intelligence",
-          "caller_name",
-        ],
-        useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
-        logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
-        // How long a Twilio answer stays good for. Every path that formats a
-        // phone number runs through the validator, so without an age the app
-        // would pay for a lookup on each of them.
-        revalidateAfterDays: revalidateAfterDays ?? existingTwilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
-      };
-      await serviceRegistry.saveProviderSettings("sms", "twilio", {
-        ...twilioCurrentSettings,
-        phoneValidation: twilioValidationSettings,
-      });
-
-      // Update the SMS provider selection
-      await serviceRegistry.setDefaultProvider("sms", mode);
-
-      // Fetch updated config from both providers for response
-      const localSettings = await serviceRegistry.getProviderSettings("sms", "local");
-      const twilioSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
-      const localValidation = (localSettings as any)?.phoneValidation || {};
-      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-
-      const smsConfig = await serviceRegistry.getCategoryConfig("sms");
-      const isTwilioMode = smsConfig.defaultProvider === "twilio";
-
-      // Return config in the legacy format
-      res.json({
-        mode: isTwilioMode ? "twilio" : "local",
-        local: {
-          enabled: !isTwilioMode,
-          defaultCountry: localValidation.defaultCountry || "US",
-          strictValidation: localValidation.strictValidation ?? true,
-        },
-        twilio: {
-          enabled: isTwilioMode,
-          lookupType: twilioValidation.lookupType || [
-            "line_type_intelligence",
-            "caller_name",
-          ],
-          revalidateAfterDays:
-            twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
-        },
-        fallback: {
-          useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
-          logValidationAttempts: twilioValidation.logValidationAttempts ?? true,
-        },
-      });
-    } catch (error) {
-      console.error("Error updating phone validation config:", error);
-      res.status(500).json({
-        message: "Failed to update phone validation configuration",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
   // POST /api/geocode - Geocode an address
   app.post("/api/geocode", requireAuth, async (req, res) => {
     try {
@@ -1925,6 +1743,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
+  registerWorkerBadgesRoutes(app, requireAuth);
 
   // Register worker relations routes (handles all access control internally)
   registerWorkerRelationsRoutes(app, requireAuth, requireAccess);
@@ -1975,6 +1794,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register T631 Client routes
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
+  registerT631ArrivalRoutes(app);
 
   // Register Freeman Second Shift routes
   registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
@@ -2002,11 +1822,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Public (unauthenticated) worker schedule page — still gated on the `edls`
   // component like every other EDLS route.
   registerEdlsPublicScheduleRoutes(app);
-
-  // Register the single web service dispatcher (API access via client
-  // credentials); every configuration of every web-service plugin is served
-  // from here.
-  registerWebServiceDispatcher(app);
 
   // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);

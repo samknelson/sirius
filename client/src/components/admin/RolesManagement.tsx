@@ -198,8 +198,13 @@ export default function RolesManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">System Roles</h3>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold">System Roles</h2>
+          <p className="mt-1 text-muted-foreground">
+            Create and manage roles and assign permissions
+          </p>
+        </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-create-role">

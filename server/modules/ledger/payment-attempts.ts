@@ -19,13 +19,14 @@ import { z } from "zod";
 import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 import { enforceFloodLimit, FloodError } from "../../flood/service";
 import { CHECKOUT_FLOOD_EVENT } from "../../flood/events";
-import { PaymentCancellationError, PaymentInitiationRejected } from "../../plugins/ledger/payment-gateway/types";
+import { PaymentCancellationError, PaymentInitiationRejected } from "../../plugins/wc-vendors/payment-types";
 import { checkoutPaymentTypes, initiatePayment } from "./payment-initiation";
 import { ensureCustomer } from "./payment-methods";
 import { processPaymentEvidence, evidenceFromPayment, settlementError, logSettlementFailure, SettlementRefusal } from "./payment-settlement";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
 import { adminPaymentGatewayFingerprint, assertAdminPaymentGateway, assertAdminAssistedPaymentProvenance } from "./admin-assisted-payment";
+import { sendIfMaintenanceRefusal } from "../../services/maintenance-flag";
 
 const options = createUnifiedOptionsStorage();
 const raw = (req: Request) => (req as Request & { rawBody?: Buffer }).rawBody;
@@ -47,7 +48,7 @@ async function assertGatewayReadyForCharge(
   if (component && (!checker || !(await checker(component)))) {
     throw new PaymentAttemptConflictError(`Component not enabled: ${component}`);
   }
-  if (!resolved.plugin.constructWebhookEvent || !resolved.context.webhookSecret) {
+  if (!resolved.plugin.verifyWebhook || !resolved.context.webhookSecret) {
     throw new PaymentAttemptConflictError(
       "This payment gateway is not ready for online payments because its signed webhook is not configured",
     );
@@ -481,7 +482,10 @@ export function registerLedgerPaymentAttemptRoutes(
         } catch { /* ineligible accounts are not exposed */ }
       }
       return res.json(result);
-    } catch (e) { return error(res, 500, e instanceof Error ? e.message : "Failed to load payment accounts"); }
+    } catch (e) {
+      if (sendIfMaintenanceRefusal(res, e)) return;
+      return error(res, 500, e instanceof Error ? e.message : "Failed to load payment accounts");
+    }
   });
   app.get("/api/ledger/checkout/:entityType/:entityId/:eaId", requireAuth, async (req, res) => {
     const userId = await authorizeCheckout(req, res); if (!userId) return;
@@ -497,8 +501,8 @@ export function registerLedgerPaymentAttemptRoutes(
       let methodPermission = true;
       try { await assertOnlinePaymentAuthority(req, req.params.entityType as "worker" | "employer", req.params.entityId, "methods"); }
       catch (e) { if (e instanceof OnlinePaymentAuthorityError) methodPermission = false; else throw e; }
-      const reusable = !!loaded.resolved.plugin.attachMethod;
       const paymentTypes = checkoutPaymentTypes(loaded.resolved, loaded.settings.paymentTypes ?? ["card", "us_bank_account"]);
+      const reusable = paymentTypes.some(type => loaded.resolved.plugin.reusableCheckoutPaymentTypes?.includes(type));
       return res.json({
         entityType: req.params.entityType, entityId: req.params.entityId, eaId: loaded.ea.id,
         account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode, gatewayConfigId: loaded.account.gatewayConfigId },
@@ -513,12 +517,16 @@ export function registerLedgerPaymentAttemptRoutes(
         },
         paymentTypes, payComponentId: loaded.resolved.plugin.payComponentId ?? null,
         reusableMethodsSupported: reusable,
+        reusablePaymentTypes: paymentTypes.filter(type => loaded.resolved.plugin.reusableCheckoutPaymentTypes?.includes(type)),
         settings: loaded.settings,
         authorization: authorization.success
           ? authorization.data[req.params.entityType === "worker" ? "consumer" : "business"]
           : null,
       });
-    } catch (e) { return error(res, e instanceof PaymentAttemptConflictError ? 409 : 500, e instanceof Error ? e.message : "Checkout unavailable"); }
+    } catch (e) {
+      if (sendIfMaintenanceRefusal(res, e)) return;
+      return error(res, e instanceof PaymentAttemptConflictError ? 409 : 500, e instanceof Error ? e.message : "Checkout unavailable");
+    }
   });
   const adminPreview = (adminAssisted: boolean) => async (req: Request, res: Response) => {
     const entityType = checkoutEntity.safeParse(req.params.entityType);
@@ -549,6 +557,7 @@ export function registerLedgerPaymentAttemptRoutes(
           : { isAdminTest: true, testMode: true }),
       });
     } catch (e) {
+      if (sendIfMaintenanceRefusal(res, e)) return;
       return error(res, e instanceof OnlinePaymentAuthorityError ? 403 : e instanceof PaymentAttemptConflictError ? 409 : 500,
         e instanceof OnlinePaymentAuthorityError || e instanceof PaymentAttemptConflictError ? e.message : "Administrator checkout could not be loaded. Retry or ask support to check this account's payment configuration.");
     }
@@ -607,7 +616,9 @@ export function registerLedgerPaymentAttemptRoutes(
           if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message);
           throw e;
         }
-        if (!loaded.resolved.plugin.attachMethod) return error(res, 409, "Payment gateway does not support reusable methods");
+        if (!loaded.resolved.plugin.reusableCheckoutPaymentTypes?.includes(body.paymentMethodType ?? "")) {
+          return error(res, 409, "Payment gateway does not support saving this payment type");
+        }
       }
       const existing = await storage.ledger.paymentAttempts.getByIdempotencyKey(body.idempotencyKey);
       if (existing) {
@@ -654,7 +665,7 @@ export function registerLedgerPaymentAttemptRoutes(
           const retryCustomer = retryMethodRef
             ? (await storage.ledger.gatewayCustomers.get(existing.entityType, existing.entityId, existing.gatewayConfigId))?.customerRef
             : existing.saveMethod
-              ? await ensureCustomer(existing.entityType, existing.entityId, loaded.resolved)
+              ? await ensureCustomer(existing.entityType, existing.entityId, loaded.resolved.description)
               : undefined;
           if (retryMethodRef && !retryCustomer) return error(res, 409, "Payment customer is not configured");
           const retry = await initiatePayment(existing, loaded.resolved, {
@@ -718,7 +729,7 @@ export function registerLedgerPaymentAttemptRoutes(
       // Validate credentials/types before any customer-side provider call.
       // An opted-in new method has no customer yet; session creation below
       // still requires the real customer after ensureCustomer completes.
-      loaded.resolved.plugin.validatePaymentSession?.(loaded.resolved.context, preflight, { customerWillBeCreated: body.saveMethod });
+      await loaded.resolved.plugin.validatePaymentSession?.(loaded.resolved.context, preflight, { customerWillBeCreated: body.saveMethod });
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
         await storage.ledger.paymentAttempts.expireReservations(loaded.ea.id);
@@ -737,7 +748,7 @@ export function registerLedgerPaymentAttemptRoutes(
         if (sessionTypes.some(type => !currentTypes.includes(type))) {
           throw new PaymentAttemptConflictError("The selected payment type is no longer enabled. Refresh checkout and ask an administrator to check Gateway Payment Types.");
         }
-        current.resolved.plugin.validatePaymentSession?.(current.resolved.context, preflight, { customerWillBeCreated: body.saveMethod });
+        await current.resolved.plugin.validatePaymentSession?.(current.resolved.context, preflight, { customerWillBeCreated: body.saveMethod });
         // Use the configuration re-read at the authoritative boundary for
         // creation too, not the earlier preview-time snapshot.
         loaded.resolved = current.resolved;
@@ -791,7 +802,7 @@ export function registerLedgerPaymentAttemptRoutes(
         return error(res, 409, "Idempotency key was already used; retry this checkout");
       }
       const customerRef = savedCustomer?.customerRef ??
-        (body.saveMethod ? await ensureCustomer(req.params.entityType, req.params.entityId, loaded.resolved) : undefined);
+        (body.saveMethod ? await ensureCustomer(req.params.entityType, req.params.entityId, loaded.resolved.description) : undefined);
        const session = await initiatePayment(attempt, loaded.resolved, {
          sessionId: attempt.id, amountMinor: cents, currency: loaded.account.currencyCode,
          customerRef, savedMethodRef: savedMethod?.providerMethodRef, saveMethod: body.saveMethod,
@@ -802,6 +813,7 @@ export function registerLedgerPaymentAttemptRoutes(
       const updated = await storage.ledger.paymentAttempts.updateStatus(attempt.id, session.status, { providerIntentRef: session.providerRef });
       return res.status(201).json(safeAttempt(updated ?? attempt, { clientSecret: session.clientSecret, publicConfig: safePublicConfig(session.publicConfig), providerRef: session.providerRef }));
     } catch (e) {
+      if (sendIfMaintenanceRefusal(res, e)) return;
       if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message);
       if (adminAssisted && e instanceof z.ZodError) return error(res, 400, "Review the payment selection and accept the administrator authorization before continuing.");
       return error(res, e instanceof z.ZodError ? 400 : e instanceof PaymentAttemptConflictError || e instanceof PaymentInitiationRejected ? 409 : 500,
@@ -879,6 +891,7 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       return res.json(await receipt(await storage.ledger.paymentAttempts.get(attempt.id)));
     } catch (e) {
+      if (sendIfMaintenanceRefusal(res, e)) return;
       if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message);
       if (e instanceof PaymentCancellationError) return error(res, 409, "Provider could not cancel this payment. Check its status or contact support");
       return error(res, 502, adminAssisted
@@ -984,8 +997,9 @@ export function registerLedgerPaymentAttemptRoutes(
         .filter((entry): entry is [string, string] => typeof entry[1] === "string"));
       let event;
       try {
-        event = resolved.plugin.verifyWebhook(resolved.context, body, headers);
-      } catch {
+        event = await resolved.plugin.verifyWebhook(resolved.context, body, headers);
+      } catch (cause) {
+        if (sendIfMaintenanceRefusal(res, cause)) return;
         return error(res, 400, "Invalid webhook signature or payload");
       }
       const object = (event.payload ?? {}) as Record<string, unknown>;
@@ -1049,6 +1063,7 @@ export function registerLedgerPaymentAttemptRoutes(
         );
         await logSettlementFailure(null, settlementError(e));
       }
+      if (sendIfMaintenanceRefusal(res, e)) return;
       return error(res, receivedEventId ? 500 : 400, receivedEventId ? "Webhook processing failed" : "Invalid webhook");
     }
   });

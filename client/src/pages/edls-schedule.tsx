@@ -1,22 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "wouter";
-import { useMemo, useState } from "react";
+import { Link, useParams } from "wouter";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldAlert, ThumbsDown, ThumbsUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
+import { useAuth } from "@/contexts/AuthContext";
+import { assignmentUpdateAge } from "@/lib/assignment-update-age";
+import { isValidTimeZone } from "@shared/utils/timezone";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;
 
-interface ScheduleAssignment {
+type ReviewScheduleAssignment = {
   assignmentId: string;
+  ymd: string;
+  sheetStatus: "draft" | "request";
+};
+
+interface ConfirmedScheduleAssignment {
+  assignmentId: string;
+  generationId: string;
   ymd: string;
   sheetId: string;
   sheetTitle: string;
-  sheetStatus: string;
+  sheetStatus: "lock" | "reserved";
+  revision: number | null;
+  updatedAt: string | null;
   crewId: string;
   crewTitle: string;
   startTime: string | null;
@@ -28,6 +41,7 @@ interface ScheduleAssignment {
   employer: { id: string; name: string } | null;
   showStatus: { id: string; name: string } | null;
   task: { id: string; name: string } | null;
+  classification?: { name: string; code: string | null } | null;
   /**
    * This worker's own answer: null not answered yet, true accepted, false
    * declined. Optional so an older payload without the field reads as
@@ -37,18 +51,59 @@ interface ScheduleAssignment {
   data: Record<string, unknown> | null;
 }
 
+type ScheduleAssignment = ReviewScheduleAssignment | ConfirmedScheduleAssignment;
+
 interface PublicWorkerSchedule {
   workerName: string;
+  readAt: string;
+  siteTimeZone: string;
   startYmd: string;
   endYmd: string;
   assignments: ScheduleAssignment[];
+  workerBackPath?: string;
 }
 
-/** "Sunday, August 23, 2026" — full weekday, matching the legacy page's headings. */
+/** Keep the formatted clock and its IANA label in the same, server-reported zone. */
+export function formatScheduleFreshness(readAt: string, siteTimeZone: string): string | null {
+  const instant = new Date(readAt);
+  if (!Number.isFinite(instant.getTime()) || !isValidTimeZone(siteTimeZone)) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: siteTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
+  const [year, month, day, hour, minute, period] = [
+    part("year"), part("month"), part("day"), part("hour"), part("minute"), part("dayPeriod"),
+  ];
+  if (!year || !month || !day || !hour || !minute || !period) return null;
+  return `Current as of ${year}-${month}-${day} ${hour}:${minute} ${period} ${siteTimeZone}`;
+}
+
+export function ScheduleHeading({ schedule }: { schedule: PublicWorkerSchedule }) {
+  const freshness = formatScheduleFreshness(schedule.readAt, schedule.siteTimeZone);
+  return (
+    <div>
+      <h1 className="text-2xl font-bold" data-testid="text-schedule-title">
+        Upcoming Schedule for {schedule.workerName}
+      </h1>
+      {freshness && (
+        <p className="text-sm text-muted-foreground" data-testid="text-schedule-freshness">
+          {freshness}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** All card dates use the same yearless weekday and month/day format. */
 function formatDayHeading(ymd: Ymd): string {
   return ymdToLocalDate(ymd).toLocaleDateString("en-US", {
     weekday: "long",
-    year: "numeric",
     month: "long",
     day: "numeric",
   });
@@ -68,7 +123,7 @@ function formatTime(time: string | null | undefined): string {
  * The time this worker is due: the per-assignment override when one was
  * entered, otherwise the crew's start time.
  */
-function effectiveStartTime(assignment: ScheduleAssignment): string {
+function effectiveStartTime(assignment: ConfirmedScheduleAssignment): string {
   const override = assignment.data && typeof (assignment.data as { startTime?: unknown }).startTime === "string"
     ? (assignment.data as { startTime: string }).startTime
     : null;
@@ -88,11 +143,8 @@ function Field({ label, value, testId }: { label: string; value: string; testId:
 /**
  * The worker's answer to one assignment.
  *
- * While unanswered it offers accept and decline, with the finality said up
- * front — the choice cannot be changed from this page, and a worker reading
- * a text on their phone should know that before they tap, not in a dialog
- * afterwards. Once answered the buttons are gone for good and the recorded
- * answer stands in their place.
+ * While unanswered it offers accept and decline. Once answered the buttons
+ * are gone for good and the recorded answer stands in their place.
  *
  * A refused answer (a stale tab, a second tap, an assignment edited out from
  * under the page) says so plainly and re-reads the schedule, so the page
@@ -103,7 +155,7 @@ function AssignmentAnswer({
   assignment,
 }: {
   scheduleId: string;
-  assignment: ScheduleAssignment;
+  assignment: ConfirmedScheduleAssignment;
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +165,7 @@ function AssignmentAnswer({
       apiRequest(
         "POST",
         `/api/public/edls/schedule/${scheduleId}/assignments/${assignment.assignmentId}/answer`,
-        { accepted },
+        { accepted, generationId: assignment.generationId },
       ),
     onSuccess: () => {
       setError(null);
@@ -143,10 +195,6 @@ function AssignmentAnswer({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted-foreground" data-testid={`text-answer-finality-${assignment.assignmentId}`}>
-        Accept or decline this assignment. Your answer is final — once you choose, you cannot change
-        it here. Call your dispatcher if something changes.
-      </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button
           type="button"
@@ -183,34 +231,61 @@ function AssignmentAnswer({
   );
 }
 
-function AssignmentDetails({
+export function AssignmentDetails({
   assignment,
   scheduleId,
+  now,
 }: {
   assignment: ScheduleAssignment;
   scheduleId: string;
+  now: number;
 }) {
+  if (assignment.sheetStatus === "draft" || assignment.sheetStatus === "request") {
+    return (
+      <div
+        className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+        data-testid={`assignment-${assignment.assignmentId}`}
+      >
+        <p data-testid={`text-requested-review-${assignment.assignmentId}`}>
+          The assignment for this day is being reviewed. This page will be updated when the assignment is final.
+        </p>
+      </div>
+    );
+  }
+
+  if (assignment.sheetStatus !== "lock" && assignment.sheetStatus !== "reserved") return null;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid={`assignment-${assignment.assignmentId}`}>
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide">Job Information</h3>
-          <Field label="Employer" value={assignment.employer?.name ?? ""} testId="text-employer" />
-          <Field label="Event" value={assignment.sheetTitle ?? ""} testId="text-event" />
+          <Field label="Event" value={assignment.jobGroup?.name ?? ""} testId="text-event" />
           <Field label="Event Status" value={assignment.showStatus?.name ?? ""} testId="text-event-status" />
           <Field label="Department" value={assignment.department?.name ?? ""} testId="text-department" />
-          <Field label="Job #" value={assignment.jobGroup?.name ?? ""} testId="text-job-number" />
+          <Field label="Job #" value={assignment.sheetTitle ?? ""} testId="text-job-number" />
           <Field label="Facility" value={assignment.facility?.name ?? ""} testId="text-facility" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide">Crew</h3>
           <Field label="Crew" value={assignment.crewTitle ?? ""} testId="text-crew" />
           <Field label="Task" value={assignment.task?.name ?? ""} testId="text-task" />
+          {assignment.classification && (
+            <Field
+              label="Classification"
+              value={assignment.classification.code || assignment.classification.name}
+              testId="text-classification"
+            />
+          )}
           <Field label="Start Time" value={effectiveStartTime(assignment)} testId="text-start-time" />
           <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
         </div>
       </div>
       <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />
+      <p
+        className="text-right text-xs text-muted-foreground"
+        data-testid={`text-updated-${assignment.assignmentId}`}
+      >
+        {assignmentUpdateAge(assignment.updatedAt, now, assignment.revision)}
+      </p>
     </div>
   );
 }
@@ -235,11 +310,82 @@ function AccessDenied() {
   );
 }
 
+interface ScheduleDay {
+  ymd: string;
+  relative?: "Today" | "Tomorrow";
+  assignments: ScheduleAssignment[];
+}
+
+export function ScheduleDayCard({ day, scheduleId, now }: { day: ScheduleDay; scheduleId: string; now: number }) {
+  // Cleared rows have no sheet/crew; never render their former assignment.
+  // Also refuse unexpected statuses rather than exposing full details.
+  const visibleAssignments = day.assignments.filter((assignment) => {
+    // Review responses intentionally omit sheet/crew ids. If they are present
+    // but null (a cleared row), this is not an active assignment.
+    if ("sheetId" in assignment) return Boolean(assignment.sheetId && assignment.crewId);
+    return assignment.sheetStatus === "draft" || assignment.sheetStatus === "request";
+  });
+
+  return (
+    <Card
+      className={day.relative ? "border-2 border-blue-500 dark:border-blue-400" : undefined}
+      data-testid={`card-day-${day.ymd}`}
+    >
+      <CardHeader className={day.relative ? "flex-row flex-wrap items-start gap-2 space-y-0" : undefined}>
+        <CardTitle
+          className={day.relative === "Today" ? "text-xl" : "text-lg"}
+          data-testid={`text-day-heading-${day.ymd}`}
+        >
+          {formatDayHeading(day.ymd)}
+        </CardTitle>
+        {day.relative && (
+          <Badge
+            variant="outline"
+            className="ml-auto shrink-0 border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-200"
+            data-testid={`badge-day-${day.ymd}`}
+          >
+            {day.relative}'s Schedule
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {visibleAssignments.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid={`text-no-assignment-${day.ymd}`}>
+            No assignment
+          </p>
+        ) : (
+          visibleAssignments.map((assignment) => (
+            <AssignmentDetails
+              key={assignment.assignmentId}
+              assignment={assignment}
+              scheduleId={scheduleId}
+              now={now}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function EdlsSchedulePage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+  const scheduleUrl = `/api/public/edls/schedule/${id}`;
 
   const { data, isLoading, isError } = useQuery<PublicWorkerSchedule>({
-    queryKey: [`/api/public/edls/schedule/${id}`],
+    queryKey: [scheduleUrl, { viewer: user?.id ?? "public" }],
+    queryFn: () => apiRequest("GET", scheduleUrl),
     enabled: !!id,
   });
 
@@ -255,7 +401,9 @@ export default function EdlsSchedulePage() {
     }
     return Array.from({ length: SCHEDULE_DAYS }, (_, offset) => {
       const ymd = addDaysYmd(data.startYmd, offset);
-      return { ymd, assignments: byYmd.get(ymd) ?? [] };
+      const relative: "Today" | "Tomorrow" | undefined =
+        offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : undefined;
+      return { ymd, relative, assignments: byYmd.get(ymd) ?? [] };
     });
   }, [data]);
 
@@ -275,33 +423,17 @@ export default function EdlsSchedulePage() {
 
   return (
     <div className="container mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-2xl font-bold" data-testid="text-schedule-title">
-        Upcoming Schedule for {data.workerName}
-      </h1>
+      <ScheduleHeading schedule={data} />
+      {data.workerBackPath && (
+        <Link href={data.workerBackPath}>
+          <Button type="button" variant="outline" data-testid="button-back-to-worker">
+            Back to worker
+          </Button>
+        </Link>
+      )}
 
       {days.map((day) => (
-        <Card key={day.ymd} data-testid={`card-day-${day.ymd}`}>
-          <CardHeader>
-            <CardTitle className="text-lg" data-testid={`text-day-heading-${day.ymd}`}>
-              {formatDayHeading(day.ymd)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {day.assignments.length === 0 ? (
-              <p className="text-sm text-muted-foreground" data-testid={`text-no-assignment-${day.ymd}`}>
-                There is no assignment for {formatDayHeading(day.ymd)}
-              </p>
-            ) : (
-              day.assignments.map((assignment) => (
-                <AssignmentDetails
-                  key={assignment.assignmentId}
-                  assignment={assignment}
-                  scheduleId={id}
-                />
-              ))
-            )}
-          </CardContent>
-        </Card>
+        <ScheduleDayCard key={day.ymd} day={day} scheduleId={id} now={now} />
       ))}
     </div>
   );

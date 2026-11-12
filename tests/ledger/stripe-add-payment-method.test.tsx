@@ -17,7 +17,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
 vi.mock("@stripe/stripe-js", () => ({ loadStripe: vi.fn(() => Promise.resolve({})) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast }) }));
 
-import { StripeAddPaymentMethod } from "@/plugins/payment-gateway/stripe/StripeAddPaymentMethod";
+import { StripeAddPaymentMethod } from "@/plugins/wc-vendors/stripe/StripeAddPaymentMethod";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

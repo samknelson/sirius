@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { hasPaymentGatewayPayComponent, resolvePaymentGatewayPayComponent } from "@/plugins/payment-gateway/registry";
+import { hasPaymentGatewayPayComponent, resolvePaymentGatewayPayComponent } from "@/plugins/wc-vendors/registry";
 import { calculateCheckoutSelection, type CheckoutQuote, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +25,7 @@ type Checkout = {
   entityType: "worker" | "employer"; entityId: string; eaId: string;
   account: { name: string; currency: string; gatewayConfigId: string };
   balance: string; available: string; invoices: Statement[]; paymentTypes: string[];
-  payComponentId: string | null; reusableMethodsSupported: boolean; settings: { allowPartial: boolean; minAmount: number };
+  payComponentId: string | null; reusableMethodsSupported: boolean; reusablePaymentTypes?: string[]; settings: { allowPartial: boolean; minAmount: number };
   authorization: { version: string; text: string } | null; readiness?: Readiness;
   selectionInput: CheckoutSelectionInput; quote: CheckoutQuote;
   pendingCheckouts?: { id: string; amount: string; currency: string; status: string }[];
@@ -110,10 +110,10 @@ export default function SharedCheckoutPage() {
     ? data?.isAdminAssisted === true && data.adminConfirmation?.version === ADMIN_PAYMENT_CONFIRMATION.version && data.adminConfirmation?.text === ADMIN_PAYMENT_CONFIRMATION.text
     : isAdminTest ? data?.isAdminTest === true && data.testMode === true
     : data?.readiness ? data.readiness.paymentAuthorization === "ready" : !!data?.authorization;
-  const canManageMethods = data?.readiness?.methodPermission === "allowed" && data.reusableMethodsSupported;
+  const canManageMethods = data?.readiness?.methodPermission === "allowed";
   const canSaveMethod = !isAdminCheckout && !!data && !method && !!selectedNewType && data.paymentTypes.includes(selectedNewType) &&
     data.readiness?.saveMethod === "ready" && canManageMethods &&
-    ["card", "us_bank_account"].includes(selectedNewType);
+    data.reusableMethodsSupported && data.reusablePaymentTypes?.includes(selectedNewType);
   const managementUrl = data?.entityType === "worker" ? `/workers/${data.entityId}/ledger/payment-methods` : `/employers/${data?.entityId}/ledger/payment_methods`;
   const Pay = data?.payComponentId && hasPaymentGatewayPayComponent(data.payComponentId) ? resolvePaymentGatewayPayComponent(data.payComponentId) : null;
   const frozen = !!session || submitting.current;

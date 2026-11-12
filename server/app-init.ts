@@ -1,14 +1,13 @@
 import express, { type Request, Response, NextFunction, type Express } from "express";
 import type { Server } from "http";
-import { registerRoutes } from "./routes";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
-import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { initializeSessionHistoryListener } from "./services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
@@ -20,18 +19,22 @@ import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset"
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { initializeWebSocket } from "./services/websocket";
-import { getSession } from "./auth";
+import { registerWebServiceDispatcher } from "./modules/webservices";
+import type { ResolvedServiceRoles } from "./services/service-roles";
+import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
 import { registerWmbChargePluginListener, registerCobraElectionChargeListener } from "./plugins/ledger/charge";
-import "./plugins/ledger/payment-gateway";
+import "./plugins/wc-vendors";
 import "./plugins/trust/eligibility";
-import "./services/comm/providers";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
-import { initializeDashboardPluginSystem } from "./plugins/dashboard";
+import {
+  reconcileDashboardPluginSystem,
+  registerDashboardPluginSystem,
+} from "./plugins/dashboard";
 import { initializeQuicksearchPluginSystem } from "./plugins/quicksearch";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
@@ -61,6 +64,7 @@ import {
   getComponentCacheRevision,
   isComponentEnabledSync,
 } from "./services/component-cache";
+import { runOrDeferStartupOperation } from "./services/startup-deferrals";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -91,7 +95,7 @@ export function redactSensitiveData(data: any): any {
  * (with response redaction). Registered before the heavy init sequence so
  * requests that arrive during startup are parsed/logged consistently.
  */
-function installBaseMiddleware(app: Express): void {
+function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void {
   // Fence before body parsing so a wet sync rejects large mutating requests
   // without spending time or memory decoding payloads that cannot be handled.
   app.use(createS1WriteFenceMiddleware());
@@ -100,7 +104,9 @@ function installBaseMiddleware(app: Express): void {
   // body must not be answered "your request is bad" when the real answer is
   // "the site is down". Scoped to the web service mount; the site itself stays
   // browsable during maintenance.
-  installWebServiceMaintenanceGate(app);
+  if (roles.has("api-ws") || roles.has("api-user")) {
+    installWebServiceMaintenanceGate(app);
+  }
 
   app.use(express.json({
     limit: '50mb',
@@ -137,7 +143,17 @@ function installBaseMiddleware(app: Express): void {
           ip: req.ip,
         };
 
-        if (capturedJsonResponse) {
+        // Manual WC runs intentionally return the complete WcResult to the
+        // administrator.  Do not copy that result into the generic HTTP log:
+        // provider responses can contain arbitrary payloads, and a request's
+        // arguments may contain identifiers or other sensitive input.  Keep
+        // the normal request metadata above (method, path, status, timing and
+        // IP) so the endpoint remains observable without persisting its body.
+        const isWcManualRun =
+          /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
+        // Oneoff preflight responses carry a single-use confirmation credential.
+        // Neither that credential nor plugin-produced run data belongs in logs.
+        if (capturedJsonResponse && !isWcManualRun && !path.startsWith("/api/oneoff/")) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {
@@ -185,7 +201,11 @@ function installBaseMiddleware(app: Express): void {
  * middleware. The frontend-serving step (Vite in dev vs static in prod) and
  * the "ready" signal are intentionally left to each entry point.
  */
-export async function bootstrapApp(app: Express, server: Server): Promise<void> {
+export async function bootstrapApp(
+  app: Express,
+  server: Server,
+  roles: ResolvedServiceRoles,
+): Promise<void> {
   // FIRST, before anything reads a clock or writes a row. Every naive
   // timestamp column stores a wall-clock reading in this process's zone, so
   // the zone has to be settled before the schema bring-up, the first
@@ -226,10 +246,14 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     });
   }
 
-  installBaseMiddleware(app);
+  installBaseMiddleware(app, roles);
   // Express 4 does not await async route handlers. Track their returned
   // promises so an aborted mutation retains its fence until handler work ends.
   installS1WriteFenceHandlerTracking(app);
+  logger.info(`Service roles resolved: ${roles.ids.join(", ")}`, {
+    source: "startup",
+    serviceRoles: roles.ids,
+  });
 
   // Initialize the permission system
   initializePermissions();
@@ -302,6 +326,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // do, and it has nothing to say about the schema.
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
+  initializeSessionHistoryListener(storage.sessionHistory);
 
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that
@@ -311,6 +336,13 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { armMaintenanceEnforcement } = await import("./services/maintenance-mode");
     await armMaintenanceEnforcement();
   }
+
+  // This loads or creates a config row, so a database already in maintenance
+  // must defer it. Schema bring-up remains ahead of maintenance enforcement by
+  // design; all application-data reconciliation begins behind this boundary.
+  await runOrDeferStartupOperation("address-validation-config", async () => {
+    await addressValidationService.getConfig();
+  });
 
   // Load DB-backed environment-variable overrides and install the sync
   // fallback into the env registry (real env values always win). Must run
@@ -384,12 +416,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
       "./plugins/worker-bans"
     );
     initializeWorkerBanSystem();
-    await seedWorkerBanTypes();
+    await runOrDeferStartupOperation("worker-ban-seed-and-legacy-migration", async () => {
+      await seedWorkerBanTypes();
+    });
   }
   logger.info("Worker-ban system initialized", { source: "startup" });
 
-  // Initialize dashboard plugin system (registration + legacy migrations)
-  await initializeDashboardPluginSystem();
+  // Register in memory in every mode; database migrations are deferrable.
+  registerDashboardPluginSystem();
+  await runOrDeferStartupOperation("dashboard-config-reconciliation", async () => {
+    await reconcileDashboardPluginSystem();
+  });
   logger.info("Dashboard plugin system initialized", { source: "startup" });
 
   // Initialize client-injection plugin system (registration + adapter)
@@ -410,7 +447,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // enabled (Task #397). Idempotent: existing rows are left untouched (admin
   // edits preserved), only missing rows are created and disabled-but-present
   // rows are re-activated. Mirrors the PUT-handler reconcile for the boot path.
-  {
+  await runOrDeferStartupOperation("component-plugin-config-reconciliation", async () => {
     const { getAllComponents } = await import("../shared/components");
     const { reconcileComponentPluginConfigs } = await import(
       "./services/component-lifecycle"
@@ -428,7 +465,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
         }
       }
     });
-  }
+  });
   logger.info("Component-owned plugin configs reconciled", { source: "startup" });
 
   // Register charge + trust eligibility kinds with the unified
@@ -437,19 +474,26 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   const { registerChargePluginKind } = await import("./plugins/ledger/charge");
   const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
   const {
-    registerPaymentGatewayPluginKind,
-    backfillPaymentGatewaySubsidiaries,
-    backfillPaymentTypesFromGlobal,
-  } = await import("./plugins/ledger/payment-gateway");
+    registerWcVendorPluginKind,
+    backfillWcVendorSubsidiaries,
+    migrateLegacyCivicWcVendorConfigs,
+    migrateLegacyBtuScrapeWcVendorConfig,
+    migrateWcVendorOperationAssignments,
+  } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
-  registerPaymentGatewayPluginKind();
+  registerWcVendorPluginKind();
   initializeWebServiceSystem();
-  // Every payment-gateway config needs a subsidiary row (the generic search
-  // inner-joins it). Backfill pre-existing configs so they don't vanish.
-  await backfillPaymentGatewaySubsidiaries();
-  logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
+  await runOrDeferStartupOperation("webclient-vendor-config-reconciliation", async () => {
+    await migrateLegacyCivicWcVendorConfigs();
+    await migrateLegacyBtuScrapeWcVendorConfig();
+    await migrateWcVendorOperationAssignments();
+    // Every wc-vendors config needs a subsidiary row (the generic search
+    // inner-joins it). Backfill pre-existing configs so they don't vanish.
+    await backfillWcVendorSubsidiaries();
+  });
+  logger.info("Webclient-vendor configurations initialized", { source: "startup" });
 
   // Wire the shared plugin-config cache's invalidation subscription before any
   // config writes matter. The cache is generic (per-kind) and lazy; this only
@@ -475,17 +519,15 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { migrateNotifierTemplateTokens } = await import(
       "./plugins/event-notifier/template-token-migrations"
     );
-    await backfillEventNotifierSubsidiaries();
-    // Custom templates are stored verbatim and rendered verbatim, so a
-    // renamed token root has to be rewritten in the stored data too.
-    await migrateNotifierTemplateTokens();
+    await runOrDeferStartupOperation("event-notifier-config-reconciliation", async () => {
+      await backfillEventNotifierSubsidiaries();
+      // Custom templates are stored verbatim and rendered verbatim, so a
+      // renamed token root has to be rewritten in the stored data too.
+      await migrateNotifierTemplateTokens();
+    });
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
-  // Migrate the legacy global `stripe_payment_methods` variable onto each
-  // gateway config's own `data.paymentTypes`, then retire the global.
-  await backfillPaymentTypesFromGlobal();
-  logger.info("Payment types migrated off legacy global variable", { source: "startup" });
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
@@ -528,6 +570,16 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Register cron plugins (kind + adapter + self-registering plugin imports)
   initializeCronPluginSystem();
   logger.info("Cron plugins registered", { source: "startup" });
+
+  // Oneoff registrations are available before singleton config seeding. Only
+  // stale, heartbeat-less executions are marked interrupted; nothing resumes.
+  const { initializeOneoffPluginSystem } = await import("./plugins/system/oneoff");
+  initializeOneoffPluginSystem();
+  const { interruptStaleOneoffRuns } = await import("./services/oneoff-runner");
+  await runOrDeferStartupOperation("oneoff-stale-run-reconciliation", async () => {
+    await interruptStaleOneoffRuns();
+  });
+  logger.info("Oneoff plugins registered", { source: "startup" });
 
   // Register denorm plugins (kind + adapter + self-registering plugin imports)
   initializeDenormPluginSystem();
@@ -574,7 +626,9 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   logger.info("Flood configs loaded from variables", { source: "startup" });
 
   // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
-  await bootstrapSingletonPluginConfigs();
+  await runOrDeferStartupOperation("singleton-plugin-config-bootstrap", async () => {
+    await bootstrapSingletonPluginConfigs();
+  });
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
 
   // Guarantee the admin account described by LOCAL_AUTH_EMAIL /
@@ -583,21 +637,38 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // before auth setup so the credential is usable on the very first login.
   {
     const { ensureLocalAdminAccount } = await import("./auth/local-seed");
-    await ensureLocalAdminAccount();
+    await runOrDeferStartupOperation("local-admin-account-reconciliation", async () => {
+      const report = await ensureLocalAdminAccount();
+      if (report.failure) {
+        throw new Error(`Local admin account reconciliation failed: ${report.failure}`);
+      }
+    });
   }
 
-  // Setup multi-provider auth
-  await setupAuth(app);
-  logger.info("Authentication system initialized", { source: "startup" });
+  // Browser sessions and the application API belong to api-user. Web-service
+  // credentials use their own authentication middleware and do not need this.
+  if (roles.has("api-user")) {
+    const { setupAuth } = await import("./auth");
+    await setupAuth(app);
+    logger.info("Authentication system initialized", { source: "startup" });
 
-  // Setup request context middleware (captures user and IP for logging)
+    registerEntityAccessModule(app, storage);
+    logger.info("Entity access module registered", { source: "startup" });
+  }
+
+  // Both backend roles retain request context for audit/logging behavior.
   app.use(captureRequestContext);
 
-  // Register entity access module
-  registerEntityAccessModule(app, storage);
-  logger.info("Entity access module registered", { source: "startup" });
-
-  await registerRoutes(app, server);
+  if (roles.has("api-user")) {
+    const { registerRoutes } = await import("./routes");
+    await registerRoutes(app, server);
+  }
+  // api-user also needs the dispatcher for its local-only admin test. The
+  // ownership guard lets only loopback requests with this process's private
+  // test token reach it when api-ws is not an assigned traffic role.
+  if (roles.has("api-ws") || roles.has("api-user")) {
+    registerWebServiceDispatcher(app);
+  }
 
   // Startup is over, so the set of declared catalogs is final. Anything
   // registering after this point is a module that failed to load in the
@@ -605,29 +676,24 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   closeCatalogRegistration();
   logger.info("Catalog registration closed", { source: "startup" });
 
-  // Initialize WebSocket server for real-time notifications
-  const sessionMiddleware = getSession();
-  initializeWebSocket(server, sessionMiddleware);
-  logger.info("WebSocket server initialized", { source: "startup" });
+  // User API owns browser socket sessions and application background work.
+  // api-ws-only containers never initialize either singleton.
+  if (roles.has("api-user")) {
+    const { getSession } = await import("./auth");
+    const sessionMiddleware = getSession();
+    initializeWebSocket(server, sessionMiddleware);
+    logger.info("WebSocket server initialized", { source: "startup" });
 
-  // Start cron scheduler after routes are registered
-  try {
-    await cronScheduler.start();
-    const { getCronExecutionPolicy } = await import("./cron/execution-policy");
-    const policy = getCronExecutionPolicy();
-    logger.info(
-      policy.allowed ? "Cron scheduler started" : "Cron scheduler suppressed",
-      {
+    await runOrDeferStartupOperation("cron-scheduler-start", async () => {
+      await cronScheduler.start();
+      const { getCronExecutionPolicy } = await import("./cron/execution-policy");
+      const policy = getCronExecutionPolicy();
+      logger.info(policy.allowed ? "Cron scheduler started" : "Cron scheduler suppressed", {
         source: "startup",
         cronExecutionAllowed: policy.allowed,
         cronExecutionConfiguration: policy.configuredValue,
         reason: policy.reason,
-      },
-    );
-  } catch (error) {
-    logger.error("Failed to start cron scheduler", {
-      source: "startup",
-      error: error instanceof Error ? error.message : String(error),
+      });
     });
   }
 
@@ -641,7 +707,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
       source: "express",
       statusCode: status,
       error: err.stack || err.toString(),
-      url: _req.url,
+      url: redactSensitiveUrlQuery(_req.url),
       method: _req.method,
       headersSent: res.headersSent,
     });
@@ -671,10 +737,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
  * `server/production-entry.ts`. Dev (`server/index.ts`) calls
  * `bootstrapApp` directly so it can wire up Vite instead.
  */
-export async function startApp(app: Express, server: Server, onReady: () => void): Promise<void> {
-  await bootstrapApp(app, server);
+export async function startApp(
+  app: Express,
+  server: Server,
+  roles: ResolvedServiceRoles,
+  onReady: () => void,
+): Promise<void> {
+  if (roles.has("api-user") || roles.has("api-ws")) {
+    await bootstrapApp(app, server, roles);
+  }
 
-  serveStatic(app);
+  if (roles.has("static")) serveStatic(app);
 
   onReady();
   logger.info("Application fully initialized and ready", { source: "startup" });

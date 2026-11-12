@@ -89,81 +89,68 @@ export async function recomputeStaleDenorm(
     // sweep — the remaining plugins still get their chance this run.
     try {
       const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", pluginId);
-      const config = configs[0];
-      if (!config) {
+      if (!configs.length) {
         perPlugin.push({ pluginId, recomputed: 0, errored: 0, skipped: "no-config" });
         continue;
       }
-      if (config.enabled === false) {
+      const enabledConfigs = configs.filter(config => config.enabled !== false);
+      if (!enabledConfigs.length) {
         perPlugin.push({ pluginId, recomputed: 0, errored: 0, skipped: "config-disabled" });
         continue;
       }
-
-      if (mode === "test") {
-        const staleRows = await storage.denorm.getStaleBatchForConfig(config.id, limit);
-        totalRecomputed += staleRows.length;
-        perPlugin.push({ pluginId, recomputed: staleRows.length, errored: 0 });
-        continue;
-      }
-
-      // Claim before compute. Generation alone prevents stale output after a
-      // source write, but without this lease two processors could both see the
-      // same generation and a loser could subsequently mark the winner's row
-      // error. Expired claims make a process crash recoverable.
-      const staleRows = await storage.denorm.claimStaleBatchForConfig(
-        config.id,
-        limit,
-        randomUUID(),
-      );
       let recomputed = 0;
       let errored = 0;
-      for (const row of staleRows) {
+      const configErrors: string[] = [];
+      for (const config of enabledConfigs) {
+        if (recomputed + errored >= limit) break;
+        let staleRows;
         try {
-          const payload = await plugin.compute(row.entityId);
-          if (await applyComputed(
-            plugin,
-            config.id,
-            row.entityId,
-            payload,
-            row.generation,
-            row.claimToken,
-          )) {
-            recomputed++;
-          }
+          staleRows = mode === "test"
+            ? await storage.denorm.getStaleBatchForConfig(config.id, limit - recomputed - errored)
+            : await storage.denorm.claimStaleBatchForConfig(config.id, limit - recomputed - errored, randomUUID());
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          errored++;
-          logger.error(`Denorm recompute failed for plugin ${pluginId} entity ${row.entityId}`, {
-            service: "denorm-recompute",
-            pluginId,
-            entityId: row.entityId,
-            error: message,
+          configErrors.push(`${config.id}: ${message}`);
+          logger.error("Denorm recompute failed for configuration", {
+            service: "denorm-recompute", pluginId, configId: config.id, error: message,
           });
-          // Mark the row `error` (failed apply rolled back, so it's still
-          // `stale`) so the failure is visible and it isn't re-drained as stale.
+          continue;
+        }
+        if (mode === "test") {
+          recomputed += staleRows.length;
+          continue;
+        }
+        for (const row of staleRows) {
           try {
-            await storage.denorm.markErrorIfGeneration({
-              entityId: row.entityId,
-              entityType: plugin.entityType,
-              configId: config.id,
-            }, row.generation, row.claimToken, message);
-          } catch (markError) {
-            logger.error(
-              `Failed to mark denorm row error for plugin ${pluginId} entity ${row.entityId}`,
-              {
-                service: "denorm-recompute",
-                pluginId,
-                entityId: row.entityId,
+            const payload = await plugin.compute(row.entityId, config);
+            if (!row.claimToken) throw new Error("Denorm row has no execution claim");
+            if (await applyComputed(plugin, config.id, row.entityId, payload, row.generation, row.claimToken)) recomputed++;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            errored++;
+            logger.error(`Denorm recompute failed for plugin ${pluginId} entity ${row.entityId}`, {
+              service: "denorm-recompute", pluginId, entityId: row.entityId, error: message,
+            });
+            // Failed apply rolled back, so the queue row is still stale.
+            try {
+              if (row.claimToken) await storage.denorm.markErrorIfGeneration({
+                entityId: row.entityId, entityType: plugin.entityType,
+                configId: config.id,
+              }, row.generation, row.claimToken, message);
+            } catch (markError) {
+              logger.error("Failed to mark denorm row error", {
+                service: "denorm-recompute", pluginId, entityId: row.entityId,
                 error: markError instanceof Error ? markError.message : String(markError),
-              },
-            );
+              });
+            }
           }
         }
       }
-
       totalRecomputed += recomputed;
       totalErrored += errored;
-      perPlugin.push({ pluginId, recomputed, errored });
+      perPlugin.push({ pluginId, recomputed, errored,
+        ...(configErrors.length ? { skipped: "error" as const, error: configErrors.join("; ") } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Denorm recompute failed for plugin ${pluginId}`, {

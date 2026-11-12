@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
-import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
+import { PaymentInitiationRejected, type PaymentGatewayContext } from "../../server/plugins/wc-vendors/payment-types";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "../../shared/ledger/checkout-save-consent";
 import { ADMIN_PAYMENT_CONFIRMATION } from "../../shared/ledger/admin-payment-confirmation";
 
@@ -12,7 +12,6 @@ vi.mock("stripe", async importOriginal => {
   webhooks = new RealStripe("sk_test_fixture").webhooks;
 } };
 });
-vi.mock("../../server/plugins/ledger/payment-gateway/registry", () => ({ registerPaymentGatewayPlugin: vi.fn() }));
 
 let attempt: any;
 let ledgerPayment: any;
@@ -90,6 +89,7 @@ vi.mock("../../server/modules/ledger/payments", () => ({
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({
   resolveGateway: vi.fn(async () => ({
     config: { id: "gateway-1", data: {} }, context: { apiKey: "fixture" },
+    configuration: { fingerprint: "b".repeat(64) },
     plugin: { id: "fixture", retrievePayment: retrieve, cancelPayment: cancel, createPaymentSession: createSession, isTestMode: () => true },
   })),
 }));
@@ -103,7 +103,7 @@ vi.mock("../../server/logger", () => ({
 const { processPaymentEvidence } = await import("../../server/modules/ledger/payment-settlement");
 const { recoverOnlinePayments } = await import("../../server/modules/ledger/payment-recovery");
 const { adminPaymentGatewayFingerprint } = await import("../../server/modules/ledger/admin-assisted-payment");
-const { stripePaymentGatewayPlugin } = await import("../../server/plugins/ledger/payment-gateway/plugins/stripe");
+const { stripePaymentGatewayPlugin } = await import("./payment-vendor-fixture");
 const success = (overrides: Record<string, unknown> = {}) => ({
   type: "payment.succeeded" as const, providerRef: "ref-1", amountMinor: 10000,
   currency: "USD", methodRef: "pm-1", providerCreated: 100, ...overrides,
@@ -115,7 +115,7 @@ function markAdminAssisted() {
   attempt.saveMethod = false;
   attempt.metadata = { ...attempt.metadata, source: "admin_assisted_checkout",
     adminAssisted: { actorUserId: "admin-1", gatewayFingerprint: adminPaymentGatewayFingerprint({
-      context: { apiKey: "fixture" }, plugin: { id: "fixture" }, config: { id: "gateway-1", data: {} },
+      configuration: { fingerprint: "b".repeat(64) },
     } as any), confirmation: {
       ...ADMIN_PAYMENT_CONFIRMATION, accepted: true, acceptedAt: "2026-11-06T12:00:00.000Z",
     } },
@@ -578,7 +578,7 @@ describe("online settlement", () => {
     attempt.status = "created";
     attempt.createdAt = new Date(Date.now() - 25 * 60 * 60 * 1000);
     const config = { id: "gateway-1", data: { publishableKey: "pk_live_fixture" } };
-    const resolved = { config, context: { apiKey: "sk_live_fixture", config },
+    const resolved = { config, context: { apiKey: "sk_live_fixture", config }, configuration: { fingerprint: "c".repeat(64) },
       plugin: { ...stripePaymentGatewayPlugin, retrievePayment: retrieve } };
     attempt.metadata.adminAssisted.gatewayFingerprint = adminPaymentGatewayFingerprint(resolved as any);
     const { resolveGateway } = await import("../../server/modules/ledger/payment-gateway-context");
@@ -687,7 +687,7 @@ describe("online settlement", () => {
     ["us_bank_account", "failed", false],
     ["us_bank_account", "succeeded", true],
   ] as const)("settles signed dummy %s %s evidence", async (method, outcome, posts) => {
-    const { dummyPaymentGatewayPlugin } = await import("../../server/plugins/ledger/payment-gateway/plugins/dummy");
+    const { dummyPaymentGatewayPlugin } = await import("./payment-vendor-fixture");
     const ctx = { apiKey: "", webhookSecret: "test-only-webhook-key",
       config: { id: "gateway-1", data: { paymentTypes: [method] } } } as PaymentGatewayContext;
     const session = await dummyPaymentGatewayPlugin.createPaymentSession!(ctx, {

@@ -39,6 +39,14 @@ import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
 import type { EdlsSheet } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import {
+  buildSheetsQueryString,
+  EDLS_SHEETS_PAGE_SIZE,
+  getNextSheetsPage,
+  getPreviousSheetsPage,
+  getSheetsPaginationSummary,
+  getValidSheetsPage,
+} from "./sheets-pagination";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
@@ -137,6 +145,7 @@ export default function EdlsSheetsPage() {
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [jobNumberFilter, setJobNumberFilter] = useState<string>("");
   const [debouncedJobNumber, setDebouncedJobNumber] = useState<string>("");
+  const [page, setPage] = useState(0);
 
   // Settle the typing before refetching, so a job number is not one request per
   // keystroke.
@@ -244,21 +253,34 @@ export default function EdlsSheetsPage() {
     queryKey: ["/api/options/edls-show-status"],
   });
 
-  const queryParams = new URLSearchParams();
-  if (dateFrom) queryParams.set("dateFrom", dateFrom);
-  if (dateTo) queryParams.set("dateTo", dateTo);
-  if (statusFilter && statusFilter !== "all") queryParams.set("status", statusFilter);
-  if (activeEventFilter && activeEventFilter !== "all") queryParams.set("jobGroupId", activeEventFilter);
-  if (showStatusFilter && showStatusFilter !== "all") queryParams.set("showStatusId", showStatusFilter);
-  if (departmentFilter && departmentFilter !== "all") queryParams.set("departmentId", departmentFilter);
-  if (debouncedJobNumber) queryParams.set("title", debouncedJobNumber);
-  const queryString = queryParams.toString();
+  const filterKey = [
+    dateFrom,
+    dateTo,
+    statusFilter,
+    activeEventFilter,
+    showStatusFilter,
+    departmentFilter,
+    debouncedJobNumber,
+  ].join("|");
+
+  useEffect(() => {
+    setPage(0);
+  }, [filterKey]);
+
+  const queryString = buildSheetsQueryString(page, {
+    dateFrom,
+    dateTo,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    jobGroupId: activeEventFilter !== "all" ? activeEventFilter : undefined,
+    showStatusId: showStatusFilter !== "all" ? showStatusFilter : undefined,
+    departmentId: departmentFilter !== "all" ? departmentFilter : undefined,
+    title: debouncedJobNumber || undefined,
+  });
   
-  const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
-    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter, jobGroupId: activeEventFilter, showStatusId: showStatusFilter, departmentId: departmentFilter, title: debouncedJobNumber }],
+  const { data: sheetsData, isLoading, isFetching, isPlaceholderData } = useQuery<PaginatedEdlsSheets>({
+    queryKey: ["/api/edls/sheets", { page, dateFrom, dateTo, status: statusFilter, jobGroupId: activeEventFilter, showStatusId: showStatusFilter, departmentId: departmentFilter, title: debouncedJobNumber }],
     queryFn: async () => {
-      const url = queryString ? `/api/edls/sheets?${queryString}` : "/api/edls/sheets";
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(`/api/edls/sheets?${queryString}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch sheets");
       return res.json();
     },
@@ -267,6 +289,12 @@ export default function EdlsSheetsPage() {
     // that would take the focus out of the job-number box mid-typing.
     placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    if (!sheetsData || isPlaceholderData) return;
+    const validPage = getValidSheetsPage(page, sheetsData.total);
+    if (page !== validPage) setPage(validPage);
+  }, [sheetsData, isPlaceholderData, page]);
 
   const createMutation = useMutation({
     mutationFn: async (data: SheetFormData) => {
@@ -310,6 +338,10 @@ export default function EdlsSheetsPage() {
   }
 
   const sheets = sheetsData?.data || [];
+  const total = sheetsData?.total ?? 0;
+  const pagination = getSheetsPaginationSummary(page, EDLS_SHEETS_PAGE_SIZE, total, sheets.length);
+  const canGoPrevious = page > 0 && !isFetching;
+  const canGoNext = pagination.totalPages > 0 && page + 1 < pagination.totalPages && !isFetching;
   const anyFilterActive =
     dateFilterType !== "all" ||
     statusFilter !== "all" ||
@@ -657,6 +689,37 @@ export default function EdlsSheetsPage() {
             )}
           </div>
           
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground" data-testid="text-sheets-result-count">
+              {total === 0
+                ? "Showing 0 of 0 sheets"
+                : `Showing ${pagination.rangeStart}–${pagination.rangeEnd} of ${total.toLocaleString()} sheets`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canGoPrevious}
+                onClick={() => setPage(getPreviousSheetsPage)}
+                data-testid="button-sheets-previous"
+              >
+                Previous
+              </Button>
+              <span className="min-w-[100px] text-center text-sm" data-testid="text-sheets-page">
+                Page {pagination.currentPage} of {pagination.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canGoNext}
+                onClick={() => setPage((current) => getNextSheetsPage(current, pagination.totalPages))}
+                data-testid="button-sheets-next"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+
           {sheets.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 opacity-50" />

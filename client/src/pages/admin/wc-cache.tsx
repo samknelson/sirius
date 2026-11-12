@@ -44,15 +44,21 @@ import {
  * The web client cache: what we asked third parties and what they answered.
  *
  * Freshness is not stored anywhere — the server derives it from the window the
- * request type declares in the behavior registry, judged the same way the
+ * canonical request type declares in the behavior registry, judged the same way the
  * request wrapper judges it. A row whose request type is no longer registered
  * has no window, so its freshness reads "Unknown"; it still lists, still opens
  * and can still be expired.
+ *
+ * Service and configuration are provenance about the last outbound attempt,
+ * not cache identity. Cache identity is the canonical request type and key.
  */
 
 interface WcCacheRow {
   id: string;
   service: string;
+  configurationId: string | null;
+  configurationName: string | null;
+  vendorName: string | null;
   requestType: string;
   requestKey: string;
   outcome: "success" | "failure";
@@ -69,6 +75,9 @@ interface WcCacheDetail extends WcCacheRow {
 
 interface RequestTypeOption {
   service: string;
+  configurationId: string | null;
+  configurationName: string | null;
+  vendorName: string | null;
   requestType: string;
   rows: number;
   registered: boolean;
@@ -86,6 +95,16 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return value;
   return d.toLocaleString();
+}
+
+function formatConfiguration(
+  configurationId: string | null,
+  configurationName: string | null,
+  vendorName: string | null,
+): string {
+  if (!configurationId || (!configurationName && !vendorName)) return "Unattributed";
+  const displayName = configurationName ?? "Unnamed connection";
+  return vendorName ? `${displayName} — ${vendorName}` : displayName;
 }
 
 /** A window in the largest unit that stays readable. */
@@ -115,7 +134,7 @@ function FreshnessBadge({ row }: { row: WcCacheRow }) {
     return (
       <Badge
         variant="outline"
-        title="No behavior is registered for this service and request type, so there is no window to judge it against."
+        title="No behavior is registered for this request type, so there is no window to judge it against."
         data-testid="badge-fresh-unknown"
       >
         Unknown
@@ -135,15 +154,23 @@ function FreshnessBadge({ row }: { row: WcCacheRow }) {
 
 interface Filters {
   service: string;
+  configurationId: string;
   requestType: string;
   requestKey: string;
 }
 
-const EMPTY_FILTERS: Filters = { service: "all", requestType: "all", requestKey: "" };
+const UNATTRIBUTED_CONFIGURATION = "__unattributed__";
+const EMPTY_FILTERS: Filters = {
+  service: "all",
+  configurationId: "all",
+  requestType: "all",
+  requestKey: "",
+};
 
 function buildParams(page: number, filters: Filters) {
   const params: Record<string, string | number> = { page, pageSize: PAGE_SIZE };
   if (filters.service !== "all") params.service = filters.service;
+  if (filters.configurationId !== "all") params.configurationId = filters.configurationId;
   if (filters.requestType !== "all") params.requestType = filters.requestType;
   if (filters.requestKey.trim()) params.requestKey = filters.requestKey.trim();
   return params;
@@ -219,6 +246,23 @@ function DetailDialog({ id, onClose }: { id: string | null; onClose: () => void 
             <div className="space-y-4">
               <div>
                 <Field label="Service" value={data.service} />
+                <Field
+                  label="Configuration provenance"
+                  value={
+                    <span>
+                      {formatConfiguration(
+                        data.configurationId,
+                        data.configurationName,
+                        data.vendorName,
+                      )}
+                      {data.configurationId && (data.configurationName || data.vendorName) ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {data.configurationId}
+                        </span>
+                      ) : null}
+                    </span>
+                  }
+                />
                 <Field label="Request type" value={data.requestType} />
                 <Field label="Request key" value={data.requestKey} />
                 <Field label="Outcome" value={<OutcomeBadge outcome={data.outcome} />} />
@@ -293,15 +337,37 @@ export default function WcCachePage() {
   const end = Math.min(page * PAGE_SIZE, total);
 
   const services = Array.from(new Set(requestTypes.map((t) => t.service))).sort();
-  // Request types narrow to the chosen service, so the two dropdowns cannot be
-  // combined into a filter that matches nothing.
-  const typesForService = Array.from(
-    new Set(
-      requestTypes
-        .filter((t) => filters.service === "all" || t.service === filters.service)
-        .map((t) => t.requestType),
-    ),
-  ).sort();
+  const configurations = requestTypes
+    .filter(
+      (option): option is RequestTypeOption & { configurationId: string } =>
+        option.configurationId !== null &&
+        (option.configurationName !== null || option.vendorName !== null),
+    )
+    .filter(
+      (option, index, options) =>
+        options.findIndex((candidate) => candidate.configurationId === option.configurationId) ===
+        index,
+    )
+    .sort((a, b) =>
+      formatConfiguration(
+        a.configurationId,
+        a.configurationName,
+        a.vendorName,
+      ).localeCompare(
+        formatConfiguration(b.configurationId, b.configurationName, b.vendorName),
+      ),
+    );
+  // Service may narrow the offered types, but choosing a type never selects a
+  // service: service is provenance, while request type is cache identity.
+  const typesForService = requestTypes
+    .filter((t) => filters.service === "all" || t.service === filters.service)
+    .filter(
+      (t, index, options) =>
+        options.findIndex(
+          (candidate) => candidate.requestType === t.requestType,
+        ) === index,
+    )
+    .sort((a, b) => a.requestType.localeCompare(b.requestType));
 
   function changeFilters(next: Filters) {
     setFilters(next);
@@ -315,7 +381,8 @@ export default function WcCachePage() {
         answer is still fresh. Freshness is worked out from the window each
         request type declares, not from anything stored on the row. Expiring an
         entry forgets the stored answer, so the next request goes back to the
-        vendor.
+        vendor. Service and configuration are shown as provenance only; the
+        canonical request type and request key determine cache identity.
       </p>
 
       <Card>
@@ -344,6 +411,36 @@ export default function WcCachePage() {
             </div>
 
             <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Configuration provenance</label>
+              <Select
+                value={filters.configurationId}
+                onValueChange={(v) => changeFilters({ ...filters, configurationId: v })}
+              >
+                <SelectTrigger className="w-56" data-testid="select-configuration">
+                  <SelectValue placeholder="All configurations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All configurations</SelectItem>
+                  <SelectItem value={UNATTRIBUTED_CONFIGURATION}>
+                    No configuration provenance
+                  </SelectItem>
+                  {configurations.map((configuration) => (
+                    <SelectItem
+                      key={configuration.configurationId}
+                      value={configuration.configurationId}
+                    >
+                      {formatConfiguration(
+                        configuration.configurationId,
+                        configuration.configurationName,
+                        configuration.vendorName,
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Request type</label>
               <Select
                 value={filters.requestType}
@@ -355,8 +452,8 @@ export default function WcCachePage() {
                 <SelectContent>
                   <SelectItem value="all">All request types</SelectItem>
                   {typesForService.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
+                    <SelectItem key={t.requestType} value={t.requestType}>
+                      {t.requestType}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -391,6 +488,7 @@ export default function WcCachePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Service</TableHead>
+                  <TableHead>Configuration provenance</TableHead>
                   <TableHead>Request type</TableHead>
                   <TableHead>Request key</TableHead>
                   <TableHead>Outcome</TableHead>
@@ -402,14 +500,14 @@ export default function WcCachePage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-32 text-center">
+                    <TableCell colSpan={8} className="h-32 text-center">
                       <Loader2 className="h-6 w-6 animate-spin inline" data-testid="loading-rows" />
                     </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="h-32 text-center text-muted-foreground"
                       data-testid="text-empty"
                     >
@@ -425,6 +523,13 @@ export default function WcCachePage() {
                       data-testid={`row-entry-${row.id}`}
                     >
                       <TableCell className="font-medium">{row.service}</TableCell>
+                      <TableCell className="break-all">
+                        {formatConfiguration(
+                          row.configurationId,
+                          row.configurationName,
+                          row.vendorName,
+                        )}
+                      </TableCell>
                       <TableCell className="break-all">
                         {row.requestType}
                         {row.registered ? null : (

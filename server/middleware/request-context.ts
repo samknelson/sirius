@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../logger';
 import { SUPPRESS_NOTIFICATIONS_HEADER } from '../../shared/notification-headers';
+import { suppliedSessionUserAgent } from '../../shared/session-device';
 
 export interface RequestContext {
   /**
@@ -20,6 +21,10 @@ export interface RequestContext {
   originalUserId?: string;
   originalUserEmail?: string;
   ipAddress?: string;
+  /** Supplied User-Agent, not a parsed or verified device identity. */
+  userAgent?: string | null;
+  /** Verified browser-profile UUID; not a credential or physical-device identity. */
+  deviceId?: string;
   /**
    * When true, the event-notifier dispatcher skips sending notifications for
    * events fired within this async scope. Set either by the
@@ -118,6 +123,19 @@ export const requestContext = new AsyncLocalStorage<RequestContext>();
  */
 export function getRequestContext(): RequestContext | undefined {
   return requestContext.getStore();
+}
+
+/**
+ * Session loading and auth-provider routes run before effective-user context
+ * capture. Give those paths the same client-IP source without resolving an
+ * actor early or mutating/creating an express-session payload.
+ */
+export function captureRequestIpContext(req: Request, _res: Response, next: NextFunction): void {
+  requestContext.run({
+    ...getRequestContext(),
+    ipAddress: getClientIp(req),
+    userAgent: suppliedSessionUserAgent(req.headers['user-agent']),
+  }, next);
 }
 
 /**
@@ -302,6 +320,8 @@ export function withFrameworkWrite<T>(fn: () => Promise<T>): Promise<T> {
 export async function captureRequestContext(req: Request, res: Response, next: NextFunction) {
   const context: RequestContext = {
     ipAddress: getClientIp(req),
+    userAgent: suppliedSessionUserAgent(req.headers['user-agent']),
+    deviceId: getRequestContext()?.deviceId,
   };
 
   // Client opt-in (e.g. bulk-update flows): suppress notifications that this

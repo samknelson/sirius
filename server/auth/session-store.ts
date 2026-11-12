@@ -2,6 +2,10 @@ import session from "express-session";
 import { logger } from "../logger";
 import { storage } from "../storage";
 import { createHash } from "node:crypto";
+import {
+  getSessionIdleTimeoutSettings,
+  type SessionIdleTimeoutSettings,
+} from "./session-idle-timeout";
 
 const getStorage = () => storage;
 type ObservedSessionData = session.SessionData & { _presentationObserved?: string };
@@ -37,10 +41,59 @@ export class StorageSessionStore extends session.Store {
     return new Date(Date.now() + this.ttlMs);
   }
 
+  private getAcceptedActivityExpireTime(
+    settings: SessionIdleTimeoutSettings,
+  ): Date {
+    const durationMs = settings.enabled
+      ? Math.min(this.ttlMs, settings.timeoutMinutes * 60_000)
+      : this.ttlMs;
+    return new Date(Date.now() + durationMs);
+  }
+
+  private isAuthenticated(sess: session.SessionData): boolean {
+    return Boolean((sess as any)?.passport?.user);
+  }
+
+  private async applyAuthenticatedActivity(
+    sid: string,
+    sess: session.SessionData,
+    settings: SessionIdleTimeoutSettings,
+    renew: boolean,
+  ): Promise<session.SessionData | null> {
+    if (!this.isAuthenticated(sess)) return sess;
+
+    const now = Date.now();
+    const previous = Date.parse((sess as any).sessionIdleLastActivityAt ?? "");
+    if (
+      settings.enabled &&
+      Number.isFinite(previous) &&
+      now - previous > settings.timeoutMinutes * 60_000
+    ) {
+      await getStorage().sessions.deleteSession(sid, "idle timeout");
+      return null;
+    }
+
+    if (!renew) return sess;
+
+    (sess as any).sessionIdleLastActivityAt = new Date(now).toISOString();
+    const expire = this.getAcceptedActivityExpireTime(settings);
+    sess.cookie.expires = expire;
+    const { _presentationObserved, ...payload } = sess as ObservedSessionData;
+    await getStorage().sessions.upsertSession(sid, payload, expire,
+      _presentationObserved === observedKey(sid));
+    return sess;
+  }
+
   get(sid: string, callback: (err: unknown, session?: session.SessionData | null) => void): void {
     getStorage().sessions.getSessionData(sid)
-      .then((sess: unknown) => callback(null, sess
-        ? { ...(sess as session.SessionData), _presentationObserved: observedKey(sid) } as ObservedSessionData
+      .then(async (value: unknown) => {
+        const sess = value as session.SessionData | undefined;
+        if (!sess) return null;
+        const settings = await getSessionIdleTimeoutSettings(getStorage());
+        return this.applyAuthenticatedActivity(sid, sess, settings, false);
+      })
+      .then((sess) => callback(null, sess
+        ? { ...sess, _presentationObserved: observedKey(sid) } as ObservedSessionData
         : null))
       .catch((err: unknown) => {
         logger.error("Session store get failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });
@@ -49,12 +102,20 @@ export class StorageSessionStore extends session.Store {
   }
 
   set(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
-    // A loaded session cannot be recreated by a late save after logout/prune.
-    // Regenerated authentication SIDs differ and may be initialized normally.
-    // Strip the non-secret observation marker before persistence/audit.
-    const { _presentationObserved, ...payload } = sess as ObservedSessionData;
-    getStorage().sessions.upsertSession(sid, payload, this.getExpireTime(sess),
-      _presentationObserved === observedKey(sid))
+    getSessionIdleTimeoutSettings(getStorage())
+      .then(async (settings) => {
+        if ((sess as any).sessionIdleReadOnlyCheck) {
+          delete (sess as any).sessionIdleReadOnlyCheck;
+          return;
+        }
+        if (!this.isAuthenticated(sess)) {
+          const { _presentationObserved, ...payload } = sess as ObservedSessionData;
+          await getStorage().sessions.upsertSession(sid, payload, this.getExpireTime(sess),
+            _presentationObserved === observedKey(sid));
+          return;
+        }
+        await this.applyAuthenticatedActivity(sid, sess, settings, true);
+      })
       .then(() => callback?.())
       .catch((err: unknown) => {
         logger.error("Session store set failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });
@@ -72,7 +133,20 @@ export class StorageSessionStore extends session.Store {
   }
 
   touch(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
-    getStorage().sessions.touchSession(sid, this.getExpireTime(sess))
+    getSessionIdleTimeoutSettings(getStorage())
+      .then(async (settings) => {
+        if ((sess as any).sessionIdleReadOnlyCheck) {
+          delete (sess as any).sessionIdleReadOnlyCheck;
+          return;
+        }
+        if (!this.isAuthenticated(sess)) {
+          // Observe a persisted anonymous session's IP without renewing its
+          // expiry or creating a row for an uninitialized session.
+          await getStorage().sessions.touchSession(sid, this.getExpireTime(sess), { ipOnly: true });
+          return;
+        }
+        await this.applyAuthenticatedActivity(sid, sess, settings, true);
+      })
       .then(() => callback?.())
       .catch((err: unknown) => {
         logger.error("Session store touch failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });

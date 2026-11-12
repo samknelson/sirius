@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
+import { StarRating } from "@/components/edls/StarRating";
+import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
@@ -55,6 +58,7 @@ interface UserInfo {
 interface AssignmentWithWorker {
   id: string;
   crewId: string;
+  generationId: string;
   workerId: string;
   ymd: string;
   data: AssignmentExtra | null;
@@ -82,7 +86,7 @@ interface AssignmentsContextValue {
   setSelectedCrewId: (id: string | null) => void;
   assignments: AssignmentWithWorker[];
   assignWorker: (workerId: string) => void;
-  unassignWorker: (assignmentId: string) => void;
+  unassignWorker: (assignment: AssignmentWithWorker) => void;
   isAssigning: boolean;
   isUnassigning: boolean;
   selectedRatingId: string;
@@ -231,7 +235,10 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
 
   const updateMutation = useMutation({
     mutationFn: async (data: AssignmentExtra) => {
-      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, data);
+      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, {
+        ...data,
+        generationId: assignment.generationId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId, "assignments"] });
@@ -329,7 +336,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedCrewId(crewId);
-    unassignWorker(assignment.id);
+    unassignWorker(assignment);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
@@ -376,10 +383,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
           </span>
           <span className="text-sm truncate">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
-            <span className="flex items-center text-xs text-muted-foreground">
-              <Star className="h-3 w-3 mr-0.5 text-yellow-400" fill="currentColor" />
-              {ratingValue}
-            </span>
+            <StarRating value={ratingValue} />
           )}
           <span className="flex-1" />
           {extrasText && (
@@ -828,16 +832,6 @@ function WorkerAssignmentModal({
 }) {
   const { sheet } = useEdlsSheetLayout();
   
-  const { data: details, isLoading } = useQuery<WorkerAssignmentDetails>({
-    queryKey: ["/api/edls/sheets", sheet.id, "workers", worker.id, "assignment-details"],
-    queryFn: async () => {
-      const response = await fetch(`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`);
-      if (!response.ok) throw new Error("Failed to fetch assignment details");
-      return response.json();
-    },
-    enabled: open,
-  });
-
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
     staleTime: 60000,
@@ -845,76 +839,15 @@ function WorkerAssignmentModal({
   
   const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Worker Assignment Details</DialogTitle>
-        </DialogHeader>
-        
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        ) : details ? (
-          <div className="space-y-4">
-            <div className="border-b pb-3">
-              <div className="text-lg font-semibold">{formatWorkerFullName(details)}</div>
-              <div className="flex gap-2 mt-1">
-                {details.siriusId && (
-                  <Badge variant="secondary">ID: {details.siriusId}</Badge>
-                )}
-                <Badge variant="outline">Worker ID: {details.workerId.slice(0, 8)}...</Badge>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <AssignmentDetailCard label="Prior Assignment" detail={details.prior} />
-              <AssignmentDetailCard label="Current Assignment (Same Day)" detail={details.current} />
-              <AssignmentDetailCard label="Next Assignment" detail={details.next} />
-            </div>
-            
-            <WorkerRatingsSection workerId={worker.id} ratingsEnabled={ratingsEnabled} />
-          </div>
-        ) : (
-          <div className="text-muted-foreground">No details available</div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
+  return <WorkerAssignmentDetailsDialog workerId={worker.id} queryUrl={`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`} open={open} onOpenChange={onOpenChange} ratingsEnabled={ratingsEnabled} />;
 }
 
 function StatusDots({ worker }: { worker: AvailableWorker }) {
   const [modalOpen, setModalOpen] = useState(false);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setModalOpen(true);
-  };
-
   return (
     <>
-      <div 
-        className="flex items-center gap-0.5 flex-shrink-0 cursor-pointer hover:opacity-80 p-1 -m-1 rounded"
-        onClick={handleClick}
-        onMouseDown={(e) => e.stopPropagation()}
-        data-testid={`status-dots-${worker.id}`}
-        title="Click to view assignment details"
-      >
-        <div 
-          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.priorStatus)}`}
-        />
-        <div 
-          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.currentStatus)}`}
-        />
-        <div 
-          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.nextStatus)}`}
-        />
-      </div>
+      <AssignmentStatusDotsButton priorStatus={worker.priorStatus} currentStatus={worker.currentStatus} nextStatus={worker.nextStatus} onClick={() => setModalOpen(true)} testId={`status-dots-${worker.id}`} />
       <WorkerAssignmentModal 
         worker={worker} 
         open={modalOpen} 
@@ -925,20 +858,6 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
 }
 
 type AssignmentFilter = "all" | "include" | "exclude";
-
-function StarRating({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[0, 1, 2, 3].map((i) => (
-        <Star
-          key={i}
-          className={`h-3 w-3 ${i < value ? "text-yellow-400" : "text-muted-foreground/30"}`}
-          fill={i < value ? "currentColor" : "none"}
-        />
-      ))}
-    </div>
-  );
-}
 
 function AvailableWorkersPanel() {
   const { 
@@ -1304,8 +1223,10 @@ function EdlsSheetAssignmentsContent() {
   });
 
   const unassignMutation = useMutation({
-    mutationFn: async (assignmentId: string) => {
-      return apiRequest("DELETE", `/api/edls/sheets/${sheet.id}/assignments/${assignmentId}`);
+    mutationFn: async (assignment: AssignmentWithWorker) => {
+      return apiRequest("DELETE", `/api/edls/sheets/${sheet.id}/assignments/${assignment.id}`, {
+        generationId: assignment.generationId,
+      });
     },
     onSuccess: () => {
       toast({
@@ -1331,7 +1252,7 @@ function EdlsSheetAssignmentsContent() {
     setSelectedCrewId,
     assignments,
     assignWorker: (workerId: string) => assignMutation.mutate(workerId),
-    unassignWorker: (assignmentId: string) => unassignMutation.mutate(assignmentId),
+    unassignWorker: (assignment: AssignmentWithWorker) => unassignMutation.mutate(assignment),
     isAssigning: assignMutation.isPending,
     isUnassigning: unassignMutation.isPending,
     selectedRatingId,
@@ -1364,7 +1285,7 @@ function EdlsSheetAssignmentsContent() {
 
 function AssignmentsAccessGate() {
   const { sheet } = useEdlsSheetLayout();
-  const { canAccess, isLoading } = useAccessCheck("edls.sheet.edit", sheet.id);
+  const { canAccess, isLoading } = useAccessCheck("edls.sheet.assign", sheet.id);
 
   if (isLoading) {
     return <Skeleton className="h-32 w-full" />;

@@ -15,17 +15,26 @@ import {
   optionsDepartment,
   optionsEdlsShowStatus,
   optionsEdlsTasks,
+  optionsClassifications,
   type EdlsAssignment, 
   type InsertEdlsAssignment
 } from "@shared/schema";
-import { eq, and, sql, gt, gte, lte, asc, inArray, ne } from "drizzle-orm";
+import { eq, and, sql, gt, gte, lte, asc, inArray, ne, isNull, getTableColumns } from "drizzle-orm";
+import { DomainValidationError } from "../utils/validation";
 import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
+import { assignmentAnswerMetadataMode, assignmentUpdateMetadataMode } from "./assignment-provenance";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
+import {
+  getAvailableWorkersForSheetQuery,
+  type AvailableWorkerForSheet,
+} from "./available-workers-query";
+
+export type { AvailableWorkerForSheet } from "./available-workers-query";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -99,22 +108,7 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
   };
 }
 
-export interface AvailableWorkerForSheet {
-  id: string;
-  siriusId: string | null;
-  contactId: string;
-  displayName: string | null;
-  given: string | null;
-  family: string | null;
-  priorStatus: string | null;
-  currentStatus: string | null;
-  nextStatus: string | null;
-  ratingValue: number | null;
-  memberStatusId: string | null;
-  memberStatusName: string | null;
-  memberStatusSequence: number | null;
-}
-
+// AvailableWorkerForSheet now comes from the shared available-workers query above.
 export interface WorkerAssignmentDetail {
   sheetId: string;
   sheetName: string;
@@ -158,6 +152,7 @@ export interface AssignmentForWorkerFilters {
 
 export interface AssignmentForWorker {
   assignmentId: string;
+  generationId: string;
   ymd: string;
   sheetId: string;
   sheetTitle: string;
@@ -175,6 +170,12 @@ export interface AssignmentForWorker {
   employer: { id: string; name: string } | null;
   showStatus: { id: string; name: string } | null;
   task: { id: string; name: string } | null;
+  /**
+   * The assignment's resolved Extra classification. The stored option id
+   * remains in `data`; callers that display the assignment use this narrow
+   * projection rather than exposing or independently resolving the catalog.
+   */
+  classification?: { name: string; code: string | null } | null;
   /**
    * The worker's own answer to this assignment: null unanswered, true
    * accepted, false declined. Carried here because the public schedule page
@@ -216,6 +217,8 @@ export interface OutOfPopulationAssignmentRow {
  */
 export interface SheetAssignmentSmsTarget {
   assignmentId: string;
+  crewId: string;
+  generationId: string;
   workerId: string;
   contactId: string;
   phoneNumber: string;
@@ -245,8 +248,8 @@ export interface EdlsAssignmentsStorage {
    */
   getSmsTargetsBySheetId(sheetId: string): Promise<SheetAssignmentSmsTarget[]>;
   get(id: string): Promise<EdlsAssignment | undefined>;
-  create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
-  delete(id: string): Promise<boolean>;
+  create(assignment: InsertEdlsAssignment, expectedSheetId?: string): Promise<EdlsAssignment>;
+  delete(id: string, expectedCrewId: string, expectedGenerationId: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
   /**
    * Replace an assignment's extra values.
@@ -255,7 +258,7 @@ export interface EdlsAssignmentsStorage {
    * change, because the worker has then not been told about the assignment as
    * it now stands. A save that changes nothing leaves the receipt alone.
    */
-  updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
+  updateData(id: string, data: Record<string, unknown>, expectedCrewId: string, expectedGenerationId: string): Promise<EdlsAssignment | undefined>;
   /**
    * Record the communication a worker was sent about this assignment — the
    * receipt saying they have been told about it as it stood when the message
@@ -281,7 +284,7 @@ export interface EdlsAssignmentsStorage {
    * recent message already on record, or the assignment changed underneath
    * the send. All three are benign; the worker was texted either way.
    */
-  setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean>;
+  setCommId(id: string, commId: string, dataWhenResolved: unknown, expectedCrewId: string, expectedGenerationId: string): Promise<boolean>;
   /**
    * Record the WORKER'S OWN ANSWER to an assignment: true accepted, false
    * declined. There is no third call — clearing the answer back to
@@ -302,12 +305,16 @@ export interface EdlsAssignmentsStorage {
    * true — so voiding the receipt here would re-text them at the sheet's
    * next notifying transition.
    *
-   * Returns false when nothing was recorded: no such assignment, or it has
-   * already been answered. The caller uses that to tell a first answer from
-   * a repeat.
+   * Returns false when nothing was recorded: no such assignment, an
+   * unconfirmed sheet, or an answer already recorded.
    */
-  setAccepted(id: string, accepted: boolean): Promise<boolean>;
-  getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
+  setAccepted(id: string, accepted: boolean, expectedGenerationId: string): Promise<boolean>;
+  getAvailableWorkersForSheet(
+    sheetYmd: string,
+    industryId: string | null,
+    ratingId?: string,
+    includeInactive?: boolean,
+  ): Promise<AvailableWorkerForSheet[]>;
   /**
    * Report query: every assignment on a future (ymd >= fromYmd), non-trash
    * sheet whose worker is NOT in the EDLS scheduling population (no
@@ -382,6 +389,11 @@ function assignmentDataUnchanged(data: unknown) {
   return sql`jsonb_strip_nulls(COALESCE(${edlsAssignments.data}, '{}'::jsonb)) = jsonb_strip_nulls(${json}::jsonb)`;
 }
 
+// The logging wrapper sees only the public assignment row. Tag the returned
+// object with the actual INSERT-vs-fill outcome rather than guessing from a
+// pre-write read (which can lose a race with another writer).
+const insertedAssignments = new WeakSet<EdlsAssignment>();
+
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   return {
     async getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]> {
@@ -419,6 +431,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const assignments = await this.getBySheetId(sheetId, industryId ?? null);
       const byCrewId = new Map<string, SnapshotNode[]>();
       for (const assignment of assignments) {
+        if (!assignment.crewId) continue;
         const nodes = byCrewId.get(assignment.crewId) ?? [];
         nodes.push({ version: 1, data: assignment });
         byCrewId.set(assignment.crewId, nodes);
@@ -449,6 +462,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ymd: string;
         workerId: string;
         crewId: string;
+        generationId: string;
         commId: string | null;
         commStatus: string | null;
         accepted: boolean | null;
@@ -469,6 +483,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           ea.ymd,
           ea.worker_id as "workerId",
           ea.crew_id as "crewId",
+          ea.generation_id as "generationId",
           ea.comm_id as "commId",
           cm.status as "commStatus",
           ea.accepted,
@@ -494,6 +509,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ymd: row.ymd,
         workerId: row.workerId,
         crewId: row.crewId,
+        generationId: row.generationId,
         commId: row.commId,
         commStatus: row.commStatus,
         accepted: row.accepted,
@@ -536,6 +552,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const result = await client.execute(sql`
         SELECT
           ea.id as "assignmentId",
+          ea.crew_id as "crewId",
+          ea.generation_id as "generationId",
           ea.worker_id as "workerId",
           c.id as "contactId",
           ph.phone_number as "phoneNumber",
@@ -567,28 +585,87 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return assignment || undefined;
     },
 
-    async create(insertAssignment: InsertEdlsAssignment): Promise<EdlsAssignment> {
+    async create(insertAssignment: InsertEdlsAssignment, expectedSheetId?: string): Promise<EdlsAssignment> {
       return runInTransaction(async () => {
-        await validate.validateOrThrow(insertAssignment);
         const client = getClient();
-        const [assignment] = await client.insert(edlsAssignments).values(insertAssignment).returning();
+        // Sheet writers lock their parent before touching crews. Use the same
+        // order so a concurrent trash/delete or crew reparent cannot leave a
+        // newly filled row on a sheet the caller did not authorize.
+        const sheetResult = await client.execute(sql`
+          SELECT s.id, s.ymd, s.status
+          FROM edls_sheets s
+          JOIN edls_crews c ON c.sheet_id = s.id
+          WHERE c.id = ${insertAssignment.crewId}
+          FOR UPDATE OF s
+        `);
+        const sheet = sheetResult.rows[0] as { id: string; ymd: string; status: string } | undefined;
+        if (!sheet || (expectedSheetId && sheet.id !== expectedSheetId) ||
+            sheet.ymd !== insertAssignment.ymd || sheet.status === "trash") {
+          throw new DomainValidationError([{
+            field: "crewId",
+            code: "INVALID_SHEET",
+            message: "Crew does not belong to an assignable sheet on this date",
+          }]);
+        }
+        await validate.validateOrThrow(insertAssignment);
+        const [result] = await client.insert(edlsAssignments)
+          .values({ ...insertAssignment, generationId: sql`gen_random_uuid()::text` })
+          .onConflictDoUpdate({
+            target: [edlsAssignments.ymd, edlsAssignments.workerId],
+            set: {
+              crewId: insertAssignment.crewId,
+              data: insertAssignment.data ?? null,
+              accepted: null,
+              commId: null,
+              generationId: sql`gen_random_uuid()::text`,
+            },
+            setWhere: isNull(edlsAssignments.crewId),
+          })
+          .returning({
+            ...getTableColumns(edlsAssignments),
+            inserted: sql<boolean>`(xmax = 0)`,
+          });
+        if (!result) {
+          throw new DomainValidationError([{
+            field: "workerId",
+            code: "ALREADY_ASSIGNED",
+            message: "Worker is already assigned on this date",
+          }]);
+        }
+        const { inserted, ...assignment } = result;
+        if (inserted) insertedAssignments.add(assignment);
         return assignment;
       });
     },
 
-    async delete(id: string): Promise<boolean> {
+    async delete(id: string, expectedCrewId: string, expectedGenerationId: string): Promise<boolean> {
       const client = getClient();
-      const result = await client.delete(edlsAssignments).where(eq(edlsAssignments.id, id)).returning();
+      const result = await client.update(edlsAssignments)
+        .set({ crewId: null, generationId: null, data: null, commId: null, accepted: null })
+        .where(and(
+          eq(edlsAssignments.id, id),
+          eq(edlsAssignments.crewId, expectedCrewId),
+          eq(edlsAssignments.generationId, expectedGenerationId),
+        ))
+        .returning({ id: edlsAssignments.id });
       return result.length > 0;
     },
 
     async deleteByCrewId(crewId: string): Promise<number> {
-      const client = getClient();
-      const result = await client.delete(edlsAssignments).where(eq(edlsAssignments.crewId, crewId)).returning();
-      return result.length;
+      return runInTransaction(async () => {
+        const rows = await getClient().select({ id: edlsAssignments.id, generationId: edlsAssignments.generationId })
+          .from(edlsAssignments).where(eq(edlsAssignments.crewId, crewId));
+        const { storage } = await import("../index");
+        let cleared = 0;
+        for (const row of rows) {
+          if (!row.generationId) throw new Error("Active EDLS assignment has no generation");
+          if (await storage.edlsAssignments.delete(row.id, crewId, row.generationId)) cleared++;
+        }
+        return cleared;
+      });
     },
 
-    async updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined> {
+    async updateData(id: string, data: Record<string, unknown>, expectedCrewId: string, expectedGenerationId: string): Promise<EdlsAssignment | undefined> {
       const client = getClient();
       // Voiding the receipt is part of the assignment write itself, not
       // something every future writer has to remember: a worker told about an
@@ -612,35 +689,58 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           commId: sql`CASE WHEN ${unchanged} THEN ${edlsAssignments.commId} ELSE NULL END`,
           accepted: sql`CASE WHEN ${unchanged} THEN ${edlsAssignments.accepted} ELSE NULL END`,
         })
-        .where(eq(edlsAssignments.id, id))
+        .where(and(
+          eq(edlsAssignments.id, id),
+          eq(edlsAssignments.crewId, expectedCrewId),
+          eq(edlsAssignments.generationId, expectedGenerationId),
+        ))
         .returning();
       return assignment || undefined;
     },
 
-    async setAccepted(id: string, accepted: boolean): Promise<boolean> {
-      const client = getClient();
-      // `accepted IS NULL` is the whole of the one-answer rule, and it lives
-      // in the WHERE so the database decides the race: a double tap, a stale
-      // tab, or a replayed request finds the row already answered and
-      // matches nothing.
-      //
-      // Note what is NOT in the SET clause: `commId`. The worker has still
-      // been told about this assignment as it stands, so the receipt keeps
-      // standing and answering never puts them back into the next send.
-      const result = await client
-        .update(edlsAssignments)
-        .set({ accepted })
-        .where(
-          and(
-            eq(edlsAssignments.id, id),
-            sql`${edlsAssignments.accepted} IS NULL`,
-          ),
-        )
-        .returning({ id: edlsAssignments.id });
-      return result.length > 0;
+    async setAccepted(id: string, accepted: boolean, expectedGenerationId: string): Promise<boolean> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        // A sheet status edit also locks the sheet row. Lock it here before
+        // answering so a concurrent move to Requested cannot race this write.
+        const sheet = await client.execute(sql`
+          SELECT s.status
+          FROM edls_sheets s
+          JOIN edls_crews c ON c.sheet_id = s.id
+          JOIN edls_assignments a ON a.crew_id = c.id
+          WHERE a.id = ${id}
+          FOR UPDATE OF s
+        `);
+        if (!sheet.rows.length || !["lock", "reserved"].includes(String(sheet.rows[0].status))) {
+          return false;
+        }
+
+        // Recheck the current parent sheet as well as the one-answer rule in
+        // the UPDATE: an assignment moved to another crew after the lock was
+        // acquired must not gain permission through the old sheet.
+        // Answering does not void commId, so the worker isn't re-texted.
+        const result = await client
+          .update(edlsAssignments)
+          .set({ accepted })
+          .where(
+            and(
+              eq(edlsAssignments.id, id),
+              eq(edlsAssignments.generationId, expectedGenerationId),
+              sql`${edlsAssignments.accepted} IS NULL`,
+              sql`EXISTS (
+                SELECT 1 FROM ${edlsCrews} c
+                JOIN ${edlsSheets} s ON s.id = c.sheet_id
+                WHERE c.id = ${edlsAssignments.crewId}
+                  AND s.status IN ('lock', 'reserved')
+              )`,
+            ),
+          )
+          .returning({ id: edlsAssignments.id });
+        return result.length > 0;
+      });
     },
 
-    async setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean> {
+    async setCommId(id: string, commId: string, dataWhenResolved: unknown, expectedCrewId: string, expectedGenerationId: string): Promise<boolean> {
       const client = getClient();
       // Order by WHEN THE MESSAGES WERE SENT, not by which bookkeeping write
       // arrives first. Two sends racing (a sheet saved twice in quick
@@ -653,6 +753,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .where(
           and(
             eq(edlsAssignments.id, id),
+            eq(edlsAssignments.crewId, expectedCrewId),
+            eq(edlsAssignments.generationId, expectedGenerationId),
             // The row must still be the assignment the message was about. A
             // coordinator can edit it in the moment between the text going
             // out and this write landing; that edit voided the receipt on
@@ -675,92 +777,18 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return result.length > 0;
     },
 
-    async getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
-      const client = getClient();
-      
-      // Build query with optional rating join
-      const ratingJoin = ratingId 
-        ? sql`INNER JOIN worker_ratings wr ON wr.worker_id = w.id AND wr.rating_id = ${ratingId}`
-        : sql``;
-      const ratingSelect = ratingId
-        ? sql`wr.value as "ratingValue"`
-        : sql`NULL::integer as "ratingValue"`;
-      
-      // Build member status join - uses worker_msh_denorm to find the member status for the employer's industry
-      const memberStatusJoin = industryId
-        ? sql`LEFT JOIN LATERAL (
-          SELECT ms.id, ms.name, ms.sequence
-          FROM worker_msh_denorm wmd
-          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
-          WHERE wmd.worker_id = w.id
-          LIMIT 1
-        ) member_status ON true`
-        : sql``;
-      const memberStatusSelect = industryId
-        ? sql`member_status.id as "memberStatusId", member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
-        : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
-      
-      // Order by member status sequence first (nulls last), then by rating (if provided), then by name
-      // When industryId is null, skip member status ordering since the lateral join is not included
-      let orderBy;
-      if (industryId && ratingId) {
-        orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), wr.value DESC, c.family, c.given`;
-      } else if (industryId) {
-        orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), c.family, c.given`;
-      } else if (ratingId) {
-        orderBy = sql`ORDER BY wr.value DESC, c.family, c.given`;
-      } else {
-        orderBy = sql`ORDER BY c.family, c.given`;
-      }
-      
-      const result = await client.execute(sql`
-        SELECT 
-          w.id,
-          w.sirius_id as "siriusId",
-          w.contact_id as "contactId",
-          c.display_name as "displayName",
-          c.given,
-          c.family,
-          prior_asg.status as "priorStatus",
-          current_asg.status as "currentStatus",
-          next_asg.status as "nextStatus",
-          ${ratingSelect},
-          ${memberStatusSelect}
-        FROM workers w
-        INNER JOIN contacts c ON w.contact_id = c.id
-        INNER JOIN worker_edls we ON we.worker_id = w.id
-        ${ratingJoin}
-        ${memberStatusJoin}
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-          WHERE ea.worker_id = w.id AND es.ymd < ${sheetYmd}
-          ORDER BY es.ymd DESC
-          LIMIT 1
-        ) prior_asg ON true
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-          WHERE ea.worker_id = w.id AND es.ymd = ${sheetYmd}
-          LIMIT 1
-        ) current_asg ON true
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-          WHERE ea.worker_id = w.id AND es.ymd > ${sheetYmd}
-          ORDER BY es.ymd ASC
-          LIMIT 1
-        ) next_asg ON true
-        WHERE we.active = true
-        ${orderBy}
-      `);
-      return result.rows as unknown as AvailableWorkerForSheet[];
+    async getAvailableWorkersForSheet(
+      sheetYmd: string,
+      industryId: string | null,
+      ratingId?: string,
+      includeInactive = false,
+    ): Promise<AvailableWorkerForSheet[]> {
+      return getAvailableWorkersForSheetQuery(
+        sheetYmd,
+        industryId,
+        ratingId,
+        includeInactive,
+      );
     },
 
     async getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]> {
@@ -823,6 +851,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const baseQuery = client
         .select({
           assignmentId: edlsAssignments.id,
+          generationId: edlsAssignments.generationId,
           assignmentData: edlsAssignments.data,
           accepted: edlsAssignments.accepted,
           ymd: edlsSheets.ymd,
@@ -848,6 +877,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           showStatusName: optionsEdlsShowStatus.name,
           taskId: optionsEdlsTasks.id,
           taskName: optionsEdlsTasks.name,
+          classificationName: optionsClassifications.name,
+          classificationCode: optionsClassifications.code,
           jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
           jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
         })
@@ -860,6 +891,13 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
         .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
         .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
+        .leftJoin(
+          optionsClassifications,
+          eq(
+            optionsClassifications.id,
+            sql<string>`${edlsAssignments.data}->>'classificationId'`,
+          ),
+        )
         .$dynamic();
 
       const rows = await (withJobGroups
@@ -870,6 +908,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
 
       return rows.map((r) => ({
         assignmentId: r.assignmentId,
+        generationId: r.generationId!,
         ymd: r.ymd,
         sheetId: r.sheetId,
         sheetTitle: r.sheetTitle,
@@ -893,6 +932,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
         showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
         task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+        classification: r.classificationName
+          ? {
+              name: r.classificationName,
+              code: r.classificationCode,
+            }
+          : null,
         accepted: r.accepted,
         data: (r.assignmentData as Record<string, unknown> | null) ?? null,
       }));
@@ -925,6 +970,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .select({
           workerId: edlsAssignments.workerId,
           assignmentId: edlsAssignments.id,
+          generationId: edlsAssignments.generationId,
           assignmentData: edlsAssignments.data,
           accepted: edlsAssignments.accepted,
           ymd: edlsSheets.ymd,
@@ -973,6 +1019,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       for (const r of rows) {
         const item: AssignmentForWorker = {
           assignmentId: r.assignmentId,
+          generationId: r.generationId!,
           ymd: r.ymd,
           sheetId: r.sheetId,
           sheetTitle: r.sheetTitle,
@@ -1177,6 +1224,7 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
     create: {
       state: { fallbackId: 'new' },
       after: undefined,
+      metadataMode: (_args, result) => insertedAssignments.has(result) ? 'created' : 'modified',
       getHostEntityId: async (args) => {
         const crewId = args[0]?.crewId;
         if (!crewId) return undefined;
@@ -1184,12 +1232,13 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
       },
       getDescription: async (args, result) => {
         const workerId = result?.workerId || args[0]?.workerId;
-        if (!workerId) return 'Created assignment';
+        if (!workerId) return 'Assigned worker';
         const workerDesc = await getWorkerDescription(workerId);
-        return `Created assignment for ${workerDesc}`;
+        return `${insertedAssignments.has(result) ? 'Created' : 'Filled'} assignment for ${workerDesc}`;
       },
     },
     delete: {
+      metadataMode: (_args, result) => result ? 'modified' : 'none',
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
@@ -1203,10 +1252,12 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
       },
       getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
-        return `Deleted assignment for ${workerDesc}`;
+        return `Cleared assignment for ${workerDesc}`;
       },
     },
     updateData: {
+      metadataMode: (_args, result, beforeState) =>
+        assignmentUpdateMetadataMode(beforeState, result),
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
@@ -1233,6 +1284,10 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
     // description therefore has to say who answered as well as which way,
     // or the sheet's history records an answer from nobody.
     setAccepted: {
+      // The worker's recorded answer is a real mutation of this assignment
+      // record (though not a change to the values that trigger a new SMS).
+      // Rejected/replayed attempts must keep the prior modification stamp.
+      metadataMode: (_args, recorded) => assignmentAnswerMetadataMode(recorded),
       getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);

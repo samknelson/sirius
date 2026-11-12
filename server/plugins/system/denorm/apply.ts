@@ -15,8 +15,8 @@ import type { DenormPlugin } from "./types";
  * Both the event path (registry) and the recompute job route through here, so
  * status ownership lives in exactly one place.
  */
-export async function applyComputed<TPayload>(
-  plugin: DenormPlugin<TPayload>,
+export async function applyComputed<TPayload, TBeforeApply>(
+  plugin: DenormPlugin<TPayload, TBeforeApply>,
   configId: string,
   entityId: string,
   payload: TPayload,
@@ -24,7 +24,7 @@ export async function applyComputed<TPayload>(
   claimToken: string,
 ): Promise<boolean> {
   return runInTransaction(async () => {
-    const row = await storage.denorm.markComputedIfGeneration({
+    let row = await storage.denorm.markComputedIfGeneration({
       entityId,
       entityType: plugin.entityType,
       configId,
@@ -33,7 +33,21 @@ export async function applyComputed<TPayload>(
     // A newer invalidation arrived after compute. Its stale generation remains
     // queued, and writing this older payload would make the status/payload lie.
     if (!row) return false;
-    await plugin.write(entityId, payload, row.id);
+    // Fork claim fencing must succeed BEFORE upstream replacement cascades.
+    const before = await plugin.beforeApply?.(entityId, payload, configId);
+    if (plugin.replaceOnCompute) {
+      await storage.denorm.deleteByEntityIdsForConfig(configId, [entityId]);
+      if (payload === null) return true;
+      row = await storage.denorm.upsertStatus({
+        entityId, entityType: plugin.entityType, configId,
+        status: "ok", computedAt: new Date(), staleAt: null,
+      });
+    }
+    if (plugin.beforeApply) {
+      await plugin.write(entityId, payload, row.id, before);
+    } else {
+      await plugin.write(entityId, payload, row.id);
+    }
     return true;
   });
 }

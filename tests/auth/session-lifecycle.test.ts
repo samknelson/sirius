@@ -24,6 +24,7 @@ import type { AddressInfo } from "net";
 const fakeSessionRows = new Map<string, { sess: any; expire: Date }>();
 vi.mock("../../server/storage", () => ({
   storage: {
+    variables: { getByName: async () => ({ value: { enabled: false, timeoutMinutes: 30 } }) },
     sessions: {
       getSessionData: async (sid: string) => {
         const row = fakeSessionRows.get(sid);
@@ -36,9 +37,9 @@ vi.mock("../../server/storage", () => ({
       deleteSession: async (sid: string) => {
         fakeSessionRows.delete(sid);
       },
-      touchSession: async (sid: string, expire: Date) => {
+      touchSession: async (sid: string, expire: Date, options?: { ipOnly?: boolean }) => {
         const row = fakeSessionRows.get(sid);
-        if (row) row.expire = expire;
+        if (row && !options?.ipOnly) row.expire = expire;
       },
     },
   },
@@ -334,7 +335,7 @@ describe("session options", () => {
 describe("StorageSessionStore expiry semantics", () => {
   beforeEach(() => fakeSessionRows.clear());
 
-  it("derives the row expiry from the cookie and rolls it forward on touch", async () => {
+  it("derives anonymous row expiry from the cookie without renewing it on touch", async () => {
     const store = new StorageSessionStore({ ttlMs: 60_000 });
     const early = new Date(Date.now() + 10_000);
     const sess: any = { cookie: { expires: early.toISOString() }, foo: 1 };
@@ -344,7 +345,7 @@ describe("StorageSessionStore expiry semantics", () => {
     const later = new Date(Date.now() + 50_000);
     sess.cookie.expires = later.toISOString();
     await new Promise<void>((r) => store.touch("sid1", sess, () => r()));
-    expect(fakeSessionRows.get("sid1")!.expire.getTime()).toBe(later.getTime());
+    expect(fakeSessionRows.get("sid1")!.expire.getTime()).toBe(early.getTime());
   });
 
   it("falls back to now + ttl when the cookie has no expiry, and get skips expired rows", async () => {
@@ -385,6 +386,7 @@ describe("rolling cookie end-to-end", () => {
     });
     app.post("/login", (req: any, res) => {
       req.session.userId = "u1";
+      req.session.passport = { user: { dbUser: { id: "u1" } } };
       res.json({ ok: true });
     });
 

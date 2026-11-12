@@ -45,20 +45,26 @@ vi.mock("../../server/storage/transaction-context", () => ({
   runInTransaction: (fn: () => unknown) => fn(),
 }));
 
-vi.mock("../../server/services/service-registry", () => ({
-  serviceRegistry: {
-    resolve: async () => ({
-      id: "lob",
-      supportsPostal: () => true,
-      getDefaultReturnAddress: async () => ({
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  hasWcVendorOperation: async () => true,
+  describeWcVendor: async () => ({ configId: "lob-config", pluginId: "lob" }),
+}));
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: async ({ vendor, operation, args }: { vendor: unknown; operation: string; args: unknown }) => {
+    expect(vendor).toEqual({ configId: "lob-config" });
+    if (operation === "communications.postal.return-address.default") {
+      return { outcome: "success", value: {
         addressLine1: "1 Return St",
         city: "Portland",
         state: "OR",
         zip: "97201",
         country: "US",
-      }),
-      sendLetter: mocks.sendLetter,
-    }),
+      } };
+    }
+    if (operation === "communications.postal.send") {
+      return { outcome: "success", value: await mocks.sendLetter(args) };
+    }
+    throw new Error(`Unexpected operation ${operation}`);
   },
 }));
 

@@ -51,6 +51,19 @@ vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({
   resolveGateway: async () => state.gateway,
   GatewayResolutionError: class extends Error {},
 }));
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  describeWcVendor: async ({ configId }: { configId: string }) => ({
+    configId, pluginId: "stripe", addComponentId: "stripe:StripeAddPaymentMethod",
+    operations: ["payments.customer.retrieve"],
+  }),
+  WcVendorError: class extends Error {},
+}));
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: async ({ operation, args }: any) => {
+    const { fixtureWcRequest } = await import("./payment-vendor-fixture");
+    return fixtureWcRequest(state.gateway.plugin, state.gateway.context, operation, args);
+  },
+}));
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: async () => ({ dbUser: { id: "fixture-user" } }) }));
 vi.mock("../../server/flood/service", () => ({ enforceFloodLimit: vi.fn(), FloodError: class extends Error {} }));
 vi.mock("../../server/storage/unified-options", () => ({
@@ -109,11 +122,11 @@ import { createPaymentMethodStorage } from "../../server/storage/ledger/payment_
 import { createPaymentAttemptStorage } from "../../server/storage/ledger/payment_attempts";
 import { createGatewayCustomerStorage } from "../../server/storage/ledger/gateway_customers";
 import { createLedgerPaymentStorage } from "../../server/storage/ledger";
+import { stripePaymentGatewayPlugin } from "./payment-vendor-fixture";
 import { registerLedgerPaymentAttemptRoutes } from "../../server/modules/ledger/payment-attempts";
 import { registerLedgerPaymentMethodRoutes } from "../../server/modules/ledger/payment-methods";
 import { processPaymentEvidence, evidenceFromPayment } from "../../server/modules/ledger/payment-settlement";
 import { recoverOnlinePayments } from "../../server/modules/ledger/payment-recovery";
-import { stripePaymentGatewayPlugin } from "../../server/plugins/ledger/payment-gateway/plugins/stripe";
 
 describe("checkout method durable storage and listing", () => {
   let directory: string;
@@ -181,7 +194,9 @@ describe("checkout method durable storage and listing", () => {
     const config = { id: "gateway", pluginId: "stripe", data: {
       publishableKey: "pk_test_fixture", paymentTypes: ["card", "us_bank_account"],
     } };
-    state.gateway = { config, context: { apiKey: "sk_test_fixture", webhookSecret: "fixture", config }, plugin: stripePaymentGatewayPlugin };
+    state.gateway = { config, context: { apiKey: "sk_test_fixture", webhookSecret: "fixture", config },
+      description: { configId: "gateway", operations: ["payments.customer.retrieve"] },
+      plugin: stripePaymentGatewayPlugin };
     state.storage = {
       users: { getUser: async () => null },
       workers: { getWorker: async () => ({ id: "worker" }), getWorkerDisplayName: async () => "Fixture worker" },

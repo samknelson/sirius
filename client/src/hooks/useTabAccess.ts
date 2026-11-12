@@ -8,7 +8,9 @@ import {
   buildTabHref,
   WS_ADMIN_ENTITY_ID,
   WC_ADMIN_ENTITY_ID,
+  DENORM_ADMIN_ENTITY_ID,
   RECORD_METADATA_ADMIN_ENTITY_ID,
+  USER_ROLES_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -192,6 +194,17 @@ export function useWorkerTabAccess(workerId: string | undefined, enabled = true)
     entityType: 'worker', 
     entityId: workerId, 
     enabled 
+  });
+}
+
+/**
+ * Hook specifically for worker certification entity tabs
+ */
+export function useWorkerCertificationTabAccess(certificationId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'worker_certification',
+    entityId: certificationId,
+    enabled,
   });
 }
 
@@ -494,6 +507,15 @@ export function useWcTabAccess(enabled = true) {
   });
 }
 
+/** Tab access for the singleton denorm operations page. */
+export function useDenormTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'denorm',
+    entityId: DENORM_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
 /**
  * Tab access for the record history admin page. It is one page rather than an
  * entity, so the id is the registry's constant.
@@ -502,6 +524,15 @@ export function useRecordMetadataTabAccess(enabled = true) {
   return useTabAccess({
     entityType: 'record_metadata',
     entityId: RECORD_METADATA_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/** Tab access for the singleton user-role administration page. */
+export function useUserRolesTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'user_roles',
+    entityId: USER_ROLES_ADMIN_ENTITY_ID,
     enabled,
   });
 }

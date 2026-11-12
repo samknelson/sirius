@@ -1,5 +1,6 @@
 import type { Express, RequestHandler, Request } from "express";
 import passport from "passport";
+import { captureRequestIpContext } from "../middleware/request-context";
 import session from "express-session";
 import { StorageSessionStore } from "./session-store";
 import { loadAuthConfig, getProviderConfig } from "./config";
@@ -16,6 +17,8 @@ import { loadProvider } from "./provider-loader";
 import { isWorkerSelfRegistrationEnabled } from "./worker-provisioning";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { installMaskMode } from "../privacy";
+import { observeSuccessfulSignIns } from "./sign-in-events";
+import { createDeviceCookieMiddleware } from "./device-cookie";
 
 const getStorage = () => require("../storage").storage;
 
@@ -113,8 +116,11 @@ export async function setupAuth(app: Express): Promise<void> {
   const config = getAuthConfig();
 
   app.set("trust proxy", 1);
+  app.use(captureRequestIpContext);
+  app.use(createDeviceCookieMiddleware());
   app.use(getSession());
   app.use(passport.initialize());
+  app.use(observeSuccessfulSignIns);
   app.use(passport.session());
   // Preference controls follow session authentication, before provider routes.
   // They no longer intercept ordinary APIs, files or application delivery.

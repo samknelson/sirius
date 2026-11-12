@@ -14,9 +14,9 @@ vi.mock("@/components/layouts/WorkerLayout", () => ({
   WorkerLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useWorkerLayout: () => ({ worker: { id: "worker-1" } }),
 }));
-vi.mock("@/plugins/payment-gateway/registry", () => ({
-  hasPaymentGatewayComponent: () => false,
-  resolvePaymentGatewayComponent: () => null,
+vi.mock("@/plugins/wc-vendors/registry", () => ({
+  hasWcVendorComponent: () => false,
+  resolveWcVendorComponent: () => null,
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast }) }));
 vi.mock("@/components/ui/alert-dialog", async () => {

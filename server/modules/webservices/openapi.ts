@@ -14,7 +14,7 @@ import type { PluginConfig, WsClient } from "@shared/schema";
  * exactly the services that client can actually reach: a service it is not
  * granted, or one that is switched off, is absent rather than listed as
  * forbidden. The document carries no credential — an integrator authenticates
- * with the key and secret they were given out of band, and the document only
+ * with the id and secret they were given out of band, and the document only
  * names the headers to put them in.
  */
 export interface OpenApiDocument {
@@ -35,23 +35,28 @@ const BODY_METHODS: WebServiceMethod[] = ["POST", "PUT", "PATCH"];
  * supported; neither carries a value.
  */
 const SECURITY_SCHEMES = {
-  wsClientKey: {
+  wsClientId: {
     type: "apiKey",
     in: "header",
-    name: "X-WS-Client-Key",
-    description: "Client key. Sent together with X-WS-Client-Secret.",
+    name: "X-WS-Client-ID",
+    description: "Client ID. Sent with the client secret, or with a Freeman bearer for a Freeman-authorized client.",
   },
   wsClientSecret: {
     type: "apiKey",
     in: "header",
     name: "X-WS-Client-Secret",
-    description: "Client secret. Sent together with X-WS-Client-Key.",
+    description: "Client secret. Sent together with X-WS-Client-ID.",
   },
   wsBasicAuth: {
     type: "http",
     scheme: "basic",
     description:
-      "HTTP Basic authentication, using the client key as the username and the client secret as the password.",
+      "HTTP Basic authentication, using the client ID as the username and the client secret as the password.",
+  },
+  freemanBearerAuth: {
+    type: "http",
+    scheme: "bearer",
+    description: "Freeman bearer token. Sent together with X-WS-Client-ID; no client secret is checked.",
   },
 } as const;
 
@@ -61,9 +66,16 @@ const SECURITY_SCHEMES = {
  * needs both headers.
  */
 const SECURITY_REQUIREMENTS: Record<string, string[]>[] = [
-  { wsClientKey: [], wsClientSecret: [] },
+  { wsClientId: [], wsClientSecret: [] },
   { wsBasicAuth: [] },
 ];
+
+const FREEMAN_AUTHORIZATION_CONFIG_KEY = "freemanBearerAuthorizationConfigId";
+
+function usesFreemanBearerAuthorization(client: WsClient): boolean {
+  const value = client.data?.[FREEMAN_AUTHORIZATION_CONFIG_KEY];
+  return typeof value === "string" && value.trim().length > 0;
+}
 
 /** Human label for a configuration, falling back to its address. */
 function labelOf(config: PluginConfig, address: ServiceAddress): string {
@@ -155,6 +167,7 @@ function frameworkResponses(): Record<string, unknown> {
  */
 export async function buildClientOpenApiDocument(client: WsClient): Promise<OpenApiDocument> {
   const services = await callableServices(client.id);
+  const requiresFreemanBearer = usesFreemanBearerAuthorization(client);
 
   const paths: Record<string, Record<string, unknown>> = {};
   let anyDatabaseIdAddress = false;
@@ -209,7 +222,9 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
   const baseUrl = getPublicBaseUrl();
   const descriptionParts = [
     `Web services available to the client "${client.name}".`,
-    "Every operation is authenticated with this client's own key and secret; the document never contains them.",
+    requiresFreemanBearer
+      ? "Every operation requires X-WS-Client-ID and Authorization: Bearer <token>. X-WS-Client-Secret is not required or checked. HTTP Basic authentication cannot be used because Authorization carries the Bearer token. The document never contains a credential."
+      : "Every operation is authenticated with this client's own ID and secret; the document never contains them.",
     "A service granted to another client, or switched off, does not appear here.",
   ];
   if (anyDatabaseIdAddress) {
@@ -240,8 +255,21 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
               "Relative to this installation's own host; no public URL is configured for it.",
           },
     ],
-    components: { securitySchemes: SECURITY_SCHEMES },
-    security: SECURITY_REQUIREMENTS,
+    components: {
+      securitySchemes: requiresFreemanBearer
+        ? {
+            wsClientId: SECURITY_SCHEMES.wsClientId,
+            freemanBearerAuth: SECURITY_SCHEMES.freemanBearerAuth,
+          }
+        : {
+            wsClientId: SECURITY_SCHEMES.wsClientId,
+            wsClientSecret: SECURITY_SCHEMES.wsClientSecret,
+            wsBasicAuth: SECURITY_SCHEMES.wsBasicAuth,
+          },
+    },
+    security: requiresFreemanBearer
+      ? [{ wsClientId: [], freemanBearerAuth: [] }]
+      : SECURITY_REQUIREMENTS,
     paths,
   };
 }

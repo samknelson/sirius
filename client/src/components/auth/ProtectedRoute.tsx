@@ -5,7 +5,7 @@ import { Redirect, useLocation } from 'wouter';
 import AccessDenied from './AccessDenied';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { getTabAccessRequirements, TabEntityType } from '@shared/tabRegistry';
+import { getTabAccessRequirements, hasTabPermission, TabEntityType } from '@shared/tabRegistry';
 import { apiRequest } from '@/lib/queryClient';
 
 interface ProtectedRouteProps {
@@ -439,7 +439,10 @@ export default function ProtectedRoute({ children, permission, policy, component
   }
 
   // If a specific permission is required, check if user has it
-  if (effectivePermission && !hasPermission(effectivePermission)) {
+  if (!hasTabPermission(
+    { permission: effectivePermission, adminBypass: tabAccess?.adminBypass },
+    hasPermission,
+  )) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="text-center">

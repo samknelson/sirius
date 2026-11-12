@@ -3,9 +3,12 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
 import { entityMetadataStorage } from "../../storage/system/entity-metadata";
-import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
+import { buildTestRequestHeaders } from "./test-request-auth";
+import { executeWsTestHttp } from "./test-request-http";
+import { buildWsTestUrl } from "@shared/utils/ws-test-url";
+import { sendIfMaintenanceRefusal } from "../../services/maintenance-flag";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
@@ -396,18 +399,19 @@ export function registerWebServiceAdminRoutes(
   // === Test Execution ===
 
   const testRequestSchema = z.object({
-    clientKey: z.string().min(1, "Client key is required"),
-    clientSecret: z.string().min(1, "Client secret is required"),
+    clientKey: z.string().min(1, "Client ID is required").max(8192),
+    clientSecret: z.string().max(8192).optional().default(""),
+    bearerToken: z.string().max(8192, "Bearer token is too long").optional(),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
     /** Configuration id (or alias) — the first segment of the public URL. */
-    configRef: z.string().min(1, "Configuration is required"),
+    configRef: z.string().min(1, "Configuration is required").max(200),
     /** Declared operation name — the second segment of the public URL. */
-    operation: z.string().min(1, "Operation is required"),
-    queryParams: z.record(z.string()).optional(),
+    operation: z.string().min(1, "Operation is required").max(200),
+    queryParams: z.record(z.string().max(4096)).optional(),
     body: z.unknown().optional(),
   });
 
-  app.post("/api/admin/ws-clients/:id/test", requireAuth, requirePermission("admin"), async (req, res) => {
+  app.post("/api/admin/ws-clients/:id/test", requireAuth, requirePermission("admin"), async function executeWebServiceTestRequest(req, res) {
     const startTime = Date.now();
 
     try {
@@ -424,113 +428,76 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      const { clientKey, clientSecret, method, configRef, operation, queryParams, body } = parseResult.data;
-
-      // Validate the credentials
-      const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
-      if (!validation.valid) {
-        return res.json({
-          success: false,
-          status: 401,
-          error: "Invalid credentials",
-          message: "The provided client key or secret is incorrect",
-          duration: Date.now() - startTime,
-        });
-      }
-
-      if (!validation.credential?.isActive) {
-        return res.json({
-          success: false,
-          status: 401,
-          error: "Credential inactive",
-          message: "The credential is not active",
-          duration: Date.now() - startTime,
-        });
-      }
-
-      // Check if credential belongs to this client
-      if (validation.credential.clientId !== client.id) {
-        return res.json({
-          success: false,
-          status: 401,
-          error: "Credential mismatch",
-          message: "The credential does not belong to this client",
-          duration: Date.now() - startTime,
-        });
-      }
-
-      // Check client status
-      if (client.status !== "active") {
-        return res.json({
-          success: false,
-          status: 403,
-          error: "Client inactive",
-          message: `Client is ${client.status}`,
-          duration: Date.now() - startTime,
-        });
-      }
-
-      // The public address of the operation. Grant, enabled and operation
-      // checks are deliberately NOT repeated here — the dispatcher is the one
-      // authority on them, so the test screen shows exactly what an outside
-      // caller would get.
-      const fullPath = `/api/ws/${encodeURIComponent(configRef)}/${encodeURIComponent(operation)}`;
-
-      // Build query string
-      const queryString = queryParams && Object.keys(queryParams).length > 0
-        ? "?" + new URLSearchParams(queryParams).toString()
-        : "";
-
-      const internalUrl = `http://localhost:${getEnvironmentVariable("PORT") || 5000}${fullPath}${queryString}`;
-
-      // Make the internal request with auth headers
-      const headers: Record<string, string> = {
-        "X-WS-Client-Key": clientKey,
-        "X-WS-Client-Secret": clientSecret,
-        "Content-Type": "application/json",
-      };
-
-      const fetchOptions: RequestInit = {
-        method,
-        headers,
-      };
-
-      if (body && ["POST", "PUT", "PATCH"].includes(method)) {
-        fetchOptions.body = JSON.stringify(body);
-      }
-
-      const response = await fetch(internalUrl, fetchOptions);
-      const responseText = await response.text();
-
-      let responseData: unknown;
+       const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body } = parseResult.data;
+      let target: string;
       try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        responseData = responseText;
+         target = buildWsTestUrl(configRef, operation, queryParams);
+      } catch (error) {
+         return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid web service address" });
+      }
+      const requestBody = body !== undefined && ["POST", "PUT", "PATCH"].includes(method)
+        ? JSON.stringify(body)
+        : undefined;
+      if ((requestBody?.length ?? 0) > 128 * 1024 || target.length > 8192) {
+        return res.status(400).json({ message: "The test request is too large" });
       }
 
-      // Record credential usage
-      await storage.wsClientCredentials.recordUsage(validation.credential.id);
+      // The selected client supplies only the authentication HEADER FORMAT.
+      // The local dispatcher decides
+      // whether the credentials, client status, and grant actually permit it.
+      const headers = buildTestRequestHeaders(client, clientKey, clientSecret, method, bearerToken);
+      let response;
+      try {
+        response = await executeWsTestHttp(target, method, headers, requestBody);
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        // Do not relay low-level errors: they can contain the target address,
+        // request data, or credential fragments. Known refusal messages are
+        // fixed strings; everything else is a connection failure.
+        const message = error instanceof Error && [
+          "Request timed out",
+          "Response is too large (1 MB limit)",
+        ].includes(error.message) ? error.message : "Could not connect to the local web service";
+        return res.json({
+          success: false, status: 0, error: "Request failed", message,
+          duration: Date.now() - startTime,
+          requestInfo: { method, url: target },
+        });
+      }
+
+      // The service may echo credentials in its reply. Do not return or
+      // log those echoes via the admin test response.
+      const scrub = (text: string) => [clientKey, clientSecret, bearerToken]
+        .filter((value): value is string => Boolean(value && value.length >= 3))
+        .reduce((result, value) => result
+          .replaceAll(value, "[REDACTED]")
+          .replaceAll(encodeURIComponent(value), "[REDACTED]"), text);
+      const safeData = typeof response.data === "string"
+        ? scrub(response.data)
+        : JSON.parse(scrub(JSON.stringify(response.data)));
+      const safeHeaders = Object.fromEntries(
+        Object.entries(response.headers).map(([key, value]) => [key, scrub(value)]),
+      );
 
       res.json({
-        success: response.ok,
+        success: response.status >= 200 && response.status < 300,
         status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        data: responseData,
+        statusText: scrub(response.statusText),
+        headers: safeHeaders,
+        data: safeData,
         duration: Date.now() - startTime,
         requestInfo: {
           method,
-          url: fullPath + queryString,
+          url: target,
         },
       });
     } catch (error) {
-      console.error("Failed to execute test request:", error);
+      // Never log a request containing admin-entered credentials.
       res.json({
         success: false,
         status: 500,
         error: "Internal error",
-        message: error instanceof Error ? error.message : "An unexpected error occurred",
+        message: "Unable to complete the test request",
         duration: Date.now() - startTime,
       });
     }

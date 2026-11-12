@@ -1,0 +1,115 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({
+  sendSupported: false,
+  createComm: vi.fn(),
+  createCommEmail: vi.fn(),
+  updateComm: vi.fn(),
+  updateCommEmail: vi.fn(),
+  wcRequest: vi.fn(),
+}));
+
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  hasWcVendorOperation: vi.fn(async (operation: string) =>
+    operation === "communications.email.send" && state.sendSupported,
+  ),
+}));
+
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: state.wcRequest,
+}));
+
+vi.mock("../../server/storage/comm", () => ({
+  createCommStorage: () => ({
+    createComm: state.createComm,
+    updateComm: state.updateComm,
+  }),
+  createCommEmailStorage: () => ({
+    createCommEmail: state.createCommEmail,
+    updateCommEmail: state.updateCommEmail,
+  }),
+  createCommEmailOptinStorage: () => ({
+    getEmailOptinByEmail: vi.fn(async () => ({ optin: true, allowlist: true })),
+  }),
+}));
+
+vi.mock("../../server/storage", () => ({
+  storage: {
+    commTags: { setTags: vi.fn() },
+    variables: { getByName: vi.fn(async () => undefined) },
+  },
+}));
+
+vi.mock("../../server/storage/transaction-context", () => ({
+  runInTransaction: async (fn: () => Promise<unknown>) => fn(),
+}));
+
+vi.mock("../../server/services/system-mode", () => ({
+  getSystemMode: vi.fn(async () => "live"),
+}));
+
+import { sendEmail } from "../../server/services/comm/senders/email";
+
+beforeEach(() => {
+  state.sendSupported = false;
+  state.createComm.mockReset();
+  state.createCommEmail.mockReset();
+  state.updateComm.mockReset();
+  state.updateCommEmail.mockReset();
+  state.wcRequest.mockReset();
+  state.createComm.mockResolvedValue({
+    id: "comm-1",
+    status: "sending",
+    data: {},
+  });
+  state.createCommEmail.mockResolvedValue({ id: "comm-email-1", data: {} });
+  state.wcRequest.mockImplementation(async ({ operation }: { operation: string }) => {
+    if (operation === "communications.email.validate") {
+      return { outcome: "success", value: { valid: true, formatted: "recipient@example.test" } };
+    }
+    if (operation === "communications.email.sender.default") {
+      return { outcome: "success", value: { email: "sender@example.test" } };
+    }
+    if (operation === "communications.email.send") {
+      return { outcome: "success", value: { success: true, messageId: "message-1" } };
+    }
+    throw new Error(`Unexpected operation ${operation}`);
+  });
+});
+
+describe("email sender vendor capability gate", () => {
+  it("does not claim a send key or create a Comm for Local Email, then retries after SendGrid selection", async () => {
+    const request = {
+      contactId: "contact-1",
+      toEmail: "recipient@example.test",
+      subject: "Subject",
+      bodyText: "Body",
+      sendKey: "email-once",
+    };
+
+    const localResult = await sendEmail(request);
+
+    expect(localResult).toMatchObject({
+      success: false,
+      errorCode: "EMAIL_NOT_SUPPORTED",
+    });
+    expect(state.wcRequest).not.toHaveBeenCalled();
+    expect(state.createComm).not.toHaveBeenCalled();
+    expect(state.createCommEmail).not.toHaveBeenCalled();
+
+    state.sendSupported = true;
+    const sendGridResult = await sendEmail(request);
+
+    expect(sendGridResult).toMatchObject({
+      success: true,
+      messageId: "message-1",
+    });
+    expect(state.createComm).toHaveBeenCalledTimes(1);
+    expect(state.createComm).toHaveBeenCalledWith(
+      expect.objectContaining({ sendKey: "email-once" }),
+    );
+    expect(state.wcRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "communications.email.send" }),
+    );
+  });
+});

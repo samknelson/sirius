@@ -3,11 +3,26 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const saved = vi.hoisted(() => new Map<string, unknown>());
+const connection = vi.hoisted(() => ({
+  selectedId: "lob-config",
+  data: { secretName: "LOB_SECRET", operations: ["communications.postal.send"] } as Record<string, unknown>,
+  update: vi.fn(),
+}));
 vi.mock("../../server/storage", () => ({
-  storage: { variables: {
+  storage: { pluginConfigs: {
+    get: async (id: string) => id === connection.selectedId ? { id, data: connection.data } : undefined,
+    update: async (id: string, patch: { data: Record<string, unknown> }) => {
+      connection.update(id, patch);
+      connection.data = patch.data;
+    },
+  }, variables: {
     getByName: async (name: string) => saved.has(name) ? { value: structuredClone(saved.get(name)) } : undefined,
     setByName: async (name: string, value: unknown) => { saved.set(name, structuredClone(value)); return { name, value }; },
   } },
+}));
+vi.mock("../../server/services/webclient/wc-vendor-context", async (original) => ({
+  ...await original<typeof import("../../server/services/webclient/wc-vendor-context")>(),
+  describeWcVendor: async () => ({ configId: connection.selectedId, configName: "Selected Lob" }),
 }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({
   requireAccess: (policy: string) => (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -21,7 +36,8 @@ vi.mock("../../server/services/comm/letter-pdf", () => ({
 }));
 
 import { getEmailDefaults, getPostalDefaults, prepareEmailContent, validateEmailDefaults, validatePostalDefaults } from "../../server/services/comm/message-defaults";
-import { registerMessageDefaultsRoutes } from "../../server/modules/message-defaults";
+import { registerEmailConfigRoutes } from "../../server/modules/email-config";
+import { registerPostalConfigRoutes } from "../../server/modules/postal-config";
 import { renderLetterPdf } from "../../server/services/comm/letter-pdf";
 import { LetterLayoutError } from "../../server/services/comm/letter-layout-error";
 import { LetterImageError } from "../../server/services/comm/letter-image-error";
@@ -34,15 +50,37 @@ describe("site-wide message defaults", () => {
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
-    registerMessageDefaultsRoutes(app, "email");
-    registerMessageDefaultsRoutes(app, "postal");
+    registerEmailConfigRoutes(app);
+    registerPostalConfigRoutes(app);
     server = await new Promise<Server>((resolve) => { const running = app.listen(0, "127.0.0.1", () => resolve(running)); });
     origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   });
   afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
-  beforeEach(() => { saved.clear(); vi.clearAllMocks(); });
+  beforeEach(() => {
+    saved.clear(); vi.clearAllMocks();
+    connection.selectedId = "lob-config";
+    connection.data = { secretName: "LOB_SECRET", operations: ["communications.postal.send"] };
+  });
   const call = (medium: string, method = "GET", value?: unknown, role = "admin", suffix = "") => fetch(`${origin}/api/config/${medium}/message-defaults${suffix}`, {
     method, headers: { "Content-Type": "application/json", "x-test-role": role }, body: value === undefined ? undefined : JSON.stringify(value),
+  });
+
+  it("edits the WC delivery connection's return address without touching credentials, assignments or legacy settings", async () => {
+    const address = { addressLine1: "1 Return St", city: "Boston", state: "MA", zip: "02108", country: "US" };
+    const request = (method: string, configId = "lob-config", role = "admin") => fetch(`${origin}/api/config/postal/return-address`, {
+      method, headers: { "Content-Type": "application/json", "x-test-role": role },
+      ...(method === "PUT" ? { body: JSON.stringify({ configId, returnAddress: address }) } : {}),
+    });
+    expect((await request("PUT", "lob-config", "staff")).status).toBe(403);
+    expect(connection.update).not.toHaveBeenCalled();
+    expect((await request("PUT", "old-config")).status).toBe(409);
+    expect(connection.update).not.toHaveBeenCalled();
+    expect((await request("PUT")).status).toBe(200);
+    expect(connection.update).toHaveBeenCalledWith("lob-config", { data: {
+      secretName: "LOB_SECRET", operations: ["communications.postal.send"], defaultReturnAddress: address,
+    } });
+    expect(await (await request("GET")).json()).toMatchObject({ configId: "lob-config", returnAddress: address });
+    expect(saved.size).toBe(0);
   });
 
   it("defaults to empty, independently persists both media, and clearing never touches provider/unrelated settings", async () => {

@@ -71,7 +71,7 @@ export async function renderLetterPdf(
   options: { previewGuides?: boolean; defaults?: PostalMessageDefaults } = {},
 ): Promise<Buffer> {
   let entered = false;
-  return renderQueue.run(Boolean(options.previewGuides), async () => {
+  return renderQueue.run(Boolean(options.previewGuides), async function renderQueuedLetterPdf() {
     entered = true;
     let browser: Browser | undefined;
     let stage = "html";

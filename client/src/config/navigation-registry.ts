@@ -4,6 +4,7 @@ import {
   Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, Database, CalendarClock, History, Fingerprint, type LucideIcon
 } from "lucide-react";
 import type { ResolvedCatalogEntry } from "@shared/catalog";
+import type { PluginKindSummary } from "@/plugins/_core";
 
 export interface NavItem {
   path: string;
@@ -23,12 +24,10 @@ export interface NavItem {
 }
 
 /**
- * Where a section's items come from, when they are not written down here.
- * `options-catalog` = one item per unified-options list, named by the options
- * registry (the server's `/api/options/catalog`), which is the single source
- * of truth for what those lists are called.
+ * Where a section's items come from, when they are not all written down here.
+ * Dynamic entries are projections of shared catalogs.
  */
-export type NavItemSource = "options-catalog";
+export type NavItemSource = "options-catalog" | "plugin-kinds-catalog";
 
 export interface NavSection {
   id: string;
@@ -36,8 +35,8 @@ export interface NavSection {
   description: string;
   icon: LucideIcon;
   /**
-   * The section's items. Empty in the registry when `itemsFrom` is set — call
-   * `resolveConfigSections` to fill them in before rendering.
+   * Static section items. A dynamic source may replace or append to these;
+   * call `resolveConfigSections` before rendering.
    */
   items: NavItem[];
   /** Set when the items are resolved at render time instead of listed here. */
@@ -72,8 +71,8 @@ export const configSections: NavSection[] = [
       { path: "/config/timezone", label: "Time Zone", icon: Clock, testId: "nav-config-timezone", permission: "admin" },
       { path: "/config/components", label: "Components", icon: Package, testId: "nav-config-components", permission: "admin" },
       { path: "/config/catalogs", label: "Catalogs", icon: BookOpen, testId: "nav-config-catalogs", permission: "admin" },
-      { path: "/admin/plugin-configs", label: "Plugins", icon: Puzzle, testId: "nav-config-plugins", permission: "admin" },
       { path: "/admin/denorm", label: "Denorm", icon: RefreshCw, testId: "nav-config-denorm", permission: "admin" },
+      { path: "/admin/oneoff", label: "One-off Jobs", icon: Zap, testId: "nav-config-oneoff", permission: "admin" },
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/file-browser", label: "File Browser", icon: FolderOpen, testId: "nav-config-file-browser", permission: "admin" },
       { path: "/config/entity-files", label: "Entity Files", icon: FolderOpen, testId: "nav-config-entity-files", permission: "admin" },
@@ -102,6 +101,16 @@ export const configSections: NavSection[] = [
     ],
   },
   {
+    id: "plugins",
+    title: "Plugins",
+    description: "Plugin configuration and management",
+    icon: Puzzle,
+    items: [
+      { path: "/admin/plugin-configs", label: "Plugins", icon: Puzzle, testId: "nav-config-plugins", permission: "admin" },
+    ],
+    itemsFrom: "plugin-kinds-catalog",
+  },
+  {
     id: "theme",
     title: "Theme & Appearance",
     description: "Site branding, terminology, and dashboard customization",
@@ -110,7 +119,6 @@ export const configSections: NavSection[] = [
       { path: "/config/site", label: "Site Information", icon: Globe, testId: "nav-config-site", permission: "admin" },
       { path: "/config/terminology", label: "Terminology", icon: Globe, testId: "nav-config-terminology", permission: "admin" },
       { path: "/config/helps", label: "Help Text", icon: HelpCircle, testId: "nav-config-helps", permission: "admin" },
-      { path: "/admin/plugin-configs/dashboard", label: "Dashboard Plugins", icon: Puzzle, testId: "nav-config-dashboard-plugins", permission: "admin" },
     ],
   },
   {
@@ -122,9 +130,8 @@ export const configSections: NavSection[] = [
     description: "Message providers, addresses, and contact settings",
     icon: Phone,
     items: [
-      { path: "/config/twilio", label: "SMS Providers", icon: MessageSquare, testId: "nav-config-sms", permission: "admin" },
-      { path: "/config/email", label: "Email Providers", icon: MessageSquare, testId: "nav-config-email", permission: "admin" },
-      { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
+      { path: "/config/email", label: "Email Defaults", icon: FileText, testId: "nav-config-email", permission: "admin" },
+      { path: "/config/postal", label: "Postal Defaults", icon: FileText, testId: "nav-config-postal", permission: "admin" },
       { path: "/config/addresses", label: "Postal Addresses", icon: MapPin, testId: "nav-config-addresses", permission: "admin" },
       { path: "/admin/letter-templates", label: "Letter Templates", icon: FileText, testId: "nav-config-letter-templates", permission: "staff" },
     ],
@@ -152,8 +159,8 @@ export const configSections: NavSection[] = [
     items: [
       bespokeOptionsNavItem({ path: "/config/ledger/payment-types", optionsType: "ledger-payment-type", icon: Wallet, testId: "nav-ledger-payment-types", policy: "staff", requiresComponent: "ledger" }),
       { path: "/admin/plugin-configs/charge", label: "Charge Plugins", icon: Zap, testId: "nav-ledger-charge-plugins", permission: "admin" },
-      { path: "/config/ledger/payment-gateways/test", label: "Gateway Test", icon: Activity, testId: "nav-ledger-gateway-test", permission: "admin" },
-      { path: "/config/ledger/payment-gateways/payment-types", label: "Gateway Payment Types", icon: CreditCard, testId: "nav-ledger-gateway-payment-types", permission: "admin" },
+      { path: "/config/wc-vendors/test", label: "Gateway Test", icon: Activity, testId: "nav-ledger-gateway-test", permission: "admin" },
+      { path: "/config/ledger/wc-vendors/payment-types", label: "Gateway Payment Types", icon: CreditCard, testId: "nav-ledger-gateway-payment-types", permission: "admin" },
       { path: "/config/ledger/settings", label: "Settings & Payment Authorization", icon: Settings, testId: "nav-ledger-settings", permission: "admin" },
     ],
   },
@@ -194,7 +201,6 @@ export const configSections: NavSection[] = [
     icon: Truck,
     items: [
       bespokeOptionsNavItem({ path: "/config/dispatch-job-types", optionsType: "dispatch-job-type", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" }),
-      { path: "/admin/plugin-configs/dispatch-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-dispatch-eligibility-plugins", permission: "admin" },
       { path: "/config/dispatch/backfill", label: "Eligibility Backfill", icon: RefreshCw, testId: "nav-config-dispatch-backfill", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
       { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
@@ -227,8 +233,6 @@ export const configSections: NavSection[] = [
     icon: Heart,
     items: [
       { path: "/trust-benefits", label: "Trust Benefits", icon: Heart, testId: "nav-trust-benefits", permission: "staff" },
-      { path: "/admin/plugin-configs/trust-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-trust-eligibility-plugins", permission: "admin" },
-      { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
       { path: "/config/trust/sitespecific/bao/thresholds", label: "Member Status Thresholds", icon: Clock, testId: "nav-config-bao-thresholds", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/trust/open-enrollment-windows", label: "Open Enrollment Windows", icon: CalendarClock, testId: "nav-config-open-enrollment-windows", permission: "admin", requiresComponents: ["sitespecific.bao", "trust.elections"] },
     ],
@@ -241,7 +245,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       bespokeOptionsNavItem({ path: "/config/edls/tasks", optionsType: "edls-task", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" }),
-      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
+      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Sync", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
       { path: "/config/edls/t631-ms", label: "Teamsters 631 MS", icon: List, testId: "nav-config-edls-t631-ms", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
       { path: "/admin/sitespecific/freeman/edls/migrate", label: "Freeman Migration", icon: Server, testId: "nav-config-edls-freeman-migrate", permission: "admin", requiresComponents: ["edls", "sitespecific.freeman.edls_migrate"] },
     ],
@@ -360,6 +364,17 @@ export function optionsCatalogNavItem(entry: OptionsCatalogEntry): NavItem {
   };
 }
 
+export function pluginKindCatalogNavItem(entry: PluginKindSummary): NavItem {
+  return {
+    path: `/admin/plugin-configs/${entry.kind}`,
+    label: entry.label,
+    icon: Puzzle,
+    testId: `nav-config-plugin-kind-${entry.kind}`,
+    permission: "admin",
+    requiresComponent: entry.requiredComponent,
+  };
+}
+
 /**
  * An item leading to an options list that is administered on its own page. It
  * carries the page's own access gate — which can be stricter than the list's —
@@ -379,10 +394,13 @@ export function bespokeOptionsNavItem(
  * lists that do exist.
  */
 export function resolveConfigSections(
-  catalog: { entries: OptionsCatalogEntry[]; status: "loading" | "error" | "ready" },
+  catalogs: {
+    options: { entries: OptionsCatalogEntry[]; status: "loading" | "error" | "ready" };
+    pluginKinds: { entries: PluginKindSummary[]; status: "loading" | "error" | "ready" };
+  },
   sections: NavSection[] = configSections,
 ): NavSection[] {
-  const byType = new Map(catalog.entries.map(entry => [entry.type, entry]));
+  const byType = new Map(catalogs.options.entries.map(entry => [entry.type, entry]));
 
   const resolveSection = (section: NavSection): NavSection => {
     const namedItems = section.items.filter(item => item.optionsType);
@@ -391,9 +409,19 @@ export function resolveConfigSections(
     let items: NavItem[];
     let resolved: boolean;
 
+    let sourceStatus: "loading" | "error" | "ready" = catalogs.options.status;
     if (section.itemsFrom === "options-catalog") {
-      items = listedOptionsCatalogEntries(catalog.entries).map(optionsCatalogNavItem);
-      resolved = catalog.status === "ready";
+      items = listedOptionsCatalogEntries(catalogs.options.entries).map(optionsCatalogNavItem);
+      resolved = catalogs.options.status === "ready";
+    } else if (section.itemsFrom === "plugin-kinds-catalog") {
+      sourceStatus = catalogs.pluginKinds.status;
+      items = [
+        ...section.items,
+        ...catalogs.pluginKinds.entries
+          .filter((entry) => entry.configurable)
+          .map(pluginKindCatalogNavItem),
+      ];
+      resolved = catalogs.pluginKinds.status === "ready";
     } else {
       items = section.items.flatMap(item => {
         if (!item.optionsType) return [item];
@@ -407,7 +435,7 @@ export function resolveConfigSections(
       // so a named item can be legitimately absent from a perfectly good
       // answer, and calling that "loading" would leave the section saying
       // "Loading…" for as long as the feature stays off.
-      resolved = catalog.status === "ready";
+      resolved = catalogs.options.status === "ready";
     }
 
     return {
@@ -416,7 +444,7 @@ export function resolveConfigSections(
       itemsStatus: isDynamic
         ? resolved
           ? "ready"
-          : catalog.status === "error"
+          : sourceStatus === "error"
             ? "error"
             : "loading"
         : section.itemsStatus,

@@ -16,12 +16,13 @@ import {
   type EdlsSheet, 
   type InsertEdlsSheet,
   type EdlsCrew,
-  type InsertEdlsCrew
+  type InsertEdlsCrew,
+  type InsertEdlsAssignment,
 } from "@shared/schema";
 import { eq, ne, desc, sql, and, gte, lte, ilike, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
-import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
+import { getClient, runInSavepoint, runInTransaction, onAfterCommit } from "../transaction-context";
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { storage } from "../index";
@@ -34,6 +35,7 @@ import {
   type EdlsPassportExportQuery,
   type EdlsPassportExportPage,
 } from "./passport-export";
+import { getEdlsSheetsPageOrder } from "./sheets-page-order";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -67,6 +69,16 @@ export interface PaginatedEdlsSheets {
 }
 
 export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
+export interface EdlsImportedCrewInput {
+  crew: CrewInput;
+  assignments: Array<Omit<InsertEdlsAssignment, "crewId">>;
+}
+
+export interface EdlsImportAssignmentOmission {
+  crewIndex: number;
+  assignmentIndex: number;
+  error: unknown;
+}
 
 /**
  * Input type for sheet validation that includes optional crews context.
@@ -162,6 +174,19 @@ export interface EdlsSheetsStorage {
    * If crews are omitted, loads existing crews to validate counts.
    */
   update(id: string, sheet: Partial<InsertEdlsSheet>, crews?: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
+  /**
+   * Replace one imported sheet and its complete roster as one save boundary.
+   * The root snapshot/event is emitted only after every child is final.
+   */
+  replaceFromImport(
+    id: string | undefined,
+    sheet: InsertEdlsSheet,
+    crews: EdlsImportedCrewInput[],
+  ): Promise<{
+    kind: "created" | "updated";
+    sheet: EdlsSheetWithCrews;
+    omittedAssignments: EdlsImportAssignmentOmission[];
+  }>;
   delete(id: string): Promise<boolean>;
   /**
    * Snapshot export: a self-contained, versioned bundle of the sheet with
@@ -351,10 +376,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       const joinedQuery = withJobGroups
         ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
         : baseQuery;
+      const pageOrder = getEdlsSheetsPageOrder();
       
       const rows = whereCondition
-        ? await joinedQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
-        : await joinedQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
+        ? await joinedQuery.where(whereCondition).orderBy(...pageOrder).limit(limit).offset(page * limit)
+        : await joinedQuery.orderBy(...pageOrder).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,
@@ -558,14 +584,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           .where(eq(edlsSheets.id, id))
           .returning();
         
-        // If status changed to "trash", delete all assignments individually for audit logging
+        // A trashed sheet releases its workers but keeps their assignment rows.
         if (safeSheetUpdate.status === 'trash' && existingSheet.status !== 'trash') {
           const sheetCrews = await storage.edlsCrews.getBySheetId(id);
           for (const crew of sheetCrews) {
-            const crewAssignments = await storage.edlsAssignments.getByCrewId(crew.id);
-            for (const assignment of crewAssignments) {
-              await storage.edlsAssignments.delete(assignment.id);
-            }
+            await storage.edlsAssignments.deleteByCrewId(crew.id);
           }
         }
         
@@ -612,10 +635,97 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       });
     },
 
+    async replaceFromImport(
+      id: string | undefined,
+      insertSheet: InsertEdlsSheet,
+      importedCrews: EdlsImportedCrewInput[],
+    ): Promise<{
+      kind: "created" | "updated";
+      sheet: EdlsSheetWithCrews;
+      omittedAssignments: EdlsImportAssignmentOmission[];
+    }> {
+      const crewInputs = importedCrews.map(({ crew }) => crew);
+      await validate.validateOrThrow({ ...insertSheet, _crews: crewInputs });
+
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [existing] = id
+          ? await client.select().from(edlsSheets).where(eq(edlsSheets.id, id))
+          : [];
+        if (id && !existing) throw new Error("Target sheet disappeared during import.");
+
+        let saved: EdlsSheet;
+        let kind: "created" | "updated";
+        if (existing) {
+          [saved] = await client.update(edlsSheets)
+            .set({ ...insertSheet, changed: sql`now()` })
+            .where(eq(edlsSheets.id, existing.id))
+            .returning();
+          kind = "updated";
+          const oldCrews = await storage.edlsCrews.getBySheetId(existing.id);
+          for (const oldCrew of oldCrews) {
+            await storage.edlsAssignments.deleteByCrewId(oldCrew.id);
+            await storage.edlsCrews.delete(oldCrew.id);
+          }
+        } else {
+          [saved] = await client.insert(edlsSheets)
+            .values({ ...insertSheet, changed: sql`now()` })
+            .returning();
+          kind = "created";
+        }
+
+        const createdCrews = crewInputs.length
+          ? await storage.edlsCrews.createMany(crewInputs.map((crew, index) => {
+            const { id: _id, ...crewData } = crew;
+            return { ...crewData, sheetId: saved.id, sequence: index };
+          }))
+          : [];
+        const omittedAssignments: EdlsImportAssignmentOmission[] = [];
+        if (saved.status !== "trash") {
+          for (let index = 0; index < createdCrews.length; index++) {
+            const assignments = importedCrews[index]?.assignments ?? [];
+            for (let assignmentIndex = 0; assignmentIndex < assignments.length; assignmentIndex++) {
+              try {
+                await runInSavepoint(() => storage.edlsAssignments.create({
+                  ...assignments[assignmentIndex],
+                  crewId: createdCrews[index].id,
+                }, saved.id));
+              } catch (error) {
+                omittedAssignments.push({
+                  crewIndex: index,
+                  assignmentIndex,
+                  error,
+                });
+              }
+            }
+          }
+        }
+
+        await emitSheetSaved(saved, existing?.status ?? null);
+        return {
+          kind,
+          sheet: { ...saved, crews: createdCrews },
+          omittedAssignments,
+        };
+      });
+    },
+
     async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(edlsSheets).where(eq(edlsSheets.id, id)).returning();
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Lock the parent first (the same order as assignment creation), then
+        // each crew. A concurrent assignment cannot slip in after the clear
+        // and be cascaded away with the crew.
+        const locked = await client.execute(sql`SELECT id FROM edls_sheets WHERE id = ${id} FOR UPDATE`);
+        if (!locked.rows.length) return false;
+        const crews = await storage.edlsCrews.getBySheetId(id);
+        for (const crew of crews) {
+          await client.execute(sql`SELECT id FROM edls_crews WHERE id = ${crew.id} FOR UPDATE`);
+          await storage.edlsAssignments.deleteByCrewId(crew.id);
+        }
+        const result = await client.delete(edlsSheets).where(eq(edlsSheets.id, id)).returning();
+        return result.length > 0;
+      });
     }
   };
 }
@@ -665,6 +775,26 @@ export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
           sheetId: result?.id,
           title: result?.title,
           crewCount: result?.crews?.length,
+        },
+      }),
+    },
+    replaceFromImport: {
+      metadataMode: 'none',
+      getHostEntityId: (_args, result) => result?.sheet.id,
+      getDescription: async (_args, result) => {
+        const action = result?.kind === "created" ? "Created" : "Updated";
+        const title = result?.sheet.title || "Untitled";
+        const ymd = result?.sheet.ymd || "Unknown";
+        return `${action} imported sheet [${title}] [${ymd}]`;
+      },
+      after: async (_args, result) => ({
+        sheet: result?.sheet,
+        crews: result?.sheet.crews,
+        metadata: {
+          sheetId: result?.sheet.id,
+          title: result?.sheet.title,
+          ymd: result?.sheet.ymd,
+          crewCount: result?.sheet.crews.length,
         },
       }),
     },

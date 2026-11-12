@@ -83,7 +83,7 @@ describe("tables the metadata sweep refuses", () => {
   });
 
   it("refuses a key that cannot hold a record id", () => {
-    expect(refusal("cron_job_runs", facts({ idColumnType: "integer" }))).not.toBe("SWEPT");
+    expect(refusal("job_runs", facts({ idColumnType: "integer" }))).not.toBe("SWEPT");
   });
 
   it("refuses a text key that holds something other than record ids", () => {
@@ -106,7 +106,7 @@ describe("tables the metadata sweep refuses", () => {
     const reasons = new Set([
       refusal("grievances", facts({ exists: false })),
       refusal("session", facts({ idColumnType: null })),
-      refusal("cron_job_runs", facts({ idColumnType: "integer" })),
+      refusal("job_runs", facts({ idColumnType: "integer" })),
       refusal("components", facts({ sampleIds: ["dispatch"] })),
     ]);
     expect(reasons.size).toBe(4);

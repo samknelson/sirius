@@ -1,12 +1,18 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient, runInTransaction, onAfterCommit } from '../transaction-context';
 import { storageLogger } from "../../logger";
+import { getClient, runInTransaction, onAfterCommit, runOutsideTransaction } from '../transaction-context';
 import { allowInMaintenanceMode } from '../maintenance';
 import { sessions } from "@shared/schema";
 import { readMaskState, preserveMaskState, type MaskPolicy } from "@shared/privacy/mask-mode";
 import { lockMaskComponent, readMaskComponent } from "./mask-component";
 import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
+import { getRequestContext } from "../../middleware/request-context";
+import { suppliedSessionUserAgent } from "@shared/session-device";
+import { normalizeSessionIp } from "../../auth/session-ip";
+import { getSessionAuthenticationContext } from "../../auth/session-authentication-context";
+import { eventBus, EventType, type EventPayloadMap } from "../../services/event-bus";
+import { logger } from "../../logger";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -56,7 +62,7 @@ export interface SessionStorage {
     newUserId?: string;
   }>;
   /** Roll a session's expiry forward. No-op when the row is gone. */
-  touchSession(sid: string, expire: Date): Promise<void>;
+  touchSession(sid: string, expire: Date, options?: { ipOnly?: boolean }): Promise<void>;
   /** Sids of expired session rows (for per-session logged pruning). */
   getExpiredSessionSids(): Promise<string[]>;
   /**
@@ -146,6 +152,10 @@ export function createSessionStorage(): SessionStorage {
           .delete(sessions)
           .where(eq(sessions.sid, sid))
           .returning({ sess: sessions.sess });
+        if (row) announceSessionMutation(EventType.SESSION_DELETE_AFTER, {
+          sid, userId: sessionUserId(row.sess) ?? null,
+          ip: storedSessionIp(row.sess), occurredAt: new Date().toISOString(),
+        });
         return row ? { deleted: true, userId: sessionUserId(row.sess) } : { deleted: false };
       });
     },
@@ -188,34 +198,58 @@ export function createSessionStorage(): SessionStorage {
         // insert race means a row now exists — retry the locked-update path.
         for (let attempt = 0; attempt < 3; attempt++) {
           const locked = await client.execute(sql`
-            SELECT sess #>> '{passport,user,dbUser,id}' AS old_user_id, sess AS prior_payload
+            SELECT sess AS prior_payload, sess #>> '{passport,user,dbUser,id}' AS old_user_id,
+                   sess ->> '_sessionClientIp' AS old_ip,
+                   sess -> '_sessionClientUserAgent' AS old_user_agent
             FROM sessions WHERE sid = ${sid} FOR UPDATE
           `);
           if (locked.rows.length > 0) {
+            const previous = locked.rows[0] as { old_user_id: string | null; old_ip: string | null; old_user_agent: unknown };
+            const previousIp = normalizeSessionIp(previous.old_ip);
+            const ip = normalizeSessionIp(getRequestContext()?.ipAddress) ?? previousIp;
+            const previousUserAgent = suppliedSessionUserAgent(previous.old_user_agent);
+            const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent) ?? previousUserAgent;
             await client
               .update(sessions)
-              .set({ sess: preserveMaskState(sess, (locked.rows[0] as any).prior_payload), expire })
+              .set({ sess: withSessionClientDetails(preserveMaskState(sess, (locked.rows[0] as any).prior_payload), ip, userAgent), expire })
               .where(eq(sessions.sid, sid));
+            announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
+              sid, created: false, previousUserId: previous.old_user_id,
+              userId: newUserId ?? null, previousIp, ip,
+              previousUserAgent, userAgent,
+              signInHistoryManaged: getSessionAuthenticationContext()?.historyManaged === true &&
+                getSessionAuthenticationContext()?.userId === newUserId,
+              occurredAt: new Date().toISOString(),
+            });
             return {
               created: false,
-              oldUserId: (locked.rows[0] as any).old_user_id ?? undefined,
+              oldUserId: previous.old_user_id ?? undefined,
               newUserId,
             };
           }
           if (existingOnly) throw new Error("Session ended before it could be saved");
+          const ip = normalizeSessionIp(getRequestContext()?.ipAddress);
+          const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent);
           const inserted = await client
             .insert(sessions)
             .values({
               sid,
               // A new login starts OFF; other logins/users remain independent.
-              sess: newUserId
+              sess: withSessionClientDetails(newUserId
                  ? { ...preserveMaskState(sess, {}), maskMode: { version: 1, mode: "off", revision: 1 } }
-                : preserveMaskState(sess, {}),
+                : preserveMaskState(sess, {}), ip, userAgent),
               expire,
             })
             .onConflictDoNothing()
             .returning({ sid: sessions.sid });
           if (inserted.length > 0) {
+            announceSessionMutation(EventType.SESSION_SAVE_AFTER, {
+              sid, created: true, previousUserId: null, userId: newUserId ?? null,
+              previousIp: null, ip, occurredAt: new Date().toISOString(),
+              previousUserAgent: null, userAgent,
+              signInHistoryManaged: getSessionAuthenticationContext()?.historyManaged === true &&
+                getSessionAuthenticationContext()?.userId === newUserId,
+            });
             return { created: true, newUserId };
           }
         }
@@ -223,13 +257,38 @@ export function createSessionStorage(): SessionStorage {
       }));
     },
 
-    async touchSession(sid: string, expire: Date): Promise<void> {
+    async touchSession(sid: string, expire: Date, options?: { ipOnly?: boolean }): Promise<void> {
       return allowInMaintenanceMode(async () => {
         const client = getClient();
+        const locked = await client.execute(sql`
+          SELECT sess #>> '{passport,user,dbUser,id}' AS user_id,
+                 sess ->> '_sessionClientIp' AS old_ip,
+                 sess -> '_sessionClientUserAgent' AS old_user_agent
+          FROM sessions WHERE sid = ${sid} FOR UPDATE
+        `);
+        if (locked.rows.length === 0) return;
+        const previous = locked.rows[0] as { user_id: string | null; old_ip: string | null; old_user_agent: unknown };
+        const previousIp = normalizeSessionIp(previous.old_ip);
+        const ip = normalizeSessionIp(getRequestContext()?.ipAddress) ?? previousIp;
+        const previousUserAgent = suppliedSessionUserAgent(previous.old_user_agent);
+        const userAgent = suppliedSessionUserAgent(getRequestContext()?.userAgent) ?? previousUserAgent;
+        // ipOnly is the existing no-idle-renewal API; observe device changes
+        // here too, but do not extend the expiry just to capture them.
+        if (options?.ipOnly && ip === previousIp && userAgent === previousUserAgent) return;
         await client
           .update(sessions)
-          .set({ expire })
+          .set({
+            ...(options?.ipOnly ? {} : { expire }),
+            sess: sql`jsonb_set(
+              jsonb_set(${sessions.sess}, '{_sessionClientIp}', ${JSON.stringify(ip)}::jsonb),
+              '{_sessionClientUserAgent}', ${JSON.stringify(userAgent)}::jsonb)`,
+          })
           .where(eq(sessions.sid, sid));
+        announceSessionMutation(EventType.SESSION_TOUCH_AFTER, {
+          sid, previousUserId: previous.user_id, userId: previous.user_id,
+          previousIp, ip, occurredAt: new Date().toISOString(),
+          previousUserAgent, userAgent,
+        });
       });
     },
 
@@ -251,6 +310,10 @@ export function createSessionStorage(): SessionStorage {
           .delete(sessions)
           .where(sql`${sessions.sid} = ${sid} AND ${sessions.expire} < ${now}`)
           .returning({ sess: sessions.sess });
+        if (row) announceSessionMutation(EventType.SESSION_DELETE_AFTER, {
+          sid, userId: sessionUserId(row.sess) ?? null,
+          ip: storedSessionIp(row.sess), occurredAt: new Date().toISOString(),
+        });
         return row ? { deleted: true, userId: sessionUserId(row.sess) } : { deleted: false };
       });
     },
@@ -268,6 +331,28 @@ export function createSessionStorage(): SessionStorage {
  */
 function sessionUserId(sess: any): string | undefined {
   return sess?.passport?.user?.dbUser?.id ?? undefined;
+}
+
+function storedSessionIp(sess: unknown): string | null {
+  return normalizeSessionIp((sess as Record<string, unknown> | null)?._sessionClientIp);
+}
+
+function withSessionClientDetails(sess: unknown, ip: string | null, userAgent: string | null): unknown {
+  // These reserved properties are storage-owned: never trust a stale caller.
+  return {
+    ...(sess as Record<string, unknown>),
+    _sessionClientIp: ip,
+    _sessionClientUserAgent: userAgent,
+  };
+}
+
+function announceSessionMutation<T extends EventType>(event: T, payload: EventPayloadMap[T]): void {
+  Object.freeze(payload);
+  onAfterCommit(() => {
+    void runOutsideTransaction(() => eventBus.emit(event, payload)).catch(() => {
+      logger.error("Session mutation event delivery failed", { service: "sessions", eventType: event });
+    });
+  });
 }
 
 export const sessionLoggingConfig: StorageLoggingConfig<SessionStorage> = {

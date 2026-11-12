@@ -17,7 +17,7 @@ registerCronPlugin({
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
 
-    const fetchResult = await t631Fetch("sirius_dispatch_facility_dropdown");
+    const fetchResult = await t631Fetch("sitespecific.t631.facility.list");
 
     if (!fetchResult.success) {
       throw new Error(`T631 fetch failed: ${fetchResult.error || "Unknown error"}`);

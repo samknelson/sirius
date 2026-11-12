@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { SessionData } from "express-session";
 const calls = vi.hoisted(() => ({ args: [] as any[] }));
-vi.mock("../../server/storage", () => ({ storage: { sessions: {
-  getSessionData: async () => ({ passport: { user: { dbUser: { id: "fictional" } } } }),
+vi.mock("../../server/storage", () => ({ storage: {
+variables: { getByName: async () => undefined },
+sessions: {
+  getSessionData: async () => ({ cookie: {}, passport: { user: { dbUser: { id: "fictional" } } } }),
   upsertSession: async (...args: any[]) => { calls.args = args; },
 } } }));
 vi.mock("../../server/logger", () => ({ logger: { error() {} } }));

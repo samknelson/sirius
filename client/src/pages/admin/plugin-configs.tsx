@@ -7,12 +7,10 @@ import {
   pluginConfigsQueryKey,
   pluginConfigsUrl,
   pluginConfigsMetaQueryKey,
-  pluginKindsQueryKey,
   pluginSearch,
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
   type PluginConfigEnvelopeFieldChoice,
-  type PluginKindSummary,
 } from "@/plugins/_core";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -78,6 +76,8 @@ import {
   ArrowDown,
   ArrowUpDown,
   ArrowLeft,
+  Database,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useModalSeed } from "@/hooks/use-modal-seed";
@@ -92,6 +92,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import type { UiSchema } from "@rjsf/utils";
 import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-form";
+import { usePluginKindsCatalog } from "@/hooks/usePluginKindsCatalog";
 
 /**
  * Generic, kind-aware plugin-config admin page (Task #353 — additive
@@ -125,6 +126,11 @@ interface ManifestEntry {
    * from the save payload.
    */
   derivedEnvelopeFields?: string[];
+  operations?: Array<{
+    id: string;
+    description: string;
+    needsWritableDatabase: boolean;
+  }>;
 }
 
 interface PluginConfigRow {
@@ -186,19 +192,17 @@ export default function GenericPluginConfigsPage({
   const params = useParams<{ kind: string }>();
   const kind = (kindProp ?? params.kind) as ArrayManifestPluginKind;
 
-  // The server's kinds index (/api/plugins/kinds) is the single source of truth
-  // for which kinds are configurable — it lists every kind that has a registered
-  // config adapter. Validate the URL :kind against it instead of a duplicated
-  // client-side allowlist, so any kind the server serves (cron today, anything
-  // new later) works here automatically with no client edit.
-  const { data: kinds = [], isLoading: isLoadingKinds } = useQuery<
-    PluginKindSummary[]
-  >({
-    queryKey: pluginKindsQueryKey(),
-  });
+  // The Plugin Kinds catalog is the source of truth for which kinds support
+  // stored configuration. Validate the URL against its configurable entries.
+  const {
+    configurableKinds: kinds,
+    isLoading: isLoadingKinds,
+    isError: isKindsError,
+  } =
+    usePluginKindsCatalog();
   const kindSummary = kinds.find((k) => k.kind === kind);
   const isValidKind = kindSummary !== undefined;
-  // Fall back to a prettified id when the kinds index has no match yet
+  // Fall back to a prettified id when the catalog has no match yet
   // (loading) or omits this kind, so the page never shows the raw id.
   const kindName = kindSummary?.label ?? prettifyKind(kind);
   const kindDescription = kindSummary?.description;
@@ -290,7 +294,7 @@ export default function GenericPluginConfigsPage({
     // query with no fetcher so it never requests the list and the page wrongly
     // shows "No configurations yet" until a filter is selected.
     queryFn: hasActiveFilters
-      ? () => pluginSearch<ArrayManifestPluginKind, PluginConfigRow>(kind, searchParams as any)
+      ? () => pluginSearch<PluginConfigRow>(kind, searchParams)
       : () => apiRequest("GET", pluginConfigsUrl(kind)) as Promise<PluginConfigRow[]>,
     enabled: isValidKind,
     // Keep the previous results visible while a filter change refetches so the
@@ -318,12 +322,26 @@ export default function GenericPluginConfigsPage({
 
   const labelMaps = useEnvelopeLabelMaps(envelopeFields);
 
-  // Wait for the server kinds index before judging validity, so a valid kind
+  // Wait for the catalog before judging validity, so a valid kind
   // never flashes the "unknown" message while the list is still loading.
   if (isLoadingKinds) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
+      </div>
+    );
+  }
+
+  if (isKindsError) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground" data-testid="text-kinds-error">
+              Couldn’t load plugin kinds. Please try again.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -556,7 +574,9 @@ export default function GenericPluginConfigsPage({
                         >
                           {plugin.name}
                         </span>
-                        {plugin.description && <PluginInfoPopover plugin={plugin} configId={config.id} />}
+                        {(plugin.description || plugin.operations) && (
+                          <PluginInfoPopover plugin={plugin} configId={config.id} />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell data-testid={`text-config-name-${config.id}`}>
@@ -815,8 +835,8 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
 
 /**
  * Small info trigger shown beside a plugin's name in the table. Opens a popover
- * with the plugin's manifest description so the description doesn't have to sit
- * inline in every row. Only rendered when the plugin has a description.
+ * with the plugin's manifest description and any declared operations so those
+ * details don't have to sit inline in every row.
  */
 function PluginInfoPopover({
   plugin,
@@ -839,11 +859,48 @@ function PluginInfoPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="max-w-xs text-sm"
+        className="w-80 text-sm"
         data-testid={`popover-plugin-info-${configId}`}
       >
-        <p className="font-medium mb-1">{plugin.name}</p>
-        <p className="text-muted-foreground">{plugin.description}</p>
+        <p className="font-medium">{plugin.name}</p>
+        {plugin.description && (
+          <p className="mt-1 text-muted-foreground">{plugin.description}</p>
+        )}
+        {plugin.operations && (
+          <div className="mt-4 border-t pt-3">
+            <p className="mb-2 font-medium">Capabilities</p>
+            {plugin.operations.length === 0 ? (
+              <p
+                className="text-muted-foreground"
+                data-testid={`text-no-operations-${configId}`}
+              >
+                No operations declared.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {plugin.operations.map((operation) => (
+                  <li
+                    key={operation.id}
+                    className="space-y-1"
+                    data-testid={`operation-${configId}-${operation.id}`}
+                  >
+                    <p>{operation.description}</p>
+                    <Badge
+                      variant={operation.needsWritableDatabase ? "default" : "secondary"}
+                    >
+                      {operation.needsWritableDatabase ? (
+                        <Database className="mr-1 h-3 w-3" />
+                      ) : (
+                        <Eye className="mr-1 h-3 w-3" />
+                      )}
+                      {operation.needsWritableDatabase ? "Writes data" : "Read-only"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -1093,9 +1150,10 @@ function GenericConfigDialog({
         // a stale value would be ignored anyway, so omit them entirely.
         if (derivedFieldNames.has(f.name)) continue;
         const raw = envelope[f.name] ?? "";
-        if (f.multiple && f.options?.endpoint) {
-          // Endpoint-backed multi-selects (e.g. dashboard "Visible to roles")
-          // persist as real arrays; the comma-joined string is UI state only.
+        if (f.multiple && (f.multipleStorage === "array" || f.options?.endpoint)) {
+          // Array-backed multi-selects persist as real arrays; endpoint-backed
+          // fields retain their historical array behavior. The comma-joined
+          // string is UI state only.
           envelopeBody[f.name] = raw
             .split(",")
             .map((s) => s.trim())
@@ -1276,6 +1334,16 @@ function GenericConfigDialog({
                           data-testid={`input-envelope-${field.name}`}
                         />
                       )}
+                      {field.description && (
+                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                          {field.description}
+                        </p>
+                      )}
+                      {field.example && (
+                        <code className="block overflow-x-auto rounded-md border bg-muted/50 px-3 py-2 text-xs text-foreground">
+                          {field.example}
+                        </code>
+                      )}
                     </div>
                   );
                 })}
@@ -1444,7 +1512,7 @@ function EnvelopeSelectField({
  * dashboard "Visible to roles" field backed by the roles endpoint). The value
  * is stored as a comma-joined string of selected values (e.g.
  * "start,continue") so it round-trips through the flat envelope state; the
- * save path splits multi fields back into arrays for array-typed payloads.
+  * save path splits explicitly array-backed fields back into arrays.
  */
 function EnvelopeCheckboxField({
   field,

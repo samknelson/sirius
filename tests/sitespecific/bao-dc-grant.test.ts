@@ -1189,6 +1189,7 @@ describe("scheduled release cron", () => {
 
     const plugin = getCronPlugin("bao-dc-release-queued")!;
     const result = await plugin.execute({
+      configurationId: "test-config",
       jobId: "test-job",
       jobName: "bao-dc-release-queued",
       isManual: true,
@@ -1215,6 +1216,7 @@ describe("scheduled release cron", () => {
 
     // Idempotent: a second run finds nothing queued.
     const again = await plugin.execute({
+      configurationId: "test-config",
       jobId: "test-job-2",
       jobName: "bao-dc-release-queued",
       isManual: true,

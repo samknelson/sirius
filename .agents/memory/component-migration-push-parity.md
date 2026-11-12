@@ -49,3 +49,17 @@ which pushes in FK order and then replays migrations 001..N on the pushed
 schema, proving each is idempotent — and diff the catalogs. Expect one
 harmless pre-existing diff: Postgres renders a migration-written `CHECK … IN
 (…)` differently from the push's `ARRAY[…]::text[]` spelling.
+
+Schema upgrades need lifecycle coverage, not just a successful boot with the
+component already enabled. Verify fresh enablement and re-enabling retained old
+tables, both with and without saved schema-state metadata.
+
+**Why:** Disabled components retain their tables by default and skip startup
+migrations. An upgrade can therefore pass enabled-instance checks yet prevent
+re-enablement when schema verification sees the old table before its migration.
+Missing state metadata is not evidence that the physical tables are new.
+
+**How to apply:** Check actual table presence when ordering creation, migrations,
+and verification. Existing complete schemas need their authored upgrades before
+comparison against the new declaration; fresh or partially present schemas also
+need creation ordering considered. Never drop retained data just to bypass drift.

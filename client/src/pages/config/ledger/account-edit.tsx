@@ -20,11 +20,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Save } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
-import { pluginSearch, pluginConfigsQueryKey } from "@/plugins/_core/manifest";
 
 const NO_GATEWAY = "none";
 
-interface PaymentGatewayConfig {
+interface WcVendorConfig {
   id: string;
   name: string;
 }
@@ -43,9 +42,12 @@ function AccountEditContent() {
     account.gatewayConfigId ?? NO_GATEWAY
   );
 
-  const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<PaymentGatewayConfig[]>({
-    queryKey: [...pluginConfigsQueryKey("payment-gateway"), "search"],
-    queryFn: () => pluginSearch<"payment-gateway", PaymentGatewayConfig>("payment-gateway"),
+  // The ledger's own vendor list, not the generic wc-vendors config search.
+  // That kind is component-neutral now, so a plain config search would offer
+  // vendors that cannot act as a payment gateway at all — and the server
+  // refuses those on save, so offering them here would only produce a dead end.
+  const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<WcVendorConfig[]>({
+    queryKey: ["/api/ledger/wc-vendors"],
   });
 
   const updateAccountMutation = useMutation({

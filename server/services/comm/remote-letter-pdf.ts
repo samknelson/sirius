@@ -135,7 +135,7 @@ function requestHop(url: URL, redirects: number, state: DownloadState): Promise<
   return resolvePublicAddress(url, state).then((address) => {
     if (state.expired) throw fail("the download timed out.");
 
-    return new Promise<Buffer>((resolve, reject) => {
+    return new Promise<Buffer>(function transferResourceHop(resolve, reject) {
       let finished = false;
       const finish = (error?: Error, value?: Buffer) => {
         if (finished) return;
@@ -255,7 +255,7 @@ export function downloadPublicHttpsResource(
   options: { contentTypes: readonly string[]; maxBytes: number; onContentType?: (contentType: string) => void },
 ): Promise<Buffer> {
   const state: DownloadState = { expired: false, ...options };
-  return new Promise<Buffer>((resolve, reject) => {
+  return new Promise<Buffer>(function transferPublicResource(resolve, reject) {
     let settled = false;
     const settle = (error?: Error, value?: Buffer) => {
       if (settled) return;

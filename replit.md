@@ -56,15 +56,23 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     A new repo-wide rule is added to the `RULES` table in that file — never
     as its own workflow.
 
--   **`npm test` is the test suite** (Vitest; `npm run test:watch` to
-    watch). Tests live in `tests/<subject>/*.test.ts`, grouped by subject
-    (`tests/html/`, `tests/auth/`, `tests/env/`, `tests/edi/`), and reuse the `@` /
-    `@shared` path aliases. A new test goes in the suite for its subject,
-    or a new subject directory — **not** in a new script under
-    `scripts/dev/`. Tests do not run as a completion gate; run them on
-    demand and before merging. *Whether* a test should be written at all
-    is settled by the non-negotiable rule "A regression test must earn
-    its place" below.
+-   **Vitest is selective by default.** During development, run one subject
+    or file (`npm test -- tests/<subject>`) or run `npm run test:affected`
+    (optionally `-- <base-ref>`; default `origin/main`). The affected command
+    uses Vitest's import graph and falls back to the full suite for declared
+    broad-impact files such as schemas, registries, test configuration, and
+    package configuration. Run `npm run test:slow` only when auditing suite
+    cost; it reports tests over 250 ms and files over 2 seconds.
+-   **Do not repeatedly run the full suite during a task.** Focused or
+    affected tests are the normal iterative check. At most one full-suite run
+    belongs at final validation, and only when the change is broad enough to
+    warrant it. A subject run is enough for a contained change. If the user
+    explicitly says to skip the suite, honor that instruction and rely on the
+    other applicable checks.
+-   Tests live in `tests/<subject>/*.test.ts`, grouped by subject, and reuse
+    the `@` / `@shared` path aliases. Tests do not run as a completion gate.
+    *Whether* a test should be written at all is settled by the non-negotiable
+    rule "A regression test must earn its place" below.
 
 -   **`scripts/dev/` holds developer checks only.** Operational tools and
     data audits a human runs deliberately live in `scripts/tools/`;
@@ -231,7 +239,7 @@ landing on a deployment branch is what causes the recurring merge conflicts.
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
--   **Component-owned plugin-config subsidiaries**: `plugin_configs_dispatch` (dispatch) and `plugin_configs_benefit_eligibility` (trust.benefits) are owned by their components' `schemaManifest` and created by schema-push on enable — they are NOT core tables. `plugin_configs_event_notifier` and the charge / dashboard / cron / payment_gateway subsidiaries stay core.
+-   **Component-owned plugin-config subsidiaries**: `plugin_configs_dispatch` (dispatch) and `plugin_configs_benefit_eligibility` (trust.benefits) are owned by their components' `schemaManifest` and created by schema-push on enable — they are NOT core tables. `plugin_configs_event_notifier` and the charge / dashboard / cron / wc_vendors subsidiaries stay core.
 -   **A component becoming schema-managing while already enabled**: the startup component-migration runner self-heals. If an enabled component gains a `schemaManifest`/migrations but has no `component_schema_state_<id>` variable yet (that variable is normally created by the enable flow), the runner initializes it via `enableComponentSchema` (idempotent for an already-present, drift-free table) instead of hard-failing boot. This is what lets already-enabled deployments pick up a newly component-owned table without a per-deployment baseline.
 
 ## Always restart the `Start application` workflow after server-side or shared changes
@@ -464,6 +472,22 @@ disqualifying, not debatable:
     usually means it is testing plumbing rather than a rule.
 -   An existing suite already covers the same invariant from another
     angle.
+-   It is site-specific behavior. The only exceptions are a settled security,
+    financial, irreversible-data, or externally enforced contract where all
+    six admission criteria above also hold.
+-   It asserts one page or component's labels, rendering, visibility,
+    navigation, styling, or wiring. Use typecheck, lint, build, and manual
+    preview; test a settled reusable UX framework at its boundary instead.
+-   It singles out one plugin, provider, notifier, vendor, or other member of
+    a family. A family invariant belongs in one parameterized contract or
+    conformance suite that obtains its cases from the shared registry.
+
+**Cost budget.** A normal unit test should take a fraction of a second. Review
+every test over 250 ms and every file over 2 seconds with
+`npm run test:slow`. A justified database or integration check that cannot
+meet that budget should not silently burden the default suite: prefer a
+one-time verification, a cheaper boundary test, or an explicitly invoked
+operational audit. Line coverage and case count are not goals.
 
 **Lint rule or test?** Two mechanisms, and the choice is not taste:
 
@@ -523,7 +547,7 @@ and category (core, platform, or a component id), and read through
 `getEnvironmentVariable()`. Direct `process.env` access is only allowed
 inside the registry module. Component-owned modules register their own
 variables at module load; dynamically-named lookups (FILESYSTEMS `*_secret`
-settings, payment-gateway `secretName`, address-validation `apiKeyName`)
+settings, wc-vendors `secretName`, address-validation `apiKeyName`)
 register at parse/resolve time as secrets. Client-side
 `import.meta.env.VITE_*` reads are exempt (compile-time substitution).
 
@@ -752,12 +776,12 @@ the shared `GET /api/plugins/:kind/manifest` endpoint
 the bar a new kind has to reach.* Each also registers a
 `registerPluginConfigAdapter()` (`server/plugins/_core/config-adapter.ts`),
 so its per-instance configs live in `plugin_configs` via
-`server/storage/system/plugin-configs.ts`, it appears in the
-`GET /api/plugins/kinds` index, and it is administered at
+`server/storage/system/plugin-configs.ts`, it appears as configurable in the
+Plugin Kinds catalog, and it is administered at
 `/admin/plugin-configs/:kind`:
 
     charge, dashboard, dispatch-eligibility, trust-eligibility,
-    trust-provider-edi, payment-gateway, event-notifier, cron, denorm,
+    trust-provider-edi, wc-vendors, event-notifier, cron, denorm,
     data-retention, client-injection
 
 *Manifest-only — grandfathered exceptions that do NOT clear C.* These
@@ -783,10 +807,7 @@ kind):
 3.  `server/plugins/<area>/<kind>/index.ts` — the `registerPluginKind()`
     call plus side-effect imports of each plugin, wired into
     `server/app-init.ts`.
-4.  `server/plugins/_core/types.ts` and
-    `client/src/plugins/_core/manifest.ts` — the `PluginKind` unions
-    (the client file also carries `PluginSearchParamsByKind`).
-5.  Config-backed kinds only: the `registerPluginConfigAdapter()` call,
+4.  Config-backed kinds only: the `registerPluginConfigAdapter()` call,
     a subsidiary table + storage namespace in
     `server/storage/system/plugin-configs*.ts` if the kind carries
     relational dimensions, and a migration for it (see the migration

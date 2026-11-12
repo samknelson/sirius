@@ -46,3 +46,37 @@ export async function resolveWcDuration(duration: WcDuration): Promise<number> {
   const value = typeof duration === "function" ? await duration() : duration;
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
+
+/**
+ * Resolve the provider-neutral cache policy for one canonical request type.
+ *
+ * Providers may implement the same operation, but they cannot disagree about
+ * how long the one shared answer remains usable. Refusing the conflict keeps
+ * reads, the admin view, and the sweep from applying different policies to the
+ * same row.
+ */
+export async function resolveWcCacheDurations(
+  requestType: string,
+): Promise<{ freshFor: number; failureRememberedFor: number } | undefined> {
+  const matching = Array.from(behaviors.values()).filter(
+    (behavior) => behavior.cached && behavior.requestType === requestType,
+  );
+  let resolved: { freshFor: number; failureRememberedFor: number } | undefined;
+  for (const behavior of matching) {
+    const candidate = {
+      freshFor: await resolveWcDuration(behavior.freshFor),
+      failureRememberedFor: await resolveWcDuration(behavior.failureRememberedFor),
+    };
+    if (
+      resolved &&
+      (resolved.freshFor !== candidate.freshFor ||
+        resolved.failureRememberedFor !== candidate.failureRememberedFor)
+    ) {
+      throw new Error(
+        `Web client request type "${requestType}" has conflicting cache windows`,
+      );
+    }
+    resolved = candidate;
+  }
+  return resolved;
+}

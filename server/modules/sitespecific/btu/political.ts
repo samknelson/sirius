@@ -165,8 +165,13 @@ export function registerBtuPoliticalRoutes(
       if (err.message === "COMPONENT_TABLE_NOT_FOUND") {
         return res.status(503).json({ message: "Political profile tables not found." });
       }
-      if (err.message?.includes("API_KEY")) {
-        return res.status(503).json({ message: "Required API keys are not configured. Please set GOOGLE_CIVICS_API_KEY and OPEN_STATES_API_KEY." });
+      if (
+        err.name === "WcVendorResolutionError" ||
+        err.name === "WcVendorNoDefaultError" ||
+        err.name === "WcVendorAmbiguousDefaultError"
+      ) {
+        const status = "status" in err && typeof err.status === "number" ? err.status : 503;
+        return res.status(status).json({ message: err.message });
       }
       if (error instanceof CivicApiError) {
         return res.status(error.statusCode).json({ message: error.message });

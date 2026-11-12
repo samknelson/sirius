@@ -2,10 +2,8 @@ import { db } from "../../../server/db";
 import { sql } from "drizzle-orm";
 import { registerMigration, type Migration } from "../../../server/services/migration-runner";
 import { logger } from "../../../server/logger";
-import {
-  ADDRESS_VERIFICATION_SERVICE,
-  ADDRESS_VERIFICATION_REQUEST_TYPE,
-} from "../../../server/services/comm/validators/address-verification-request";
+const ADDRESS_VERIFICATION_SERVICE = "Lob";
+const ADDRESS_VERIFICATION_REQUEST_TYPE = "address-verification";
 
 /**
  * Carry the Lob address verifications we have already paid for into

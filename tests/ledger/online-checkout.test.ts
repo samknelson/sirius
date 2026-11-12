@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { calculateCheckoutSelection } from "../../shared/ledger/checkout-selection";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "../../shared/ledger/checkout-save-consent";
 import { ADMIN_PAYMENT_CONFIRMATION } from "../../shared/ledger/admin-payment-confirmation";
-import { PaymentInitiationRejected } from "../../server/plugins/ledger/payment-gateway/types";
+import { PaymentInitiationRejected } from "../../server/plugins/wc-vendors/payment-types";
 
 const mocks = vi.hoisted(() => ({
   authority: vi.fn(),
@@ -39,7 +39,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("stripe", () => ({ default: class {
   paymentIntents = { retrieve: mocks.stripeRetrieve, cancel: mocks.stripeCancel };
 } }));
-vi.mock("../../server/plugins/ledger/payment-gateway/registry", () => ({ registerPaymentGatewayPlugin: vi.fn() }));
 
 vi.mock("../../server/storage", () => ({ storage: mocks.storage }));
 vi.mock("../../server/modules/ledger/online-payment-authority", () => ({
@@ -49,6 +48,13 @@ vi.mock("../../server/modules/ledger/online-payment-authority", () => ({
   OnlinePaymentAuthorityError: mocks.AuthorityError,
 }));
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({ resolveGateway: mocks.resolve }));
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: async ({ operation, args }: any) => {
+    const { fixtureWcRequest } = await import("./payment-vendor-fixture");
+    const resolved = await mocks.resolve();
+    return fixtureWcRequest(resolved.plugin, resolved.context, operation, args);
+  },
+}));
 vi.mock("../../server/modules/ledger/payment-settlement", () => ({
   processPaymentEvidence: mocks.processPaymentEvidence,
   evidenceFromPayment: (payment: { status: string }) => ({ type: `payment.${payment.status}` }),
@@ -69,19 +75,22 @@ vi.mock("../../server/storage/transaction-context", () => ({ runInTransaction: (
 vi.mock("../../server/flood/service", () => ({ enforceFloodLimit: vi.fn(), FloodError: class extends Error {} }));
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: vi.fn().mockResolvedValue({ dbUser: { id: "user-1" } }) }));
 
+const { stripePaymentGatewayPlugin } = await import("./payment-vendor-fixture");
 const { registerLedgerPaymentAttemptRoutes } = await import("../../server/modules/ledger/payment-attempts");
-const { stripePaymentGatewayPlugin } = await import("../../server/plugins/ledger/payment-gateway/plugins/stripe");
 
 let server: http.Server;
 let base: string;
 const liveAttempts = new Map<string, any>();
 const ea = { id: "ea-1", accountId: "acct-1", entityType: "worker", entityId: "worker-1" };
-const gateway: { config: any; context: any; plugin: Record<string, any> } = {
+const gateway: { config: any; context: any; plugin: Record<string, any>; configuration: any; description: any } = {
+  configuration: { fingerprint: "b".repeat(64) },
+  description: { configId: "gw-1", operations: ["payments.customer.retrieve"] },
   config: { id: "gw-1", data: { paymentTypes: ["card"], publishableKey: "pk_test" } },
   context: { webhookSecret: "whsec" },
   plugin: {
     id: "fixture", payComponentId: "fixture:Pay", supportedPaymentTypes: [{ id: "card" }],
-    constructWebhookEvent: vi.fn(), createPaymentSession: vi.fn(), createCustomer: vi.fn(),
+    reusableCheckoutPaymentTypes: ["card", "us_bank_account"],
+    verifyWebhook: vi.fn(), createPaymentSession: vi.fn(), createCustomer: vi.fn(),
     isTestMode: vi.fn(() => true),
     retrievePayment: vi.fn(), cancelPayment: vi.fn(), getMethodSummary: vi.fn(), attachMethod: vi.fn(),
   },
@@ -446,7 +455,7 @@ describe("online checkout HTTP contract", () => {
     retainCreatedAttempt();
     expect((await onBehalfPost()).status).toBe(201);
     mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockResolvedValue(liveAttempts.get("on-behalf-1"));
-    mocks.resolve.mockResolvedValue({ ...gateway, context: { ...gateway.context, apiKey: "changed-fixture-credentials" } });
+    mocks.resolve.mockResolvedValue({ ...gateway, configuration: { fingerprint: "c".repeat(64) } });
     expect((await onBehalfPost()).status).toBe(500);
     expect((await fetch(`${base}/api/ledger/admin-checkout/sessions/on-behalf-1`)).status).toBe(502);
     expect(gateway.plugin.createPaymentSession).toHaveBeenCalledTimes(1);
@@ -455,7 +464,7 @@ describe("online checkout HTTP contract", () => {
   });
   it("refuses a gateway credential change between preflight and the locked payment insert", async () => {
     mocks.resolve.mockResolvedValueOnce(gateway).mockResolvedValue({
-      ...gateway, context: { ...gateway.context, apiKey: "changed-fixture-credentials" },
+      ...gateway, configuration: { fingerprint: "c".repeat(64) },
     });
     const response = await onBehalfPost();
     expect(response.status).toBe(409);
@@ -645,7 +654,7 @@ describe("online checkout HTTP contract", () => {
       paymentAuthorization: "ready", methodPermission: "denied", saveMethod: "permission_denied",
     } });
     mocks.authority.mockResolvedValue("user-1");
-    mocks.resolve.mockResolvedValue({ ...gateway, plugin: { ...gateway.plugin, attachMethod: undefined } });
+    mocks.resolve.mockResolvedValue({ ...gateway, plugin: { ...gateway.plugin, reusableCheckoutPaymentTypes: undefined } });
     response = await fetch(`${base}/api/ledger/checkout/worker/worker-1/ea-1`);
     expect(await response.json()).toMatchObject({ readiness: { saveMethod: "provider_unsupported" } });
     expect((await checkout(valid({ saveMethod: true, saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true } }))).status).toBe(409);
@@ -1009,7 +1018,7 @@ describe("online checkout HTTP contract", () => {
     expect(mocks.authority).toHaveBeenLastCalledWith(expect.anything(), "worker", "worker-1", "methods");
 
     mocks.authority.mockResolvedValue("user-1");
-    mocks.resolve.mockResolvedValue({ ...gateway, plugin: { ...gateway.plugin, attachMethod: undefined } });
+    mocks.resolve.mockResolvedValue({ ...gateway, plugin: { ...gateway.plugin, reusableCheckoutPaymentTypes: undefined } });
     const unsupported = await checkout(valid({ saveMethod: true, saveMethodConsent: { ...CHECKOUT_SAVE_METHOD_CONSENT, accepted: true } }));
     expect(unsupported.status).toBe(409);
     expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();

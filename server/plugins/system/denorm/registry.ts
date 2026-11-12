@@ -1,7 +1,7 @@
 import { logger, storageLogger } from "../../../logger";
 import { randomUUID } from "node:crypto";
 import { isCacheInitialized } from "../../../services/component-cache";
-import { eventBus } from "../../../services/event-bus";
+import { eventBus, EventType } from "../../../services/event-bus";
 import { storage } from "../../../storage";
 import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import { applyComputed } from "./apply";
@@ -36,6 +36,19 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
         uiSchema: p.uiSchema,
       }),
       allowOverwrite: true,
+    });
+    eventBus.on({
+      name: "denorm-source-config-invalidation",
+      description: "Invalidates source-owned derivations after their configuration changes.",
+      event: EventType.PLUGIN_CONFIG_SAVED,
+      handler: async ({ kind, id, operation }) => {
+        if (kind !== "denorm" || operation !== "update" || !isCacheInitialized()) return;
+        const config = await storage.pluginConfigs.get(id);
+        const plugin = config && this.get(config.pluginId);
+        if (plugin?.replaceOnCompute && isPluginComponentEnabledSync(plugin.metadata)) {
+          await storage.denorm.clearForConfig(id);
+        }
+      },
     });
   }
 
@@ -93,8 +106,7 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               "denorm",
               plugin.metadata.id,
             );
-            const config = configs[0];
-            if (!config) {
+            if (!configs.length) {
               logger.error(
                 `No denorm config found for plugin ${plugin.metadata.id}; skipping update`,
                 { service: "denorm-registry", pluginId: plugin.metadata.id },
@@ -110,6 +122,9 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               );
               return;
             }
+            for (const config of configs) {
+              claimed = undefined;
+              try {
             // Durably enqueue before computing: if compute/apply below throws,
             // the row stays `stale` and the hourly denorm_stale cron recomputes
             // it instead of the update being silently lost forever. On success
@@ -125,19 +140,19 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
                 `Denorm config ${plugin.metadata.id} is disabled; leaving entity ${entityId} queued stale`,
                 { service: "denorm-registry", pluginId: plugin.metadata.id, entityId },
               );
-              return;
+              continue;
             }
             if (eventHandler.deferred) {
               // The enqueue above is the whole event-path contract for an
               // expensive aggregate. It is intentionally not an in-memory
               // hand-off: the bounded drainer will read the durable row.
-              return;
+              continue;
             }
             const pending = await storage.denorm.claimStaleForEntity(
               { entityId, configId: config.id },
               randomUUID(),
             );
-            if (!pending) return;
+            if (!pending) continue;
             claimed = {
               entityId,
               configId: config.id,
@@ -145,8 +160,8 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               claimToken: pending.claimToken,
             };
             const data = eventHandler.getPayload
-              ? eventHandler.getPayload(payload)
-              : await plugin.compute(entityId);
+              ? eventHandler.getPayload(payload, config)
+              : await plugin.compute(entityId, config);
             await applyComputed(
               plugin,
               config.id,
@@ -155,6 +170,18 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               pending.generation,
               pending.claimToken,
             );
+              } catch (error) {
+                if (claimed) {
+                  await storage.denorm.releaseClaimIfGeneration(claimed, claimed.generation, claimed.claimToken);
+                  claimed = undefined;
+                }
+                logger.error("Denorm event failed for configuration", {
+                  service: "denorm-registry", pluginId: plugin.metadata.id,
+                  configId: config.id, entityId,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+            }
           } catch (error) {
             // A thrown event-path compute/write must not retain its claim for
             // fifteen minutes. Return precisely this generation/token to
@@ -222,4 +249,42 @@ export function registerDenormPlugin(plugin: DenormPlugin): void {
 
 export function getDenormPlugin(id: string): DenormPlugin | undefined {
   return denormPluginRegistry.get(id);
+}
+
+/**
+ * Recompute one entity without pretending that a domain event occurred.
+ *
+ * Importers sometimes need to establish source rows without firing the normal
+ * event because other listeners on that event have business effects (for
+ * example, HOURS_SAVED can create charges). This still routes the write through
+ * the owning plugin and the shared status-row transaction.
+ */
+export async function recomputeDenormEntity(
+  pluginId: string,
+  entityId: string,
+): Promise<void> {
+  const plugin = denormPluginRegistry.get(pluginId);
+  if (!plugin) throw new Error(`Unknown denorm plugin: ${pluginId}`);
+  if (!isPluginComponentEnabledSync(plugin.metadata)) return;
+  const configs = await storage.pluginConfigs.getByKindAndPlugin(
+    "denorm",
+    pluginId,
+  );
+  if (!configs.length) throw new Error(`No denorm config found for plugin ${pluginId}`);
+  for (const config of configs) {
+    await storage.denorm.insertStaleBatch([
+      { entityId, entityType: plugin.entityType, configId: config.id },
+    ]);
+    if (config.enabled === false) continue;
+    const pending = await storage.denorm.claimStaleForEntity({ entityId, configId: config.id }, randomUUID());
+    if (!pending) continue;
+    try {
+      await applyComputed(plugin, config.id, entityId, await plugin.compute(entityId, config),
+        pending.generation, pending.claimToken);
+    } catch (error) {
+      await storage.denorm.releaseClaimIfGeneration({ entityId, configId: config.id },
+        pending.generation, pending.claimToken);
+      throw error;
+    }
+  }
 }

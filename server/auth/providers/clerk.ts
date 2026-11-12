@@ -17,6 +17,10 @@ import {
   reconcileMigrationIdentityLink,
 } from "../worker-link";
 import { maybeProvisionUser } from "../provisioning";
+import { createHash } from "node:crypto";
+import { runWithSessionAuthentication } from "../session-authentication-context";
+import { parseSSN } from "@shared/utils/ssn";
+import { z } from "zod";
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   // PII triage: audit login events carry userId + provider externalId only;
@@ -245,11 +249,13 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
       );
 
       app.use(async (req, _res, next) => {
+        let previousAuthenticationReference: string | undefined;
         if (req.isAuthenticated?.() && req.user) {
           const existingUser = req.user as AuthenticatedUser;
           if (!existingUser.expires_at || Math.floor(Date.now() / 1000) <= existingUser.expires_at) {
             return next();
           }
+          previousAuthenticationReference = existingUser.authenticationSessionReference;
           logger.debug("Clearing expired session before Clerk re-auth", {
             providerType: existingUser.providerType,
           });
@@ -310,10 +316,15 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
               };
 
               await new Promise<void>((resolve, reject) => {
-                req.login(sessionUser, (err) => {
+                sessionUser.authenticationSessionReference = auth.sessionId
+                  ? createHash("sha256").update(`clerk-session:${auth.sessionId}`).digest("hex") : undefined;
+                runWithSessionAuthentication({
+                  reason: previousAuthenticationReference && previousAuthenticationReference === sessionUser.authenticationSessionReference
+                    ? "restore" : "sign-in",
+                }, () => req.login(sessionUser, (err) => {
                   if (err) reject(err);
                   else resolve();
-                });
+                }));
               });
 
               unlinkedUserCache.delete(auth.userId);
@@ -351,10 +362,15 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             };
 
             await new Promise<void>((resolve, reject) => {
-              req.login(sessionUser, (err) => {
+              sessionUser.authenticationSessionReference = auth.sessionId
+                ? createHash("sha256").update(`clerk-session:${auth.sessionId}`).digest("hex") : undefined;
+              runWithSessionAuthentication({
+                reason: previousAuthenticationReference && previousAuthenticationReference === sessionUser.authenticationSessionReference
+                  ? "restore" : "sign-in",
+              }, () => req.login(sessionUser, (err) => {
                 if (err) reject(err);
                 else resolve();
-              });
+              }));
             });
           } else {
             unlinkedUserCache.set(auth.userId, Date.now());
@@ -405,6 +421,8 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
                   dbUser: existingUser,
                 };
                 await new Promise<void>((resolve, reject) => {
+                  sessionUser.authenticationSessionReference = auth.sessionId
+                    ? createHash("sha256").update(`clerk-session:${auth.sessionId}`).digest("hex") : undefined;
                   req.login(sessionUser, (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -561,6 +579,8 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           };
 
           await new Promise<void>((resolve, reject) => {
+            sessionUser.authenticationSessionReference = auth.sessionId
+              ? createHash("sha256").update(`clerk-session:${auth.sessionId}`).digest("hex") : undefined;
             req.login(sessionUser, (err) => {
               if (err) reject(err);
               else resolve();

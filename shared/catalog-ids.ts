@@ -15,6 +15,9 @@
 /** The configurable dropdown lists. Declared in server/storage/unified-options-catalog.ts. */
 export const OPTIONS_LISTS_CATALOG = "options-lists";
 
+/** Every registered plugin kind. Declared in server/plugins/_core/kinds-catalog.ts. */
+export const PLUGIN_KINDS_CATALOG = "plugin-kinds";
+
 /** The renameable terms. Declared in server/modules/terminology-catalog.ts. */
 export const TERMINOLOGY_CATALOG = "terminology";
 

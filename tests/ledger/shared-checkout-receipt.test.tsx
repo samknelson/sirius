@@ -27,7 +27,7 @@ vi.mock("wouter", () => ({
   useLocation: () => [route.location, navigate],
   useParams: () => route,
 }));
-vi.mock("@/plugins/payment-gateway/registry", () => ({
+vi.mock("@/plugins/wc-vendors/registry", () => ({
   hasPaymentGatewayPayComponent: () => payEnabled.value,
    resolvePaymentGatewayPayComponent: () => (props: { clientSecret: string; amount: string; savedMethod?: boolean; publicConfig: { paymentTypes?: string[] }; onComplete: (status: "processing" | "failed", message?: string) => void }) =>
      <div><span>{props.savedMethod ? "Saved method action required" : `New ${props.publicConfig.paymentTypes?.[0]} entry`}</span>
@@ -61,6 +61,7 @@ function fixture(input: CheckoutSelectionInput = selectionInput) {
   invoices: input.invoices,
   paymentTypes: ["card", "us_bank_account"],
   payComponentId: "stripe:pay", reusableMethodsSupported: true,
+  reusablePaymentTypes: ["card", "us_bank_account"],
   settings: { allowPartial: input.allowPartial, minAmount: input.minAmount },
   authorization: { version: "v1", text: "I authorize this payment." },
   readiness: { paymentAuthorization: "ready", methodPermission: "allowed", reusableMethods: "supported", saveMethod: "ready" },

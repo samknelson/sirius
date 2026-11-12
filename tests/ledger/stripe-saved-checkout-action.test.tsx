@@ -19,7 +19,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
   useElements: () => ({}),
 }));
 
-import { StripePayComponent } from "@/plugins/payment-gateway/stripe/StripePayComponent";
+import { StripePayComponent } from "@/plugins/wc-vendors/stripe/StripePayComponent";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;

@@ -33,6 +33,8 @@ export interface TabDefinition {
   hrefTemplate: string;
   policyId?: string;
   permission?: string;
+  /** Allow administrators through this tab-linked client route without the named permission. */
+  adminBypass?: boolean;
   component?: string;
   /** Hide this tab while its framework area is switched off. */
   entityContext?: TabEntityContext;
@@ -71,6 +73,7 @@ export interface FlatTab extends TabDefinition {
  */
 export type TabEntityType = 
   | 'worker' 
+  | 'worker_certification'
   | 'employer' 
   | 'employer_contact' 
   | 'company'
@@ -116,11 +119,18 @@ export type TabEntityType =
    * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
    */
   | 'wc'
+  /** Denorm operations: a single admin page, not an entity record. */
+  | 'denorm'
   /**
    * The record history admin page. A single admin page, not a row, so the
    * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
    */
-  | 'record_metadata';
+  | 'record_metadata'
+  /**
+   * User role administration. A single admin page, not a row, so the entity id
+   * is the constant {@link USER_ROLES_ADMIN_ENTITY_ID}.
+   */
+  | 'user_roles';
 
 /**
  * Tab check request for batch access evaluation
@@ -160,6 +170,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
       { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/workers/{id}/dashboard', permission: 'staff' },
       { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
+      { id: 'badges', label: 'Badges', hrefTemplate: '/workers/{id}/badges', policyId: 'worker.view', component: 'worker.badges' },
       { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
       { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'relations', label: 'Relations', hrefTemplate: '/workers/{id}/relations', policyId: 'worker.view', component: 'worker.relations' },
@@ -263,7 +274,15 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'cases', label: 'Cases', hrefTemplate: '/workers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'worker.delete', adminBypass: true },
+];
+
+/**
+ * Worker certification entity tab tree
+ */
+export const workerCertificationTabTree: HierarchicalTab[] = [
+  { id: 'view', label: 'View', hrefTemplate: '/worker-certification/{id}', component: 'worker.certifications' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/worker-certification/{id}/edit', permission: 'staff', component: 'worker.certifications' },
 ];
 
 /**
@@ -489,7 +508,7 @@ export const edlsSheetTabTree: HierarchicalTab[] = [
   ] },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
-  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.assign', component: 'edls' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls', children: [
     { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
     { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
@@ -697,6 +716,7 @@ export const userTabTree: HierarchicalTab[] = [
   },
   { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/users/{id}/dashboard', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
+  { id: 'session_history', label: 'Session History', hrefTemplate: '/users/{id}/session_history', permission: 'admin', component: 'system.session_history' },
 ];
 
 /**
@@ -706,6 +726,13 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'settings', label: 'Settings', hrefTemplate: '/admin/ws/clients/{id}', permission: 'admin' },
   { id: 'credentials', label: 'Credentials', hrefTemplate: '/admin/ws/clients/{id}/credentials', permission: 'admin' },
   { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/admin/ws/clients/{id}/ip-rules', permission: 'admin' },
+  {
+    id: 'freeman-bearer-authorization',
+    label: 'Freeman Bearer Authorization',
+    hrefTemplate: '/admin/ws/clients/{id}/freeman-bearer-authorization',
+    permission: 'admin',
+    component: 'sitespecific.freeman.authorization',
+  },
   { id: 'test', label: 'Test', hrefTemplate: '/admin/ws/clients/{id}/test', permission: 'admin' },
   { id: 'swagger', label: 'Swagger', hrefTemplate: '/admin/ws/clients/{id}/swagger', permission: 'admin' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/admin/ws/clients/{id}/logs', permission: 'admin' },
@@ -794,9 +821,18 @@ export const wsTabTree: HierarchicalTab[] = [
 export const WC_ADMIN_ENTITY_ID = 'admin';
 
 export const wcTabTree: HierarchicalTab[] = [
+  { id: 'wc-status', label: 'Status', hrefTemplate: '/admin/wc/status', permission: 'admin' },
   { id: 'wc-overview', label: 'Overview', hrefTemplate: '/admin/wc/overview', permission: 'admin' },
   { id: 'wc-cache', label: 'Cache', hrefTemplate: '/admin/wc/cache', permission: 'admin' },
   { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc/stats', permission: 'admin' },
+  { id: 'wc-info', label: 'Info', hrefTemplate: '/admin/wc/info', permission: 'admin' },
+];
+
+export const DENORM_ADMIN_ENTITY_ID = 'admin';
+
+export const denormTabTree: HierarchicalTab[] = [
+  { id: 'denorm-status', label: 'Status', hrefTemplate: '/admin/denorm', permission: 'admin' },
+  { id: 'denorm-relationships', label: 'Relationships', hrefTemplate: '/admin/denorm/relationships', permission: 'admin' },
 ];
 
 /**
@@ -814,11 +850,23 @@ export const recordMetadataTabTree: HierarchicalTab[] = [
   { id: 'record-metadata-list', label: 'History', hrefTemplate: '/admin/metadata/list', permission: 'admin' },
   { id: 'record-metadata-backfill', label: 'Fill In', hrefTemplate: '/admin/metadata/backfill', permission: 'admin' },
 ];
+
+/** Registered views of the singleton user-role administration page. */
+export const USER_ROLES_ADMIN_ENTITY_ID = 'admin';
+
+export const userRolesTabTree: HierarchicalTab[] = [
+  { id: 'roles', label: 'Roles', hrefTemplate: '/admin/users/roles', permission: 'admin' },
+  { id: 'worker-users', label: 'Worker Users', hrefTemplate: '/admin/users/roles/workers', permission: 'admin' },
+  { id: 'employer-users', label: 'Employer Users', hrefTemplate: '/admin/users/roles/employers', permission: 'admin' },
+  { id: 'provider-users', label: 'Provider Users', hrefTemplate: '/admin/users/roles/providers', permission: 'admin' },
+];
+
 /**
  * Entity tab trees by type
  */
 export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   worker: workerTabTree,
+  worker_certification: workerCertificationTabTree,
   employer: employerTabTree,
   employer_contact: employerContactTabTree,
   company: companyTabTree,
@@ -855,7 +903,9 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   options: optionsTabTree,
   ws: wsTabTree,
   wc: wcTabTree,
+  denorm: denormTabTree,
   record_metadata: recordMetadataTabTree,
+  user_roles: userRolesTabTree,
 };
 
 /**
@@ -878,6 +928,15 @@ export function flattenTabTree(tree: HierarchicalTab[], parentId?: string): Flat
   }
   
   return result;
+}
+
+export function hasTabPermission(
+  tab: Pick<TabDefinition, 'permission' | 'adminBypass'>,
+  hasPermission: (permission: string) => boolean,
+): boolean {
+  return !tab.permission
+    || hasPermission(tab.permission)
+    || (tab.adminBypass === true && hasPermission('admin'));
 }
 
 /**
@@ -952,6 +1011,7 @@ export function isChildOf(childId: string, parentId: string, tree: HierarchicalT
 export interface TabAccessRequirements {
   policyId?: string;
   permission?: string;
+  adminBypass?: boolean;
   component?: string;
   entityContext?: TabEntityContext;
 }
@@ -974,6 +1034,7 @@ export function getTabAccessRequirements(
   return {
     policyId: tab.policyId,
     permission: tab.permission,
+    adminBypass: tab.adminBypass,
     component: tab.component,
     entityContext: tab.entityContext,
   };

@@ -11,7 +11,12 @@ import { denormPluginRegistry } from "./registry";
 import { recomputeStaleDenorm } from "./recompute";
 
 export * from "./types";
-export { denormPluginRegistry, registerDenormPlugin, getDenormPlugin } from "./registry";
+export {
+  denormPluginRegistry,
+  registerDenormPlugin,
+  getDenormPlugin,
+  recomputeDenormEntity,
+} from "./registry";
 export {
   backfillAllDenorm,
   DEFAULT_BACKFILL_LIMIT,
@@ -53,7 +58,10 @@ function registerDenormKind(): void {
         plugin.configSchema,
         (config ?? {}) as Record<string, unknown>,
       );
-      return { valid: result.valid, errors: result.errors };
+      if (!result.valid) return { valid: false, errors: result.errors };
+      return plugin.validateConfig
+        ? await plugin.validateConfig(config)
+        : { valid: true };
     },
   });
   // Denorm configs carry no relational dimension, so the base envelope is the
@@ -151,3 +159,4 @@ import "./plugins/dispatch/skill";
 import "./plugins/dispatch/status";
 import "./plugins/dispatch/ws";
 import "./plugins/workerBanActive";
+import "./plugins/workerBadgeFromNote";

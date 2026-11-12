@@ -20,6 +20,7 @@
 - [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read; strip it at the storage boundary, type omit alone won't stop the runtime leak.
 - Charge integrity — [net-total reconcile](charge-plugin-net-total-reconcile.md) avoids repeated overcharge; [ECHP quote/billing parity](echp-quote-billing-parity.md) uses the same aggregated source.
 - Config UIs — [route dormancy](plugin-config-route-dormancy.md) needs an explicit deny set; RJSF v6 [formContext](rjsf-v6-widget-formcontext.md) and [onChange](rjsf-custom-field-onchange.md) differ.
+- [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
 - [Plugin config validation runs on post-toRows data](plugin-config-validation-order.md) — validate `base.data` after `toRows`, not the raw body; RJSF strips fields not in the JSON Schema (e.g. trust-eligibility appliesTo).
 - [Cross-table plugin_configs uniqueness](cross-table-uniqueness-denormalization.md) — tuple spanning base+subsidiary: denormalize base discriminator onto subsidiary + null-safe COALESCE unique index.
 - [Legacy-table drop needs full SQL sweep](legacy-table-drop-sql-sweep.md) — before DROPping a bespoke config table, grep the whole repo for raw SQL refs (service files bypass storage rule); drift-gate boot won't catch lazy call paths.
@@ -38,6 +39,8 @@
 - [ECS DATABASE_URL/SESSION_SECRET gap](ecs-database-url-secrets-gap.md) — Terraform task def gives DB parts not DATABASE_URL/SESSION_SECRET; assemble URL in code pre-app-init, gate a stable session fallback behind ALLOW_INSECURE_SESSION_SECRET.
 - Production-only runtime hazards — [esbuild barrel cycle](esbuild-barrel-init-cycle.md) needs direct leaf imports; [pg URL ssl override](pg-connectionstring-ssl-override.md) needs ssl params stripped.
 - [Replit lockfile firewall URLs break external CI](replit-lockfile-firewall-urls.md) — npm installs here write package-firewall.replit.local resolved URLs; rewrite to registry.npmjs.org before external CI uses the lockfile.
+- [drizzle-kit hazards](drizzle-kit-push-hazards.md) — never use db:push for merges; authored migrations avoid interactive renames and constraint loss.
+- [Vite devDep in prod bundle](vite-devdep-in-prod-bundle.md) — a top-level `import "vite"` on the boot path crashes the lean ECS image at module load; lazy-import dev-only deps inside the dev-only fn.
 - [Accepted-primary ⇒ not_available invariant](dispatch-accept-not-available-invariant.md) — enforced transactionally in dispatch+worker-status storage (409 on violation); unique-violation retries need fresh transactions; insertStaleBatch now re-marks stale on conflict.
 - [FILESYSTEMS env registry](filesystems-env-registry.md) — env-only filesystem config, no code default fs, write-then-insert/row-then-object ordering; local jail needs realpath+lstat, not just lexical resolve.
 - [E2E route harness auth stub](route-harness-auth-stub.md) — standalone route tests need req.user={claims:{sub},dbUser:user} (resolveDbUser cache); multer must run AFTER authz.
@@ -47,6 +50,7 @@
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
 - Storage audit safety — [raw args can persist PII](storage-audit-log-args-pii.md); [method names determine before/after synthesis](storage-logging-hook-name-conventions.md).
+- [Worker badge ownership](worker-badge-ownership.md) — awards derive from system activity; only denorm plugins maintain awarded rows, never manual UX assignment.
 - [Inbound maintenance refusal ordering](inbound-maintenance-gate.md) — an always-on refusal goes at the FRONT of middleware assembly (body parsers 400/413 first, auth writes a last-used stamp); router registration must assert it.
 - [Maintenance-mode write lock + vendor refusal](maintenance-mode-write-lock.md) — read-only per pool checkout AND one guard refusing every outbound vendor call off the same import-free flag; allowInMaintenanceMode unlocks the DB only.
 - [Denorm concurrency](denorm-event-ordering-race.md) — all invalidations share the guard, even migrations; disabled means paused, not lost; measure batching at real commit boundaries.
@@ -79,9 +83,10 @@
 - [Divergent deployment branch reconciliation](task-merge-divergent-deploy-branch.md) — prove remote changes existed together in one main ancestor before a history-only merge; later edits can defeat reverse-patch checks.
 - [Credential redaction in logs](audit-log-credential-redaction.md) — bearer-like values leak via TWO paths (storage before/after payload AND the API responsePreview key allowlist); log identifiers + hasX booleans, prove with a canary scan.
 - [Batch-grain logging & lost chronology](logging-batch-grain-and-lost-chronology.md) — whole-set replace: `metadataEntityId: () => undefined` (NOT mode 'none', it kills the host touch); no-provenance rows reorder by a business key; redact before-state too.
-- [Component migration/push parity](component-migration-push-parity.md) — the enable-path push leaves FKs UNNAMED (`<t>_<c>_fkey`) while keeping declared unique names; a creation migration must match, proven by snapshot-drop-migrate-compare.
+- [Component migration/push parity](component-migration-push-parity.md) — enable-path FKs use Postgres names; prove snapshot-drop-migrate parity and fresh, enabled, retained-disabled, missing-state upgrades.
+- [pdfmake lazy load order](pdfmake-lazy-load-order.md) — pdfmake + vfs_fonts dynamic imports must be sequential (fonts register via a global set at pdfmake's evaluation); Promise.all silently loses them.
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
-- [Which logger reaches the log viewer](log-surface-console-vs-viewer.md) — app `logger` is console-only; only `storageLogger` writes winston_logs, so framework catch-and-log failures are NOT in the admin viewer.
+- [Vendor put on a shared framework by its registrar](framework-wrapping-at-registration.md) — strip the runnable half into a private map at registration (lint the accessor's importers); the lexical per-file lint goes blind, so check "only handlers reach the vendor" BACKWARDS.
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
 - [Upstream merge playbook](upstream-merge-playbook.md) — renumber incoming migrations above the fork counter; verify check, lint, migration guard, restart, and targeted tests before committing.
 - [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations are silently skipped after the shared counter; filenames and registration are both required.
@@ -104,7 +109,8 @@
 - [Ambient transaction context lies twice](als-transaction-context-leaks.md) — deferred callbacks inherit the caller's (committed/read-only) tx; a helper that passes a client without binding the ALS lets ambient `getClient()` escape it.
 - [Web client (wc) request framework](wc-request-framework.md) — outbound calls: caller DECLARES answered (transports fake success), `local` 4th mode breaks the normalize↔cache cycle, holds live in the table except the paid-but-unstorable one.
 - [Boot-status HTTP surface](boot-status-http-surface.md) — a not-ready answer must name its phase (starting/failed/report-only) + identity + blocker; status must answer under BOTH ALB prefixes and on a non-health spelling.
-- [One cached answer, many askers](wc-request-shared-answer-identity.md) — shared wc entry: credential out of the key, restrictions in, caller-specific echoes stripped+re-applied; no infinite window (sweep can't reclaim); free services still join the vendor guard.
+- [One cached answer, many askers](wc-request-shared-answer-identity.md) — operation+subject identity; config-scoped vendor cache keys, restrictions in, credentials/echoes out; shared windows agree and stay finite; free services still join the vendor guard.
+- [Theme colour vars hold whole colours](theme-color-var-convention.md) — `var(--chart-1)`, never `hsl(var(--chart-1))`; nested colour is dropped at computed-value time with zero warnings (invisible chart line).
 - [Counting served work](counting-served-work.md) — usage counters: flag at the handler boundary (never infer from status), count on `close` / log on `finish`, write outside the caller's tx.
 - [Cross-process boot serialization](cross-process-boot-serialization.md) — two services boot one image against one DB: bring-up is exclusive (session advisory lock), every other boot write must be atomic/23505-retry/xact-lock, every wait bounded.
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
@@ -114,7 +120,6 @@
 - Cron behavior — [tick heartbeat](cron-tick-heartbeat.md) uses one shared wall-clock event and last-live-success dueness; [deployment policy](deployment-cron-policy.md) must come from the real environment, not copied DB overrides.
 - [Whole-job dispatch eligibility](whole-job-eligibility-without-facts.md) — job-level rule = no condition, or an `exists` on a category NO denorm plugin writes (comment it); job-type-less configs are inert.
 - [Context-framework gating](context-framework-gating.md) — presence in the config var = on; a hidden tab needs a route guard reading the same server answer; a context id rename also moves discriminators + config KEYS.
-- [Server-fed nav sections](nav-section-fed-by-server-registry.md) — a nav group whose items come from a server registry must feed the path helpers too, and say "loading/couldn't load" rather than render empty.
 - [Polymorphic child cleanup](polymorphic-child-cleanup.md) — FK-less children of a deleted record: after-commit per-entity event + daily sweep calling ONE routine; per-record deletes only (bulk logs nothing).
 - [Record-history admin surface](provenance-admin-surface.md) — boot assertion keeps the "tables we may name in SQL" registry honest; availability asked of the DB, never a `component:` field; a backfill's count and write need ONE predicate or it never terminates.
 - Provenance UI details — [read timestamps](retiring-a-read-timestamp-column.md), [updated_at](retiring-timestamp-columns.md), and [sort tiebreaks](retiring-a-sort-tiebreak-timestamp.md) require caller review and preserve no-date/no-person answers; [metadata maintenance](entity-metadata-maintenance.md) is storage-middleware driven.
@@ -156,3 +161,36 @@
 - [DC correction authority](disability-credit-correction-authority.md) — a threshold-only removal releases capacity, not reserves it; restoration uses the saved threshold and never displaces other months.
 - [Admin-assisted payments](admin-assisted-payment-authority.md) — admins need real payments on a worker's behalf, not test-only authority tied to system mode.
 - [Stripe delivery evidence](stripe-delivery-evidence.md) — check v1 endpoints AND v2 destinations, payloads and subscriptions; zero pending deliveries does not prove payment delivery.
+- [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.
+- [A plugin kind id is stored data](plugin-kind-id-is-data.md) — the id IS the plugin_kind discriminator + subsidiary table name, so renaming one is a data migration; drift gate matches FK/PK/unique STRUCTURALLY, so declared names can be fiction.
+- [Component-neutral plugin kinds](component-neutral-plugin-kind.md) — un-gating moves the gate to each plugin; inheriting routes need an explicit one, and consumers must stop assuming the founding component's shape.
+- [Credential redaction in vendor replies](credential-redaction-in-vendor-replies.md) — scrub what the REMOTE says back (echo, headers, status line, escaped spellings); fragment masking IS a leak.
+- [Default connection + manual T631 cutover](default-connection-and-boot-seeding.md) — refuse ambiguous defaults; T631 has no legacy fallback, migration, startup blocker, or boot seed.
+- [WC vendor declaration contract](wc-vendor-declaration-contract.md) — operations are one typed map; credential secret-name requirements are framework-owned (`required`/`optional`/`none`).
+- [Permanent test cost](permanent-test-cost.md) — propose tests only when regression value clearly justifies maintaining and running them on every build; do not default to UI tests.
+- [Comm vendor cutovers](comm-vendor-cutovers.md) — local plugins omit delivery operations; legacy migrations preserve effective env/override selections without copying credential values.
+- [Vendor cache cutovers](vendor-cache-cutovers.md) — keep legacy namespaces, but never reuse unscoped cache hashes when the originating config cannot be proven.
+- [Nullable usage attribution deletion](nullable-usage-attribution-deletion.md) — NULLS-NOT-DISTINCT counters need merge-before-delete and count-time locking or configuration deletion loses or blocks counts.
+- [One-time Freeman migration verification](freeman-migration-verification.md) — do not add permanent tests for Freeman migration; verify with checks, build, review, and startup because the feature is retired after cutover.
+- [Freeman passport response envelope](freeman-passport-response-envelope.md) — sheet pages live at success→data.success→data.data.sheets; Jan 1, 1970 is rejected because legacy PHP treats strtotime()=0 as false.
+- [Freeman migration count semantics](freeman-migration-count-semantics.md) — matched existing child records count as updated even when values did not change.
+- [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
+- [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
+- [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
+- [Idle-session status checks](idle-session-status-checks.md) — polling the current idle deadline must be read-only; only explicit or normal authenticated activity may renew it.
+- [Configured external auth fails closed](configured-external-auth-fail-closed.md) — saved external-auth selection is the contract; disabled/unavailable verifier must refuse, never fall back to a default credential mode.
+- [Credentials in SPA entry URLs](spa-entry-url-credentials.md) — remove before app bootstrap, set initial no-referrer policy, dispatch once, and never retain in query caches or page state.
+- [Permission-dependent public response caching](permission-dependent-public-response-caching.md) — viewer-specific enrichment needs private/no-store + Vary: Cookie and a viewer-scoped browser query key.
+- [Retained assignment generations](retained-assignment-generations.md) — a durable assignment ID can represent successive fillings, even in the same crew; stale actions need the filling's generation.
+- [Node BlockList IPv4 mapping](node-blocklist-ipv4-mapping.md) — an IPv6 `::ffff:0:0/96` block also rejects ordinary IPv4 addresses in Node; don't combine it with a public-IPv4 allow check.
+- [Local WS test in split roles](local-ws-test-split-roles.md) — api-user must reach its own dispatcher for admin tests, but ordinary /api/ws traffic must remain api-ws-owned.
+- [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.
+- [Session-history boundaries](session-history-anonymous-scope.md) — user-associated capture only, no storage audit/metadata, opt-in retention; first observed values silently establish baselines.
+- [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
+- [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
+- [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.
+- [Which logger reaches the log viewer](log-surface-console-vs-viewer.md) — app `logger` is console-only; only `storageLogger` writes winston_logs, so framework catch-and-log failures are NOT in the admin viewer.
+- [Server-fed nav sections](nav-section-fed-by-server-registry.md) — registry-fed nav items must feed path helpers too; distinguish loading and failed loads from empty lists.
+- [Branch-scoped CI/deploy dirs](branch-scoped-ci-files.md) — .github/deploy are branch-owned, never main; gitignore cannot untrack their files.
+- [Generated API doc addressing](generated-api-doc-addressing.md) — document addresses must invert the request resolver exactly: ids beat aliases, aliases can be ambiguous; keep the pair in one leaf.
+- [Quicksearch role-as-access](quicksearch-role-as-access.md) — role lists are the access decision; framework-gated sensitive clauses, pure clause planners, and cmdk `shouldFilter={false}`.

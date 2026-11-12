@@ -10,10 +10,12 @@
  *   npx tsx scripts/oneoffs/verify-lob-test-pdf.ts --run
  */
 import { renderLetterPdf } from "../../server/services/comm/letter-pdf";
-import { LobPostalProvider } from "../../server/services/comm/providers/postal/lob";
+import { wcRequest } from "../../server/services/webclient";
+import { describeWcVendor } from "../../server/services/webclient/wc-vendor-context";
+import "../../server/plugins/wc-vendors";
 import type { PostalAddress } from "../../server/services/comm/providers/postal";
 import { downloadRemoteLetterPdf } from "../../server/services/comm/remote-letter-pdf";
-import { getEnvironmentVariable } from "../../server/config/env-registry";
+import { getEnvironmentVariable, registerEnvironmentVariable } from "../../server/config/env-registry";
 import { PDFDocument } from "pdf-lib";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,10 +31,24 @@ if (!process.argv.includes("--run")) {
   );
 }
 
-const apiKey = getEnvironmentVariable("LOB_API_KEY");
+registerEnvironmentVariable({
+  name: "LOB_TEST_CONFIG_ID",
+  description: "Existing Lob test-mode WC connection used only by the opt-in PDF verification script.",
+  secret: false,
+  category: "core",
+  changeTakesEffect: "immediate",
+});
+const configId = getEnvironmentVariable("LOB_TEST_CONFIG_ID");
+if (!configId) throw new Error("LOB_TEST_CONFIG_ID must name an existing Lob test connection.");
+const selected = await describeWcVendor({ configId }, "communications.postal.send");
+if (selected.pluginId !== "lob") throw new Error("LOB_TEST_CONFIG_ID must select a Lob connection.");
+const { storage } = await import("../../server/storage");
+const config = await storage.pluginConfigs.get(configId);
+const secretName = (config?.data as Record<string, unknown>)?.secretName;
+const apiKey = typeof secretName === "string" ? getEnvironmentVariable(secretName) : undefined;
 if (!apiKey?.startsWith("test_")) {
   throw new Error(
-    "Refusing Lob proof: LOB_API_KEY is missing or is not definitely a test-mode key.",
+    "Refusing Lob proof: the selected connection's secret is missing or is not definitely a test-mode key.",
   );
 }
 
@@ -84,8 +100,10 @@ for (const page of localDocument.getPages()) {
   }
 }
 
-const provider = new LobPostalProvider();
-const result = await provider.sendLetter({
+const response = await wcRequest({
+  vendor: { configId },
+  operation: "communications.postal.send",
+  args: {
   to: syntheticAddress,
   from: syntheticAddress,
   pdfFile,
@@ -97,7 +115,10 @@ const result = await provider.sendLetter({
     useType: "operational",
   },
   metadata: { proof: "local_template_pdf" },
+  },
 });
+if (response.outcome !== "success" || !response.value) throw new Error(response.error || "Lob did not answer");
+const result = response.value;
 
 if (!result.success || !result.letterId) {
   throw new Error(`Lob test-mode proof was rejected: ${result.error ?? "no letter ID"}`);

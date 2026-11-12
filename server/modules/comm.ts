@@ -7,8 +7,7 @@ import { sendEmail } from "../services/comm/senders/email";
 import { sendPostal } from "../services/comm/senders/postal";
 import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/comm/senders/inapp";
 import { handleLobStatusCallback, handleStatusCallback } from "../services/comm/callback-handlers/handler";
-import { serviceRegistry } from "../services/service-registry";
-import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
+import type { PostalAddress } from "../services/comm/providers/postal";
 import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/comm/validators/address";
 import { broadcastAlertUpdate } from "../services/websocket";
@@ -17,6 +16,12 @@ import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
+import { wcRequest } from "../services/webclient";
+import { WcVendorError } from "../services/webclient/wc-vendor-context";
+import { registerEmailConfigRoutes } from "./email-config";
+import { registerPostalConfigRoutes } from "./postal-config";
+import type { PostalVendorTypesLoaded } from "../plugins/wc-vendors/postal-types";
+void (undefined as unknown as PostalVendorTypesLoaded);
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -143,7 +148,8 @@ export function registerCommRoutes(
   requirePermission: PermissionMiddleware,
   requireAccess?: PolicyMiddleware
 ) {
-  
+  registerEmailConfigRoutes(app);
+  registerPostalConfigRoutes(app);
   // GET /api/contacts/:contactId/comm - Get communication records for a contact (worker.view policy)
   app.get("/api/contacts/:contactId/comm", requireAuth, requireAccess ? requireAccess('worker.view', async (req: any) => {
     // Resolve the owning worker ID from the contact
@@ -703,18 +709,8 @@ export function registerCommRoutes(
         });
       }
 
-      let postalProvider: PostalTransport;
-      try {
-        postalProvider = await serviceRegistry.resolve<PostalTransport>('postal');
-      } catch (error) {
-        return res.status(503).json({ 
-          message: "Postal service is not configured",
-          errorCode: "SERVICE_UNAVAILABLE"
-        });
-      }
-
       const address: PostalAddress = parsed.data;
-      const result = await verifyPostalAddress(postalProvider, address);
+       const result = await verifyPostalAddress({ any: true }, address);
 
       // If addressId was provided AND verification succeeded, update deliverability_status
       // and apply terminal-status side-effect (markUndeliverable) so primary auto-promotion runs.
@@ -759,6 +755,9 @@ export function registerCommRoutes(
 
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;
+      if (error instanceof WcVendorError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Failed to verify address:", error);
       res.status(500).json({ message: "Failed to verify address" });
     }
@@ -861,18 +860,8 @@ export function registerCommRoutes(
         });
       }
 
-      let postalProvider: PostalTransport;
-      try {
-        postalProvider = await serviceRegistry.resolve<PostalTransport>('postal');
-      } catch (error) {
-        return res.status(503).json({ 
-          message: "Postal service is not configured",
-          errorCode: "SERVICE_UNAVAILABLE"
-        });
-      }
-
       const address: PostalAddress = parsed.data;
-      const result = await verifyPostalAddress(postalProvider, address);
+       const result = await verifyPostalAddress({ any: true }, address);
 
       if (!result.valid || !result.canonicalAddress) {
         return res.status(400).json({
@@ -940,6 +929,9 @@ export function registerCommRoutes(
       }
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;
+      if (error instanceof WcVendorError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Failed to verify and register address:", error);
       res.status(500).json({ message: "Failed to verify and register address" });
     }
@@ -957,27 +949,17 @@ export function registerCommRoutes(
 
   app.get("/api/postal/templates", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-      let postalProvider: PostalTransport;
-      try {
-        postalProvider = await serviceRegistry.resolve<PostalTransport>('postal');
-      } catch (error) {
-        return res.status(503).json({ 
-          message: "Postal service is not configured",
-          errorCode: "SERVICE_UNAVAILABLE"
-        });
-      }
-
-      if (!postalProvider.listTemplates) {
-        return res.status(501).json({ 
-          message: "Template listing is not supported by the configured postal provider",
-          templates: []
-        });
-      }
-
-      const templates = await postalProvider.listTemplates();
-      res.json({ templates });
+       const templatesResult = await wcRequest({
+         vendor: { any: true },
+         operation: "communications.postal.template.list",
+         args: undefined,
+       });
+      res.json({ templates: templatesResult.value ?? [] });
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;
+      if (error instanceof WcVendorError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Failed to fetch postal templates:", error);
       res.status(500).json({ message: "Failed to fetch postal templates" });
     }

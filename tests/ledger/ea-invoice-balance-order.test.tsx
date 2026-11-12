@@ -18,6 +18,10 @@ vi.mock("@tanstack/react-query", async () => {
 });
 vi.mock("@/components/layouts/EALayout", () => ({
   EALayout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useEALayout: () => ({
+    ea: { id: "ea-1", entityType: "employer", entityId: "employer-1", accountId: "account-1" },
+    employerCheckout: undefined,
+  }),
 }));
 
 import EAInvoices from "../../client/src/pages/ea-invoices";

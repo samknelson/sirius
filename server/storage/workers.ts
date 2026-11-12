@@ -299,6 +299,12 @@ export interface WorkerStorage {
   getWorkersByContactEmail(email: string): Promise<Worker[]>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
   /**
+   * Worker ids whose contact has this exact given/family pair after trimming
+   * and case-folding. Returns every match so identity callers can reject
+   * ambiguous names instead of choosing arbitrarily.
+   */
+  getWorkerIdsByExactName(given: string, family: string): Promise<string[]>;
+  /**
    * Contact and textable number for many workers in one query, for callers
    * assembling an SMS recipient list from worker ids alone. Workers with no
    * contact or no active primary number are left out rather than coming back
@@ -1575,6 +1581,19 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .where(eq(workers.contactId, contactId));
       return worker ? stripWorkerData(worker) : undefined;
+    },
+
+    async getWorkerIdsByExactName(given: string, family: string): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: workers.id })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(and(
+          sql`lower(btrim(${contacts.given})) = lower(btrim(${given}))`,
+          sql`lower(btrim(${contacts.family})) = lower(btrim(${family}))`,
+        ));
+      return rows.map((row) => row.id);
     },
 
     async getSmsContactsByWorkerIds(workerIdsList: string[]): Promise<WorkerSmsContact[]> {

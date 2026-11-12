@@ -191,14 +191,14 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Integration with the Stripe payment processing system",
     enabledByDefault: false,
     category: "ledger",
-    // Seed a default payment-gateway config naming the secret that holds the
+    // Seed a default wc-vendors config naming the secret that holds the
     // Stripe API credentials. Materialized on enable (and at boot for an
     // already-enabled component); admin edits to name/ordering/data are
     // preserved on re-enable. Mirrors how internationalization.weglot seeds
     // its client-injection rows.
     pluginConfigs: [
       {
-        pluginKind: "payment-gateway",
+        pluginKind: "wc-vendors",
         pluginId: "stripe",
         siriusId: "auto.ledger.stripe.default",
         name: "Stripe (Default)",
@@ -216,13 +216,13 @@ export const componentRegistry: ComponentDefinition[] = [
       "A fake payment gateway for exercising the full payment-method lifecycle without real provider credentials. Accepts a hand-typed test card and stores only its brand, expiry, and last 4 digits.",
     enabledByDefault: false,
     category: "ledger",
-    // Seed a default payment-gateway config. It names a DUMMY_GATEWAY secret to
+    // Seed a default wc-vendors config. It names a DUMMY_GATEWAY secret to
     // exercise the secret-naming path, but the dummy plugin opts out of
     // actually requiring the secret to be set (requiresSecret: false on the
     // plugin), so the gateway works whether or not the env var exists.
     pluginConfigs: [
       {
-        pluginKind: "payment-gateway",
+        pluginKind: "wc-vendors",
         pluginId: "dummy",
         siriusId: "auto.ledger.dummy_gateway.default",
         name: "Dummy (Default)",
@@ -481,6 +481,19 @@ export const componentRegistry: ComponentDefinition[] = [
       schemaPath: "./shared/schema/worker/certifications/schema.ts",
       tables: ["options_certifications", "worker_certifications"]
     }
+  },
+  {
+    id: "worker.badges",
+    name: "Worker Badges",
+    description: "Worker badges awarded through system activity and maintained by denorm plugins",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/badges/schema.ts",
+      tables: ["options_worker_badge_types", "worker_badges_denorm"],
+    },
   },
   {
     id: "worker.ratings",
@@ -929,7 +942,14 @@ export const componentRegistry: ComponentDefinition[] = [
       // foreign keys into EDLS, so it is not a schema dependency.
       tables: ["sitespecific_freeman_edls_migrate"]
     },
-    dependsOnComponents: ["edls"]
+    dependsOnComponents: ["edls", "sitespecific.freeman"]
+  },
+  {
+    id: "sitespecific.freeman.authorization",
+    name: "Freeman Authorization",
+    description: "Bearer authorization service for Freeman integrations",
+    enabledByDefault: false,
+    category: "site-specific"
   },
   {
     id: "sitespecific.t631.client",
@@ -1062,6 +1082,19 @@ export const componentRegistry: ComponentDefinition[] = [
         ordering: 20,
       },
     ],
+  },
+  {
+    id: "system.session_history",
+    name: "Session History",
+    description: "Persistent history of user login sessions",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/system/session-history-schema.ts",
+      tables: ["session_history"]
+    }
   },
   {
     id: "system.sftp.client",

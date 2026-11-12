@@ -1,41 +1,10 @@
 import { storage } from "../../storage";
-import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
-import type {
-  PaymentGatewayContext,
-  PaymentGatewayPlugin,
-} from "../../plugins/ledger/payment-gateway/types";
-import type { PluginConfig } from "@shared/schema";
-import {
-  getEnvironmentVariable,
-  registerEnvironmentVariable,
-} from "../../config/env-registry";
+import { getWcVendorPlugin } from "../../plugins/wc-vendors";
+import { wcRequest } from "../../services/webclient";
+import { describeWcVendor, type WcVendorDescription } from "../../services/webclient/wc-vendor-context";
+import type { WcVendorOperationArgs, WcVendorOperationName, WcVendorOperationResult } from "../../plugins/wc-vendors/types";
+import type { CreatePaymentSessionInput } from "../../plugins/wc-vendors/payment-types";
 
-/**
- * A gateway config resolved into everything the generic payment-methods routes
- * need to talk to the provider: the config row, the registered plugin, and a
- * ready-to-use provider context carrying the per-config API key.
- */
-export interface ResolvedGateway {
-  config: PluginConfig;
-  plugin: PaymentGatewayPlugin;
-  context: PaymentGatewayContext;
-}
-
-export function resolveGatewayNamedSecret(config: PluginConfig, field: string): string | undefined {
-  const data = (config.data ?? {}) as Record<string, unknown>;
-  const name = typeof data[field] === "string" ? data[field].trim() : "";
-  if (!name) return undefined;
-  registerEnvironmentVariable({
-    name,
-    description: `Payment-gateway secret '${field}' named by config '${config.siriusId ?? config.id}'.`,
-    secret: true,
-    category: "ledger",
-    changeTakesEffect: "immediate",
-  });
-  return getEnvironmentVariable(name);
-}
-
-/** Error carrying the HTTP status the route should return. */
 export class GatewayResolutionError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
@@ -44,66 +13,62 @@ export class GatewayResolutionError extends Error {
 }
 
 /**
- * Turn a gateway config id into a {@link ResolvedGateway}. Resolves the
- * provider API key from the secret the config names (`data.secretName`, read
- * via the env registry), so multiple configs (e.g. two Stripe accounts)
- * each use their own credentials.
+ * Ledger compatibility facade over per-config WC operations, not a provider
+ * registry. Every executable closure below goes through wcRequest. Credentials
+ * and provider handlers never leave the WC framework.
  */
 export async function resolveGateway(
   gatewayConfigId: string,
   options: { allowDisabled?: boolean } = {},
-): Promise<ResolvedGateway> {
+) {
+  const vendor = { configId: gatewayConfigId, ...(options.allowDisabled ? { allowDisabled: true } : {}) };
+  const description = await describeWcVendor(vendor);
   const config = await storage.pluginConfigs.get(gatewayConfigId);
-  if (!config || config.pluginKind !== "payment-gateway") {
-    throw new GatewayResolutionError(404, "Payment gateway configuration not found");
+  const registered = getWcVendorPlugin(description.pluginId);
+  if (!config || !registered) throw new GatewayResolutionError(404, "Payment vendor configuration not found");
+  async function request<N extends WcVendorOperationName>(
+    operation: N, args: WcVendorOperationArgs<N>,
+  ): Promise<WcVendorOperationResult<N>> {
+    const result = await wcRequest({ vendor, operation, args });
+    if (result.outcome === "success") return result.value as WcVendorOperationResult<N>;
+    if (result.cause !== undefined) throw result.cause;
+    throw new GatewayResolutionError(503, result.error ?? "The payment vendor did not answer");
   }
-  if (!config.enabled && !options.allowDisabled) {
-    throw new GatewayResolutionError(409, "Payment gateway configuration is disabled");
-  }
-
-  const plugin = getPaymentGatewayPlugin(config.pluginId);
-  if (!plugin) {
-    throw new GatewayResolutionError(
-      404,
-      `No payment gateway plugin registered for '${config.pluginId}'`,
-    );
-  }
-
-  const data = (config.data ?? {}) as Record<string, unknown>;
-  const secretName = typeof data.secretName === "string" ? data.secretName : "";
-  if (!secretName) {
-    throw new GatewayResolutionError(
-      503,
-      "Payment gateway configuration does not name a credential secret",
-    );
-  }
-
-  // Dynamically-named credential: register in the env registry at resolve
-  // time (as a secret) so the environment contract stays complete.
-  // changeTakesEffect: "immediate" — the gateway is resolved afresh per
-  // request and the credential is read here each time, never cached.
-  registerEnvironmentVariable({
-    name: secretName,
-    description: `Payment-gateway credential secret named by config '${config.siriusId ?? config.id}'.`,
-    secret: true,
-    category: "ledger",
-    changeTakesEffect: "immediate",
-  });
-  const apiKey = getEnvironmentVariable(secretName);
-  if (!apiKey && plugin.requiresSecret !== false) {
-    throw new GatewayResolutionError(
-      503,
-      `Payment gateway credential secret '${secretName}' is not set`,
-    );
-  }
-
-  return {
-    config,
-    plugin,
-    context: {
-      apiKey: apiKey ?? "",
-      config,
-      webhookSecret: resolveGatewayNamedSecret(config, "webhookSecretName"),
-    },
+  const configuration = await request("payments.configuration.read", undefined);
+  // Only non-secret facts cross this boundary.
+  const context = { config, webhookSecret: configuration.webhookConfigured };
+  const has = (operation: WcVendorOperationName) => !!registered.operations[operation];
+  const plugin = {
+    id: registered.id, name: registered.name, requiredComponent: registered.requiredComponent,
+    addComponentId: registered.addComponentId, payComponentId: registered.payComponentId,
+    supportedPaymentTypes: registered.supportedPaymentTypes,
+    reusableCheckoutPaymentTypes: registered.reusableCheckoutPaymentTypes,
+    isTestMode: (_ctx: unknown) => configuration.isTestMode,
+    getCheckoutPaymentTypes: (_ctx: unknown) => configuration.paymentTypes,
+    validatePaymentSession: has("payments.session.validate")
+      ? (_ctx: unknown, input: CreatePaymentSessionInput, preflight?: { customerWillBeCreated?: boolean }) =>
+          request("payments.session.validate", { input, ...preflight })
+      : undefined,
+    createPaymentSession: has("payments.session.create")
+      ? (_ctx: unknown, args: CreatePaymentSessionInput) => request("payments.session.create", args) : undefined,
+    createPaymentIntent: has("payments.intent.create")
+      ? (_ctx: unknown, args: WcVendorOperationArgs<"payments.intent.create">) => request("payments.intent.create", args) : undefined,
+    retrievePaymentIntent: has("payments.intent.retrieve")
+      ? (_ctx: unknown, providerRef: string) => request("payments.intent.retrieve", { providerRef }) : undefined,
+    retrievePayment: has("payments.payment.retrieve")
+      ? (_ctx: unknown, providerRef: string) => request("payments.payment.retrieve", { providerRef }) : undefined,
+    cancelPayment: has("payments.payment.cancel")
+      ? (_ctx: unknown, providerRef: string, authorization?: { adminAssistedAttemptId: string }) =>
+          request("payments.payment.cancel", { providerRef, authorization }) : undefined,
+    verifyWebhook: has("payments.webhook.verify")
+      ? (_ctx: unknown, rawBody: Buffer, headers: Record<string, string>) =>
+          request("payments.webhook.verify", { rawBody, headers }) : undefined,
+    getMethodSummary: (_ctx: unknown, methodRef: string) => request("payments.payment-method.summary", { methodRef }),
+    attachMethod: has("payments.payment-method.attach")
+      ? (_ctx: unknown, args: WcVendorOperationArgs<"payments.payment-method.attach">) =>
+          request("payments.payment-method.attach", args) : undefined,
   };
+  return { config, plugin, context, configuration, description };
 }
+
+export type ResolvedGateway = Awaited<ReturnType<typeof resolveGateway>>;

@@ -13,7 +13,7 @@ export const EXCLUDED_METADATA_TABLES = [
   "bulk_participants",
   "comm",
   "comm_tags",
-  "cron_job_runs",
+  "job_runs",
   "esigs",
   "event_occurrences",
   "event_participants",

@@ -20,8 +20,24 @@ import {
   wsServiceLabel,
   wsServiceAddress,
 } from "./use-ws-services";
+import { buildWsTestUrl } from "@shared/utils/ws-test-url";
 
-function generateCurlCommand(options: {
+function parseQueryParams(value: string): Record<string, string> | undefined {
+  if (!value.trim()) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("Invalid query parameters JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+      || Object.values(parsed).some((item) => typeof item !== "string")) {
+    throw new Error("Query parameters must be a JSON object of strings");
+  }
+  return parsed as Record<string, string>;
+}
+
+export function generateCurlCommand(options: {
   baseUrl: string;
   method: string;
   path: string;
@@ -29,8 +45,9 @@ function generateCurlCommand(options: {
   requestBody: string;
   clientKey: string;
   clientSecret: string;
+  bearerToken?: string;
 }): string {
-  const { baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret } = options;
+  const { baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret, bearerToken } = options;
   
   let fullUrl = `${baseUrl}${path}`;
   
@@ -55,8 +72,13 @@ function generateCurlCommand(options: {
     parts.push(`-X ${method}`);
   }
   
-  parts.push(`-H "X-WS-Client-Key: ${clientKey || '<YOUR_CLIENT_KEY>'}"`);
-  parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  parts.push(`-H "X-WS-Client-ID: ${clientKey || '<YOUR_CLIENT_ID>'}"`);
+  if (bearerToken === undefined) {
+    parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  }
+  if (bearerToken !== undefined) {
+    parts.push(`-H "Authorization: Bearer ${bearerToken || '<YOUR_BEARER_TOKEN>'}"`);
+  }
   
   if (["POST", "PUT", "PATCH"].includes(method)) {
     parts.push('-H "Content-Type: application/json"');
@@ -70,6 +92,16 @@ function generateCurlCommand(options: {
   parts.push(`"${fullUrl}"`);
   
   return parts.join(" \\\n  ");
+}
+
+export function shouldShowFreemanBearerInput(
+  clientData: Record<string, unknown> | null | undefined,
+  hasFreemanTabAccess: boolean,
+): boolean {
+  const configId = clientData?.freemanBearerAuthorizationConfigId;
+  return hasFreemanTabAccess
+    && typeof configId === "string"
+    && configId.trim().length > 0;
 }
 
 interface TestResponse {
@@ -93,12 +125,18 @@ function TestContent() {
 
   const [clientKey, setClientKey] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [bearerToken, setBearerToken] = useState("");
   const [method, setMethod] = useState<"GET" | "POST" | "PUT" | "PATCH" | "DELETE">("POST");
   const [configId, setConfigId] = useState("");
   const [operation, setOperation] = useState("");
   const [queryParams, setQueryParams] = useState("");
   const [requestBody, setRequestBody] = useState("");
   const [testResult, setTestResult] = useState<TestResponse | null>(null);
+  const { client, hasTabAccess } = useWsClientLayout();
+  const needsFreemanBearer = shouldShowFreemanBearerInput(
+    client.data,
+    hasTabAccess("freeman-bearer-authorization"),
+  );
 
   // The operation list is driven by what this client is ACTUALLY granted, not
   // by everything that exists: an operation the test screen offers but the
@@ -121,14 +159,7 @@ function TestContent() {
 
   const testMutation = useMutation({
     mutationFn: async () => {
-      let parsedQueryParams: Record<string, string> | undefined;
-      if (queryParams.trim()) {
-        try {
-          parsedQueryParams = JSON.parse(queryParams);
-        } catch {
-          throw new Error("Invalid query parameters JSON");
-        }
-      }
+      const parsedQueryParams = parseQueryParams(queryParams);
 
       let parsedBody: unknown | undefined;
       if (requestBody.trim() && ["POST", "PUT", "PATCH"].includes(method)) {
@@ -142,8 +173,9 @@ function TestContent() {
       return apiRequest("POST", `/api/admin/ws-clients/${params.id}/test`, {
         clientKey,
         clientSecret,
+        ...(needsFreemanBearer ? { bearerToken } : {}),
         method,
-        configRef: configId,
+        configRef: selectedConfig ? wsServiceAddress(selectedConfig) : configId,
         operation,
         queryParams: parsedQueryParams,
         body: parsedBody,
@@ -176,29 +208,37 @@ function TestContent() {
     }
   };
 
-  const canExecute = clientKey.trim() && clientSecret.trim() && configId && operation;
+  const canExecute = clientKey.trim()
+    && (needsFreemanBearer ? bearerToken.trim() : clientSecret.trim())
+    && configId
+    && operation;
   const [copied, setCopied] = useState(false);
 
   // The public address. Prefer the alias: configuration ids are minted per
   // database, so a copied cURL built on an id only works here.
   const address = selectedConfig ? wsServiceAddress(selectedConfig) : "<service>";
-  const origin = typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.host}`
-    : "";
-  const baseUrl = `${origin}/api/ws/${address}`;
-  const path = `/${operation || "<operation>"}`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  let queryError = "";
+  let parsedPreviewQuery: Record<string, string> | undefined;
+  try {
+    parsedPreviewQuery = parseQueryParams(queryParams);
+  } catch (error) {
+    queryError = error instanceof Error ? error.message : "Invalid query parameters";
+  }
+  const requestUrl = buildWsTestUrl(address, operation || "<operation>", parsedPreviewQuery);
 
   const curlCommand = useMemo(() => {
     return generateCurlCommand({
-      baseUrl,
+      baseUrl: `${origin}${requestUrl}`,
       method,
-      path,
-      queryParams,
+      path: "",
+      queryParams: "",
       requestBody,
       clientKey,
       clientSecret,
+      bearerToken: needsFreemanBearer ? bearerToken.trim() : undefined,
     });
-  }, [baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret]);
+  }, [origin, requestUrl, method, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
 
   const handleCopyCurl = async () => {
     try {
@@ -224,21 +264,23 @@ function TestContent() {
               Credentials
             </CardTitle>
             <CardDescription>
-              Enter your client credentials. The secret is only shown once when created.
+              {needsFreemanBearer
+                ? "Enter the client ID and Freeman bearer token."
+                : "Enter your client credentials. The secret is only shown once when created."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="client-key">Client Key</Label>
+              <Label htmlFor="client-key">Client ID</Label>
               <Input
                 id="client-key"
                 value={clientKey}
                 onChange={(e) => setClientKey(e.target.value)}
-                placeholder="Enter client key"
+                placeholder="Enter client ID"
                 data-testid="input-client-key"
               />
             </div>
-            <div className="space-y-2">
+            {!needsFreemanBearer && <div className="space-y-2">
               <Label htmlFor="client-secret">Client Secret</Label>
               <Input
                 id="client-secret"
@@ -248,7 +290,21 @@ function TestContent() {
                 placeholder="Enter client secret"
                 data-testid="input-client-secret"
               />
-            </div>
+            </div>}
+            {needsFreemanBearer && (
+              <div className="space-y-2">
+                <Label htmlFor="bearer-token">Freeman Bearer Token</Label>
+                <Input
+                  id="bearer-token"
+                  type="password"
+                  value={bearerToken}
+                  onChange={(e) => setBearerToken(e.target.value)}
+                  placeholder="Enter bearer token"
+                  autoComplete="off"
+                  data-testid="input-bearer-token"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -257,7 +313,7 @@ function TestContent() {
             <CardTitle>Request</CardTitle>
             <CardDescription>
               {selectedConfig
-                ? `${baseUrl}${path}`
+                ? requestUrl
                 : "Choose one of the web services this client has been granted"}
             </CardDescription>
           </CardHeader>
@@ -349,6 +405,7 @@ function TestContent() {
                 rows={2}
                 data-testid="input-query-params"
               />
+              {queryError && <p className="text-sm text-destructive" role="alert">{queryError}</p>}
             </div>
 
             {["POST", "PUT", "PATCH"].includes(method) && (
@@ -368,7 +425,7 @@ function TestContent() {
 
             <Button
               onClick={() => testMutation.mutate()}
-              disabled={!canExecute || testMutation.isPending}
+              disabled={!canExecute || Boolean(queryError) || testMutation.isPending}
               className="w-full"
               data-testid="button-execute"
             >
@@ -393,6 +450,7 @@ function TestContent() {
                 variant="outline"
                 size="sm"
                 onClick={handleCopyCurl}
+                disabled={Boolean(queryError)}
                 data-testid="button-copy-curl"
               >
                 {copied ? (
@@ -412,7 +470,7 @@ function TestContent() {
               className="bg-muted p-4 rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap break-all"
               data-testid="text-curl-command"
             >
-              {curlCommand}
+              {queryError || curlCommand}
             </pre>
           </CardContent>
         </Card>

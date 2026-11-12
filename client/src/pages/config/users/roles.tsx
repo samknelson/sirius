@@ -1,35 +1,48 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield } from 'lucide-react';
+import { Briefcase, Shield, User } from 'lucide-react';
 import RolesManagement from '@/components/admin/RolesManagement';
-import { usePageTitle } from "@/contexts/PageTitleContext";
+import UserRoleSettings from '@/components/admin/UserRoleSettings';
 
-export default function RolesPage() {
-  usePageTitle("Roles");
-  return (
-    <div className="container mx-auto py-8 max-w-7xl">
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-roles">
-          Role Management
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Define and manage roles with specific permissions
-        </p>
-      </div>
+type RolesView = "roles" | "workers" | "employers" | "providers";
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Roles
-          </CardTitle>
-          <CardDescription>
-            Create and manage roles and assign permissions
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RolesManagement />
-        </CardContent>
-      </Card>
-    </div>
-  );
+export default function RolesPage({ view = "roles" }: { view?: RolesView }) {
+  if (view === "workers") {
+    return (
+      <UserRoleSettings
+        subject="Worker User"
+        subjectPlural="worker users"
+        requiredVariable="worker_user_roles_required"
+        optionalVariable="worker_user_roles_optional"
+        icon={User}
+        testIdPrefix="worker"
+      />
+    );
+  }
+
+  if (view === "employers") {
+    return (
+      <UserRoleSettings
+        subject="Employer User"
+        subjectPlural="employer users"
+        requiredVariable="employer_user_roles_required"
+        optionalVariable="employer_user_roles_optional"
+        icon={Briefcase}
+        testIdPrefix="employer"
+      />
+    );
+  }
+
+  if (view === "providers") {
+    return (
+      <UserRoleSettings
+        subject="Provider User"
+        subjectPlural="trust provider users"
+        requiredVariable="trust_provider_user_roles_required"
+        optionalVariable="trust_provider_user_roles_optional"
+        icon={Shield}
+        testIdPrefix="provider"
+      />
+    );
+  }
+
+  return <RolesManagement />;
 }

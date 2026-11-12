@@ -26,51 +26,32 @@ export type TemplateChannel = "email" | "sms" | "inapp" | "postal";
 /**
  * The template channels the SITE can actually deliver on right now.
  * In-app is always available; email/SMS depend on a configured provider
- * with the matching capability. Provider checks fail OPEN (channel
- * treated as available) so a transient resolution hiccup never hides an
- * editing surface — hiding is purely a UX nicety, delivery gating stays
- * in the send layer.
+ * with the matching delivery operation. Validation-only local plugins do not
+ * advertise a delivery channel in the editor.
  */
 export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChannel>> {
   const enabled = new Set<TemplateChannel>(["inapp"]);
-  const { serviceRegistry } = await import("../../services/service-registry");
-
-  const providerSupports = async (
-    category: "email" | "sms" | "postal",
-    supports: (provider: unknown) => boolean,
-  ): Promise<boolean> => {
+  const providerSupports = async (category: "email" | "sms" | "postal"): Promise<boolean> => {
     try {
-      const config = await serviceRegistry.getCategoryConfig(category);
-      const registered = serviceRegistry.getRegisteredProviders(category);
-      // No provider registered/selected at all: the channel is genuinely
-      // switched off for this site.
-      if (registered.length === 0 || !config.defaultProvider) return false;
-      const provider = await serviceRegistry.resolve(category);
-      return supports(provider);
+      const { hasWcVendorOperation } = await import(
+        "../../services/webclient/wc-vendor-context"
+      );
+      return hasWcVendorOperation(
+        `communications.${category}.send`,
+      );
     } catch {
-      return true; // fail open — see doc comment
+      return false;
     }
   };
 
-  if (
-    await providerSupports("email", (p) =>
-      (p as { supportsEmail?: () => boolean }).supportsEmail?.() ?? true,
-    )
-  ) {
+  if (await providerSupports("email")) {
     enabled.add("email");
   }
-  if (
-    await providerSupports("postal", (p) =>
-      (p as { supportsPostal?: () => boolean }).supportsPostal?.() ?? true,
-    )
-  ) {
+  // Fork extension: postal remains a first-class notifier template channel.
+  if (await providerSupports("postal")) {
     enabled.add("postal");
   }
-  if (
-    await providerSupports("sms", (p) =>
-      (p as { supportsSms?: () => boolean }).supportsSms?.() ?? true,
-    )
-  ) {
+  if (await providerSupports("sms")) {
     enabled.add("sms");
   }
   return enabled;

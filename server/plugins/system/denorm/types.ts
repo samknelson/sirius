@@ -1,6 +1,7 @@
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { BasePluginMetadata } from "../../_core";
 import type { EventType } from "../../../services/event-bus";
+import type { PluginConfig } from "@shared/schema";
 
 /**
  * One storage object a denorm plugin writes, plus an ownership claim.
@@ -51,7 +52,7 @@ export interface DenormEventHandler<TPayload = unknown> {
    * the registry passes the result to `write` without calling `compute`. When
    * omitted, the registry recomputes via `compute(entityId)` first.
    */
-  getPayload?: (payload: unknown) => TPayload;
+  getPayload?: (payload: unknown, config?: PluginConfig) => TPayload;
   /**
    * Queue the status row but do not compute on the event path. Use for
    * aggregates whose authoritative query is intentionally deferred; the
@@ -80,7 +81,7 @@ export interface DenormEventHandler<TPayload = unknown> {
  * conventions). A denorm plugin is typically a singleton: exactly one config
  * row exists for it, seeded at boot from the kind adapter's `seedDefault`.
  */
-export interface DenormPlugin<TPayload = unknown> {
+export interface DenormPlugin<TPayload = unknown, TBeforeApply = unknown> {
   /** Base metadata. `id` is the stable identifier keying the config row. */
   metadata: BasePluginMetadata;
   /** The single entity type this plugin denormalizes (e.g. "worker"). */
@@ -108,14 +109,29 @@ export interface DenormPlugin<TPayload = unknown> {
   /** Events this plugin reacts to. Omit / empty for a plugin with no triggers. */
   eventHandlers?: DenormEventHandler<TPayload>[];
   /** Build the denorm payload for an entity from scratch. */
-  compute(entityId: string): Promise<TPayload>;
+  compute(entityId: string, config?: PluginConfig): Promise<TPayload>;
+  /**
+   * Source-owned derivations replace their old status/payload atomically on
+   * recompute. A null result removes the derivation. Config saves invalidate
+   * these statuses for ordinary backfill. Existing plugins keep their current
+   * in-place payload semantics unless they explicitly opt in.
+   */
+  replaceOnCompute?: boolean;
+  /**
+   * Optional read-only snapshot inside the apply transaction, BEFORE replacement
+   * cascades. Passed to write so a plugin can distinguish a real change from
+   * rebuilding its existing payload. Domain-specific comparisons belong there.
+   */
+  beforeApply?(entityId: string, payload: TPayload, configId: string): Promise<TBeforeApply>;
+  /** Optional domain validation after the shared JSON Schema validation. */
+  validateConfig?(data: unknown): Promise<{ valid: true } | { valid: false; errors?: string[] }>;
   /**
    * Persist the denorm payload for an entity. Receives the id of the entity's
    * `denorm` status row (already upserted to `ok` by the wrapper) so payload
    * rows can reference it via FK. The plugin writes ONLY payload rows here; the
    * wrapper owns the `denorm` status row.
    */
-  write(entityId: string, payload: TPayload, denormRowId: string): Promise<void>;
+  write(entityId: string, payload: TPayload, denormRowId: string, before?: TBeforeApply): Promise<void>;
   /**
    * Optional backfill source. Enumerate up to `limit` entity ids that SHOULD
    * have a denorm row for this plugin's config (`configId`) but currently have
@@ -126,7 +142,7 @@ export interface DenormPlugin<TPayload = unknown> {
    * supplies the already-resolved `configId` so the plugin does not re-resolve
    * it. Plugins that omit this method do not participate in backfill.
    */
-  backfill?(configId: string, limit: number): Promise<string[]>;
+  backfill?(configId: string, limit: number, config?: PluginConfig): Promise<string[]>;
   /**
    * Optional widow source — the mirror image of `backfill`. Enumerate up to
    * `limit` entity ids that HAVE a denorm row for this plugin's config
@@ -139,7 +155,7 @@ export interface DenormPlugin<TPayload = unknown> {
    * not mutate anything. The wrapper supplies the already-resolved `configId`.
    * Plugins that omit this method do not participate in widow cleanup.
    */
-  findWidows?(configId: string, limit: number): Promise<string[]>;
+  findWidows?(configId: string, limit: number, config?: PluginConfig): Promise<string[]>;
   /**
    * Optional pre-fire validity check for denorm plugins that schedule EBS
    * (deferred event-bus) events. The generic EBS pump calls this for each due

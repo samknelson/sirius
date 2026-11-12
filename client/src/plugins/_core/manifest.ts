@@ -5,26 +5,9 @@
  * Every client caller MUST go through these helpers so the URL and
  * query-key shape stay consistent across the codebase.
  */
-export type PluginKind =
-  | "dashboard"
-  | "dispatch-eligibility"
-  | "charge"
-  | "trust-eligibility"
-  | "client-injection"
-  | "payment-gateway"
-  | "event-notifier"
-  | "denorm"
-  | "worker-list"
-  // Worker-ban behaviors: manifest-only kind (no config adapter — plugins
-  // are singletons; admin configuration lives on the Worker Ban Types
-  // options page).
-  | "worker-ban"
-  // Externally callable web services. Each config row is one addressable
-  // service; the plugin declares the operations it exposes.
-  | "web-service"
-  // Record types searchable from anywhere. Each config row names the roles
-  // its searcher is offered to — that role list is the access decision.
-  | "quicksearch";
+import type { ResolvedCatalogEntry } from "@shared/catalog";
+
+export type PluginKind = string;
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -37,24 +20,26 @@ export type PluginKind =
 export type ArrayManifestPluginKind = PluginKind;
 
 /**
- * One configurable plugin kind as returned by `GET /api/plugins/kinds`.
- * The server owns the list (and the human-readable label) so the client
- * never duplicates the set of kinds. Drives the admin index page at
- * `/admin/plugin-configs`.
+ * The client-facing projection of one Plugin Kinds catalog entry.
  */
 export interface PluginKindSummary {
-  kind: ArrayManifestPluginKind;
+  kind: string;
   label: string;
   description?: string;
+  requiredComponent?: string;
+  configurable: boolean;
 }
 
-/** Stable URL + query-key for the configurable-kinds index endpoint. */
-export function pluginKindsUrl(): string {
-  return "/api/plugins/kinds";
-}
-
-export function pluginKindsQueryKey(): readonly unknown[] {
-  return [pluginKindsUrl()];
+export function toPluginKindSummaries(
+  entries: readonly ResolvedCatalogEntry[],
+): PluginKindSummary[] {
+  return entries.map((entry) => ({
+    kind: entry.id,
+    label: entry.name,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
+    ...(entry.component !== undefined ? { requiredComponent: entry.component } : {}),
+    configurable: entry.detail?.configurable === true,
+  }));
 }
 
 export function pluginManifestUrl(kind: PluginKind): string {
@@ -135,16 +120,21 @@ export interface PluginConfigEnvelopeFieldOptions {
 export interface PluginConfigEnvelopeField {
   name: string;
   label: string;
+  /** Safe guidance shown beside the form control. */
+  description?: string;
+  /** Safe placeholder-only example rendered as structured text. */
+  example?: string;
   type: "string" | "number";
   required?: boolean;
   /** When present, render this field as a dropdown populated from this source. */
   options?: PluginConfigEnvelopeFieldOptions;
   /**
-   * When true (with `options.choices`), render the choices as a checkbox group
-   * allowing multiple selections. The stored value is a comma-joined string of
-   * the selected choice values (e.g. "start,continue").
+   * When true, render the choices as a checkbox group allowing multiple
+   * selections. The editor keeps a comma-joined string in local form state.
    */
   multiple?: boolean;
+  /** Persist this multiple field as an array instead of a comma-joined string. */
+  multipleStorage?: "array";
   /**
    * When true, the generic admin page offers this field as a filter in its
    * filter bar (alongside the universal Plugin filter).
@@ -163,6 +153,8 @@ export function pluginConfigsMetaQueryKey(
   return [pluginConfigsMetaUrl(kind)];
 }
 
+// Fork compatibility: typed search callers retain their filter contracts;
+// the catalog, rather than this interface, determines available plugin kinds.
 /** Base search filters every kind accepts (mirrors `baseSearchSchemaShape`). */
 export interface BasePluginSearchParams {
   pluginId?: string;
@@ -189,7 +181,7 @@ export interface PluginSearchParamsByKind {
     appliesTo?: string | null;
   };
   "client-injection": BasePluginSearchParams;
-  "payment-gateway": BasePluginSearchParams;
+  "wc-vendors": BasePluginSearchParams;
   "event-notifier": BasePluginSearchParams;
   denorm: BasePluginSearchParams;
   "worker-list": BasePluginSearchParams;
@@ -208,15 +200,12 @@ export interface PluginSearchParamsByKind {
  * server validates them against the kind's adapter `searchParamsSchema`.
  * Returns the hydrated (flat) config envelopes. Throws on non-2xx.
  *
- * `K` is the plugin kind, which selects the allowed filter shape from
- * {@link PluginSearchParamsByKind} at compile time; `T` types the parsed rows.
+ * The server-owned config adapter validates the filter fields for the selected
+ * kind. `T` types the parsed rows.
  */
-export async function pluginSearch<
-  K extends keyof PluginSearchParamsByKind,
-  T = unknown,
->(
-  kind: K,
-  params: PluginSearchParamsByKind[K] = {} as PluginSearchParamsByKind[K],
+export async function pluginSearch<T = unknown>(
+  kind: string,
+  params: Record<string, unknown> = {},
 ): Promise<T[]> {
   const res = await fetch(`${pluginConfigsUrl(kind)}/search`, {
     method: "POST",

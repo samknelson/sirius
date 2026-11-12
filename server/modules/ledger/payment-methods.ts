@@ -5,24 +5,32 @@ import {
   checkAccessInline,
   getComponentChecker,
 } from "../../services/access-policy-evaluator";
-import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
+import { listPaymentGatewayConfigs } from "./payment-gateway-capability";
+import { wcRequest, type WcResult } from "../../services/webclient";
 import {
   resolveGateway,
-  GatewayResolutionError,
-  type ResolvedGateway,
 } from "./payment-gateway-context";
 import { assertOnlinePaymentAuthority } from "./online-payment-authority";
 import {
   ONLINE_PAYMENT_AUTHORIZATION_VARIABLE,
   onlinePaymentAuthorizationTextsSchema,
 } from "@shared/ledger/online-payments";
+import {
+  describeWcVendor,
+  WcVendorError,
+  type WcVendorDescription,
+} from "../../services/webclient/wc-vendor-context";
+import {
+  isMaintenanceModeError,
+  sendIfMaintenanceRefusal,
+} from "../../services/maintenance-flag";
 
 /**
  * Provider-generic payment-method management.
  *
  * The page talks ONLY to these generic CRUD routes, each keyed by an entity and
  * a gateway CONFIG id. All Stripe (or any provider) behaviour lives behind the
- * payment-gateway plugin; this module orchestrates storage + plugin calls and
+ * wc-vendors plugin; this module orchestrates storage + plugin calls and
  * stays provider-agnostic.
  *
  * Access is entity-driven: the entity type maps to an access policy, and the
@@ -187,8 +195,8 @@ async function assertMethodReadAccess(req: Request, entityType: string, entityId
 }
 
 /** Non-throwing check: is the resolved plugin's required component enabled? */
-async function isPluginComponentEnabled(resolved: ResolvedGateway): Promise<boolean> {
-  const component = resolved.plugin.requiredComponent;
+async function isPluginComponentEnabled(gateway: WcVendorDescription): Promise<boolean> {
+  const component = gateway.requiredComponent;
   if (!component) return true;
   const checker = getComponentChecker();
   if (!checker) return false;
@@ -196,8 +204,8 @@ async function isPluginComponentEnabled(resolved: ResolvedGateway): Promise<bool
 }
 
 /** Enforce the resolved plugin's component gate or 403. */
-async function assertPluginComponent(resolved: ResolvedGateway): Promise<void> {
-  const component = resolved.plugin.requiredComponent;
+async function assertPluginComponent(gateway: WcVendorDescription): Promise<void> {
+  const component = gateway.requiredComponent;
   if (!component) return;
   const checker = getComponentChecker();
   if (!checker) {
@@ -213,10 +221,36 @@ async function assertPluginComponent(resolved: ResolvedGateway): Promise<void> {
  * gateway is usable and its plugin component is enabled. Centralizes the gate
  * applied by every per-method route (patch, set-default, details, delete).
  */
-async function resolveMethodGateway(gatewayConfigId: string): Promise<ResolvedGateway> {
-  const resolved = await resolveGateway(gatewayConfigId);
-  await assertPluginComponent(resolved);
-  return resolved;
+async function resolveMethodGateway(
+  gatewayConfigId: string,
+): Promise<WcVendorDescription> {
+  const gateway = await describeWcVendor({ configId: gatewayConfigId });
+  await assertPluginComponent(gateway);
+  return gateway;
+}
+
+/**
+ * The value a gateway call produced, or the reason there is none, as something
+ * this module's responder already knows how to report.
+ *
+ * The framework answers every call the same way — a result, never a throw for
+ * anything the far end did — which is what lets a caller stop caring how a
+ * vendor is implemented. These routes are the other kind of code: they turn
+ * outcomes into HTTP, and they have always done it by catching. So the
+ * translation happens here, once, and the routes below read as they did.
+ *
+ * The provider's own error object goes back up unchanged when there is one.
+ * Two routes read `code === "resource_missing"` off it to answer 404, and the
+ * responder reads a provider's 4xx status to pass the real message through;
+ * both would silently become 500s if this threw a summary instead.
+ */
+function answered<TValue>(result: WcResult<TValue>): TValue {
+  if (result.outcome === "success") return result.value as TValue;
+  if (result.cause !== undefined) throw result.cause;
+  throw new HttpError(
+    503,
+    result.error ?? "The payment gateway did not answer.",
+  );
 }
 
 /**
@@ -227,22 +261,27 @@ async function resolveMethodGateway(gatewayConfigId: string): Promise<ResolvedGa
 export async function ensureCustomer(
   entityType: string,
   entityId: string,
-  resolved: ResolvedGateway,
+  gateway: WcVendorDescription,
+  options: { allowDisabled?: boolean } = {},
 ): Promise<string> {
+  const vendor = { configId: gateway.configId, ...(options.allowDisabled ? { allowDisabled: true } : {}) };
   const existing = await storage.ledger.gatewayCustomers.get(
     entityType,
     entityId,
-    resolved.config.id,
+    gateway.configId,
   );
   if (existing) {
     // Reuse the mapping unless the plugin can verify the provider customer is
     // gone, in which case fall through to recreate and repair the mapping.
-    if (!resolved.plugin.retrieveCustomer) {
+    if (!gateway.operations.includes("payments.customer.retrieve")) {
       return existing.customerRef;
     }
-    const { exists } = await resolved.plugin.retrieveCustomer(
-      resolved.context,
-      existing.customerRef,
+    const { exists } = answered(
+      await wcRequest({
+        vendor,
+          operation: "payments.customer.retrieve",
+        args: { customerRef: existing.customerRef },
+      }),
     );
     if (exists) return existing.customerRef;
   }
@@ -252,15 +291,18 @@ export async function ensureCustomer(
     throw new HttpError(404, "Entity not found");
   }
 
-  const { customerRef } = await resolved.plugin.createCustomer(resolved.context, {
-    name: descriptor.name,
-    metadata: descriptor.metadata,
-  });
+  const { customerRef } = answered(
+    await wcRequest({
+      vendor,
+      operation: "payments.customer.create",
+      args: { name: descriptor.name, metadata: descriptor.metadata },
+    }),
+  );
 
   await storage.ledger.gatewayCustomers.upsert({
     entityType,
     entityId,
-    gatewayConfigId: resolved.config.id,
+    gatewayConfigId: gateway.configId,
     customerRef,
   });
 
@@ -285,7 +327,11 @@ async function loadOwnedMethod(
 
 /** Translate thrown errors into a JSON response. */
 function sendError(res: Response, error: unknown, fallback: string): void {
-  if (error instanceof HttpError || error instanceof GatewayResolutionError) {
+  // A maintenance refusal carries a 503 and its own explanation. It has to be
+  // recognised before the provider-status branch below, which only surfaces
+  // 4xx and would otherwise bury the explanation under a generic 500.
+  if (sendIfMaintenanceRefusal(res, error)) return;
+  if (error instanceof HttpError || error instanceof WcVendorError) {
     res.status(error.status).json({ message: error.message });
     return;
   }
@@ -349,27 +395,19 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
 
   // List the gateway configs available for the picker (enabled configs whose
   // plugin component is enabled).
+  // List the gateway configs available for the picker.
+  //
+  // Payment-gateway capability is part of the filter, not just enablement: the
+  // wc-vendors kind is component-neutral, so a registered vendor need not be a
+  // payment gateway at all. Offering one here would let it be attached to a
+  // payment method, and every later customer or method call against it would
+  // fail as an unsupported operation.
   app.get(`${base}/gateways`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
       await assertMethodReadAccess(req, entityType, entityId);
 
-      const configs = await storage.pluginConfigs.getByKind("payment-gateway");
-      const checker = getComponentChecker();
-      const available = [];
-      for (const cfg of configs) {
-        if (!cfg.enabled) continue;
-        const plugin = getPaymentGatewayPlugin(cfg.pluginId);
-        if (!plugin) continue;
-        if (
-          plugin.requiredComponent &&
-          (!checker || !(await checker(plugin.requiredComponent)))
-        ) {
-          continue;
-        }
-        available.push({ id: cfg.id, pluginId: cfg.pluginId, name: cfg.name });
-      }
-      res.json(available);
+      res.json(await listPaymentGatewayConfigs());
     } catch (error) {
       sendError(res, error, "Failed to fetch payment gateways");
     }
@@ -397,15 +435,18 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         throw new HttpError(404, "Entity not found");
       }
 
-      const resolved = await resolveGateway(gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const gateway = await describeWcVendor({ configId: gatewayConfigId });
+      await assertPluginComponent(gateway);
 
-      const customerRef = await ensureCustomer(entityType, entityId, resolved);
+      const customerRef = await ensureCustomer(entityType, entityId, gateway);
 
       try {
-        const customer = await resolved.plugin.getCustomerDetails(
-          resolved.context,
-          customerRef,
+        const customer = answered(
+          await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "payments.customer.details",
+            args: { customerRef },
+          }),
         );
         res.json({ customer, providerUrl: customer.providerUrl });
       } catch (error: any) {
@@ -431,7 +472,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       );
 
       // Resolve each distinct gateway config once.
-      const resolvedByConfig = new Map<string, ResolvedGateway | null>();
+      const gatewayByConfig = new Map<string, WcVendorDescription | null>();
       const creatorNameById = new Map<string, string | null>();
       const enriched = [];
       for (const pm of methods) {
@@ -442,34 +483,49 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
           } else {
             const creator = await storage.users.getUser(pm.createdBy);
             addedByName = creator
-              ? [creator.firstName, creator.lastName].filter(Boolean).join(" ").trim() || creator.email || null
+              ? [creator.firstName, creator.lastName].filter(Boolean).join(" ").trim() || null
               : null;
             creatorNameById.set(pm.createdBy, addedByName);
           }
         }
-        let resolved = resolvedByConfig.get(pm.gatewayConfigId);
-        if (resolved === undefined) {
+        let gateway = gatewayByConfig.get(pm.gatewayConfigId);
+        if (gateway === undefined) {
           try {
-            resolved = await resolveGateway(pm.gatewayConfigId);
+            gateway = await describeWcVendor({ configId: pm.gatewayConfigId });
           } catch {
-            resolved = null;
+            gateway = null;
           }
-          resolvedByConfig.set(pm.gatewayConfigId, resolved);
+          gatewayByConfig.set(pm.gatewayConfigId, gateway);
         }
 
-        if (!resolved || !(await isPluginComponentEnabled(resolved))) {
+        if (!gateway || !(await isPluginComponentEnabled(gateway))) {
           enriched.push({ ...publicPaymentMethod(pm), addedByName, providerError: "Payment gateway unavailable" });
           continue;
         }
 
         try {
-          const providerDetails = await resolved.plugin.getMethodSummary(
-            resolved.context,
-            pm.paymentMethod,
+          const providerDetails = answered(
+            await wcRequest({
+              vendor: { configId: gateway.configId },
+              operation: "payments.payment-method.summary",
+              args: { methodRef: pm.paymentMethod },
+            }),
           );
-          enriched.push({ ...publicPaymentMethod(pm), addedByName, providerDetails });
-        } catch {
-          enriched.push({ ...publicPaymentMethod(pm), addedByName, providerError: "Payment method not found at provider" });
+          // Worker lists need only a display descriptor, not the provider's
+          // billing identity (which may belong to a third-party payer).
+          const { billing_details: _billing, ...descriptor } = providerDetails;
+          enriched.push({ ...publicPaymentMethod(pm), addedByName,
+            providerDetails: entityType === "worker" ? descriptor : providerDetails });
+        } catch (error) {
+          // A refusal is not a missing method. Saying "not found at provider"
+          // during maintenance would accuse the vendor of losing something we
+          // never asked it about, so report why we did not ask.
+          enriched.push({
+            ...publicPaymentMethod(pm), addedByName,
+            providerError: isMaintenanceModeError(error)
+              ? error.message
+              : "Payment method not found at provider",
+          });
         }
       }
 
@@ -492,23 +548,27 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       await currentMethodConsent(entityType, body.consent);
 
       const resolved = await resolveGateway(gatewayConfigId);
-      await assertPluginComponent(resolved);
       // Customer creation happens before createSetupSession. Reject live Stripe
       // credentials here as well, before either provider call is made.
       if (resolved.config.pluginId === "stripe" &&
-          (!resolved.context.apiKey.startsWith("sk_test_") ||
-            !String((resolved.config.data as Record<string, unknown> | null)?.publishableKey ?? "").startsWith("pk_test_"))) {
+          resolved.plugin.isTestMode(resolved.context) !== true) {
         throw new HttpError(503, "Online Stripe method setup requires test-mode keys");
       }
+      const gateway = await describeWcVendor({ configId: gatewayConfigId });
+      await assertPluginComponent(gateway);
 
-      const customerRef = await ensureCustomer(entityType, entityId, resolved);
-      const session = await resolved.plugin.createSetupSession(resolved.context, {
-        customerRef,
-      });
+      const customerRef = await ensureCustomer(entityType, entityId, gateway);
+      const session = answered(
+        await wcRequest({
+          vendor: { configId: gateway.configId },
+            operation: "payments.setup-session.create",
+          args: { customerRef },
+        }),
+      );
 
       res.json({
         clientSecret: session.clientSecret,
-        componentId: resolved.plugin.addComponentId ?? null,
+        componentId: gateway.addComponentId ?? null,
         publicConfig: session.publicConfig,
       });
     } catch (error) {
@@ -525,14 +585,17 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       await assertMethodMutationAuthority(req, entityType, entityId);
       const consent = await currentMethodConsent(entityType, body.consent);
 
-      const resolved = await resolveGateway(gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const gateway = await describeWcVendor({ configId: gatewayConfigId });
+      await assertPluginComponent(gateway);
 
-      const customerRef = await ensureCustomer(entityType, entityId, resolved);
-      await resolved.plugin.attachMethod(resolved.context, {
-        customerRef,
-        methodToken,
-      });
+      const customerRef = await ensureCustomer(entityType, entityId, gateway);
+      answered(
+        await wcRequest({
+          vendor: { configId: gateway.configId },
+            operation: "payments.payment-method.attach",
+          args: { customerRef, methodToken },
+        }),
+      );
 
       const existing = await storage.ledger.paymentMethods.getByEntity(
         entityType,
@@ -602,12 +665,25 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       await assertEntityAccess(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
-      const resolved = await resolveMethodGateway(method.gatewayConfigId);
+      const gateway = await resolveMethodGateway(method.gatewayConfigId);
 
       try {
-        const details = await resolved.plugin.getMethodDetails(
-          resolved.context,
-          method.paymentMethod,
+        if (entityType === "worker") {
+          const summary = answered(await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "payments.payment-method.summary",
+            args: { methodRef: method.paymentMethod },
+          }));
+          const { billing_details: _billing, ...descriptor } = summary;
+          res.json({ paymentMethod: descriptor });
+          return;
+        }
+        const details = answered(
+          await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "payments.payment-method.details",
+            args: { methodRef: method.paymentMethod },
+          }),
         );
         res.json({
           paymentMethod: details.paymentMethod,
@@ -633,12 +709,23 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       await assertMethodMutationAuthority(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
-      const resolved = await resolveMethodGateway(method.gatewayConfigId);
+      const gateway = await resolveMethodGateway(method.gatewayConfigId);
 
       // Best-effort detach; still delete the row if the provider no longer has it.
       try {
-        await resolved.plugin.detachMethod(resolved.context, method.paymentMethod);
+        answered(
+          await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "payments.payment-method.detach",
+            args: { methodRef: method.paymentMethod },
+          }),
+        );
       } catch (error) {
+        // "Best effort" covers the provider having lost the method, not the
+        // site having declined to call it. Deleting the row after a refusal
+        // would strand a live method at the vendor that nothing here can
+        // reach, so let the refusal end the request instead.
+        if (isMaintenanceModeError(error)) throw error;
         console.warn(
           `Failed to detach payment method from provider: ${
             error instanceof Error ? error.message : String(error)

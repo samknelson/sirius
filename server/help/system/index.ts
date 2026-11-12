@@ -1,6 +1,7 @@
 import type { Help } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
+import { oneoffHelp } from "./oneoff";
 import { trustProvidersHelp } from "./trust-providers";
 import { trustBenefitColorOptionsHelp, trustBenefitColorSelectionHelp } from "./trust-benefit-colors";
 import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
@@ -23,6 +24,7 @@ import { integrationsAppearanceHelp } from "./integrations-appearance";
 import { additionalPluginKindHelp } from "./additional-plugin-kinds";
 import { reportTypeHelp } from "./report-types";
 import { maskModeHelp } from "./mask-mode";
+import { denormStatusHelp, denormRelationshipsHelp } from "./denorm";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -70,6 +72,9 @@ const entries: SystemHelpEntry[] = [
   ...integrationsAppearanceHelp,
   ...additionalPluginKindHelp,
   ...reportTypeHelp,
+  oneoffHelp,
+  denormStatusHelp,
+  denormRelationshipsHelp,
 ];
 
 function toHelp(entry: SystemHelpEntry): HelpWithSource {

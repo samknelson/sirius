@@ -12,6 +12,10 @@ import { entityFilesConfigSchema } from "../../services/entity-files/config";
 import { entityNotesConfigSchema } from "../../services/entity-notes/config";
 import { authSettingsSchema } from "../../auth/auth-settings";
 import {
+  SESSION_IDLE_TIMEOUT_VARIABLE,
+  sessionIdleTimeoutSchema,
+} from "../../auth/session-idle-timeout";
+import {
   isEnvironmentVariableSecret,
   ENV_RELEASE_SENTINEL,
 } from "../../config/env-registry";
@@ -83,6 +87,27 @@ const terminologyValueSchema = terminologySchema.transform((terms) => {
 const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   "message_defaults:email": { readTier: "admin", writeTier: "admin", schema: emailMessageDefaultsSchema },
   "message_defaults:postal": { readTier: "admin", writeTier: "admin", schema: postalMessageDefaultsSchema },
+  // Role assignments for externally scoped users (admin read/write).
+  // The generic variable routes own persistence for the Roles page tabs.
+  worker_user_roles_required: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  worker_user_roles_optional: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  employer_user_roles_required: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  employer_user_roles_optional: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  trust_provider_user_roles_required: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  trust_provider_user_roles_optional: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+
   // Staff-readable, gated by the grievance component (deadline coloring)
   "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
 
@@ -117,6 +142,7 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Auth settings: provisioning modes + SAML role mappings (admin read/write).
   // Role existence is additionally validated by PUT /api/admin/auth-settings.
   auth_settings: { schema: authSettingsSchema },
+  [SESSION_IDLE_TIMEOUT_VARIABLE]: { schema: sessionIdleTimeoutSchema },
 
 
   // Entity file attachments framework: per-context {file_system, directory,
@@ -218,7 +244,7 @@ const ENV_OVERRIDE_ROW_PREFIX = "ENV_";
 function buildEnvOverrideEntry(rowName: string): VariableRegistryEntry {
   const envName = rowName.slice(ENV_OVERRIDE_ROW_PREFIX.length);
   return {
-    // Values may hold secrets (e.g. ENV_SENDGRID_API_KEY): redact generic
+    // Values may hold secrets (e.g. ENV_PROVIDER_SECRET): redact generic
     // reads when the underlying env declaration is marked secret. Unknown
     // (unregistered) names are redacted defensively.
     redactRead: (value) =>

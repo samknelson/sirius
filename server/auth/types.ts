@@ -11,6 +11,8 @@ export interface AuthIdentityInfo {
 }
 
 export interface AuthenticatedUser {
+  /** Non-bearer hash identifying an upstream authentication session (Clerk). */
+  authenticationSessionReference?: string;
   claims: {
     sub: string;
     email?: string;

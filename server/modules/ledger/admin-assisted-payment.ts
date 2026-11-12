@@ -1,13 +1,9 @@
 import { ADMIN_PAYMENT_CONFIRMATION } from "@shared/ledger/admin-payment-confirmation";
-import { createHash } from "node:crypto";
 import type { ResolvedGateway } from "./payment-gateway-context";
 
 /** Bind recovery to the credentials used at creation, never a later live/account switch. */
 export function adminPaymentGatewayFingerprint(gateway: ResolvedGateway): string {
-  return createHash("sha256").update(JSON.stringify([
-    gateway.plugin.id, gateway.config.id, gateway.context.apiKey,
-    (gateway.config.data as Record<string, unknown> | null)?.publishableKey,
-  ])).digest("hex");
+  return gateway.configuration.fingerprint;
 }
 
 export function assertAdminPaymentGateway(attempt: { metadata?: unknown }, gateway: ResolvedGateway): void {

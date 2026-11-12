@@ -80,7 +80,7 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
         const methodRef = typeof metadata?.paymentMethodRef === "string" ? metadata.paymentMethodRef : undefined;
         const customerRef = methodRef
           ? (await storage.ledger.gatewayCustomers.get(attempt.entityType, attempt.entityId, attempt.gatewayConfigId))?.customerRef
-          : attempt.saveMethod ? await ensureCustomer(attempt.entityType, attempt.entityId, resolved) : undefined;
+          : attempt.saveMethod ? await ensureCustomer(attempt.entityType, attempt.entityId, resolved.description, { allowDisabled: true }) : undefined;
         if (methodRef && !customerRef) throw new SettlementRefusal("Payment customer is unavailable");
         const session = await initiatePayment(attempt, resolved, {
           sessionId: attempt.id, amountMinor: Math.round(Number(attempt.amount) * 100),

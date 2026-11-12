@@ -16,7 +16,7 @@ const adminNavItems = [
     description: 'Manage user accounts'
   },
   {
-    href: '/admin/roles', 
+    href: '/admin/users/roles',
     label: 'Roles',
     icon: Shield,
     description: 'Manage system roles'

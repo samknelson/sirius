@@ -60,6 +60,12 @@ export class EventBusEmitDepthExceededError extends Error {
  * third spelling: new events use the convention above.
  */
 export enum EventType {
+  ENTITY_NOTE_SAVE_AFTER = "entity.note.save.after",
+  ENTITY_NOTE_DELETE_AFTER = "entity.note.delete.after",
+  SESSION_SAVE_AFTER = "session.save.after",
+  AUTH_SIGN_IN_AFTER = "auth.sign-in.after",
+  SESSION_TOUCH_AFTER = "session.touch.after",
+  SESSION_DELETE_AFTER = "session.delete.after",
   HOURS_SAVED = "hours.saved",
   PAYMENT_SAVED = "payment.saved",
   WMB_SAVED = "wmb.saved",
@@ -135,6 +141,56 @@ export interface HoursSavedPayload {
   hours: number;
   employmentStatusId: string;
   home: boolean;
+}
+
+/** Identifiers only: never copy staff note text into event logs. */
+export interface EntityNoteChangedPayload {
+  noteId: string;
+}
+
+/** Minimal immutable snapshot of the row version actually mutated. No session JSON. */
+export interface SessionTransitionPayload {
+  readonly sid: string;
+  readonly previousUserId: string | null;
+  readonly userId: string | null;
+  readonly previousIp: string | null;
+  readonly ip: string | null;
+  readonly previousUserAgent?: string | null;
+  readonly userAgent?: string | null;
+  readonly occurredAt: string;
+}
+
+export interface SessionSaveAfterPayload extends SessionTransitionPayload {
+  readonly created: boolean;
+  /** A successful Passport login records this observation atomically itself. */
+  readonly signInHistoryManaged?: boolean;
+}
+
+export type SignInIpDecision = "baseline" | "known-ip" | "new-ip" | "missing-ip" | "restored-session";
+export type SignInDeviceDecision = "baseline" | "known-device" | "new-device" | "missing-device" | "restored-session";
+export interface SignInHistoryDecision {
+  readonly ipDecision: SignInIpDecision;
+  readonly deviceDecision: SignInDeviceDecision;
+}
+
+/** No cookie identifiers, provider tokens, or raw user/session objects. */
+export interface SignInAfterPayload {
+  readonly occurrenceId: string;
+  readonly userId: string;
+  readonly ip: string | null;
+  readonly occurredAt: string;
+  /** Comparison against retained history immediately BEFORE this observation. */
+  readonly ipDecision: SignInIpDecision | null;
+  readonly deviceDecision: SignInDeviceDecision | null;
+  /** Supplied descriptive text only, never the browser UUID or cookie. */
+  readonly userAgent: string | null;
+}
+
+export interface SessionDeleteAfterPayload {
+  readonly sid: string;
+  readonly userId: string | null;
+  readonly ip: string | null;
+  readonly occurredAt: string;
 }
 
 export interface PaymentSavedPayload {
@@ -878,6 +934,12 @@ export interface LogPayload {
 }
 
 export interface EventPayloadMap {
+  [EventType.ENTITY_NOTE_SAVE_AFTER]: EntityNoteChangedPayload;
+  [EventType.ENTITY_NOTE_DELETE_AFTER]: EntityNoteChangedPayload;
+  [EventType.AUTH_SIGN_IN_AFTER]: SignInAfterPayload;
+  [EventType.SESSION_SAVE_AFTER]: SessionSaveAfterPayload;
+  [EventType.SESSION_TOUCH_AFTER]: SessionTransitionPayload;
+  [EventType.SESSION_DELETE_AFTER]: SessionDeleteAfterPayload;
   [EventType.HOURS_SAVED]: HoursSavedPayload;
   [EventType.PAYMENT_SAVED]: PaymentSavedPayload;
   [EventType.WMB_SAVED]: WmbSavedPayload;

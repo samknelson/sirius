@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  wcUncachedRequest: vi.fn(),
-}));
+import "../../server/plugins/wc-vendors/plugins/postal";
+import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
+import type { LetterSendResult, SendLetterParams } from "../../server/services/comm/providers/postal";
+import type { WcVendorContext } from "../../server/plugins/wc-vendors/types";
 
-vi.mock("../../server/services/webclient", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../../server/services/webclient")>(),
-  wcUncachedRequest: mocks.wcUncachedRequest,
-}));
-
-import { LobPostalProvider } from "../../server/services/comm/providers/postal/lob";
+const context = {
+  credential: { secretName: "LOB_TEST_SECRET", value: "test_key" },
+  config: { id: "lob-config", pluginKind: "wc-vendors", pluginId: "lob", enabled: true, ordering: 0, data: {} },
+} as WcVendorContext;
+const provider = {
+  sendLetter: (args: SendLetterParams) =>
+    getWcVendorHandler("lob", "communications.postal.send")!(context, args as never) as Promise<LetterSendResult>,
+};
 
 const address = {
   name: "Test Person",
@@ -21,14 +24,11 @@ const address = {
 };
 
 describe("Lob letter request payload", () => {
-  let provider: LobPostalProvider;
   let outboundPayload: Record<string, unknown> | undefined;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     outboundPayload = undefined;
-    provider = new LobPostalProvider();
-    await provider.configure({ apiKey: "test_key" });
 
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       outboundPayload = JSON.parse(String(init?.body));
@@ -38,16 +38,6 @@ describe("Lob letter request payload", () => {
       };
     }));
 
-    mocks.wcUncachedRequest.mockImplementation(async ({ fetch }: { fetch: () => Promise<unknown> }) => {
-      const result = await fetch() as {
-        answered: boolean;
-        value?: unknown;
-        error?: string;
-      };
-      return result.answered
-        ? { value: result.value }
-        : { error: result.error };
-    });
   });
 
   it("uses a selected template as Lob's file source and preserves merge variables", async () => {
@@ -77,7 +67,6 @@ describe("Lob letter request payload", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/does not accept string file content/);
     expect(outboundPayload).toBeUndefined();
-    expect(mocks.wcUncachedRequest).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -95,7 +84,6 @@ describe("Lob letter request payload", () => {
       success: false,
       error: "Exactly one of pdfFile or templateId must be supplied",
     });
-    expect(mocks.wcUncachedRequest).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
 });

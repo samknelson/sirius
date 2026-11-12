@@ -96,14 +96,23 @@ vi.mock("../../server/services/comm/send-key", () => ({
 }));
 vi.mock("../../server/services/comm/callback-handlers/url-builder", () => ({ buildStatusCallbackUrl: () => "https://example.invalid/callback" }));
 vi.mock("../../server/services/system-mode", () => ({ getSystemMode: async () => state.mode }));
-vi.mock("../../server/services/service-registry", () => ({
-  serviceRegistry: { resolve: async (medium: string) => medium === "email" ? {
-    supportsEmail: () => true, validateEmail: async (email: string) => ({ valid: true, formatted: email }),
-    getDefaultFromAddress: async () => ({ email: "sender@example.invalid" }), sendEmail: state.emailProvider,
-  } : {
-    id: "local", supportsPostal: () => true, getDefaultReturnAddress: async () => ({ addressLine1: "1 Return St", city: "City", state: "OR", zip: "97201", country: "US" }),
-    sendLetter: state.postalProvider,
-  } },
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  hasWcVendorOperation: async () => true,
+  describeWcVendor: async () => ({ configId: "postal-config", pluginId: "lob" }),
+}));
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: async ({ operation, args }: { operation: string; args: any }) => {
+    let value: unknown;
+    switch (operation) {
+      case "communications.email.validate": value = { valid: true, formatted: args.email }; break;
+      case "communications.email.sender.default": value = { email: "sender@example.invalid" }; break;
+      case "communications.postal.return-address.default": value = { addressLine1: "1 Return St", city: "City", state: "OR", zip: "97201", country: "US" }; break;
+      case "communications.email.send": value = await state.emailProvider(args); break;
+      case "communications.postal.send": value = await state.postalProvider(args); break;
+      default: throw new Error(`Unexpected operation ${operation}`);
+    }
+    return { outcome: "success", value };
+  },
 }));
 vi.mock("../../server/services/comm/validators/address-verification", () => ({
   verifyPostalAddress: async (_transport: unknown, address: unknown) => ({ valid: true, normalizedAddress: address, canonicalAddress: "fixture" }),

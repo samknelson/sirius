@@ -1,11 +1,9 @@
-import { addressValidationService } from "./comm/validators/address";
 import type { Coordinates } from "@shared/utils/geocode";
-import { assertExternalServiceAllowed, isMaintenanceModeError } from "./maintenance-flag";
-import { registerUncachedWcRequest, wcUncachedRequest, type WcAnswer } from "./webclient";
+import { wcRequest } from "./webclient";
+import { isMaintenanceModeError } from "./maintenance-flag";
+import { GOOGLE_GEOCODING_PLUGIN_ID, GOOGLE_DRIVING_DISTANCE_OPERATION } from "../plugins/wc-vendors/plugins/google-geocoding";
 
 const METERS_PER_MILE = 1609.344;
-const ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
-const REQUEST_TIMEOUT_MS = 10000;
 
 /**
  * The Routes call on the web client framework.
@@ -19,15 +17,6 @@ const REQUEST_TIMEOUT_MS = 10000;
  * metered: asking Google on a connection that cannot record the answer means
  * paying for it again on the next scan.
  */
-const DRIVING_DISTANCE_SERVICE = "Google" as const;
-const DRIVING_DISTANCE_REQUEST_TYPE = "driving-distance";
-
-registerUncachedWcRequest({
-  service: DRIVING_DISTANCE_SERVICE,
-  requestType: DRIVING_DISTANCE_REQUEST_TYPE,
-  operation: "compute a driving distance",
-  needsWritableDatabase: true,
-});
 
 /**
  * Result of a driving-distance lookup. `unavailable` signals that the
@@ -40,8 +29,8 @@ export type DrivingDistanceResult =
 
 /**
  * Return the driving distance in miles between two coordinates using the
- * Google Routes API. Reuses the Google Maps API key resolved by the
- * address validation service (no new secret). Any error, quota problem,
+ * Google Routes API. Reuses the Google geocoding WC connection (no new secret).
+ * Any error, quota problem,
  * timeout, or malformed response yields an `unavailable` result so callers
  * can fall back to another distance method.
  *
@@ -53,86 +42,20 @@ export async function getDrivingDistanceMiles(
   origin: Coordinates,
   destination: Coordinates,
 ): Promise<DrivingDistanceResult> {
-  const apiKey = await addressValidationService.getGoogleMapsApiKey();
-  if (!apiKey) {
-    return { status: "unavailable", reason: "Google Maps API key not configured" };
-  }
-
-  const result = await wcUncachedRequest<number>({
-    service: DRIVING_DISTANCE_SERVICE,
-    requestType: DRIVING_DISTANCE_REQUEST_TYPE,
-    fetch: () => callGoogleRoutes(origin, destination, apiKey),
-  });
-
-  if (result.value !== undefined) {
-    return { status: "ok", miles: result.value / METERS_PER_MILE };
-  }
-  return { status: "unavailable", reason: result.error ?? "Google Routes API did not answer" };
-}
-
-/**
- * Make the call and say what came back. `answered` is declared, never
- * inferred: a body with no route in it is Google declining to answer, not a
- * distance of nothing.
- */
-async function callGoogleRoutes(
-  origin: Coordinates,
-  destination: Coordinates,
-  apiKey: string,
-): Promise<WcAnswer<number>> {
-  assertExternalServiceAllowed(DRIVING_DISTANCE_SERVICE, "compute driving distance");
-
   try {
-    const response = await fetch(ROUTES_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "routes.distanceMeters",
-      },
-      body: JSON.stringify({
-        origin: {
-          location: {
-            latLng: { latitude: origin.latitude, longitude: origin.longitude },
-          },
-        },
-        destination: {
-          location: {
-            latLng: {
-              latitude: destination.latitude,
-              longitude: destination.longitude,
-            },
-          },
-        },
-        travelMode: "DRIVE",
-        units: "IMPERIAL",
-      }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    const result = await wcRequest({
+      vendor: { pluginId: GOOGLE_GEOCODING_PLUGIN_ID },
+      operation: GOOGLE_DRIVING_DISTANCE_OPERATION,
+      args: { origin, destination },
     });
-
-    if (!response.ok) {
-      return { answered: false, error: `Google Routes API returned ${response.status}` };
+    if (result.value !== undefined) {
+      return { status: "ok", miles: result.value / METERS_PER_MILE };
     }
-
-    const data = (await response.json()) as {
-      routes?: { distanceMeters?: number }[];
-    };
-
-    const distanceMeters = data.routes?.[0]?.distanceMeters;
-    if (typeof distanceMeters !== "number" || !Number.isFinite(distanceMeters)) {
-      return {
-        answered: false,
-        error: "Google Routes API returned no route between the points",
-      };
-    }
-
-    return { answered: true, value: distanceMeters };
+    return { status: "unavailable", reason: result.error ?? "Google Routes API did not answer" };
   } catch (error) {
     if (isMaintenanceModeError(error)) throw error;
-    const reason =
-      error instanceof Error && error.name === "TimeoutError"
-        ? "Google Routes API request timed out"
-        : `Google Routes API request failed: ${error instanceof Error ? error.message : String(error)}`;
-    return { answered: false, error: reason };
+    // Missing/ambiguous WC connections retain the caller's explicit fallback
+    // contract, without selecting another account or leaking credentials.
+    return { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   }
 }

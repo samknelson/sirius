@@ -44,6 +44,8 @@ import {
   optionsSitespecificBaoNotesTagTypes,
   optionsSitespecificBaoNotesTags,
   optionsWorkerBanType,
+  optionsWorkerBadgeTypes,
+  insertOptionsWorkerBadgeTypeSchema,
   optionsNoteType,
   optionsFileType,
   bulkMediumEnum,
@@ -96,6 +98,7 @@ export type OptionsTypeName =
   | "bao-case-status"
   | "bao-case-type"
   | "bao-case-resolution" | "bao-appeal-denial-reason"
+  | "worker-badge-type"
   | "note-type"
   | "bao-notes-tag-type"
   | "bao-notes-tag"
@@ -344,6 +347,18 @@ export function resolveFieldChoices(fields: FieldDefinition[]): FieldDefinition[
   );
 }
 
+/** Optional resource-owned validation shared by forms, imports, and storage.
+ * Apply it BEFORE generic optional blank handling so a clear-to-NULL transform
+ * is not silently discarded. Partial writes must preserve omitted properties.
+ */
+export interface OptionsWriteSchema {
+  parse(input: unknown): Record<string, unknown>;
+  safeParse(input: unknown):
+    | { success: true; data: Record<string, unknown> }
+    | { success: false; error: { issues: { message: string }[] } };
+  partial(): OptionsWriteSchema;
+}
+
 interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   table: T;
   displayName: string;
@@ -357,6 +372,7 @@ interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   supportsParent?: boolean;
   supportsSequencing?: boolean;
   requiredComponent?: string;
+  writeSchema?: OptionsWriteSchema;
   /**
    * Set when this list is administered on its own page instead of the generic
    * options screen — the path of that page. The generic routes still serve the
@@ -368,6 +384,26 @@ interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
 }
 
 const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
+  "worker-badge-type": {
+    table: optionsWorkerBadgeTypes,
+    displayName: "Worker Badge Type",
+    description: "Manage badge types awarded through system activity",
+    singularName: "Worker Badge Type",
+    pluralName: "Worker Badge Types",
+    orderByColumn: "name",
+    loggingModule: "options.workerBadgeTypes",
+    requiredFields: ["name"],
+    optionalFields: ["icon", "siriusId", "description", "data"],
+    requiredComponent: "worker.badges",
+    supportsSequencing: false,
+    writeSchema: insertOptionsWorkerBadgeTypeSchema,
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px" },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Badge type name", showInTable: true, columnHeader: "Name" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional external ID", showInTable: true, columnHeader: "Sirius ID" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
+    ],
+  },
   "department": {
     table: optionsDepartment,
     displayName: "Department",
@@ -1206,6 +1242,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
         throw new Error("Ledger effect must be Charge or Credit");
       }
       const metadata = getTable(type) as any;
+      if (metadata.writeSchema) data = metadata.writeSchema.parse(data);
       
       if (metadata.supportsParent && data.parent) {
         const allItems = await this.list(type);
@@ -1244,6 +1281,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
         });
       }
       const metadata = getTable(type) as any;
+      if (metadata.writeSchema) data = metadata.writeSchema.partial().parse(data);
       
       if (metadata.supportsParent && data.parent !== undefined) {
         if (data.parent === id) {

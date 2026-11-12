@@ -1,14 +1,14 @@
-import { serviceRegistry } from '../../service-registry';
 import { getSystemMode } from '../../system-mode';
 import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { phoneValidationService } from '../validators/phone';
-import type { SmsTransport } from '../providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import { wcRequest } from "../../webclient";
+import type { SmsSendResult } from "../../../plugins/wc-vendors/sms-types";
 
 export interface SendSmsRequest {
   contactId: string;
@@ -104,9 +104,8 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
   }
 
   try {
-    const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
-
-    if (!smsTransport.supportsSms()) {
+    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("communications.sms.send"))) {
       return {
         success: false,
         error: 'SMS sending is not supported by the current provider. Configure a provider with SMS capability (e.g., Twilio).',
@@ -207,9 +206,31 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
     // The recipient is real and has opted in, so the number is now worth
     // confirming with the provider — at most one lookup, and none at all if it
     // was confirmed within the revalidation window.
-    const validationResult = await phoneValidationService.validateAndFormat(normalizedPhone, {
-      revalidate: 'default',
-    });
+    let validationResult;
+    try {
+      validationResult = await phoneValidationService.validateAndFormat(normalizedPhone, {
+        revalidate: 'default',
+      });
+    } catch (validationError: any) {
+      const errorMessage =
+        validationError?.message || 'Phone validation provider is unavailable';
+      await commStorage.updateComm(comm.id, {
+        status: 'failed',
+        data: {
+          ...comm.data as object,
+          errorCode: 'PROVIDER_ERROR',
+          errorMessage,
+        },
+      });
+      if (isMaintenanceModeError(validationError)) throw validationError;
+      return {
+        success: false,
+        comm: { ...comm, status: 'failed' },
+        commSms,
+        error: errorMessage,
+        errorCode: 'PROVIDER_ERROR',
+      };
+    }
     if (!validationResult.isValid) {
       await commStorage.updateComm(comm.id, {
         status: 'failed',
@@ -230,16 +251,22 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
     }
 
     try {
-      const fromNumber = await smsTransport.getDefaultFromNumber();
-
       const statusCallbackUrl = buildStatusCallbackUrl(comm.id);
 
-      const sendResult = await smsTransport.sendSms({
-        to: normalizedPhone,
-        body: message,
-        from: fromNumber,
-        statusCallbackUrl,
+      let sendResult: SmsSendResult;
+      const sendResponse = await wcRequest({
+        vendor: { any: true },
+        operation: "communications.sms.send",
+        args: {
+          to: normalizedPhone,
+          body: message,
+          statusCallbackUrl,
+        },
       });
+      sendResult = sendResponse.value ?? {
+        success: false,
+        error: sendResponse.error || "Failed to send SMS",
+      };
 
       if (!sendResult.success) {
         await commStorage.updateComm(comm.id, {

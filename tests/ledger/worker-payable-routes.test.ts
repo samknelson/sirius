@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
       accounts: { get: vi.fn() },
       paymentMethods: { get: vi.fn() },
       gatewayCustomers: { get: vi.fn() },
-      payments: { create: vi.fn() },
+      payments: { create: vi.fn(), get: vi.fn() },
       paymentAttempts: {
         get: vi.fn(),
         getByProviderIntent: vi.fn(),
@@ -109,7 +109,7 @@ const gateway = (status: string = "requires_action") => ({
     }),
     getMethodSummary: vi.fn().mockResolvedValue({ type: "card" }),
     addComponentId: "stripe:StripeAddPaymentMethod",
-    constructWebhookEvent: vi.fn(),
+    verifyWebhook: vi.fn(),
   },
 });
 
@@ -134,7 +134,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.access.mockResolvedValue({ granted: true });
   mocks.optionList.mockResolvedValue([
-    { id: "financial-usd", category: "financial", currencyCode: "USD" },
+    { id: "financial-usd", category: "financial", currencyCode: "USD", direction: "credit" },
   ]);
   mocks.resolveGateway.mockResolvedValue(gateway());
   mocks.storage.workers.getWorker.mockResolvedValue({ id: "worker-1" });
@@ -165,6 +165,10 @@ describe("worker payable account routes", () => {
     mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({
       ...attempt, ledgerPaymentId: alreadyPosted ? "payment-existing" : null,
     });
+    mocks.storage.ledger.payments.get.mockResolvedValue(alreadyPosted ? {
+      id: "payment-existing", ledgerEaId: "ea-dp", status: "cleared",
+      details: { paymentAttemptId: "attempt-1" },
+    } : undefined);
     // Settlement now validates the payment EA (and its account) before
     // inserting the ledger payment.
     mocks.storage.ledger.ea.get.mockResolvedValue(workerEa("ea-dp", "account-dp"));

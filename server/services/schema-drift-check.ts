@@ -88,6 +88,28 @@ const EXTRA_TABLE_ALLOWLIST = new Set<string>([
 ]);
 
 /**
+ * Oneoff actions own temporary scratch tables in the public schema. Only
+ * unmodeled live tables in this reserved namespace are exempt from the extra
+ * table sweep; modeled tables still pass through the regular schema checks.
+ */
+export function isOneoffScratchTable(tableName: string): boolean {
+  return tableName.startsWith("oneoff_");
+}
+
+/** Return unknown live tables that remain startup-gate drift. */
+export function findExtraTables(
+  liveTables: string[],
+  allKnownTables: Set<string>,
+): string[] {
+  return liveTables.filter(
+    (tableName) =>
+      !allKnownTables.has(tableName) &&
+      !EXTRA_TABLE_ALLOWLIST.has(tableName) &&
+      !isOneoffScratchTable(tableName),
+  );
+}
+
+/**
  * Build the set of table names that belong to a DISABLED component. These
  * tables are skipped during the core drift sweep so retained-on-disable data
  * doesn't cause a startup-gate failure.
@@ -180,12 +202,7 @@ export async function checkAggregateSchemaDrift(): Promise<AggregateDriftReport>
     for (const t of c.schemaManifest.tables) allKnownTables.add(t);
   }
   const liveTables = await listAllPublicTables();
-  const extraTables: string[] = [];
-  for (const t of liveTables) {
-    if (allKnownTables.has(t)) continue;
-    if (EXTRA_TABLE_ALLOWLIST.has(t)) continue;
-    extraTables.push(t);
-  }
+  const extraTables = findExtraTables(liveTables, allKnownTables);
 
   return {
     hasDrift: perTable.length > 0 || missingTables.length > 0 || extraTables.length > 0,

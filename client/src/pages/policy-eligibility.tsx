@@ -224,7 +224,7 @@ function PolicyEligibilityContent() {
     isLoading: configsLoading,
   } = useQuery<EligibilityConfigRow[]>({
     queryKey: [pluginConfigsUrl(KIND), "policy", policy.id],
-    queryFn: () => pluginSearch<typeof KIND, EligibilityConfigRow>(KIND, { policy: policy.id }),
+    queryFn: () => pluginSearch<EligibilityConfigRow>(KIND, { policy: policy.id }),
   });
 
   const benefitName = (id: string | null): string => {
