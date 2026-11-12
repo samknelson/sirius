@@ -1,9 +1,11 @@
-/** Published assets are reusable, not children of templates or communications. */
-export const TEMPLATE_ASSET_CONTEXT = "template_asset";
+import { getEntityFileContext } from "./registry";
 
 export function isTemplateAsset(file: { entityType: string | null }): boolean {
-  return file.entityType === "template-asset" ||
-    file.entityType === `entity-files:${TEMPLATE_ASSET_CONTEXT}`;
+  // Legacy discriminator remains readable without an owner table. New uploads
+  // inherit publication from the registered area, never filesystem privacy alone.
+  return file.entityType === "published-image" || file.entityType === "template-asset" ||
+    (file.entityType?.startsWith("entity-files:") === true &&
+      getEntityFileContext(file.entityType.slice("entity-files:".length))?.publishedAsset === true);
 }
 
 export class AttachmentError extends Error {

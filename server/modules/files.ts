@@ -15,11 +15,7 @@ import multer from "multer";
 import { logger } from "../logger";
 import { buildContentDisposition } from "../utils/content-disposition";
 import { getEntityFileContext } from "../services/entity-files/registry";
-import { randomUUID } from "node:crypto";
-import { getEffectiveUser } from "./masquerade";
-import { MAX_LETTER_IMAGE_BYTES } from "../services/comm/letter-images";
-import { uploadEntityAttachment } from "../services/entity-files/upload";
-import { AttachmentError, TEMPLATE_ASSET_CONTEXT, isTemplateAsset } from "../services/entity-files/template-assets";
+import { isTemplateAsset } from "../services/entity-files/template-assets";
 
 /**
  * For files owned by the entity-files framework (entityType
@@ -69,69 +65,6 @@ export function registerFileRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  const templateAssetUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_LETTER_IMAGE_BYTES, files: 1 },
-  }).single("file");
-
-  app.post(
-    "/api/template-assets",
-    requireAuth,
-    requirePermission("staff"),
-    (req, res, next) => {
-      templateAssetUpload(req, res, (error) => {
-        if (error) {
-          const tooLarge = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
-          return res.status(tooLarge ? 413 : 400).json({
-            message: tooLarge
-              ? `Template images may not exceed ${MAX_LETTER_IMAGE_BYTES} bytes.`
-              : "Expected one multipart file field named 'file'.",
-          });
-        }
-        next();
-      });
-    },
-    async (req, res) => {
-      if (!req.file) return res.status(400).json({ message: "No file provided in field 'file'." });
-      try {
-        const { dbUser } = await getEffectiveUser(req.session ?? {}, req.user);
-        if (!dbUser?.id || !dbUser.isActive) {
-          return res.status(401).json({ message: "An active database user is required to upload template images." });
-        }
-        const context = getEntityFileContext(TEMPLATE_ASSET_CONTEXT);
-        if (!context || !(await context.checkAccess("manage", "", req))) {
-          return res.status(403).json({ message: "Staff permission required." });
-        }
-        const record = await uploadEntityAttachment({
-          context, entityId: randomUUID(), file: req.file,
-          uploadedBy: dbUser.id, createAssetOwner: true,
-        });
-        if (!("publicUrl" in record) || !record.publicUrl) {
-          throw new Error("Template attachment did not provide its published URL.");
-        }
-        return res.status(201).json({
-          url: record.publicUrl,
-        });
-      } catch (error) {
-        if (error instanceof AttachmentError) return res.status(error.status).json({ message: error.message });
-        if (error instanceof Error && error.name === "ZodError") {
-          return res.status(400).json({ message: "Invalid template image data." });
-        }
-        if (error instanceof FileSystemNotConfiguredError) {
-          return res.status(503).json({ message: error.message });
-        }
-        if (error instanceof Error && error.message.startsWith("Letter image refused:")) {
-          return res.status(400).json({ message: error.message });
-        }
-        logger.error("Template image upload failed", {
-          service: "files",
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return res.status(500).json({ message: "Failed to upload template image." });
-      }
-    },
-  );
-
   app.post("/api/files", 
     upload.single('file'),
     requireAuth,

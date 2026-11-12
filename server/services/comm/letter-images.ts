@@ -90,11 +90,9 @@ export async function prepareLetterImages(
           fail("managed image is unavailable.");
         }
         const file = await storage.files.getByStoragePath(storagePath, fileSystemId);
-        const legacy = file?.entityType === "template-asset" && storagePath.startsWith("letter-template-assets/");
-        const owned = file?.entityType === "entity-files:template_asset" && file.entityId &&
-          await storage.entityFiles.assetOwnerExists(file.entityId) &&
-          await storage.entityFiles.getByFileId("template_asset", file.entityId, file.id);
-        if (!file || file.status !== "live" || (!legacy && !owned) ||
+        const { isTemplateAsset } = await import("../entity-files/template-assets");
+        if (!file || file.status !== "live" || !isTemplateAsset(file) ||
+            (file.entityType === "template-asset" && !storagePath.startsWith("letter-template-assets/")) ||
             file.size > MAX_LETTER_IMAGE_BYTES) {
           fail("managed image is unavailable or exceeds the 1 MB limit.");
         }

@@ -284,6 +284,7 @@ export function ComposeTemplateStudio({
           onValuesChange={replaceDraft}
           fieldSpecs={MEDIUM_FIELDS[channel]}
           contextId={composeTokenContextId(target.scope)}
+          fileTarget={target.scope === "worker" ? { configId: "worker_public", entityId: target.recordId } : undefined}
           seedsUrl={`/api/comm-compose/preview-seeds?scope=${encodeURIComponent(target.scope)}&recordId=${encodeURIComponent(target.recordId)}`}
         />
       )}

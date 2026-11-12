@@ -1,4 +1,5 @@
-import { workers, employers, trustProviders, grievances, wizards, templateAssets } from "@shared/schema";
+import { workers, employers, trustProviders, grievances, wizards, letterTemplates } from "@shared/schema";
+import { bulkMessages } from "@shared/schema/bulk/schema";
 import { ledgerPayments } from "@shared/schema";
 import { ledgerPaymentBatches } from "@shared/schema/ledger/payment-batch/schema";
 import {
@@ -23,7 +24,9 @@ import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
  * per-record callback can express, so the table itself has to be nameable.
  */
 export const fileContextTables: Record<string, PgTable<TableConfig>> = {
-  template_asset: templateAssets,
+  letter_template: letterTemplates,
+  bulk_message: bulkMessages,
+  worker_public: workers,
   wizard: wizards,
   worker: workers,
   employer: employers,

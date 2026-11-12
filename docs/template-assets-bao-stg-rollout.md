@@ -1,5 +1,11 @@
 # Template Assets — BAO-STG rollout and evidence
 
+> Historical rollout record. The Template Assets area and standalone upload
+> endpoint have been retired. Do not apply the configuration below to current
+> releases. Use [Public Studio images](public-studio-images.md) for current
+> real-owner areas, retention rules, and operator prerequisites. Historical
+> public URLs and filesystem identities must still be preserved.
+
 ## Status
 
 **Awaiting authorized staging configuration, deployment and verification.**

@@ -14,33 +14,40 @@ vi.mock("../../server/storage/transaction-context", () => ({
     : state.db.transaction((tx: any) => state.als.run(tx, fn)),
   onAfterCommit: vi.fn(),
 }));
-vi.mock("../../server/db", () => ({
-  db: { transaction: (fn: any) => state.db.transaction(fn) },
-}));
+vi.mock("../../server/db", () => ({ db: { transaction: (fn: any) => state.db.transaction(fn) } }));
 vi.mock("../../server/services/migration-runner", () => ({ registerMigration: vi.fn() }));
+vi.mock("../../server/config/env-registry", () => ({
+  getEnvironmentVariable: () => "https://app.example", isEnvironmentVariableSetInProcess: () => true,
+}));
+vi.mock("../../server/services/files/config", () => ({
+  parseFileSystemsEnv: () => new Map([["assets", { access: "public" }]]),
+}));
 vi.mock("../../server/services/entity-files/registry", () => ({
-  getEntityFileContext: () => ({ id: "template_asset" }),
+  getEntityFileContext: (id: string) => ({ id, publishedAsset: id === "letter_template" }),
   listEntityFileContexts: () => [],
 }));
-vi.mock("../../server/services/files", () => ({ fileSystemService: { remove: vi.fn() } }));
+vi.mock("../../server/services/files", () => ({
+  fileSystemService: { remove: vi.fn() },
+  isFileSystemConfigured: () => true,
+  getFileSystemConfig: () => ({ access: "public" }),
+}));
 vi.mock("../../server/storage", () => ({ storage: {} }));
 vi.mock("../../server/logger", () => ({
-  logger: { warn: vi.fn(), error: vi.fn() },
-  storageLogger: { info: vi.fn() },
+  logger: { warn: vi.fn(), error: vi.fn() }, storageLogger: { info: vi.fn() },
 }));
-import migration from "../../scripts/migrate/core/1204_adopt_template_assets";
+import oldMigration from "../../scripts/migrate/core/1204_adopt_template_assets";
+import migration from "../../scripts/migrate/core/1219_real_owner_public_images";
 import { createEntityFilesStorage } from "../../server/storage/entity-files";
 import { createFileStorage } from "../../server/storage/files";
 
-/** Isolated real PostgreSQL: no application, staging or production database. */
-describe("template assets PostgreSQL lifecycle", () => {
+describe("public images PostgreSQL upgrade and ownership", () => {
   let root: string;
   let pool: pg.Pool;
   let started = false;
   const attachments = createEntityFilesStorage();
   const fileStorage = createFileStorage();
   beforeAll(async () => {
-    root = mkdtempSync(path.join(tmpdir(), "template-assets-pg-"));
+    root = mkdtempSync(path.join(tmpdir(), "public-images-pg-"));
     execFileSync("initdb", ["-D", `${root}/data`, "-A", "trust", "-U", "postgres"], { stdio: "ignore" });
     execFileSync("pg_ctl", ["-D", `${root}/data`, "-l", `${root}/postgres.log`, "-o", `-k ${root} -h ''`, "-w", "start"], { stdio: "ignore" });
     started = true;
@@ -61,8 +68,10 @@ describe("template assets PostgreSQL lifecycle", () => {
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(), context_id varchar NOT NULL,
         entity_id varchar NOT NULL, file_id varchar NOT NULL UNIQUE REFERENCES files(id) ON DELETE CASCADE,
         type_id varchar REFERENCES options_file_type(id), name varchar(255) NOT NULL, data jsonb);
+      CREATE TABLE letter_templates (id varchar PRIMARY KEY, content jsonb);
+      CREATE TABLE variables (id varchar PRIMARY KEY, name varchar, value jsonb);
+      CREATE TABLE entity_metadata (context_id varchar);
     `);
-    await migration.up();
   }, 30000);
   afterAll(async () => {
     await pool?.end();
@@ -70,80 +79,77 @@ describe("template assets PostgreSQL lifecycle", () => {
     if (root) rmSync(root, { recursive: true, force: true });
   });
   beforeEach(async () => {
-    await pool.query("TRUNCATE entity_files,files,template_assets CASCADE");
+    await pool.query("TRUNCATE entity_files,files,letter_templates,variables,entity_metadata CASCADE; DROP TABLE IF EXISTS template_assets");
   });
   const file = (suffix = "1") => ({
     fileName: "logo.png", storagePath: `custom/${suffix}.png`, mimeType: "image/png",
     size: 67, uploadedBy: "effective-user", fileSystemId: "assets",
-    entityType: "entity-files:template_asset", entityId: "owner",
+    entityType: "entity-files:letter_template", entityId: "owner",
   });
-  it("adopts legacy assets idempotently without touching identity, location, attribution or other files", async () => {
-    await pool.query(`INSERT INTO files(id,file_name,storage_path,size,uploaded_by,file_system_id,entity_type)
-      VALUES ('old','logo.png','letter-template-assets/old.png',67,'historical','legacy-public','template-asset'),
-             ('private','document.pdf','private/doc.pdf',20,'historical','private','worker')`);
-    const before = (await pool.query("SELECT * FROM files WHERE id='old'")).rows[0];
+  it("fresh install and reruns leave no synthetic owner table", async () => {
+    await oldMigration.up();
     await migration.up();
     await migration.up();
-    const after = (await pool.query("SELECT * FROM files WHERE id='old'")).rows[0];
-    expect(after).toEqual({ ...before, entity_type: "entity-files:template_asset", entity_id: "old" });
-    expect((await pool.query("SELECT count(*)::int AS n FROM template_assets")).rows[0].n).toBe(1);
-    expect((await attachments.getByFileId("template_asset", "old", "old"))?.file.storagePath).toBe(before.storage_path);
-    expect(await attachments.findOrphans("template_asset", 100)).toEqual([]);
-    expect((await pool.query("SELECT entity_type FROM files WHERE id='private'")).rows[0].entity_type).toBe("worker");
+    expect((await pool.query("SELECT to_regclass('template_assets') AS name")).rows[0].name).toBeNull();
   });
-  it("rolls back owner, file and attachment together on failed attachment insert", async () => {
-    await expect(attachments.createWithFile("template_asset", "owner", file(), "logo", "unknown-type", true)).rejects.toThrow();
-    for (const table of ["template_assets", "files", "entity_files"]) {
-      expect((await pool.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n).toBe(0);
+  it("preserves identities and paths, reparents only unique references, and keeps shared/unreferenced images", async () => {
+    for (const id of ["unique", "shared", "unused"]) {
+      await pool.query(`INSERT INTO files(id,file_name,storage_path,size,uploaded_by,file_system_id,entity_type)
+        VALUES ($1,'logo.png',$2,67,'historical','assets','template-asset')`, [id, `legacy/${id}.png`]);
     }
+    const html = (id: string) => `<img src="https://app.example/public-files/assets/legacy/${id}.png">`;
+    await pool.query("INSERT INTO letter_templates VALUES ('one',$1),('two',$2)", [
+      JSON.stringify({ bodyHtml: html("unique") + html("shared") }),
+      JSON.stringify({ bodyHtml: html("shared") }),
+    ]);
+    await pool.query(`INSERT INTO variables VALUES ('config','entity_files_config',$1)`, [JSON.stringify({
+      template_asset: { file_system: "assets", directory: "legacy/:entity-id", allowed: ["png"] },
+      worker_public: { file_system: "other", directory: "keep", allowed: ["jpeg"] },
+    })]);
+    const before = (await pool.query("SELECT * FROM files ORDER BY id")).rows;
+    await oldMigration.up();
+    await migration.up();
+    await migration.up();
+    const after = (await pool.query("SELECT * FROM files ORDER BY id")).rows;
+    expect(after).toEqual(before.map(row => ({ ...row,
+      entity_type: row.id === "unique" ? "entity-files:letter_template" : "published-image",
+      entity_id: row.id === "unique" ? "one" : null,
+    })));
+    expect((await attachments.list("letter_template", "one")).map(a => a.fileId)).toEqual(["unique"]);
+    expect((await pool.query("SELECT count(*)::int AS n FROM entity_files")).rows[0].n).toBe(1);
+    const config = (await pool.query("SELECT value FROM variables")).rows[0].value;
+    expect(config.template_asset).toBeUndefined();
+    expect(config.letter_template).toEqual(config.bulk_message);
+    expect(config.worker_public.directory).toBe("keep");
+    expect((await pool.query("SELECT to_regclass('template_assets') AS name")).rows[0].name).toBeNull();
   });
-  it("refuses conflicting legacy adoption transactionally", async () => {
-    await pool.query(`INSERT INTO files(id,file_name,storage_path,size,uploaded_by,file_system_id,entity_type)
-      VALUES ('old','logo.png','old.png',67,'historical','public','template-asset')`);
-    await pool.query(`INSERT INTO entity_files(context_id,entity_id,file_id,name) VALUES ('worker','worker','old','document')`);
-    await expect(migration.up()).rejects.toThrow("another attachment");
-    expect((await pool.query("SELECT count(*)::int AS n FROM template_assets")).rows[0].n).toBe(0);
-    expect((await pool.query("SELECT entity_type FROM files")).rows[0].entity_type).toBe("template-asset");
-  });
-  it("rolls back multi-write adoption if attaching fails after the owner insert", async () => {
+  it("rolls back retirement when an attachment has conflicting ownership", async () => {
     await pool.query(`INSERT INTO files(id,file_name,storage_path,size,uploaded_by,file_system_id,entity_type)
       VALUES ('old','logo.png','old.png',67,'historical','public','template-asset');
-      CREATE FUNCTION refuse_test_attachment() RETURNS trigger LANGUAGE plpgsql AS
-        $$ BEGIN RAISE EXCEPTION 'attachment metadata unavailable'; END $$;
-      CREATE TRIGGER refuse_test_attachment BEFORE INSERT ON entity_files
-        FOR EACH ROW EXECUTE FUNCTION refuse_test_attachment();`);
-    try {
-      await expect(migration.up()).rejects.toMatchObject({ cause: expect.objectContaining({ message: "attachment metadata unavailable" }) });
-      expect((await pool.query("SELECT count(*)::int AS n FROM template_assets")).rows[0].n).toBe(0);
-      expect((await pool.query("SELECT entity_type FROM files")).rows[0].entity_type).toBe("template-asset");
-    } finally {
-      await pool.query("DROP TRIGGER refuse_test_attachment ON entity_files; DROP FUNCTION refuse_test_attachment()");
-    }
-    await migration.up();
-    expect((await attachments.getByFileId("template_asset", "old", "old"))?.file.id).toBe("old");
+      INSERT INTO entity_files(context_id,entity_id,file_id,name) VALUES ('worker','worker','old','document')`);
+    await expect(migration.up()).rejects.toThrow("conflicting ownership");
+    expect((await pool.query("SELECT entity_type FROM files")).rows[0].entity_type).toBe("template-asset");
   });
-  it("retains publication independently of templates, refuses replacement, delete, transfer and path changes", async () => {
-    const record = await attachments.createWithFile("template_asset", "owner", file(), "logo", null, true);
-    expect(record.file.uploadedBy).toBe("effective-user");
-    expect(await attachments.assetOwnerExists("owner")).toBe(true);
-    await expect(attachments.createWithFile("template_asset", "owner", file("2"), "replacement")).rejects.toThrow("immutable");
-    await expect(attachments.update("template_asset", "owner", record.id, { name: "rename" })).rejects.toThrow("immutable");
-    await expect(attachments.deleteWithFile("template_asset", "owner", record.id)).rejects.toThrow("immutable");
-    await expect(attachments.transferFileOwnership("template_asset", "owner", record.fileId, { entityType: "worker", entityId: "worker" })).rejects.toThrow("immutable");
-    await expect(fileStorage.delete(record.fileId)).rejects.toThrow("immutable");
-    await expect(fileStorage.update(record.fileId, { storagePath: "moved.png" })).rejects.toThrow("immutable");
-    await expect(fileStorage.renameStoragePathPrefix("assets", "custom", "moved")).rejects.toThrow("immutable");
-    expect((await attachments.list("template_asset", "owner")).length).toBe(1);
-    expect(await attachments.findOrphans("template_asset", 100)).toEqual([]);
+  it("requires a real owner and rolls back file creation if attachment insertion fails", async () => {
+    await expect(attachments.createWithFile("letter_template", "missing", file(), "logo")).rejects.toThrow("owner");
+    await pool.query("INSERT INTO letter_templates VALUES ('owner','{}')");
+    await expect(attachments.createWithFile("letter_template", "owner", file(), "logo", "unknown-type")).rejects.toThrow();
+    expect((await pool.query("SELECT count(*)::int AS n FROM files")).rows[0].n).toBe(0);
   });
-  it("serializes concurrent attachment attempts for an existing empty owner", async () => {
-    await pool.query("INSERT INTO template_assets(id) VALUES ('owner')");
-    const results = await Promise.allSettled([
-      attachments.createWithFile("template_asset", "owner", file("one"), "one"),
-      attachments.createWithFile("template_asset", "owner", file("two"), "two"),
+  it("allows concurrent multiple images and retains them after owner deletion", async () => {
+    await pool.query("INSERT INTO letter_templates VALUES ('owner','{}')");
+    const [record] = await Promise.all([
+      attachments.createWithFile("letter_template", "owner", file("one"), "one"),
+      attachments.createWithFile("letter_template", "owner", file("two"), "two"),
     ]);
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect((await attachments.list("template_asset", "owner"))).toHaveLength(1);
-    expect((await pool.query("SELECT count(*)::int AS n FROM files")).rows[0].n).toBe(1);
+    expect((await attachments.list("letter_template", "owner"))).toHaveLength(2);
+    await pool.query("DELETE FROM letter_templates WHERE id='owner'");
+    expect(await attachments.findOrphans("letter_template", 100)).toEqual([]);
+    await expect(attachments.deleteWithFile("letter_template", "owner", record.id)).rejects.toThrow("immutable");
+    await expect(attachments.update("letter_template", "owner", record.id, { name: "changed" })).rejects.toThrow("immutable");
+    await expect(attachments.transferFileOwnership("letter_template", "owner", record.file.id, { entityType: "worker", entityId: "other" })).rejects.toThrow("immutable");
+    await expect(fileStorage.delete(record.file.id)).rejects.toThrow("immutable");
+    await expect(fileStorage.update(record.file.id, { storagePath: "other" })).rejects.toThrow("immutable");
+    expect((await pool.query("SELECT count(*)::int AS n FROM files")).rows[0].n).toBe(2);
   });
 });

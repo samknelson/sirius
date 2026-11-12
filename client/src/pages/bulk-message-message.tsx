@@ -136,6 +136,7 @@ interface MultiMediumResponse {
 }
 
 interface FormProps {
+  messageId: string;
   record: Record<string, unknown> | null;
   onSave: (data: Record<string, unknown>) => void;
   isPending: boolean;
@@ -171,7 +172,7 @@ function SaveButton({
   );
 }
 
-function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
+function EmailForm({ record, onSave, isPending, seedsUrl, messageId }: FormProps) {
   const [form, setForm] = useState({ subject: "", bodyHtml: "" });
 
   useEffect(() => {
@@ -194,6 +195,7 @@ function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
           <TokenStudioButton
             label="Edit in Template Studio"
             testId="button-open-studio-email"
+            fileTarget={{ configId: "bulk_message", entityId: messageId }}
             title="Email message"
             channel="email"
             fieldSpecs={MEDIUM_FIELDS.email}
@@ -218,7 +220,7 @@ function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   );
 }
 
-function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
+function SmsForm({ record, onSave, isPending, seedsUrl, messageId }: FormProps) {
   const [body, setBody] = useState("");
 
   useEffect(() => {
@@ -244,6 +246,7 @@ function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
           <TokenStudioButton
             label="Edit in Template Studio"
             testId="button-open-studio-sms"
+            fileTarget={{ configId: "bulk_message", entityId: messageId }}
             title="SMS message"
             channel="sms"
             fieldSpecs={MEDIUM_FIELDS.sms}
@@ -265,7 +268,7 @@ function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   );
 }
 
-function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
+function PostalForm({ record, onSave, isPending, seedsUrl, messageId }: FormProps) {
   const [form, setForm] = useState({
     bodyHtml: "",
     description: "",
@@ -301,6 +304,7 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
           <TokenStudioButton
             label="Edit in Template Studio"
             testId="button-open-studio-postal"
+            fileTarget={{ configId: "bulk_message", entityId: messageId }}
             title="Postal letter"
             channel="postal"
             fieldSpecs={MEDIUM_FIELDS.postal}
@@ -371,7 +375,7 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   );
 }
 
-function InappForm({ record, onSave, isPending, seedsUrl }: FormProps) {
+function InappForm({ record, onSave, isPending, seedsUrl, messageId }: FormProps) {
   const [form, setForm] = useState({
     title: "",
     body: "",
@@ -426,6 +430,7 @@ function InappForm({ record, onSave, isPending, seedsUrl }: FormProps) {
           <TokenStudioButton
             label="Edit in Template Studio"
             testId="button-open-studio-inapp"
+            fileTarget={{ configId: "bulk_message", entityId: messageId }}
             title="In-app notification"
             channel="inapp"
             fieldSpecs={MEDIUM_FIELDS.inapp}
@@ -555,6 +560,7 @@ function BulkMessageMessageContent() {
         <CardContent>
           {FormComponent && (
             <FormComponent
+              messageId={bulkMessage.id}
               record={record}
               onSave={(data) => saveMutation.mutate(data)}
               isPending={saveMutation.isPending}

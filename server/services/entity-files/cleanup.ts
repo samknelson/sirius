@@ -1,5 +1,6 @@
 import { storage } from "../../storage";
 import { logger } from "../../logger";
+import { getEntityFileContext } from "./registry";
 
 /**
  * Removal of file attachments, one attachment at a time — the ONE definition
@@ -45,6 +46,7 @@ export async function deleteAttachments(
   refs: AttachmentRef[],
 ): Promise<AttachmentCleanupResult> {
   const result: AttachmentCleanupResult = { deleted: 0, failed: [] };
+  if (getEntityFileContext(contextId)?.publishedAsset) return result;
   for (const ref of refs) {
     try {
       const removed = await storage.entityFiles.deleteWithFile(contextId, ref.entityId, ref.id);

@@ -20,6 +20,7 @@ import { conditionalDomainHelp } from "./conditional-domains";
 import { importsPensionReportsHelp } from "./imports-pension-reports";
 import { baoConfigurationHelp } from "./bao-configuration";
 import { administrationHelp } from "./administration";
+import { studioPublicImagesHelp } from "./studio-public-images";
 import { integrationsAppearanceHelp } from "./integrations-appearance";
 import { additionalPluginKindHelp } from "./additional-plugin-kinds";
 import { reportTypeHelp } from "./report-types";
@@ -69,6 +70,7 @@ const entries: SystemHelpEntry[] = [
   ...importsPensionReportsHelp,
   ...baoConfigurationHelp,
   ...administrationHelp,
+  studioPublicImagesHelp,
   ...integrationsAppearanceHelp,
   ...additionalPluginKindHelp,
   ...reportTypeHelp,

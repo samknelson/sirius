@@ -27,13 +27,11 @@ const state = vi.hoisted(() => {
 
 vi.mock("../../server/storage", () => ({
   storage: {
-    variables: { getByName: vi.fn(async () => ({ value: { template_asset: state.config } })) },
+    variables: { getByName: vi.fn(async () => ({ value: { letter_template: state.config, worker_public: state.config, bulk_message: state.config } })) },
     entityFiles: {
-      assetOwnerExists: vi.fn(async (id: string) => state.owners.has(id)),
       list: vi.fn(async () => []),
-      createWithFile: vi.fn(async (contextId, entityId, file, name, typeId, createOwner) => {
+      createWithFile: vi.fn(async (contextId, entityId, file, name, typeId) => {
         if (state.failCreate) throw new Error("metadata unavailable");
-        if (createOwner) state.owners.add(entityId);
         const saved = { ...file, id: "asset-id", status: "live" };
         state.files.set(`${file.fileSystemId}:${file.storagePath}`, saved);
         return { id: "attachment-id", entityId, name, fileId: saved.id, file: saved, typeId };
@@ -119,8 +117,8 @@ vi.mock("../../server/utils/content-disposition", () => ({
 }));
 
 vi.mock("../../server/services/entity-files/registry", () => ({
-  getEntityFileContext: vi.fn((id: string) => id === "template_asset" ? {
-    id, label: "Template Assets", recordLabel: "Template Asset", publishedAsset: true,
+  getEntityFileContext: vi.fn((id: string) => ["letter_template", "worker_public", "bulk_message"].includes(id) ? {
+    id, label: "Public images", recordLabel: "Owner", publishedAsset: true,
     checkAccess: async (_verb: string, _id: string, req: any) => req.header("x-user") !== "non-staff",
     entityExists: async (entityId: string) => state.owners.has(entityId),
   } : undefined),
@@ -198,7 +196,7 @@ async function upload(
   mimeType = "image/png",
   headers: Record<string, string> = { "x-user": "staff" },
   filename = "logo.png",
-  endpoint = "/api/template-assets",
+  endpoint = "/api/entity-files/letter_template/owner",
 ) {
   const form = new FormData();
   form.append("file", new Blob([bytes], { type: mimeType }), filename);
@@ -219,6 +217,7 @@ beforeEach(async () => {
   state.access = "public";
   state.config = { file_system: "assets", directory: "custom/images/:entity-id", allowed: ["png", "jpg", "jpeg"] };
   state.owners.clear();
+  state.owners.add("owner");
   const app = express();
   app.use(express.json());
   const authMiddleware = auth();
@@ -238,18 +237,37 @@ afterEach(async () => {
   );
 });
 
-describe("POST /api/template-assets", () => {
+describe("real-owner public image uploads", () => {
+  it("requires an existing owner, rejects retired/unknown areas, and supports every public area", async () => {
+    for (const context of ["letter_template", "bulk_message", "worker_public"]) {
+      expect((await upload(pngBytes(), "image/png", { "x-user": "staff" }, "logo.png",
+        `/api/entity-files/${context}/missing`)).status).toBe(404);
+      for (let image = 0; image < 2; image++) {
+        expect((await upload(pngBytes(), "image/png", { "x-user": "staff" }, "logo.png",
+          `/api/entity-files/${context}/owner`)).status).toBe(201);
+      }
+    }
+    expect(state.objects.size).toBe(6);
+    expect((await upload(pngBytes(), "image/png", { "x-user": "staff" }, "logo.png",
+      "/api/entity-files/template_asset/owner")).status).toBe(404);
+    expect((await upload(pngBytes(), "image/png", { "x-user": "staff" }, "logo.png",
+      "/api/template-assets")).status).toBe(404);
+    state.owners.clear();
+    const saved = state.files.values().next().value;
+    expect((await fetch(`${baseUrl}/public-files/assets/${saved.storagePath}`)).status).toBe(200);
+  });
   it("requires authentication and staff authorization", async () => {
     expect((await upload(pngBytes(), "image/png", {})).status).toBe(401);
     const app = express();
     const authMiddleware = auth(false);
     registerFileRoutes(app, authMiddleware.requireAuth, authMiddleware.requirePermission);
+    registerEntityFileRoutes(app, authMiddleware.requireAuth);
     const deniedServer = http.createServer(app);
     await new Promise<void>((resolve) => deniedServer.listen(0, "127.0.0.1", resolve));
     const address = deniedServer.address() as { port: number };
     const form = new FormData();
     form.append("file", new Blob([pngBytes()], { type: "image/png" }), "logo.png");
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/template-assets`, {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/entity-files/letter_template/owner`, {
       method: "POST",
       headers: { "x-user": "non-staff" },
       body: form,
@@ -286,10 +304,10 @@ describe("POST /api/template-assets", () => {
   it("returns a stable absolute URL that the public files route serves", async () => {
     const response = await upload();
     expect(response.status).toBe(201);
-    const payload = await response.json() as { url: string };
-    const publicUrl = new URL(payload.url);
+    const payload = await response.json() as { publicUrl: string };
+    const publicUrl = new URL(payload.publicUrl);
     expect(publicUrl.origin).toBe("https://app.example");
-    expect(publicUrl.pathname).toMatch(/^\/public-files\/assets\/custom\/images\/[0-9a-f-]+\/[0-9a-f-]+-logo\.png$/);
+    expect(publicUrl.pathname).toMatch(/^\/public-files\/assets\/custom\/images\/owner\/[0-9a-f-]+-logo\.png$/);
 
     const served = await fetch(`${baseUrl}${publicUrl.pathname}`);
     expect(served.status).toBe(200);
@@ -301,7 +319,7 @@ describe("POST /api/template-assets", () => {
     const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 1, 0, 1, 1, 1, 0x11, 0, 0xff, 0xd9]);
     const response = await upload(bytes, "image/jpeg", { "x-user": "staff" }, "logo.jpg");
     expect(response.status).toBe(201);
-    const { url } = await response.json();
+    const { publicUrl: url } = await response.json();
     const served = await fetch(`${baseUrl}${new URL(url).pathname}`);
     expect(served.headers.get("content-type")).toBe("image/jpeg");
     expect(Buffer.from(await served.arrayBuffer())).toEqual(bytes);
@@ -312,7 +330,7 @@ describe("POST /api/template-assets", () => {
     expect((await upload()).status).toBe(500);
     expect(state.objects.size).toBe(0);
     expect(state.files.size).toBe(0);
-    expect(state.owners.size).toBe(0);
+    expect(state.owners.size).toBe(1);
   });
   it("refuses missing config, private storage and unsafe extension lists before writing", async () => {
     state.config = undefined;
@@ -334,14 +352,14 @@ describe("POST /api/template-assets", () => {
     });
     expect((await upload()).status).toBe(500);
     expect(state.files.size).toBe(0);
-    expect(state.owners.size).toBe(0);
+    expect(state.owners.size).toBe(1);
     expect(state.objects.size).toBe(0);
   });
   it("does not create owner or metadata on provider failure", async () => {
     state.failUpload = true;
     expect((await upload()).status).toBe(500);
     expect(state.files.size).toBe(0);
-    expect(state.owners.size).toBe(0);
+    expect(state.owners.size).toBe(1);
   });
   it("attributes a published upload to the effective masqueraded user", async () => {
     expect((await upload(pngBytes(), "image/png", { "x-user": "admin", "x-masquerade": "staff-target" })).status).toBe(201);
@@ -349,7 +367,7 @@ describe("POST /api/template-assets", () => {
   });
   it("enforces the same raster, size, config, and authorization rules on generic attachment calls", async () => {
     state.owners.add("existing-owner");
-    const endpoint = "/api/entity-files/template_asset/existing-owner";
+    const endpoint = "/api/entity-files/letter_template/existing-owner";
     const direct = (bytes = pngBytes(), mime = "image/png", headers = { "x-user": "staff" }) =>
       upload(bytes, mime, headers, "logo.png", endpoint);
     expect((await direct(pngBytes(), "image/png", { "x-user": "non-staff" })).status).toBe(403);
@@ -372,7 +390,7 @@ describe("POST /api/template-assets", () => {
     expect((await upload()).status).toBe(201);
     const owner = [...state.owners][0];
     for (const method of ["PATCH", "DELETE"]) {
-      expect((await fetch(`${baseUrl}/api/entity-files/template_asset/${owner}/attachment-id`, {
+      expect((await fetch(`${baseUrl}/api/entity-files/letter_template/${owner}/attachment-id`, {
         method, headers: { "x-user": "staff", "Content-Type": "application/json" }, body: '{"name":"renamed"}',
       })).status).toBe(409);
     }
@@ -381,7 +399,7 @@ describe("POST /api/template-assets", () => {
   });
   it("refuses raw admin browser replace, move, folder move and byte deletion before touching storage", async () => {
     const published = await upload();
-    const { url } = await published.json();
+    const { publicUrl: url } = await published.json();
     const path = new URL(url).pathname.split("/").slice(3).join("/");
     const headers = { "x-user": "staff", "Content-Type": "application/json" };
     const move = (isDirectory: boolean) => fetch(`${baseUrl}/api/admin/filesystems/assets/move`, {
@@ -414,7 +432,7 @@ describe("POST /api/template-assets", () => {
   });
   it("refuses generic file mutation and anonymous serving on private storage", async () => {
     const response = await upload();
-    const { url } = await response.json();
+    const { publicUrl: url } = await response.json();
     for (const method of ["PATCH", "DELETE"]) {
       expect((await fetch(`${baseUrl}/api/files/asset-id`, {
         method, headers: { "x-user": "staff", "Content-Type": "application/json" }, body: "{}",

@@ -35,7 +35,7 @@ function api(pathname, method, data) {
   };
   if (pathname === "/api/variables/by-name/system_mode" || pathname === "/api/variables/by-name/site_terminology") return { value: null };
   if (pathname === "/api/catalogs/token-contexts") return { catalog: {
-    id: "token-contexts", entries: ["compose-worker", "bulk-message", "fixture-notifier"].map(id => ({
+    id: "token-contexts", entries: ["compose-worker", "compose-employer_contact", "compose-provider_contact", "bulk-message", "fixture-notifier"].map(id => ({
       id, name: id, detail: { rootNames: [], media: ["email"] },
     })),
   } };
@@ -43,6 +43,7 @@ function api(pathname, method, data) {
   if (pathname === "/api/token-studio/tree/roots") return { roots: [] };
   if (pathname === "/api/token-studio/preview-seeds" || pathname === "/api/comm-compose/preview-seeds") return { roots: [] };
   if (pathname === "/api/admin/letter-templates") return [];
+  if (pathname === "/api/comm/email/preview") return { html: data?.bodyHtml ?? "", text: "" };
   if (["/api/comm-compose/render", "/api/template-studio/preview"].includes(pathname) && method === "POST") return {
     sample: true, contactId: null, deliverable: true,
     fields: Object.fromEntries(Object.entries(data.values).map(([key, rendered]) =>
@@ -77,19 +78,19 @@ try {
       }
       assert.equal(requestUrl.origin, origin, "External network is forbidden");
       if (!requestUrl.pathname.startsWith("/api/")) return await request.continue();
-      if (requestUrl.pathname === "/api/template-assets") {
+      if (requestUrl.pathname.startsWith("/api/entity-files/")) {
         assert.equal(request.method(), "POST");
         assert.match(request.headers()["content-type"], /multipart\/form-data/);
         uploads.push({ host: new URL(page.url()).searchParams.get("host"), body: request.postData() });
         return await request.respond({ status: refuseUpload ? 503 : 201, contentType: "application/json",
-          body: JSON.stringify(refuseUpload ? { message: "Template Assets is unconfigured." } : { url }) });
+          body: JSON.stringify(refuseUpload ? { message: "Public image area is unconfigured." } : { publicUrl: url }) });
       }
       const data = request.postData() ? JSON.parse(request.postData()) : null;
       return await request.respond({ status: 200, contentType: "application/json",
         body: JSON.stringify(api(requestUrl.pathname, request.method(), data)) });
     } catch (error) { errors.push(String(error)); await request.abort(); }
   });
-  for (const host of ["saved", "notifier", "manual", "bulk"]) {
+  for (const host of ["saved", "manual", "bulk"]) {
     await page.goto(`${origin}/tests/template-assets/browser.html?host=${host}`, { waitUntil: "domcontentloaded" });
     await page.click('[data-testid="open-assets-studio"]');
     await page.waitForSelector('[data-testid="studio-editor-bodyHtml"]');
@@ -98,7 +99,7 @@ try {
       const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
     });
     await page.click('[data-template-design-toolbar] button[aria-label="Insert"]');
-    await page.$$eval("summary", nodes => nodes.find(el => el.textContent?.trim() === "Images")?.click());
+    await page.$$eval("summary", nodes => nodes.find(el => el.textContent?.trim() === "Image")?.click());
     const input = await page.$('input[aria-label="Upload image"]');
     assert.ok(input, `${host} must offer upload`);
     await input.uploadFile(fixture);
@@ -131,16 +132,41 @@ try {
     assert.equal((await page.goto(url)).status(), 200);
     console.log(`PASS ${host}: upload, drop, unsaved form, reusable URL, apply and cancel`);
   }
-  assert.equal(uploads.length, 8);
-  assert.deepEqual([...new Set(uploads.map(item => item.host))], ["saved", "notifier", "manual", "bulk"]);
+  assert.equal(uploads.length, 6);
+  assert.deepEqual([...new Set(uploads.map(item => item.host))], ["saved", "manual", "bulk"]);
+  for (const host of ["notifier", "partial", "employer", "provider"]) {
+    await page.goto(`${origin}/tests/template-assets/browser.html?host=${host}`);
+    await page.click('[data-testid="open-assets-studio"]');
+    await page.waitForSelector('[data-testid="studio-editor-bodyHtml"]');
+    await page.$eval('[data-testid="studio-editor-bodyHtml"]', el => {
+      el.focus(); const range = document.createRange(); range.selectNodeContents(el); range.collapse(false);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    });
+    await page.click('[data-template-design-toolbar] button[aria-label="Insert"]');
+    await page.$$eval("summary", nodes => nodes.find(el => el.textContent?.trim() === "Image")?.click());
+    assert.equal(await page.$('input[aria-label="Upload image"]'), null);
+    await page.click('input[aria-label="Image URL"]');
+    await page.type('input[aria-label="Image URL"]', url);
+    await page.evaluate(() => [...document.querySelectorAll("button")].find(el => el.textContent?.trim() === "Insert image")?.click());
+    await page.waitForSelector('[data-testid="studio-editor-bodyHtml"] img');
+    await page.$eval('[data-testid="studio-editor-bodyHtml"]', (el) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(["blocked"], "drop.png", { type: "image/png" }));
+      el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
+    });
+    await page.waitForFunction(() => document.body.textContent.includes("Image upload is not configured."));
+    assert.equal(uploads.length, 6);
+    console.log(`PASS ${host}: no upload control or drop/paste request; URL insertion works`);
+  }
   refuseUpload = true;
   await page.goto(`${origin}/tests/template-assets/browser.html?host=saved`);
   await page.click('[data-testid="open-assets-studio"]');
   await page.waitForSelector('[data-testid="studio-editor-bodyHtml"]');
   await page.click('[data-template-design-toolbar] button[aria-label="Insert"]');
-  await page.$$eval("summary", nodes => nodes.find(el => el.textContent?.trim() === "Images")?.click());
+  await page.$$eval("summary", nodes => nodes.find(el => el.textContent?.trim() === "Image")?.click());
   await (await page.$('input[aria-label="Upload image"]')).uploadFile(fixture);
-  await page.waitForFunction(() => document.body.textContent.includes("Template Assets is unconfigured."));
+  await page.waitForFunction(() => document.body.textContent.includes("Public image area is unconfigured."));
   assert.equal(await page.$eval('input[aria-label="Image URL"]', el => el.value), "");
   assert.equal(await page.$$eval('[data-testid="studio-editor-bodyHtml"] img', nodes => nodes.length), 0);
   assert.deepEqual(errors, []);

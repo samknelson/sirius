@@ -19,6 +19,14 @@ const cases = [
   ["/ea/fixture/payments/new", "system:staff-payment-entry"],
   ["/ea/fixture/payments/new/check", "system:staff-payment-entry"],
 ] as const;
+const imageCases = [
+  ["/config/entity-files", "system:entity-files-configuration"],
+  ["/admin/letter-templates/fixture", "system:studio-public-images"],
+  ["/bulk/fixture/message", "system:studio-public-images"],
+  ["/workers/fixture/comm/send-email", "system:studio-public-images"],
+  ["/config/email", "system:studio-public-images"],
+] as const;
+const selectedCases = process.argv.includes("--public-images") ? imageCases : cases;
 const server = await createServer({
   configFile: false, envFile: false, root,
   cacheDir: path.join(root, "node_modules/.vite-help-fixture"),
@@ -61,7 +69,7 @@ try {
   });
   for (const width of [1280, 390]) {
     await page.setViewport({ width, height: 900 });
-    for (const [route, id] of cases) {
+    for (const [route, id] of selectedCases) {
       await page.goto(`http://127.0.0.1:5196${route}`, { waitUntil: "domcontentloaded" });
       const summary = `[data-testid="help-summary-${id}"]`;
       await page.waitForSelector(summary);
@@ -69,7 +77,12 @@ try {
       await page.click(`[data-testid="button-help-more-${id}"]`);
       await page.waitForSelector('[data-testid="text-help-details"]');
       const text = await page.$eval('[data-testid="text-help-details"]', el => el.textContent!);
-      if (id === "system:staff-payment-entry") {
+      if (id === "system:studio-public-images" || id === "system:entity-files-configuration") {
+        assert.match(text, /PNG\/JPEG/);
+        assert.match(text, /public/i);
+        assert.match(text, /cancel/i);
+        assert.match(text, /owner/i);
+      } else if (id === "system:staff-payment-entry") {
         assert.match(text, /Select image/);
         assert.match(text, /Retry attachment/);
         assert.match(text, /do not create another payment/);
@@ -85,7 +98,7 @@ try {
   }
   await page.setViewport({ width: 1280, height: 900 });
   await page.goto("http://127.0.0.1:5196/config/helps", { waitUntil: "domcontentloaded" });
-  for (const [, id] of cases) {
+  for (const [, id] of selectedCases) {
     await page.waitForSelector(`[data-testid="row-help-${id}"]`);
     assert.equal(await page.$eval(`[data-testid="badge-help-system-${id}"]`, el => el.textContent), "System");
     assert.equal(await page.$eval(`[data-testid="text-help-builtin-${id}"]`, el => el.textContent), "Built-in");
@@ -94,10 +107,10 @@ try {
   assert.match(await page.$eval('[data-testid="row-help-fixture-local"]', el => el.textContent!), /Local procedure remains intact/);
   for (const route of ["/workers/fixture/sitespecific/bao/dp", "/bao/dc/queue/extra", "/employers/fixture/wizards/extra", "/ea/fixture/payments", "/ea/fixture/payments/newish"]) {
     await page.goto(`http://127.0.0.1:5196${route}`, { waitUntil: "networkidle0" });
-    for (const [, id] of cases) assert.equal(await page.$(`[data-testid="help-summary-${id}"]`), null);
+    for (const [, id] of selectedCases) assert.equal(await page.$(`[data-testid="help-summary-${id}"]`), null);
   }
   assert.deepEqual(errors, []);
-  console.log("PASS: correction and payment-entry help, real Help dialogs at desktop/mobile widths, built-in listing, local coexistence, and near misses");
+  console.log("PASS: selected help entries, real Help dialogs at desktop/mobile widths, built-in listing, local coexistence, and near misses");
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

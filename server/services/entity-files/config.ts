@@ -80,10 +80,10 @@ export const entityFilesConfigSchema = z
       const tokensInDirectory = config.directory.match(/:[a-z0-9-]+/gi) ?? [];
       if (context.publishedAsset) {
         if (isFileSystemConfigured(config.file_system) && getFileSystemConfig(config.file_system).access !== "public") {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contextId, "file_system"], message: "Template Assets requires a public filesystem." });
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contextId, "file_system"], message: "Public image areas require a public filesystem." });
         }
         if (!config.allowed?.length || config.allowed.some((ext) => !["png", "jpg", "jpeg"].includes(ext))) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contextId, "allowed"], message: "Template Assets requires an explicit PNG/JPEG extension list." });
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contextId, "allowed"], message: "Public image areas require an explicit PNG/JPEG extension list." });
         }
       }
       for (const token of tokensInDirectory) {
@@ -131,9 +131,9 @@ export async function resolveUsableContextConfig(
     };
   }
   if (getEntityFileContext(contextId)?.publishedAsset) {
-    if (getFileSystemConfig(config.file_system).access !== "public") return { reason: "Template Assets requires a public filesystem." };
+    if (getFileSystemConfig(config.file_system).access !== "public") return { reason: "Public image areas require a public filesystem." };
     if (!config.allowed?.length || config.allowed.some((ext) => !["png", "jpg", "jpeg"].includes(ext))) {
-      return { reason: "Template Assets requires an explicit PNG/JPEG extension list." };
+      return { reason: "Public image areas require an explicit PNG/JPEG extension list." };
     }
   }
   return { config };

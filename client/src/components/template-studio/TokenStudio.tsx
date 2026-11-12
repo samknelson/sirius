@@ -39,6 +39,8 @@ interface LetterTemplateOption {
 }
 
 export interface TokenStudioProps {
+  /** Registered entity-files area key and persisted owner; independent of token contextId. */
+  fileTarget?: { configId: string; entityId: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -122,6 +124,7 @@ export function TokenStudio({
   contextId,
   seedsUrl,
   hostNotice,
+  fileTarget,
 }: TokenStudioProps) {
   const tokenContext = useTokenContext(contextId);
   const rootNames = tokenContext.context?.rootNames;
@@ -225,6 +228,7 @@ export function TokenStudio({
       rootNames={rootNames}
       seeds={seeds}
       hostNotice={hostNotice}
+      fileTarget={fileTarget}
       graphState={graphState}
       seedsState={seedsState}
       templates={templates}

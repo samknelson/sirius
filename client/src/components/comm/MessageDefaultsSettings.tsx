@@ -17,20 +17,6 @@ type Channel = "email" | "postal";
 type Defaults = { letterheadHtml: string; footerHtml?: string; showPageCount?: boolean };
 type Preview = { html?: string; text?: string; pdfUrl?: string };
 
-const uploadLetterheadImage = async (file: File): Promise<string> => {
-  if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPEG image.");
-  if (file.size > 1024 * 1024) throw new Error("Images must be 1 MB or smaller.");
-  const body = new FormData();
-  body.append("file", file);
-  const response = await fetch("/api/template-assets", { method: "POST", body, credentials: "same-origin" });
-  const result = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(result?.message || `Image upload failed (${response.status}).`);
-  if (typeof result?.url !== "string" || !/^https:\/\//i.test(result.url)) {
-    throw new Error("Image upload did not return a reusable HTTPS URL.");
-  }
-  return result.url;
-};
-
 export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
   const { toast } = useToast();
   const basePath = `/api/config/${channel}/message-defaults`;
@@ -180,7 +166,6 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
                   onChange={(letterheadHtml) => setDraft((current) => ({ ...current, letterheadHtml }))}
                   placeholder="Add a logo, organization name, or other shared branding…"
                   templateMode={channel}
-                  uploadImage={uploadLetterheadImage}
                   disabled={saveMutation.isPending}
                   minHeight={140}
                   data-testid={`${channel}-letterhead-editor`}
@@ -204,7 +189,6 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
                       onChange={(footerHtml) => setDraft((current) => ({ ...current, footerHtml }))}
                       placeholder="Add a closing note or contact details…"
                       templateMode="postal"
-                      uploadImage={uploadLetterheadImage}
                       disabled={saveMutation.isPending}
                       minHeight={140}
                       data-testid="postal-footer-editor"

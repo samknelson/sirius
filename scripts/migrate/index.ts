@@ -73,6 +73,7 @@ import "./core/1215_wc_cache_configuration";
 import "./core/1216_add_ws_clients_data";
 import "./core/1217_unify_job_runs";
 import "./core/1218_oneoff_run_state";
+import "./core/1219_real_owner_public_images";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

@@ -24,6 +24,7 @@ import { storage } from "../../storage";
 import { logger } from "../../logger";
 import { FileSystemOperationError, type FileSystemProvider } from "./base";
 import { getFileSystemProvider } from "./registry";
+import { isTemplateAsset } from "../entity-files/template-assets";
 
 const SERVICE = "file-consistency-sweep";
 
@@ -107,7 +108,7 @@ async function sweepRows(
       if (stat.mimeType && stat.mimeType !== row.mimeType) {
         updates.mimeType = stat.mimeType;
       }
-      if (Object.keys(updates).length > 0) {
+      if (Object.keys(updates).length > 0 && !isTemplateAsset(row)) {
         if (!opts.dryRun) {
           await storage.files.update(row.id, updates);
         }
@@ -161,16 +162,16 @@ async function deleteConfirmedOrphans(
   result: FileSystemSweepResult,
 ): Promise<void> {
   const cutoff = new Date(Date.now() - opts.graceDays * 24 * 60 * 60 * 1000);
-  // No cursor loop: each live iteration deletes the rows it saw, so keep
-  // fetching the first page until it comes back empty (dry runs do one page
-  // per fetch with a cursor to avoid spinning).
+  // Keyset paging also advances past retained published rows, even if a
+  // historic row was marked pending_delete. Never repeatedly try to delete it.
   let cursor: string | undefined;
   for (;;) {
     const page = await storage.files.listPage(
       { fileSystemId: result.fileSystemId, status: "pending_delete", uploadedBefore: cutoff },
-      { cursor: opts.dryRun ? cursor : undefined, limit: opts.pageSize },
+      { cursor, limit: opts.pageSize },
     );
     for (const row of page.rows) {
+      if (isTemplateAsset(row)) continue;
       if (opts.dryRun) {
         result.orphansDeleted++;
         continue;
@@ -188,13 +189,8 @@ async function deleteConfirmedOrphans(
         });
       }
     }
-    if (opts.dryRun) {
-      cursor = page.cursor;
-      if (!cursor) break;
-    } else if (page.rows.length === 0 || result.errors > 0) {
-      // Stop on empty page, or after errors so a wedged provider can't loop.
-      break;
-    }
+    cursor = page.cursor;
+    if (!cursor || result.errors > 0) break;
   }
 }
 

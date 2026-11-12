@@ -200,6 +200,9 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
       try {
         const context = await resolveContextAndAuthorize(req, res, "manage");
         if (!context) return;
+        if (req.body?.purpose === "published-image" && !context.publishedAsset) {
+          return res.status(400).json({ message: "This area does not accept published images." });
+        }
         if (!req.file) {
           return res.status(400).json({ message: "No file provided" });
         }

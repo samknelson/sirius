@@ -39,12 +39,35 @@ function staffOnly(): Pick<EntityFileContext, "checkAccess" | "checkPolicyAccess
 
 export function registerEntityFileContexts(): void {
   registerEntityFileContext({
-    id: "template_asset",
-    label: "Template Assets",
-    recordLabel: "Template Asset",
+    id: "letter_template",
+    label: "Letter Templates",
+    recordLabel: "Letter Template",
     publishedAsset: true,
-    async entityExists(id) { return storage.entityFiles.assetOwnerExists(id); },
+    async entityExists(id) { return Boolean(await storage.letterTemplates.get(id)); },
     ...staffOnly(),
+  });
+  registerEntityFileContext({
+    id: "worker_public",
+    label: "Workers Public Files",
+    recordLabel: "Worker",
+    publishedAsset: true,
+    async entityExists(id) { return Boolean(await storage.workers.getWorker(id)); },
+    ...staffOnly(),
+  });
+  registerEntityFileContext({
+    id: "bulk_message",
+    label: "Bulk Messages",
+    recordLabel: "Bulk Message",
+    component: "bulk",
+    publishedAsset: true,
+    async entityExists(id) { return Boolean(await storage.bulkMessages.getById(id)); },
+    async checkAccess(_verb, id, req) {
+      const ctx = await buildContext(req);
+      return (await checkAccess("bulk.edit", ctx.user, id)).granted;
+    },
+    async checkPolicyAccess(_verb, id, ctx) {
+      return ctx.checkPolicy("bulk.edit", id);
+    },
   });
   registerEntityFileContext({
     id: "wizard",

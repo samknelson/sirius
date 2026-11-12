@@ -19,14 +19,15 @@ function Host() {
   // Same wrappers used by saved letter, notifier, manual and bulk hosts.
   return <>
     <h1>{host} unsaved form</h1>
-    {host !== "manual" ? <>
+    {!["manual", "employer", "provider"].includes(host) ? <>
       <button data-testid="open-assets-studio" onClick={() => setOpen(true)}>Open Studio</button>
       <TokenStudio open={open} onOpenChange={setOpen} title={`${host} image fixture`}
+        fileTarget={host === "saved" ? { configId: "letter_template", entityId: "template-fixture" } : host === "bulk" ? { configId: "bulk_message", entityId: "bulk-fixture" } : host === "partial" ? { configId: "letter_template", entityId: "" } : undefined}
         channel="email" contextId={host === "saved" ? "compose-worker" : host === "bulk" ? "bulk-message" : "fixture-notifier"}
         fields={fields} values={values}
         onValueChange={(key, value) => setValues(current => ({ ...current, [key]: value }))} />
     </> : <ComposeTemplateStudio
-      target={{ scope: "worker", recordId: "worker-fixture" }}
+      target={{ scope: host === "employer" ? "employer_contact" : host === "provider" ? "provider_contact" : "worker", recordId: "worker-fixture" }}
       channel="email" title={`${host} image fixture`} fields={fields} values={values}
       onApply={rendered => setValues({ bodyHtml: rendered.bodyHtml })}
       testId="open-assets-studio" />}

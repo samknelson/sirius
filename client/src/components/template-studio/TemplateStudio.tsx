@@ -232,6 +232,8 @@ interface PreviewSeedRequest {
 }
 
 export interface TemplateStudioProps {
+  /** Entity-files configuration key and existing owner, NOT a token context. */
+  fileTarget?: { configId: string; entityId: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -319,18 +321,19 @@ export interface TemplateStudioProps {
 }
 
 /** The upload endpoint persists a public image; never embed a temporary object URL. */
-async function uploadTemplateImage(file: File): Promise<string> {
+async function uploadTemplateImage(file: File, target: NonNullable<TemplateStudioProps["fileTarget"]>): Promise<string> {
   if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPEG image.");
   if (file.size > 1024 * 1024) throw new Error("Template images must be 1 MB or smaller.");
   const body = new FormData();
   body.append("file", file);
-  const response = await fetch("/api/template-assets", { method: "POST", body, credentials: "same-origin" });
+  body.append("purpose", "published-image");
+  const response = await fetch(`/api/entity-files/${encodeURIComponent(target.configId)}/${encodeURIComponent(target.entityId)}`, { method: "POST", body, credentials: "same-origin" });
   const result = await response.json().catch(() => null);
   if (!response.ok) throw new Error(result?.message || `Image upload failed (${response.status}).`);
-  if (typeof result?.url !== "string" || !/^https:\/\//i.test(result.url)) {
+  if (typeof result?.publicUrl !== "string" || !/^https:\/\//i.test(result.publicUrl)) {
     throw new Error("Image upload did not return a reusable HTTPS URL.");
   }
-  return result.url;
+  return result.publicUrl;
 }
 
 /** Plain text, unless the editor is a rich-text one. */
@@ -734,6 +737,7 @@ export function TemplateStudio({
   templatesAvailable = false,
   templatesState,
   hostNotice,
+  fileTarget,
 }: TemplateStudioProps) {
   const activeEditorRef = useRef<ActiveEditorRef | null>(null);
   const htmlApiRefs = useRef<Record<string, React.MutableRefObject<SimpleHtmlEditorApi | null>>>({});
@@ -1299,7 +1303,7 @@ export function TemplateStudio({
                     }}
                   >
                     <SimpleHtmlEditor
-                      uploadImage={channel === "email" || channel === "postal" ? uploadTemplateImage : undefined}
+                      uploadImage={(channel === "email" || channel === "postal") && fileTarget?.configId?.trim() && fileTarget?.entityId?.trim() ? (file) => uploadTemplateImage(file, fileTarget) : undefined}
                       key={`${f.key}:${editorDocumentGeneration}`}
                       templateMode={channel === "email" || channel === "postal" ? channel : undefined}
                       data-testid={`studio-editor-${f.key}`}

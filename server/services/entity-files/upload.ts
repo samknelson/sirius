@@ -6,7 +6,7 @@ import { getEnvironmentVariable } from "../../config/env-registry";
 import { MAX_LETTER_IMAGE_BYTES, rasterImageType } from "../comm/letter-images";
 import { expandDirectoryTemplate, isExtensionAllowed, resolveUsableContextConfig } from "./config";
 import type { EntityFileContext } from "./registry";
-import { AttachmentError, TEMPLATE_ASSET_CONTEXT, isRecipientReachablePublicOrigin } from "./template-assets";
+import { AttachmentError, isRecipientReachablePublicOrigin } from "./template-assets";
 import { logger } from "../../logger";
 
 /** The shared attachment implementation. All checks precede object or row writes. */
@@ -17,16 +17,16 @@ export async function uploadEntityAttachment(input: {
   uploadedBy: string;
   name?: string;
   typeId?: string | null;
-  createAssetOwner?: boolean;
 }) {
   const { context, entityId, file, uploadedBy, typeId } = input;
+  if (!entityId || !(await context.entityExists(entityId))) throw new AttachmentError(404, "File owner does not exist.");
   let publicOrigin: string | undefined;
   const usable = await resolveUsableContextConfig(context.id);
   if (!usable.config) throw new AttachmentError(503, usable.reason);
   if (!isExtensionAllowed(file.originalname, usable.config.allowed)) {
     throw new AttachmentError(400, `File type not allowed. Allowed extensions: ${usable.config.allowed?.join(", ")}`);
   }
-  if (context.id === TEMPLATE_ASSET_CONTEXT) {
+  if (context.publishedAsset) {
     if (file.buffer.length > MAX_LETTER_IMAGE_BYTES) throw new AttachmentError(413, "Template images may not exceed 1 MB.");
     if (!["image/png", "image/jpeg"].includes(file.mimetype.toLowerCase())) {
       throw new AttachmentError(415, "Template images must be PNG or JPEG.");
@@ -76,7 +76,7 @@ export async function uploadEntityAttachment(input: {
     });
     const record = context.adapter
       ? await context.adapter.attach(entityId, fileData, displayName)
-      : await storage.entityFiles.createWithFile(context.id, entityId, fileData, displayName, typeId, input.createAssetOwner);
+      : await storage.entityFiles.createWithFile(context.id, entityId, fileData, displayName, typeId);
     return {
       ...record,
       publicUrl: publicOrigin

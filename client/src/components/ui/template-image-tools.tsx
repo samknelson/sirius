@@ -127,7 +127,7 @@ export function TemplateImageTools({ editor, image, execute, disabled, uploadIma
   return <fieldset disabled={disabled} className="space-y-2">
     <p className="text-xs text-muted-foreground">Click an image in the editor to edit or replace it. HTTPS images only.</p>
     <label className="block text-xs">Image URL<Input aria-label="Image URL" value={url} onChange={e => setUrl(e.target.value)} /></label>
-    <label className="block text-xs">Upload image<input aria-label="Upload image" className="mt-1 block w-full text-xs" type="file" accept="image/*" disabled={!uploadImage || uploading} onChange={async e => {
+    {uploadImage && <label className="block text-xs">Upload image<input aria-label="Upload image" className="mt-1 block w-full text-xs" type="file" accept="image/png,image/jpeg" disabled={uploading} onChange={async e => {
       const file = e.currentTarget.files?.[0];
       if (!file) return;
       const input = e.currentTarget;
@@ -144,8 +144,8 @@ export function TemplateImageTools({ editor, image, execute, disabled, uploadIma
         setUploading(false);
         input.value = "";
       }
-    }} /></label>
-    {uploadImage && <p className="text-xs text-muted-foreground">{uploading ? "Uploading…" : "Upload uses the host-provided image API."}</p>}
+    }} /></label>}
+    {uploadImage && <p className="text-xs text-muted-foreground">{uploading ? "Uploading…" : "PNG/JPEG, up to 1 MB. Uploads are public and permanently retained, even if you cancel edits or delete the owner."}</p>}
     <label className="block text-xs">Alternative text<Input aria-label="Image alternative text" value={alt} onChange={e => setAlt(e.target.value)} /></label>
     <div className="flex gap-2">
       <label className="text-xs">Width (px)<Input aria-label="Image width" value={width} onChange={e => setWidth(e.target.value)} /></label>

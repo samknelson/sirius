@@ -242,10 +242,10 @@ describe("downloadRemoteLetterPdf", () => {
     await expect(prepareLetterImages(["https://images.example/logo.png"])).rejects.toThrow("private or reserved");
     expect(network.request).toHaveBeenCalledTimes(1);
   });
-  it("resolves adopted and newly configured template asset paths with real ownership", async () => {
+  it("resolves retained published images without requiring a surviving parent", async () => {
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
     managedFiles.lookup.mockResolvedValue({
-      id: "file", entityId: "owner", status: "live", entityType: "entity-files:template_asset", size: png.length,
+      id: "file", entityId: null, status: "live", entityType: "published-image", size: png.length,
     });
     managedFiles.ownerExists.mockResolvedValue(true);
     managedFiles.attachment.mockResolvedValue({ fileId: "file" });
@@ -257,9 +257,11 @@ describe("downloadRemoteLetterPdf", () => {
     expect(await prepareLetterImages(sources)).toEqual(sources.map(() => `data:image/png;base64,${png.toString("base64")}`));
     expect(network.request).not.toHaveBeenCalled();
     managedFiles.ownerExists.mockResolvedValue(false);
-    await expect(prepareLetterImages([sources[0]])).rejects.toThrow("unavailable");
+    expect(await prepareLetterImages([sources[0]])).toHaveLength(1);
     managedFiles.ownerExists.mockResolvedValue(true);
     managedFiles.attachment.mockResolvedValue(undefined);
+    expect(await prepareLetterImages([sources[0]])).toHaveLength(1);
+    managedFiles.lookup.mockResolvedValue({ status: "live", entityType: "entity-files:worker", size: png.length });
     await expect(prepareLetterImages([sources[0]])).rejects.toThrow("unavailable");
   });
 
