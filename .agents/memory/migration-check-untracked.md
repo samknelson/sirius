@@ -13,5 +13,6 @@ Counting both produces a false collision. Filtering deployment history instead
 would hide a real high-water mark and permit a migration that never executes.
 
 **How to apply:** treat rename destinations as additions regardless of Git's
-similarity classification. Renumbering must also update source-level migration
-rehearsal readers, not just registry imports.
+similarity classification. Validate unstaged and staged renames, duplicate live versions,
+and a locally deleted deployment migration together. Renumbering must also
+update source-level migration rehearsal readers, not just registry imports.
