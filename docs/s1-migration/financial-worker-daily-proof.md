@@ -200,6 +200,69 @@ new daily run. Keep the election gate intact; do not use keep-going, new
 allowances, force-reconcile or a reused checkpoint label to obtain acceptance.
 The financial proof remains blocked, not complete.
 
+## Operator-supplied payment and ledger reports after election corrections
+
+The operator subsequently reported correcting the election references and
+supplied two wet importer reports from a manual daily run. These reports
+establish importer-level results, not overall sync or scheduled-wrapper
+completion. No remote command was executed by the assistant.
+
+| Evidence | Payments | Ledger |
+| --- | ---: | ---: |
+| Logic version | 2 | 3 |
+| Staged rows | 4741 | 392490 |
+| Matched target rows | 4634 | 392490 |
+| Created | 27 | 2252 |
+| Updated | 4607 | 390238 |
+| Unchanged | 0 | 0 |
+| Rejected | 107 (`amount_missing`) | 0 |
+| Identity/ownership blockers | 0 | 0 |
+| Identity mismatches | 0 | 0 |
+| Attribution mismatches | 0 | 0 |
+| Proven contact-worker rows | 1702 | 6474 |
+
+Both report local verification and reject gates passing, no blocking findings,
+`dryRun: false`, and `forceReconcile: false`. Payments used existing allowances
+`amount_missing` and `account_unensured`; only `amount_missing` occurred.
+Payments' three loaded account counts sum to `4634`; adding the `107` rejected
+rows reconciles to `4741` staged rows. The independent payment inventory also
+reports `107` missing targets. This accounts for the current count consistently
+with amount rejects, but the report's capped reject samples do not prove
+exact-set equality with the historical `107` missing targets or even a full
+reject-to-missing-target set comparison.
+
+Ledger's three account counts sum to `392490`, with expected and loaded sums
+and counts equal for each account. Its independent inventory additionally
+reports zero attribution mismatches, so fund-total equality is not the sole
+identity evidence.
+
+Reference preservation is not fully established: the ledger report lists
+`382990` hour references, `5691` payment references, `95` employer references
+and `3714` `s1-unknown` references. The pre-pass inspected `3710` degraded
+references, cleared none, and reported zero hour drift. The pre-pass and final
+unknown-reference counts describe different observations; their difference
+does not prove four newly broken links. Unresolved references require
+classification rather than being counted as resolved or silently repaired.
+
+These are not zero-change repeat results: both loaders report all matched
+targets as created or updated, with no unchanged rows. Fingerprints advanced
+for `4607` payments and `390238` ledger rows. No cause for those updates or
+repeat-run stability is inferred solely from the aggregate.
+
+Payment inventory evidence hash:
+`904c3ecf6482669d7cb2ac8a1aa9487118ef092624ff0f6a2d5cc7a54ef44e62`.
+Ledger inventory evidence hash:
+`9e4a6836b960e04d21093eb03272c787744ca87be72b0312756c2dc17959da9e`.
+Both use the generic label `current-local-staging`; it is not a verified
+shared extraction checkpoint or runtime identity.
+
+Still required: full sync aggregate and independent balance-parity report,
+hours importer evidence, runtime code/image/task identity and final exit,
+scheduled-wrapper command and alert evidence, verified staging generation and
+extraction-boundary proof, exact missing-payment disposition, historical
+reference and independent payer/beneficiary evidence, and a separately approved
+repeat run. No schedule enablement or additional remote action is authorized.
+
 ## Local executable verification
 
 `tests/s1-migration/financial-money-loaders.test.ts` executes the actual payment
