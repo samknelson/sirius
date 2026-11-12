@@ -74,6 +74,28 @@ never bulk-migrate).
 | `S1_DATABASE_URL` | The S1 MariaDB (mysql2). **Must carry an explicit port.** Beware trailing whitespace in the value — `generate.mjs` fails with `Incorrect database name 'smf_prod '`. Safe invocation: `S1_DATABASE_URL="$(printf %s "$S1_DATABASE_URL" | tr -d '[:space:]')" …` |
 | `TZ` | **`America/Los_Angeles`, always** — the pinned S2 system zone (next subsection). Baked into the `migration` image; a shell running any `scripts/s1-migration/*` command must `export TZ=America/Los_Angeles` first. Every stage/loader/verify/sync/bootstrap process refuses to write anything if it is not running in this zone. |
 
+### Storage audit sampling prerequisite
+
+Loaders using `throttleStorageOpLogs` await authorization before their main
+data writes. The target database's `system_mode` variable must positively
+report `maintenance` for `S1_LOADER_LOG_SAMPLE=0` (the default: suppress
+storage audit entries) or `N>1` (first call per operation, then every Nth).
+Live, dev, test, missing/invalid mode, and unreadable configuration all refuse
+activation, emit a `Storage audit sampling refused` warning, and fail the
+loader without printing a suppression-success message. Normal audit logging
+remains enabled after refusal. Use `S1_LOADER_LOG_SAMPLE=1` for full logging
+without this sampling prerequisite; it is not permission to bypass any other
+migration safety gate.
+
+The mode is reverified from committed target configuration at the start of
+every operation while sampling is requested. Leaving maintenance revokes
+sampling for subsequent operations; re-entering maintenance requires explicit
+reactivation. An operation already in flight retains its starting decision.
+Standalone verification does not arm the application's read-only write lock.
+Entity metadata remains complete, and deferred work and database-backed audit
+writes must still be drained before closing the pool. No environment override
+can authorize sampling outside maintenance; none was added.
+
 ### Employer-rate repair and final evidence
 
 Run employer-rate repairs through the current migration image, against the same

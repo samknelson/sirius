@@ -238,6 +238,7 @@ const LOADER_PHONE_NAMES = new Set(["Primary", "Alt"]);
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
   await ensureRawUserTables(); // raw_user_contact may predate a full staging run
@@ -249,7 +250,6 @@ async function main() {
   // counts/elapsed/rate — never names, SSNs, or row contents) — from process
   // start: the two ~250k-row staged loads below are minutes on the real
   // target and must emit liveness, not silence.
-  throttleStorageOpLogs();
   const progress = makeProgressLogger(LOADER, 0);
   progress.phase("pre-scan");
 

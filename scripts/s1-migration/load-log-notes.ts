@@ -480,12 +480,12 @@ function tagIdsFor(classification: LogNoteClassification, tagIds: Map<string, st
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
   await ensureRawUserTables();
   void storage;
   if (MIGRATION_MODE) console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
-  throttleStorageOpLogs();
   const options = await ensureNoteOptions();
   const stagedTotal = await stagedLogCount();
   const immutableSkipped = await immutableSkippedCount();

@@ -199,10 +199,10 @@ async function resolveHourlyAccount(): Promise<{ accountId: string; configName: 
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
 
-  throttleStorageOpLogs();
 
   const report: Record<string, unknown> = {};
   const rejects = new RejectLog();

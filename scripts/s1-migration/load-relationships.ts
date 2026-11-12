@@ -135,6 +135,7 @@ function sanitizeStorageError(err: unknown): string {
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
 
@@ -151,7 +152,6 @@ async function main() {
   // throttle per-row storage-op logging + heartbeat (aggregates only) — from
   // process start: the staged loads below (incl. ~250k workers) are minutes
   // on the real target and must emit liveness, not silence.
-  throttleStorageOpLogs();
   const progress = makeProgressLogger(LOADER, 0);
   progress.phase("pre-scan");
 

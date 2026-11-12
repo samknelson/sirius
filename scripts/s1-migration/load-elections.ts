@@ -451,9 +451,9 @@ async function reconcileAppealExemptions(
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
-  throttleStorageOpLogs();
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();

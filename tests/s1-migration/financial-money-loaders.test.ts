@@ -8,7 +8,7 @@ const io = vi.hoisted(() => ({
   execute: vi.fn(), mappings: vi.fn(), put: vi.fn(), putMany: vi.fn(), advance: vi.fn(),
   createPayment: vi.fn(), updatePayment: vi.fn(), createEntry: vi.fn(), updateEntry: vi.fn(),
   ea: vi.fn(), result: vi.fn(), inventory: vi.fn(),
-  notifications: vi.fn(), charges: vi.fn(),
+  notifications: vi.fn(), charges: vi.fn(), sampling: vi.fn(),
 }));
 type Row = Record<string, any>;
 let payments: Row[], entries: Row[];
@@ -34,7 +34,7 @@ vi.mock("../../server/storage/database", () => ({
   } },
 }));
 vi.mock("../../server/storage/drain-storage-side-effects", () => ({ drainStorageSideEffects: async () => {} }));
-vi.mock("../../server/storage/middleware/logging", () => ({ setStorageLogSampling: () => {} }));
+vi.mock("../../server/storage/middleware/logging", () => ({ setStorageLogSampling: io.sampling }));
 vi.mock("../../server/middleware/request-context", () => ({
   withNotificationsSuppressed: io.notifications, withChargePluginsSuppressed: io.charges,
 }));
@@ -107,6 +107,7 @@ beforeEach(() => {
   workerId = "w1"; unsafe = false; payer = 11;
   io.notifications.mockImplementation(async fn => fn());
   io.charges.mockImplementation(async fn => fn());
+  io.sampling.mockReset().mockResolvedValue(undefined);
   io.ea.mockImplementation(async (entityType, entityId, accountId) => ({
     id: `${entityType}:${entityId}`, entityType, entityId, accountId,
   }));
@@ -207,6 +208,18 @@ async function load(which: "payment" | "ar", args: string[] = []) {
 const approvalArgs = () => ["--approve-financial-links", hash, "--financial-links-checkpoint", "reviewed"];
 
 describe.each(["payment", "ar"] as const)("actual %s loader daily identity reconciliation", which => {
+  it("stops before target reads or writes when audit sampling activation is refused", async () => {
+    io.sampling.mockRejectedValue(new Error("Storage audit sampling requires verified maintenance"));
+    expect(await load(which)).toBeUndefined();
+    expect(process.exit).toHaveBeenLastCalledWith(1);
+    expect(io.execute).not.toHaveBeenCalled();
+    expect(io.ea).not.toHaveBeenCalled();
+    expect(io.createPayment).not.toHaveBeenCalled();
+    expect(io.createEntry).not.toHaveBeenCalled();
+    expect(io.put).not.toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("SUPPRESSED"));
+  });
+
   it("loads contact-shaped activity to the exact worker and leaves the next run unchanged", async () => {
     const first = await load(which);
     expect(first.summary.created).toBe(which === "payment" ? 1 : 2);

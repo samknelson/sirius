@@ -225,6 +225,7 @@ function yearMonthOf(v: unknown): { year: number; month: number; ym: string } | 
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
   await ensureHoursKeysTable();
@@ -291,7 +292,6 @@ async function main() {
   // throttle per-row storage-op logging + heartbeat (aggregates only —
   // staged payperiod rows consumed / elapsed / rate; flush phases are the
   // silent write+verify stretches).
-  throttleStorageOpLogs();
   const progress = makeProgressLogger("t20-hours", await stagedCountOf("sirius_payperiod"));
   progress.phase("pre-scan");
 

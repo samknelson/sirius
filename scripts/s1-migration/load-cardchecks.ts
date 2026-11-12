@@ -503,6 +503,7 @@ async function preflightCardcheckComponent(): Promise<void> {
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
   await preflightCardcheckComponent();
@@ -513,7 +514,6 @@ async function main() {
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
-  throttleStorageOpLogs();
 
   const totalStaged = await stagedCountOf("sirius_log");
   const progress = makeProgressLogger(LOADER, totalStaged);

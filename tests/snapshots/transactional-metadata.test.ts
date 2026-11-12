@@ -35,6 +35,10 @@ vi.mock("../../server/logger", () => ({
   },
 }));
 
+vi.mock("../../server/storage/system/verified-maintenance", () => ({
+  hasVerifiedMaintenanceMode: async () => true,
+}));
+
 const { setStorageLogSampling, withStorageLogging } = await import("../../server/storage/middleware/logging");
 
 describe("transactional entity metadata logging", () => {
@@ -145,7 +149,7 @@ describe("transactional entity metadata logging", () => {
   });
 
   it("keeps child and parent metadata when a create audit row is sampled out", async () => {
-    setStorageLogSampling(0);
+    await setStorageLogSampling(0);
     const storage = withStorageLogging(
       {
         async create() {
@@ -181,7 +185,7 @@ describe("transactional entity metadata logging", () => {
   });
 
   it("keeps the parent touch when a delete audit row is sampled out", async () => {
-    setStorageLogSampling(0);
+    await setStorageLogSampling(0);
     const storage = withStorageLogging(
       {
         async get(id: string) {

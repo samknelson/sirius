@@ -156,10 +156,10 @@ function winnerOf<T extends { id: string; date: string; policyId: string; create
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
 
-  throttleStorageOpLogs();
 
   const report: Record<string, unknown> = {};
   const rejects = new RejectLog();

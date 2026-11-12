@@ -130,6 +130,7 @@ const FATAL_REASONS = [
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   const migrationLock = await acquireMigrationSeedLock(pgPool);
   await ensureStagingSchema();
   await ensureIdMap();
@@ -139,8 +140,6 @@ async function main() {
   const summary = emptySummary();
   const financialSource = await loadFinancialSourceIndex();
   const approvedLinks = await authorizeFinancialSyncLinks("payment");
-  throttleStorageOpLogs();
-
   detail.staged = await stagedCountOf(BUNDLE);
 
   // heartbeat: aggregates only (counts/elapsed/rate — never row contents)

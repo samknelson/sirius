@@ -208,6 +208,7 @@ async function fetchExistingByKeys(keys: string[]): Promise<Map<string, Existing
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   const migrationLock = await acquireMigrationSeedLock(pgPool);
   await ensureStagingSchema();
   await ensureRawLedgerTable();
@@ -223,7 +224,6 @@ async function main() {
   const byStatus: Record<string, number> = {};
 
   // throttle per-row storage-op logging + heartbeat (aggregates only)
-  throttleStorageOpLogs();
   const progress = makeProgressLogger(LOADER, detail.staged as number);
   progress.phase("pre-scan");
 

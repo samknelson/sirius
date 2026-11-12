@@ -24,6 +24,8 @@ export const REJECT_SAMPLE_CAP = 25;
  * fetch + winston_logs insert) on EVERY write, and its audit value during
  * migration is redundant with id_map + s1_staging.runs provenance. The app
  * server never calls this — normal audit logging there is unchanged.
+ * Suppression/sampling requires verified maintenance mode on the target.
+ * Await this helper before writes; refusal throws without a success message.
  */
 export const LOADER_LOG_SAMPLE_EVERY = (() => {
   const raw = getEnvironmentVariable("S1_LOADER_LOG_SAMPLE");
@@ -32,14 +34,14 @@ export const LOADER_LOG_SAMPLE_EVERY = (() => {
   return Number.isInteger(n) && n >= 0 ? n : 0;
 })();
 
-export function throttleStorageOpLogs(): void {
+export async function throttleStorageOpLogs(): Promise<void> {
+  await setStorageLogSampling(LOADER_LOG_SAMPLE_EVERY);
   if (LOADER_LOG_SAMPLE_EVERY === 1) {
     console.error(
       "storage-operation logging NOT throttled (S1_LOADER_LOG_SAMPLE=1) — every write logs to console + winston_logs",
     );
     return;
   }
-  setStorageLogSampling(LOADER_LOG_SAMPLE_EVERY);
   console.error(
     LOADER_LOG_SAMPLE_EVERY === 0
       ? "storage-operation logging SUPPRESSED for this run (default) — winston_logs will not reflect this run; failures surface via the RejectLog/run report. Re-enable with S1_LOADER_LOG_SAMPLE=1 (full) or N>1 (sampled)"

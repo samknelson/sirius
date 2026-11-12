@@ -366,6 +366,7 @@ const relDivergeJoin = () => sql`
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
   await ensureScratchTables();
@@ -379,7 +380,6 @@ async function main() {
   };
   const rejects = new RejectLog();
   const summary = emptySummary();
-  throttleStorageOpLogs();
 
   report.staged = await stagedCountOf(BUNDLE);
   report.preexistingMonthRows = await countOf(sql`SELECT count(*)::bigint AS c FROM trust_wmb`);

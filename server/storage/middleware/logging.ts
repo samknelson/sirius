@@ -689,12 +689,12 @@ function resolveHooks<T extends Record<string, any>>(
  * The S1 migration loaders call setStorageLogSampling() so bulk historical
  * writes don't pay per-row logging overhead: the logged path costs extra DB
  * round-trips (the before-state fetch plus the winston_logs insert) on every
- * call. Sampled-out calls invoke the underlying storage method DIRECTLY —
- * no before/after hooks, no console line, no winston_logs row.
+ * call. Sampled-out calls skip after/description hooks and the audit row,
+ * but retain pre-state resolution and complete entity metadata maintenance.
  *
- * The app server NEVER calls the setter, so normal audit logging is
- * completely unchanged there. This is intentionally process-wide, not
- * per-request: loaders are single-purpose processes.
+ * Suppression requires positively verified maintenance mode, both at
+ * activation and at the start of each operation. This is intentionally
+ * process-wide, not per-request: loaders are single-purpose processes.
  *
  *   setStorageLogSampling(null) — full logging (default)
  *   setStorageLogSampling(0)    — suppress all storage-operation logging
@@ -706,6 +706,7 @@ function resolveHooks<T extends Record<string, any>>(
  * failed" log line — loader RejectLog reporting covers failures there.
  */
 let storageLogSampleEvery: number | null = null;
+let storageLogSamplingRevision = 0;
 const storageLogSampleCounts = new Map<string, number>();
 const pendingDeferredStorageWork = new Set<Promise<void>>();
 
@@ -732,21 +733,62 @@ export async function flushDeferredStorageWork(): Promise<void> {
   }
 }
 
-export function setStorageLogSampling(sampleEvery: number | null): void {
-  storageLogSampleEvery =
+async function verifySamplingAllowed(): Promise<boolean> {
+  try {
+    // Lazy leaf import avoids storage-barrel recursion and keeps the ordinary
+    // full-logging path free of extra imports and database queries.
+    const { hasVerifiedMaintenanceMode } = await import("../system/verified-maintenance");
+    return await hasVerifiedMaintenanceMode();
+  } catch {
+    return false;
+  }
+}
+
+function logSamplingRefusal(sampleEvery: number, phase: "activation" | "operation"): void {
+  storageLogger.warn("Storage audit sampling refused: target system mode is not verified maintenance; full logging retained", {
+    source: "storage-log-sampling",
+    sampleEvery,
+    phase,
+  });
+}
+
+export async function setStorageLogSampling(sampleEvery: number | null): Promise<void> {
+  const normalized =
     sampleEvery != null && Number.isFinite(sampleEvery) && sampleEvery >= 0 && sampleEvery !== 1
       ? Math.floor(sampleEvery)
       : null;
+  const revision = ++storageLogSamplingRevision;
+  // Full logging immediately, including while activation is being verified.
+  storageLogSampleEvery = null;
   storageLogSampleCounts.clear();
+  if (normalized === null) return;
+  if (!await verifySamplingAllowed()) {
+    logSamplingRefusal(normalized, "activation");
+    throw new Error("Storage audit sampling requires verified maintenance system mode on the target database");
+  }
+  // A newer setter/reset wins over an in-flight verification.
+  if (revision === storageLogSamplingRevision) storageLogSampleEvery = normalized;
 }
 
 /** True when this call should skip the logging path entirely. */
-function sampledOut(opKey: string): boolean {
-  if (storageLogSampleEvery == null) return false;
-  if (storageLogSampleEvery === 0) return true;
+async function sampledOut(opKey: string): Promise<boolean> {
+  const sampleEvery = storageLogSampleEvery;
+  if (sampleEvery == null) return false;
+  const revision = storageLogSamplingRevision;
+  const allowed = await verifySamplingAllowed();
+  if (revision !== storageLogSamplingRevision) return false;
+  if (!allowed) {
+    // Revoke, rather than pause: re-entering maintenance needs new activation.
+    storageLogSampleEvery = null;
+    ++storageLogSamplingRevision;
+    storageLogSampleCounts.clear();
+    logSamplingRefusal(sampleEvery, "operation");
+    return false;
+  }
+  if (sampleEvery === 0) return true;
   const n = (storageLogSampleCounts.get(opKey) ?? 0) + 1;
   storageLogSampleCounts.set(opKey, n);
-  return n % storageLogSampleEvery !== 1;
+  return n % sampleEvery !== 1;
 }
 
 /**
@@ -936,7 +978,7 @@ export function withStorageLogging<T extends Record<string, any>>(
     wrappedStorage[key] = async function(...args: any[]) {
       // Migration-mode sampling suppresses the expensive audit path, but a
       // successful mutation still maintains complete entity provenance.
-      const skipAudit = sampledOut(opKey);
+      const skipAudit = storageLogSampleEvery === null ? false : await sampledOut(opKey);
 
       let beforeState: any;
       let afterState: any;

@@ -220,6 +220,7 @@ function tidsOf(fields: Record<string, unknown>, key: string): number[] {
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
 
@@ -240,7 +241,6 @@ async function main() {
   // throttle per-row storage-op logging + heartbeat. done= counts staged
   // rows SCANNED (most are out of scope at prod volume — the scan itself is
   // the long pole); aggregates only.
-  throttleStorageOpLogs();
   const progress = makeProgressLogger(LOADER, report.staged as number);
   progress.phase("pre-scan");
 

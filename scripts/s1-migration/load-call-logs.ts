@@ -240,6 +240,7 @@ async function* pagedStagedLogs(
 
 async function main() {
   const startedAt = new Date();
+  await throttleStorageOpLogs();
   await ensureStagingSchema();
   await ensureIdMap();
   void storage; // barrel-init anchor (see import note above)
@@ -266,7 +267,6 @@ async function main() {
   }
 
   // throttle per-row storage-op logging + heartbeat (aggregates only)
-  throttleStorageOpLogs();
 
   // fetch total staged count up front so progress has a meaningful total
   const totalStaged = await stagedCountOf("sirius_log");
