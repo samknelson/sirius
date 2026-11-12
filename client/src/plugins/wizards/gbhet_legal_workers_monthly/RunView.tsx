@@ -1,1 +1,1 @@
-export { RunProgressView as RunView } from "@/components/wizards/framework/RunProgressView";
+export { LegalProcess as RunView } from "../LegalProcess";

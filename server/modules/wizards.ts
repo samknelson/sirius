@@ -392,6 +392,19 @@ export function registerWizardRoutes(
       }
 
       const validatedData = insertWizardSchema.partial().parse(req.body);
+      const recordPlugin = wizardPluginRegistry.get(existing.type);
+      if (validatedData.type && validatedData.type !== existing.type &&
+          wizardPluginRegistry.get(validatedData.type)?.allowedRecordUpdates) {
+        return res.status(400).json({ message: "This upload type must be created through its own submission flow." });
+      }
+      if (recordPlugin?.allowedRecordUpdates) {
+        const forbidden = Object.keys(validatedData).filter(key => !recordPlugin.allowedRecordUpdates!.includes(key));
+        if (forbidden.length) return res.status(400).json({ message: `These upload fields are server-managed: ${forbidden.join(", ")}` });
+        if ("data" in validatedData &&
+            (!validatedData.data || typeof validatedData.data !== "object" || Array.isArray(validatedData.data))) {
+          return res.status(400).json({ message: "Upload settings must be an object." });
+        }
+      }
       
       if (validatedData.type) {
         if (!wizardPluginRegistry.get(validatedData.type)) {

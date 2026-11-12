@@ -14,6 +14,7 @@ import type {
   WizardStepResult,
 } from "./types";
 import type { Wizard } from "@shared/schema";
+import { onAfterCommit, runOutsideTransaction } from "../../storage/transaction-context";
 
 type AuthMiddleware = (
   req: Request,
@@ -323,6 +324,17 @@ export function registerWizardDispatcherRoutes(
           .status(400)
           .json({ message: `Step '${step.id}' does not support run` });
       }
+      const input = (req.body?.input ?? {}) as Record<string, unknown>;
+      if (step.beforeRun) {
+        try {
+          await step.beforeRun(buildStepContext(loaded.wizard, step.id, input, req));
+        } catch (error) {
+          return res.status(400).json({ message: error instanceof Error ? error.message : "Run prerequisites are not ready" });
+        }
+      }
+      if ((loaded.wizard.data as any)?.progress?.[step.id]?.status === "in_progress") {
+        return res.status(409).json({ message: "This step is already running" });
+      }
 
       await patchProgress(loaded.wizard.id, step.id, {
         status: "in_progress",
@@ -332,8 +344,18 @@ export function registerWizardDispatcherRoutes(
       // Kick off the work and respond immediately.
       res.status(202).json({ started: true });
 
-      const input = (req.body?.input ?? {}) as Record<string, unknown>;
-      void (async () => {
+      const notifyPersisted = (wizard: Wizard | undefined, outcome: "completed" | "failed") => {
+        if (!wizard || !step.afterRunPersisted) return;
+        onAfterCommit(() => runOutsideTransaction(() => {
+          void step.afterRunPersisted!(wizard, outcome).catch(error => {
+            logger.error("Wizard post-persistence hook failed", {
+              service: SERVICE, wizardId: wizard.id, step: step.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }));
+      };
+      onAfterCommit(() => runOutsideTransaction(() => { void (async () => {
         try {
           const fresh = await storage.wizards.getById(loaded.wizard.id);
           if (!fresh) return;
@@ -351,7 +373,8 @@ export function registerWizardDispatcherRoutes(
           };
           const updates: Record<string, unknown> = { data };
           if (out && out.status) updates.status = out.status;
-          await storage.wizards.update(loaded.wizard.id, updates);
+          const saved = await storage.wizards.update(loaded.wizard.id, updates);
+          notifyPersisted(saved, "completed");
         } catch (error) {
           logger.error("Wizard dispatch run failed", {
             service: SERVICE,
@@ -361,11 +384,16 @@ export function registerWizardDispatcherRoutes(
           });
           await patchProgress(loaded.wizard.id, step.id, {
             status: "failed",
+            completedAt: new Date().toISOString(),
             error:
               error instanceof Error ? error.message : "Run failed",
           });
+          if (step.failureStatus) {
+            await storage.wizards.update(loaded.wizard.id, { status: step.failureStatus });
+          }
+          notifyPersisted(await storage.wizards.getById(loaded.wizard.id), "failed");
         }
-      })();
+      })(); }));
     },
   );
 

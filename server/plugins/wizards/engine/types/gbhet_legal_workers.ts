@@ -5,6 +5,9 @@ import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
 import { assertGbhetBenefitConfiguration } from "../../gbhet-legal-benefits";
 import { defaultBlankHours } from "../blank-hours";
+import { legalEligible, legalBenefitMonth, forecastLegalUpload } from "../../gbhet-legal-forecast";
+import { resolveLegalActuals } from "../../gbhet-legal-completion";
+import { captureChargeFailures } from "../../../ledger/charge/execution-observer";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -53,12 +56,28 @@ interface RunContext {
   unmappedValues: Set<string>;
   unmappedOnlyRows: Set<number>;
   ssnWarnings: SsnWarning[];
+  createdWorkerIds?: Set<string>;
+  grantedWorkerIds?: Set<string>;
+  createdWmbIds?: Set<string>;
 }
 
 const runContextStorage = new AsyncLocalStorage<RunContext>();
 
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
+  protected async workerCreated(workerId: string) {
+    runContextStorage.getStore()?.createdWorkerIds?.add(workerId);
+  }
+
+  async assertForecastRows(wizard: { entityId: string | null; data: unknown }, rows: Record<string, any>[]) {
+    const ctx: RunContext = { employerId: wizard.entityId || "", mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    await runContextStorage.run(ctx, async () => {
+      for (let index = 0; index < rows.length; index++) {
+        const errors = await this.validateRow({ ...rows[index] }, index, (wizard.data as any)?.mode || "create");
+        if (errors.length) throw new Error("Upload data or employment status mappings changed. Run validation again.");
+      }
+    });
+  }
   
 
   /**
@@ -262,6 +281,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       { id: 'map', name: 'Map', description: 'Map fields to schema' },
       { id: 'benefits', name: 'Benefits', description: 'Configure benefit eligibility fields' },
       { id: 'validate', name: 'Validate', description: 'Validate data integrity' },
+      { id: 'preview', name: 'Preview', description: 'Estimate new workers, grants and charges' },
       { id: 'process', name: 'Process', description: 'Process and transform data' },
       { id: 'review', name: 'Review', description: 'Review results' }
     ];
@@ -528,8 +548,38 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     const wizard = await storage.wizards.getById(wizardId);
     if (!wizard) throw new Error('Wizard not found');
     await assertGbhetBenefitConfiguration(storage, this.getFields(), (wizard.data ?? {}) as Record<string, any>);
+    const forecast = await forecastLegalUpload(this, wizard);
+    if ((wizard.data as any)?.legalPreviewApproval !== forecast.fingerprint) {
+      throw new Error("Review and approve the current Legal estimate before processing.");
+    }
     const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
-    return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
+    ctx.createdWorkerIds = new Set();
+    ctx.grantedWorkerIds = new Set();
+    ctx.createdWmbIds = new Set();
+    const billing = { failures: 0 };
+    let processedRows = 0, failedRows = 0;
+    return runContextStorage.run(ctx, () => captureChargeFailures(billing, async () => {
+      try {
+        return await super.processFeedData(wizardId, batchSize, progress => {
+          processedRows = progress.processed;
+          failedRows = progress.failureCount;
+          return onProgress?.(progress);
+        });
+      } finally {
+        // Even an aborted run can have committed workers/grants. Publish its
+        // actual partial work, never the pre-run estimate as an actual total.
+        const completion = await resolveLegalActuals(wizard.entityId!, [...ctx.createdWmbIds!], {
+          newWorkers: ctx.createdWorkerIds!.size,
+          workersWithNewGrants: ctx.grantedWorkerIds!.size,
+          newGrants: ctx.createdWmbIds!.size,
+          processedRows, failedRows,
+          chargeFailures: billing.failures,
+          unpriceableGrants: forecast.unpriceableGrants,
+        });
+        const fresh = await storage.wizards.getById(wizardId);
+        await storage.wizards.update(wizardId, { data: { ...(fresh?.data as any), legalCompletion: completion } });
+      }
+    }));
   }
 
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
@@ -853,24 +903,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * Falsy: No, N, 0, False, empty, null, undefined
    */
   protected isBenefitEligible(value: any): boolean {
-    if (value === null || value === undefined) {
-      return false;
-    }
-    
-    const strValue = String(value).toLowerCase().trim();
-    
-    // Explicit falsy values
-    if (strValue === '' || strValue === '0' || strValue === 'no' || strValue === 'n' || strValue === 'false') {
-      return false;
-    }
-    
-    // Explicit truthy values
-    if (strValue === '1' || strValue === 'yes' || strValue === 'y' || strValue === 'x' || strValue === 'true') {
-      return true;
-    }
-    
-    // Any other non-empty value is considered truthy
-    return strValue.length > 0;
+    return legalEligible(value);
   }
 
   /**
@@ -878,15 +911,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * e.g., January 2025 upload -> April 2025 WMB
    */
   protected calculateBenefitMonth(uploadYear: number, uploadMonth: number): { year: number; month: number } {
-    let targetMonth = uploadMonth + 3;
-    let targetYear = uploadYear;
-    
-    if (targetMonth > 12) {
-      targetMonth -= 12;
-      targetYear += 1;
-    }
-    
-    return { year: targetYear, month: targetMonth };
+    return legalBenefitMonth(uploadYear, uploadMonth);
   }
 
   /**
@@ -955,6 +980,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
               employerId,
               benefitId
             });
+            const run = runContextStorage.getStore();
+            run?.createdWmbIds?.add(wmb.id);
+            run?.grantedWorkerIds?.add(workerId);
             result.created++;
             result.createdBenefits.push({
               benefitId,

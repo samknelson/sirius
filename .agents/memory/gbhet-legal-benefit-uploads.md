@@ -20,3 +20,16 @@ Blank hours and a standalone `-` mean zero in wizard uploads, including surround
 **Why:** The owner explicitly requested that blank hours and a `-` placeholder be treated as “0” in the Legal wizard and other wizards.
 
 **How to apply:** Use the same interpretation during validation and processing, including when processing re-reads the original file. Preserve nonblank numbers and reject invalid nonblank values normally. Do not turn unrelated optional numeric fields into zero.
+
+Legal upload completion recipients are the person who submitted the file plus
+contacts at that employer whose contact types are selected in notification
+settings; an empty type selection means uploader only.
+
+**Why:** The owner explicitly confirmed this audience. The user who later
+opens or processes a saved upload is not a substitute for the submitter.
+
+**How to apply:** Preserve the effective uploader captured at file submission
+(including masquerade), keep employer contacts employer-scoped, and use the
+existing event-notifier/communications framework. Do not invent an uploader
+for old drafts. Existing invoices are ledger account/month views, not separate
+invoice records or a request for new invoice-generation infrastructure.

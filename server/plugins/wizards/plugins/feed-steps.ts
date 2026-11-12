@@ -392,7 +392,7 @@ export function buildProcessStep(
           p.total > 0
             ? Math.min(99, Math.round((p.processed / p.total) * 100))
             : 0;
-        void ctx.reportProgress(pct);
+        return ctx.reportProgress(pct);
       });
       // processFeedData persists processResults, while the dispatcher owns
       // top-level wizard status changes through WizardStepResult. Returning

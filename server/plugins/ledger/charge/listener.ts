@@ -2,6 +2,7 @@ import { eventBus, EventType, HoursSavedPayload, PaymentSavedPayload, WmbSavedPa
 import { executeChargePlugins } from "./executor";
 import { TriggerType } from "./types";
 import { logger } from "../../../logger";
+import { reportChargeResult } from "./execution-observer";
 
 async function handleHoursSaved(payload: HoursSavedPayload): Promise<void> {
   try {
@@ -44,6 +45,7 @@ async function handlePaymentSaved(payload: PaymentSavedPayload): Promise<void> {
 async function handleWmbSaved(payload: WmbSavedPayload): Promise<void> {
   try {
     const result = await executeChargePlugins({ trigger: TriggerType.WMB_SAVED, ...payload });
+    reportChargeResult(result);
     if (result.totalTransactions.length > 0) {
       logger.debug("Charge plugins processed WMB_SAVED event", {
         service: "charge-plugin-listener",
@@ -52,6 +54,7 @@ async function handleWmbSaved(payload: WmbSavedPayload): Promise<void> {
       });
     }
   } catch (error) {
+    reportChargeResult();
     logger.error("Failed to process WMB_SAVED event in charge plugins", {
       service: "charge-plugin-listener",
       wmbId: payload.wmbId,

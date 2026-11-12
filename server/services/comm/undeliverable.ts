@@ -30,6 +30,7 @@ export interface UndeliverableRecord {
   /** Who or what was sending — a plugin id, a bulk message id. */
   source: string;
   tagIds?: string[];
+  sendKey?: string;
 }
 
 /**
@@ -46,6 +47,7 @@ export async function recordUndeliverableMessage(
     const created = await commStorage.createComm({
       medium,
       contactId,
+      sendKey: record.sendKey,
       status: 'failed',
       sent: new Date(),
       data: {

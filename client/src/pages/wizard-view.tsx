@@ -31,6 +31,9 @@ export default function WizardView() {
     refetchInterval: (query) => {
       const m = (query.state.data as any)?.manifest as WizardManifest | undefined;
       if (!m) return false;
+      if (["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"].includes(m.wizardType)) {
+        return m.steps.some(s => s.kind === "run" && s.progress?.status === "in_progress") ? 1000 : false;
+      }
       const current = m.steps.find((s) => s.id === m.currentStep);
       return current?.progress?.status === "in_progress" ? 1000 : false;
     },

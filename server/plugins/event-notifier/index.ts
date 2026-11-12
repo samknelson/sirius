@@ -394,3 +394,4 @@ import "./plugins/sitespecific-t631-interview";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";
 import "./plugins/ws-usage-plugin-alert";
+import "./plugins/gbhet-legal-upload-completion";

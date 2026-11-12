@@ -538,12 +538,14 @@ async function dispatchForConfig(
             blankFields: composed.blankRequired,
             source: `event-notifier:${plugin.id}`,
             tagIds,
+            sendKey: plugin.getSendKey?.(ctx),
           });
         }
       } else if (plugin.getMessage) {
         content = await plugin.getMessage(medium, recipient, ctx, configData);
       }
       if (!content) continue;
+      if (plugin.getSendKey) content.sendKey = plugin.getSendKey(ctx);
       const { sent, comm } = await deliver(medium, recipient, content, pluginId, tagIds);
       // Flash a summary of what went out back to the user who triggered the
       // event. Only successful sends are tallied; self-notifications are already

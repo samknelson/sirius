@@ -12,6 +12,20 @@ import type {
 
 export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
 
+/** Committed Legal terminal snapshot. Never contains uploaded rows, SSNs or
+ * contact destinations. Null submitter is meaningful for older drafts. */
+export interface LegalUploadCompletedPayload {
+  uploadId: string;
+  uploadType: string;
+  employerId: string;
+  submitter: { userId: string; contactId: string | null } | null;
+  period: { year: number; month: number };
+  outcome: "completed" | "completed_with_errors" | "failed";
+  totals: import("../plugins/wizards/gbhet-legal-completion").LegalActualTotals;
+  invoices: import("../plugins/wizards/gbhet-legal-completion").LegalInvoiceDestination[];
+  resultsPath: string;
+}
+
 export class EventBusEmitDepthExceededError extends Error {
   readonly depth: number;
   readonly rootEventType: string;
@@ -59,6 +73,9 @@ export class EventBusEmitDepthExceededError extends Error {
  * third spelling: new events use the convention above.
  */
 export enum EventType {
+  /** Legal processing terminal status, results and step progress have committed;
+   * all awaited charge work has returned. Best effort, not restart recovery. */
+  GBHET_LEGAL_UPLOAD_COMPLETED_AFTER = "sitespecific.gbhet.legal.upload.complete.after",
   HOURS_SAVED = "hours.saved",
   PAYMENT_SAVED = "payment.saved",
   WMB_SAVED = "wmb.saved",
@@ -577,6 +594,7 @@ export interface LogPayload {
 }
 
 export interface EventPayloadMap {
+  [EventType.GBHET_LEGAL_UPLOAD_COMPLETED_AFTER]: LegalUploadCompletedPayload;
   [EventType.HOURS_SAVED]: HoursSavedPayload;
   [EventType.PAYMENT_SAVED]: PaymentSavedPayload;
   [EventType.WMB_SAVED]: WmbSavedPayload;

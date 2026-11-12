@@ -142,7 +142,8 @@ export async function executeChargePlugins(
       })),
     });
     try {
-      await createLedgerEntries(totalTransactions);
+      const failedWrites = await createLedgerEntries(totalTransactions);
+      if (failedWrites) entryCreationError = `${failedWrites} ledger entries could not be created`;
       logger.info("Completed ledger entry creation for charge plugin transactions", {
         service: "charge-plugin-executor",
         count: totalTransactions.length,
@@ -177,7 +178,8 @@ export async function executeChargePlugins(
 /**
  * Create ledger entries for transactions
  */
-async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<void> {
+async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<number> {
+  let failures = 0;
   for (const transaction of transactions) {
     try {
       // Find or create EA entry for this entity-account pair using storage layer
@@ -209,6 +211,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
       });
 
     } catch (error) {
+      failures++;
       // Log error but don't throw - we want to continue processing other transactions
       logger.error("Failed to create ledger entry", {
         service: "charge-plugin-executor",
@@ -218,6 +221,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
       // Don't throw - just log and continue
     }
   }
+  return failures;
 }
 
 /**

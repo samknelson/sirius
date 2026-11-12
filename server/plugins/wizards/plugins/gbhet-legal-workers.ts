@@ -8,6 +8,10 @@ import type {
   WizardUpdateContext,
 } from "../types";
 import type { FeedWizard } from "../engine/feed";
+import type { GbhetLegalWorkersWizard } from "../engine/types/gbhet_legal_workers";
+import { forecastLegalUpload } from "../gbhet-legal-forecast";
+import { publishLegalCompletion } from "../gbhet-legal-completion.js";
+import { getEffectiveUser } from "../../../modules/masquerade";
 import { storage } from "../../../storage";
 import {
   mappedBenefitFieldIds, benefitConfigurationError, REQUIRED_BENEFIT_MAPPING_MESSAGE,
@@ -30,7 +34,7 @@ import {
  * GBHET legal workers feeds (monthly + corrections), in a box. Both are
  * employer-scoped feed wizards that add ZERO routes:
  *
- *   Upload → Map → Benefits → Validate → Process → Review
+ *   Upload → Map → Benefits → Validate → Preview → Process → Review
  *
  * Two steps are wizard-specific and use the fixed dispatcher escape hatches
  * (no bespoke routes):
@@ -62,11 +66,20 @@ function clearLegalDownstream(data: Record<string, any>) {
   // old approvals, whereas an omitted/deleted key would leave them in place.
   next.validationResults = null;
   next.processResults = null;
-  for (const id of ["benefits", "validate", "process", "review"]) delete next.progress[id];
+  next.legalPreviewApproval = null;
+  next.legalPreview = null;
+  for (const id of ["benefits", "validate", "preview", "process", "review"]) delete next.progress[id];
   return next;
 }
 
 async function prepareLegalUpdate(feed: FeedWizard, ctx: WizardUpdateContext) {
+  const allowed = new Set(["columnMapping", "hasHeaders", "mode", "benefitConfig"]);
+  if (Object.keys(ctx.incoming).some(key => !allowed.has(key))) {
+    return { error: "Only column mapping, headers, import mode and benefit associations can be edited.", status: 400 };
+  }
+  if (isHistoricalImport(ctx.existing) || (ctx.existing.data as any)?.progress?.process?.status === "in_progress") {
+    return { error: "This upload has already started processing and cannot be edited.", status: 400 };
+  }
   const result = prepareFeedDataUpdate(ctx);
   if (result.error) return result;
   const incoming = ctx.incoming as any;
@@ -225,7 +238,12 @@ function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
   };
 }
 
-function buildGbhetSteps(feed: FeedWizard): WizardStepHandler[] {
+function buildGbhetSteps(feed: GbhetLegalWorkersWizard): WizardStepHandler[] {
+  const assertEditable = (ctx: WizardStepContext) => {
+    if (isHistoricalImport(ctx.wizard) || (ctx.wizard.data as any)?.progress?.process?.status === "in_progress") {
+      throw new Error("This upload has already started processing and cannot be edited.");
+    }
+  };
   const map = buildMapStep(feed, "Map Columns", "Map file columns to legal worker fields", [{
     fieldIds: (feed.getFields?.() ?? []).filter(field => field.type === "benefit" && field.isBenefitEligibility).map(field => field.id),
     message: REQUIRED_BENEFIT_MAPPING_MESSAGE,
@@ -234,6 +252,7 @@ function buildGbhetSteps(feed: FeedWizard): WizardStepHandler[] {
   const originalMapState = map.getState!;
   map.getState = wizard => isHistoricalImport(wizard) ? "completed" : originalMapState(wizard);
   map.submit = async ctx => {
+    assertEditable(ctx);
     const result = await originalMapSubmit(ctx);
     const old = (ctx.wizard.data ?? {}) as Record<string, any>;
     const incoming = result.data ?? {};
@@ -241,17 +260,93 @@ function buildGbhetSteps(feed: FeedWizard): WizardStepHandler[] {
       .some(key => JSON.stringify(incoming[key]) !== JSON.stringify(old[key]));
     return { data: changed ? clearLegalDownstream({ ...old, ...incoming }) : incoming };
   };
+  const upload = buildUploadStep(feed, "Upload the legal workers file");
+  const originalUpload = upload.submit!;
+  upload.submit = async ctx => {
+    assertEditable(ctx);
+    const { dbUser } = await getEffectiveUser((ctx.req as any).session, (ctx.req as any).user);
+    if (!dbUser) throw new Error("User not found");
+    const contact = dbUser.email ? await ctx.storage.contacts.getContactByEmail(dbUser.email) : null;
+    const result = await originalUpload(ctx);
+    const fresh = await ctx.storage.wizards.getById(ctx.wizardId);
+    return { ...result, data: {
+      ...clearLegalDownstream({ ...((fresh?.data ?? {}) as any), ...result.data }),
+      legalSubmitter: { userId: dbUser.id, contactId: contact?.id ?? null },
+      legalCompletion: null,
+    } };
+  };
+  const benefits = buildBenefitsStep(feed);
+  const originalBenefits = benefits.submit!;
+  benefits.submit = async ctx => { assertEditable(ctx); return originalBenefits(ctx); };
+  const validate = buildGbhetValidateStep(feed);
+  validate.beforeRun = async ctx => { assertEditable(ctx); };
+  const originalValidateSubmit = validate.submit!;
+  validate.submit = async ctx => {
+    assertEditable(ctx);
+    await originalValidateSubmit(ctx);
+    return { data: clearLegalDownstream((ctx.wizard.data ?? {}) as Record<string, any>) };
+  };
+  const process = buildProcessStep(feed);
+  process.failureStatus = "failed";
+  process.beforeRun = async ctx => {
+    if (isHistoricalImport(ctx.wizard)) throw new Error("This upload is already completed.");
+    const forecast = await forecastLegalUpload(feed, ctx.wizard);
+    if ((ctx.wizard.data as any)?.legalPreviewApproval !== forecast.fingerprint) {
+      throw new Error("Review and approve the current Legal estimate before processing.");
+    }
+  };
+  process.afterRunPersisted = publishLegalCompletion;
+  const originalProcessRun = process.run!;
+  process.run = async ctx => {
+    const result = await originalProcessRun(ctx);
+    const saved = await ctx.storage.wizards.getById(ctx.wizardId);
+    const totals = (saved?.data as any)?.legalCompletion?.totals;
+    return totals?.chargeFailures || totals?.chargeReadFailed
+      ? { ...result, status: "completed_with_errors" } : result;
+  };
   return [
-    buildUploadStep(feed, "Upload the legal workers file"),
+    upload,
     map,
-    buildBenefitsStep(feed),
-    buildGbhetValidateStep(feed),
-    buildProcessStep(feed),
+    benefits,
+    validate,
+    {
+      id: "preview", name: "Preview", kind: "custom", component: "Preview",
+      description: "Estimate new workers, benefit grants and additional charges",
+      getState: async wizard => {
+        if (isHistoricalImport(wizard)) return "completed";
+        if ((wizard.data as any)?.progress?.process?.status === "in_progress") return "completed";
+        if (!(wizard.data as any)?.legalPreviewApproval) return "pending";
+        try {
+          const forecast = await forecastLegalUpload(feed, wizard);
+          return (wizard.data as any).legalPreviewApproval === forecast.fingerprint ? "completed" : "pending";
+        } catch { return "pending"; }
+      },
+      getData: async ctx => isHistoricalImport(ctx.wizard)
+        ? { historical: true, forecast: (ctx.wizard.data as any)?.legalPreview ?? null }
+        : { historical: false, forecast: await forecastLegalUpload(feed, ctx.wizard) },
+      submit: async ctx => {
+        assertEditable(ctx);
+        const forecast = await forecastLegalUpload(feed, ctx.wizard);
+        if (ctx.input.fingerprint !== forecast.fingerprint) throw new Error("The estimate changed. Refresh and review it before approving.");
+        return { data: { legalPreviewApproval: forecast.fingerprint, legalPreview: forecast } };
+      },
+    },
+    process,
     buildFeedResultsStep({ id: "review", name: "Review" }),
   ];
 }
 
 /** Shared year/month launch-argument parse + validation. */
+function sanitizeLegalCreate(ctx: WizardCreateContext) {
+  const data = (ctx.input.data ?? {}) as Record<string, unknown>;
+  ctx.input.data = Object.fromEntries(
+    ["launchArguments", "columnMapping", "hasHeaders", "mode", "benefitConfig", "inheritedColumnHeaders"]
+      .filter(key => data[key] !== undefined).map(key => [key, data[key]]),
+  );
+  ctx.input.status = "draft";
+  ctx.input.currentStep = "upload";
+}
+
 function parseYearMonth(
   input: WizardCreateContext["input"],
 ): { year: number; month: number } | { error: string; status: number } {
@@ -341,6 +436,7 @@ async function createMonthly(
     };
   }
   await inheritFeedSetup(ctx, entityId);
+  sanitizeLegalCreate(ctx);
   const wizard = await ctx.storage.wizards.createMonthlyWizard({
     wizard: ctx.input as any,
     employerId: entityId,
@@ -376,6 +472,7 @@ async function createCorrections(
     };
   }
   await inheritFeedSetup(ctx, entityId);
+  sanitizeLegalCreate(ctx);
   const wizard = await ctx.storage.wizards.createMonthlyWizard({
     wizard: ctx.input as any,
     employerId: entityId,
@@ -427,6 +524,7 @@ export const gbhetLegalWorkersMonthlyPlugin: WizardPlugin = {
   isMonthly: true,
   launchSchema: LAUNCH_SCHEMA,
   create: createMonthly,
+  allowedRecordUpdates: ["data"],
   prepareUpdate: ctx => prepareLegalUpdate(gbhetLegalWorkersMonthly, ctx),
   getFields: () => gbhetLegalWorkersMonthly.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersMonthly),
@@ -442,6 +540,7 @@ export const gbhetLegalWorkersCorrectionsPlugin: WizardPlugin = {
   isMonthly: true,
   launchSchema: LAUNCH_SCHEMA,
   create: createCorrections,
+  allowedRecordUpdates: ["data"],
   prepareUpdate: ctx => prepareLegalUpdate(gbhetLegalWorkersCorrections, ctx),
   getFields: () => gbhetLegalWorkersCorrections.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersCorrections),

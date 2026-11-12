@@ -116,6 +116,13 @@ export interface WizardStepHandler {
   run?: (
     ctx: WizardStepContext,
   ) => Promise<WizardStepResult | void> | WizardStepResult | void;
+  /** Synchronous refusal BEFORE acknowledging a background run. */
+  beforeRun?: (ctx: WizardStepContext) => Promise<void>;
+  /** Optional terminal wizard status for a thrown run. */
+  failureStatus?: string;
+  /** Best-effort hook AFTER terminal status/progress/results have committed.
+   * Exceptions are logged separately and never change the run's outcome. */
+  afterRunPersisted?: (wizard: Wizard, outcome: "completed" | "failed") => Promise<void>;
   /**
    * Generic computed step output, read via GET .../dispatch/:stepId/data
    * and exported via .../export. When present the dispatcher calls it and
@@ -236,6 +243,8 @@ export interface WizardPlugin extends BasePluginMetadata {
   prepareUpdate?: (
     ctx: WizardUpdateContext,
   ) => Promise<WizardUpdateResult> | WizardUpdateResult;
+  /** Restrict top-level PATCH fields for plugins with server-owned lifecycle. */
+  allowedRecordUpdates?: string[];
   steps: WizardStepHandler[];
 }
 

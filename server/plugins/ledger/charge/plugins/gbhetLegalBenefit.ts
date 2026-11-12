@@ -13,20 +13,9 @@ import type { ChargePluginMetadata } from "../types";
 import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
-import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
+import { legalBenefitPrice, gbhetLegalBenefitSettingsSchema } from "../gbhet-legal-pricing";
 import { storage } from "../../../../storage/database";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
-
-const rateHistoryEntrySchema = z.object({
-  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
-  rate: z.number(),
-});
-
-const gbhetLegalBenefitSettingsSchema = z.object({
-  benefitId: z.string().uuid("Benefit ID must be a valid UUID"),
-  rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
-  billingOffsetMonths: z.number().int().default(-3),
-});
 
 type GbhetLegalBenefitSettings = z.infer<typeof gbhetLegalBenefitSettingsSchema>;
 
@@ -88,16 +77,9 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
       return null;
     }
 
-    const billingOffset = settings.billingOffsetMonths ?? -3;
-    const billingDate = new Date(wmbContext.year, wmbContext.month - 1 + billingOffset, 1);
-    const billingYear = billingDate.getFullYear();
-    const billingMonth = billingDate.getMonth() + 1;
-    const lastDayOfBillingMonth = new Date(billingYear, billingMonth, 0);
-    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, billingDate);
-
-    if (!applicableRate) {
-      return null;
-    }
+    const price = legalBenefitPrice(settings, wmbContext.year, wmbContext.month);
+    if (!price) return null;
+    const { billingOffset, billingYear, billingMonth, applicableRate } = price;
 
     if (applicableRate.rate === 0) {
       return null;
@@ -130,7 +112,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
       chargePluginKey,
       amount: applicableRate.rate.toFixed(2),
       description,
-      transactionDate: lastDayOfBillingMonth,
+      transactionDate: price.transactionDate,
       eaId: ea.id,
       referenceType: "wmb",
       referenceId: wmbContext.wmbId,

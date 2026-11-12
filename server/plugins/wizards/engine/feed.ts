@@ -182,6 +182,29 @@ export interface FeedField {
 
 export abstract class FeedWizard extends BaseWizard {
   isFeed: boolean = true;
+  /** Optional observation of an actually created worker, before later row work. */
+  protected async workerCreated(_workerId: string): Promise<void> {}
+
+  /** Same parser/mapping used by Legal forecasts and actual feed processing. */
+  async readMappedRows(wizard: { data: unknown }): Promise<Record<string, any>[]> {
+    const data = (wizard.data ?? {}) as Record<string, any>;
+    validateMappingDuplicates(data.columnMapping ?? {});
+    const mapping = normalizeColumnMapping(data.columnMapping ?? {});
+    const file = data.uploadedFileId && await storage.files.getById(data.uploadedFileId);
+    if (!file) throw new Error("No uploaded file found");
+    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
+    let rows: any[][];
+    if (file.mimeType === "text/csv") {
+      rows = parseCSV(buffer, { columns: false, skip_empty_lines: true, relax_column_count: true });
+    } else if (file.mimeType?.includes("spreadsheet") || file.mimeType?.includes("excel")) {
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+    } else throw new Error("Unsupported file type");
+    rows = filterEmptyColumns(rows);
+    return (data.hasHeaders !== false ? rows.slice(1) : rows).map(row =>
+      Object.fromEntries(Object.entries(mapping).filter(([, field]) => field && field !== "_unmapped")
+        .map(([column, field]) => [field, row[parseInt(column.replace("col_", ""))]])));
+  }
 
   /**
    * Get field definitions for this feed wizard (optional)
@@ -391,7 +414,7 @@ export abstract class FeedWizard extends BaseWizard {
 
       // Report progress
       if (onProgress) {
-        onProgress({
+        await onProgress({
           processed: Math.min(i + batchSize, totalRows),
           total: totalRows,
           validRows,
@@ -721,7 +744,7 @@ export abstract class FeedWizard extends BaseWizard {
             });
             
             if (onProgress) {
-              onProgress({
+              await onProgress({
                 processed: rowIndex + 1,
                 total: totalRows,
                 createdCount,
@@ -756,6 +779,7 @@ export abstract class FeedWizard extends BaseWizard {
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
               const newWorker = await storage.workers.createWorker(fullName);
               workerId = newWorker.id;
+              await this.workerCreated(workerId);
               // Set SSN for the new worker
               await storage.workers.updateWorkerSSN(workerId, ssn);
               isNewWorker = true;
@@ -838,7 +862,7 @@ export abstract class FeedWizard extends BaseWizard {
             });
 
             if (onProgress) {
-              onProgress({
+              await onProgress({
                 processed: rowIndex + 1,
                 total: totalRows,
                 createdCount,
@@ -867,7 +891,7 @@ export abstract class FeedWizard extends BaseWizard {
           });
 
           if (onProgress) {
-            onProgress({
+            await onProgress({
               processed: rowIndex + 1,
               total: totalRows,
               createdCount,

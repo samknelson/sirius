@@ -239,6 +239,9 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
    * would otherwise suppress the operator. Defaults to false (suppress).
    */
   notifySelf?: boolean;
+  /** Deterministic occurrence key, also applied to token-composed messages.
+   * Recipient and medium are part of the comm insert's uniqueness claim. */
+  getSendKey?: (ctx: EventNotifierEventContext) => string;
   /**
    * JSON Schema describing the editable `data` fields the generic admin UI
    * renders for a config row of this notifier. Omit for notifiers with no
