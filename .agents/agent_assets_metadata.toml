@@ -35,3 +35,31 @@ mtime_ms = 1792165809469
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:5d80d34a-7a53-44b0-978d-0abd3d7765a8/4d20973a-b62b-48f1-a3b6-c87a0dead40f/f10755fe-1909-46d3-a1c2-de8c24223e4e"
 storage_version_token = "1792165904597889"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "k_h2K2wCh3gBPmwlLSQn8"
+uri = "file://generated-artifacts/employer-manual/legal-upload-employer-guide-draft.docx"
+type = "word_document"
+title = "Employer Legal Upload Manual — Editable Draft"
+description = "Word document covering employer sign-in, monthly uploads, required benefit mapping, validation, processing, corrections, and troubleshooting."
+logical_id = "566acead-808a-4c3a-9de1-16dd57f5e6b5"
+content_hash = "sha256:0725af1d13f3186b37452e2bf2c80d1a65cd35f1227d31bb191c11b1ea41be9a"
+size = 7400
+mtime_ms = 1794491923110
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:5d80d34a-7a53-44b0-978d-0abd3d7765a8/566acead-808a-4c3a-9de1-16dd57f5e6b5/834dc81a-6031-4d08-b3c2-a2209963df48"
+storage_version_token = "1794491942882529"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "wSQDa34egXEGeUHlrpykI"
+uri = "file://generated-artifacts/employer-manual/legal-upload-employer-guide-draft.pdf"
+type = "pdf"
+title = "Employer Legal Upload Manual — PDF Draft"
+description = "Seven-page printable draft with a contents section, step-by-step instructions, and an internal review checklist."
+logical_id = "8cd9cc32-7be8-4fae-87cb-c25cecb315e5"
+content_hash = "sha256:248a5f3195f8f340022ff879964518fcc0a1591b960e11b6000dd2d1992e20fa"
+size = 111244
+mtime_ms = 1794491928102
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:5d80d34a-7a53-44b0-978d-0abd3d7765a8/8cd9cc32-7be8-4fae-87cb-c25cecb315e5/3727bd2f-f109-444d-b856-162587d40e5f"
+storage_version_token = "1794491943481858"
+content_type = "application/pdf"
