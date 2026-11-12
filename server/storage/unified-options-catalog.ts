@@ -1,6 +1,6 @@
 import { registerCatalog } from "@shared/catalog";
 import { OPTIONS_LISTS_CATALOG } from "@shared/catalog-ids";
-import { optionsMetadata, type OptionsTypeName } from "./unified-options";
+import { optionsMetadata, type OptionsTypeName } from "./options-declarations";
 
 /**
  * The options lists, as a shared catalog.

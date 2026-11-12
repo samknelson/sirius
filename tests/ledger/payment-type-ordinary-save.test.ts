@@ -20,9 +20,13 @@ vi.mock("../../server/storage/middleware/logging", () => ({
 }));
 vi.mock("../../server/services/entity-notes/registry", () => ({ listEntityNoteContexts: () => [] }));
 vi.mock("../../server/services/entity-files/registry", () => ({ listEntityFileContexts: () => [] }));
-const { createUnifiedOptionsStorage } = await import("../../server/storage/unified-options");
+const { createUnifiedOptionsStorage, optionsMetadata } = await import("../../server/storage/unified-options");
 
 describe("ordinary payment type saves preserve the historical guard", () => {
+  it("attaches the domain hook before any route module is initialized", () => {
+    expect(optionsMetadata["ledger-payment-type"].beforeWrite).toBeTypeOf("function");
+    expect(createUnifiedOptionsStorage().getDefinition("ledger-payment-type")).not.toHaveProperty("beforeWrite");
+  });
   beforeEach(() => { state.type = { id: "t1", direction: "credit", name: "Old name" }; state.cleared = false; state.writes = 0; });
   it("persists Charge for an unused Credit type", async () => {
     const result = await createUnifiedOptionsStorage().update("ledger-payment-type", "t1", { direction: "charge" });

@@ -16,6 +16,8 @@ vi.mock("../server/storage/middleware/logging", () => ({
   withStorageLogging: (storage: unknown) => storage,
 }));
 vi.mock("../server/storage", () => ({ storage: {} }));
+// This suite exercises ordinary option routes, not the separate correction workflow.
+vi.mock("../server/modules/ledger/payment-type-correction", () => ({ registerPaymentTypeCorrectionRoutes: vi.fn() }));
 vi.mock("../server/logger", () => ({ logger: { error: vi.fn() } }));
 vi.mock("../server/services/entity-notes/registry", () => ({
   listEntityNoteContexts: () => [], getEntityNoteContext: vi.fn(),

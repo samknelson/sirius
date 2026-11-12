@@ -14,3 +14,9 @@ Historical correction must protect against new candidates and settlement links, 
 **Why:** Row locks alone cannot stop a pending payment becoming cleared or a new allocation appearing between snapshot comparison and commit; an advisory protocol would be unsafe until every writer adopted it.
 
 **How to apply:** Preserve phantom protection when optimizing correction locking. Test against concurrent settlement and payment creation before narrowing the lock scope.
+
+Keep ordinary ledger option validation domain-owned and attach it through a generic per-option pre-write hook, rather than dispatching on option names inside unified storage. Omitted create direction must continue to use the database's Credit default.
+
+**Why:** The user explicitly chose the generic hook after reviewing alternatives, without authorizing an explicit-selection requirement or a redesign of other option rules.
+
+**How to apply:** Preserve this boundary when extending option validation; do not fold audited historical correction into the ordinary-save hook.
