@@ -71,9 +71,11 @@ function addedFiles(base: string | undefined): string[] {
   let output = "";
   try {
     if (base) {
-      output += execSync(`git diff --name-only --diff-filter=A ${base}...HEAD`, { encoding: "utf8" });
+      output += execSync(`git diff --no-renames --name-only --diff-filter=A ${base}...HEAD`, { encoding: "utf8" });
     }
-    output += "\n" + execSync("git diff --name-only --diff-filter=A HEAD", { encoding: "utf8" });
+    // Treat a rename as delete+add so its live destination is checked too.
+    // Otherwise Git's R classification bypasses --diff-filter=A.
+    output += "\n" + execSync("git diff --no-renames --name-only --diff-filter=A HEAD", { encoding: "utf8" });
   } catch {
     // ignore — fall through to untracked
   }
@@ -227,7 +229,7 @@ function checkComponentVersionCollisions(base: string | undefined): void {
   let tracked: string[] = [];
   try {
     tracked = execSync("git ls-files scripts/migrate/components", { encoding: "utf8" })
-      .split("\n").map(s => s.trim()).filter(Boolean);
+      .split("\n").map(s => s.trim()).filter((file) => Boolean(file) && existsSync(file));
   } catch {
     // ignore
   }

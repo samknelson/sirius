@@ -13,12 +13,12 @@ describe("process-table provenance migrations", () => {
 
   it("does not let the historical retirement versions seed or drop excluded tables", () => {
     for (const name of [
-      "1083_retire_ledger_provenance_columns.ts",
-      "1084_seed_snapshot_provenance.ts",
-      "1085_drop_snapshot_author_columns.ts",
-      "1090_retire_auth_identity_timestamps.ts",
-      "1098_seed_worker_status_history_provenance.ts",
-      "1099_drop_worker_msh_created_at.ts",
+      "1158_retire_ledger_provenance_columns.ts",
+      "1159_seed_snapshot_provenance.ts",
+      "1160_drop_snapshot_author_columns.ts",
+      "1165_retire_auth_identity_timestamps.ts",
+      "1173_seed_worker_status_history_provenance.ts",
+      "1174_drop_worker_msh_created_at.ts",
     ]) {
       const source = migration(name);
       expect(source).not.toMatch(/entityMetadataSeed|DROP COLUMN/i);
@@ -27,7 +27,7 @@ describe("process-table provenance migrations", () => {
   });
 
   it("repairs old names before deleting metadata and never adds a now default", () => {
-    const source = migration("1103_remove_process_entity_metadata.ts");
+    const source = migration("1178_remove_process_entity_metadata.ts");
 
     expect(source).toContain("ALTER TABLE snapshots RENAME COLUMN captured_at TO created_at");
     expect(source).toContain("ALTER TABLE snapshots RENAME COLUMN captured_by TO author_id");
@@ -40,7 +40,7 @@ describe("process-table provenance migrations", () => {
   });
 
   it("restores maintained ledger history without fabricating baseline dates", () => {
-    const source = migration("1108_restore_ledger_metadata.ts");
+    const source = migration("1183_restore_ledger_metadata.ts");
 
     expect(source).toContain("seedFromColumns");
     expect(source).toContain('table: "ledger_payments"');
@@ -54,13 +54,13 @@ describe("process-table provenance migrations", () => {
   });
 
   it("keeps the follow-up migration non-destructive", () => {
-    const source = migration("1104_own_process_capture_provenance.ts");
+    const source = migration("1179_own_process_capture_provenance.ts");
     expect(source).not.toMatch(/ALTER TABLE|ADD COLUMN|DROP COLUMN|DELETE FROM/i);
     expect(source).toContain("Compatibility no-op");
   });
 
   it("does not fabricate dates when repairing a database after old cleanup", () => {
-    const source = migration("1106_restore_process_local_provenance.ts");
+    const source = migration("1181_restore_process_local_provenance.ts");
 
     expect(source).toContain("ALTER COLUMN created_at DROP NOT NULL");
     expect(source).toContain("ALTER COLUMN date_created DROP NOT NULL");
@@ -69,7 +69,7 @@ describe("process-table provenance migrations", () => {
   });
 
   it("makes already-restored process columns nullable without rewriting values", () => {
-    const source = migration("1107_allow_unknown_process_provenance.ts");
+    const source = migration("1182_allow_unknown_process_provenance.ts");
 
     expect(source).toContain("ALTER COLUMN created_at DROP NOT NULL");
     expect(source).toContain("ALTER COLUMN date_created DROP NOT NULL");

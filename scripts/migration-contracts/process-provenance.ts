@@ -8,9 +8,9 @@ const EXCLUDED_LEDGER_TABLES = ["ledger", "ledger_ea", "ledger_gateway_customers
 function readMigrationSources(rootDir: string): MigrationSources {
   const dir = join(rootDir, "scripts", "migrate", "core");
   return {
-    cleanup: readFileSync(join(dir, "1103_remove_process_entity_metadata.ts"), "utf8"),
-    repair: readFileSync(join(dir, "1106_restore_process_local_provenance.ts"), "utf8"),
-    ledger: readFileSync(join(dir, "1108_restore_ledger_metadata.ts"), "utf8"),
+    cleanup: readFileSync(join(dir, "1178_remove_process_entity_metadata.ts"), "utf8"),
+    repair: readFileSync(join(dir, "1181_restore_process_local_provenance.ts"), "utf8"),
+    ledger: readFileSync(join(dir, "1183_restore_ledger_metadata.ts"), "utf8"),
   };
 }
 
