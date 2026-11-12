@@ -1,5 +1,12 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,8 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,8 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -26,79 +29,86 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Gift, CheckCircle2, ArrowRight, Info } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { TrustBenefit } from "@/lib/policy-types";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  benefitConfigurationError,
+  mappedBenefitFieldIds,
+  type BenefitFieldConfig,
+  type GbhetBenefitSetup,
+} from "@shared/gbhet-legal-benefits";
+import { ArrowRight, CheckCircle2, Gift, Info, RotateCcw, AlertCircle } from "lucide-react";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 
-interface FeedField {
-  id: string;
-  name: string;
-  type: string;
-  required: boolean;
-  description?: string;
-  isBenefitEligibility?: boolean;
+type Benefit = GbhetBenefitSetup["benefits"][number];
+
+export function initialBenefitConfiguration(
+  mappedIds: string[],
+  savedConfig: BenefitFieldConfig[] | undefined,
+  defaultBenefit: GbhetBenefitSetup["defaultBenefit"],
+  activeIds: ReadonlySet<string>,
+): BenefitFieldConfig[] {
+  const saved = Array.isArray(savedConfig) ? savedConfig : [];
+  return mappedIds.flatMap((fieldId) => {
+    const explicit = saved.find((entry) => entry.fieldId === fieldId);
+    if (explicit) return [{ ...explicit }];
+    if (defaultBenefit && activeIds.has(defaultBenefit.id)) {
+      return [{
+        fieldId,
+        benefitId: defaultBenefit.id,
+        benefitName: defaultBenefit.name,
+      }];
+    }
+    return [];
+  });
 }
 
-interface BenefitFieldConfig {
-  fieldId: string;
-  benefitId: string;
-  benefitName?: string;
-}
-
-/**
- * `benefits` step for the GBHET legal workers feeds, in the plugin
- * framework. Reads `columnMapping` / `launchArguments` / `benefitConfig`
- * from the wizard `data` prop and saves through the fixed dispatcher submit
- * route (`POST /api/wizards/:id/dispatch/:stepId/submit`) — no
- * wizard-specific endpoint.
- */
 export function GbhetBenefits({
   wizardId,
-  wizardType,
   step,
   data,
 }: WizardStepComponentProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const stepDataKey = ["/api/wizards", wizardId, "dispatch", step.id, "data"];
+  const { data: setup, isLoading, isError, error, refetch } = useQuery<GbhetBenefitSetup>({
+    queryKey: stepDataKey,
+  });
   const [benefitConfig, setBenefitConfig] = useState<BenefitFieldConfig[]>(
-    data?.benefitConfig || [],
+    Array.isArray(data?.benefitConfig) ? data.benefitConfig : [],
   );
-
-  const { data: fields = [], isLoading: fieldsLoading } = useQuery<FeedField[]>({
-    queryKey: ["/api/wizard-types", wizardType, "fields"],
-  });
-
-  const { data: trustBenefits = [], isLoading: benefitsLoading } = useQuery<
-    TrustBenefit[]
-  >({
-    queryKey: ["/api/trust-benefits"],
-  });
+  const initializedFor = useRef<string | null>(null);
 
   const columnMapping = data?.columnMapping || {};
+  const mappedIds = useMemo(
+    () => mappedBenefitFieldIds(setup?.fields ?? [], columnMapping),
+    [setup?.fields, columnMapping],
+  );
+  const activeBenefits = useMemo(
+    () => (setup?.benefits ?? []).filter((benefit) => benefit.isActive),
+    [setup?.benefits],
+  );
+  const activeBenefitIds = useMemo(
+    () => new Set(activeBenefits.map((benefit) => benefit.id)),
+    [activeBenefits],
+  );
 
-  const mappedBenefitFields = useMemo(() => {
-    const keys = Object.keys(columnMapping);
-    const isOldFormat =
-      keys.length > 0 && keys.every((k) => k.startsWith("col_"));
-    const mappedFieldIds = isOldFormat
-      ? (Object.values(columnMapping).filter(
-          (v: any) => v && v !== "_unmapped",
-        ) as string[])
-      : keys.filter(
-          (k) => columnMapping[k] && columnMapping[k] !== "_unmapped",
-        );
-    return fields.filter(
-      (f) =>
-        f.type === "benefit" &&
-        f.isBenefitEligibility &&
-        mappedFieldIds.includes(f.id),
-    );
-  }, [fields, columnMapping]);
+  useEffect(() => {
+    if (!setup) return;
+    const key = `${wizardId}:${step.id}`;
+    if (initializedFor.current === key) return;
+    initializedFor.current = key;
+    setBenefitConfig(initialBenefitConfiguration(
+      mappedIds,
+      data?.benefitConfig,
+      setup.defaultBenefit,
+      activeBenefitIds,
+    ));
+  }, [setup, wizardId, step.id, mappedIds, data?.benefitConfig, activeBenefitIds]);
 
   const launchArguments = data?.launchArguments || {};
   const uploadYear = launchArguments.year;
   const uploadMonth = launchArguments.month;
-
   const targetMonth = useMemo(() => {
     if (!uploadYear || !uploadMonth) return null;
     let month = uploadMonth + 3;
@@ -108,123 +118,113 @@ export function GbhetBenefits({
       year += 1;
     }
     const monthNames = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
     ];
-    return { month, year, display: `${monthNames[month - 1]} ${year}` };
+    return { display: `${monthNames[month - 1]} ${year}` };
   }, [uploadYear, uploadMonth]);
 
-  useEffect(() => {
-    if (
-      data?.benefitConfig &&
-      JSON.stringify(data.benefitConfig) !== JSON.stringify(benefitConfig)
-    ) {
-      setBenefitConfig(data.benefitConfig);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.benefitConfig]);
-
-  useEffect(() => {
-    if (
-      benefitsLoading ||
-      trustBenefits.length === 0 ||
-      mappedBenefitFields.length === 0
-    )
-      return;
-    const firstActive = trustBenefits.find((b) => b.isActive);
-    if (!firstActive) return;
-    const missing = mappedBenefitFields.filter(
-      (f) => !benefitConfig.some((c) => c.fieldId === f.id),
-    );
-    if (missing.length === 0) return;
-    setBenefitConfig((prev) => [
-      ...prev,
-      ...missing.map((f) => ({
-        fieldId: f.id,
-        benefitId: firstActive.id,
-        benefitName: firstActive.name,
-      })),
-    ]);
-  }, [benefitsLoading, trustBenefits, mappedBenefitFields, benefitConfig]);
+  const configurationError = benefitConfigurationError(
+    mappedIds,
+    benefitConfig,
+    activeBenefitIds,
+  );
+  const saveConfig = benefitConfig.filter((entry) => mappedIds.includes(entry.fieldId));
 
   const saveMutation = useMutation({
-    mutationFn: async (config: BenefitFieldConfig[]) =>
-      apiRequest(
-        "POST",
-        `/api/wizards/${wizardId}/dispatch/${step.id}/submit`,
-        { input: { benefitConfig: config } },
-      ),
+    mutationFn: async () => apiRequest(
+      "POST",
+      `/api/wizards/${wizardId}/dispatch/${step.id}/submit`,
+      { input: { benefitConfig: saveConfig } },
+    ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [`/api/wizards/${wizardId}`],
-      });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+      queryClient.invalidateQueries({ queryKey: stepDataKey });
       toast({ title: "Success", description: "Benefit configuration saved" });
     },
-    onError: (error: Error) => {
+    onError: (saveError: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save benefit configuration",
+        description: saveError.message || "Failed to save benefit configuration",
         variant: "destructive",
       });
     },
   });
 
-  const handleBenefitChange = (fieldId: string, benefitId: string) => {
-    const benefit = trustBenefits.find((b) => b.id === benefitId);
-    const newConfig = benefitConfig.filter((c) => c.fieldId !== fieldId);
-    if (benefitId && benefitId !== "_none") {
-      newConfig.push({ fieldId, benefitId, benefitName: benefit?.name });
-    }
-    setBenefitConfig(newConfig);
+  const changeBenefit = (fieldId: string, benefitId: string) => {
+    const benefit = activeBenefits.find((item) => item.id === benefitId);
+    setBenefitConfig((current) => {
+      const remaining = current.filter((entry) => entry.fieldId !== fieldId);
+      if (benefitId === "_none") return remaining;
+      return [...remaining, { fieldId, benefitId, benefitName: benefit?.name }];
+    });
   };
+  const getBenefitForField = (fieldId: string) =>
+    benefitConfig.find((entry) => entry.fieldId === fieldId)?.benefitId || "_none";
 
-  const getBenefitForField = (fieldId: string): string => {
-    const config = benefitConfig.find((c) => c.fieldId === fieldId);
-    return config?.benefitId || "_none";
-  };
-
-  const activeBenefits = trustBenefits.filter((b) => b.isActive);
-
-  if (fieldsLoading || benefitsLoading) {
+  if (isLoading) {
     return (
       <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Gift className="h-5 w-5" />Configure Benefits</CardTitle>
+          <CardDescription>Loading the benefit options for this upload…</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="h-10 animate-pulse rounded-md bg-muted" />
+          <div className="h-10 animate-pulse rounded-md bg-muted" />
         </CardContent>
       </Card>
     );
   }
 
-  if (mappedBenefitFields.length === 0) {
+  if (isError) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gift className="h-5 w-5" />
-            Configure Benefits
-          </CardTitle>
-          <CardDescription>
-            Associate benefit eligibility columns with trust benefits
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2"><Gift className="h-5 w-5" />Configure Benefits</CardTitle>
+          <CardDescription>Benefit eligibility is checked for this upload only.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Could not load benefit setup</AlertTitle>
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+              <span>{error instanceof Error ? error.message : "The benefit setup request failed."}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
+                <RotateCcw className="mr-2 h-4 w-4" />Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!setup) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-sm text-muted-foreground">
+          Benefit setup is not available yet. Retry the request to continue.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (setup.fields.length === 0 || mappedIds.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Gift className="h-5 w-5" />Configure Benefits</CardTitle>
+          <CardDescription>Associate each mapped eligibility field with an active trust benefit.</CardDescription>
         </CardHeader>
         <CardContent>
           <Alert>
             <Info className="h-4 w-4" />
-            <AlertTitle>No Benefit Fields Mapped</AlertTitle>
+            <AlertTitle>{setup.fields.length === 0 ? "Benefit fields unavailable" : "No benefit eligibility fields mapped"}</AlertTitle>
             <AlertDescription>
-              No benefit eligibility fields have been mapped in the previous
-              step. You can proceed to the next step, or go back and map benefit
-              eligibility columns if your file contains worker benefit data.
+              {setup.fields.length === 0
+                ? "This upload has no available benefit fields. Map an eligibility field in the mapping step before continuing."
+                : "Map at least one uploaded column to a Benefit Eligibility field in the mapping step before continuing."}
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -232,120 +232,134 @@ export function GbhetBenefits({
     );
   }
 
+  const mappedFields = setup.fields.filter((field) => mappedIds.includes(field.id));
+  const invalidSavedConfigs = benefitConfig.filter(
+    (entry) => mappedIds.includes(entry.fieldId) && !activeBenefitIds.has(entry.benefitId),
+  );
+  const visibleConfigurationError = configurationError
+    ? setup.configurationError || configurationError
+    : undefined;
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Gift className="h-5 w-5" />
-          Configure Benefits
-        </CardTitle>
-        <CardDescription>
-          Associate each benefit eligibility column with a trust benefit
-        </CardDescription>
+        <CardTitle className="flex items-center gap-2"><Gift className="h-5 w-5" />Configure Benefits</CardTitle>
+        <CardDescription>Choose the active trust benefit represented by each mapped eligibility column.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {targetMonth && (
-          <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-            <Info className="h-4 w-4 text-blue-600" />
-            <AlertTitle className="text-blue-900 dark:text-blue-100">
-              Benefit Effective Date
-            </AlertTitle>
-            <AlertDescription className="text-blue-800 dark:text-blue-200">
-              Worker Monthly Benefit (WMB) records will be created for{" "}
-              <strong>{targetMonth.display}</strong> (3 months after the upload
-              month).
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Benefit effective date</AlertTitle>
+            <AlertDescription>
+              Worker Monthly Benefit (WMB) records will be created for <strong>{targetMonth.display}</strong> (3 months after the upload month).
             </AlertDescription>
           </Alert>
         )}
 
-        <div className="space-y-4">
-          <h3 className="text-sm font-medium text-foreground">
-            Mapped Benefit Fields
-          </h3>
+        {setup.defaultBenefit ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-4 py-3 text-sm" data-testid="benefit-default">
+            <span className="text-muted-foreground">Upload default</span>
+            <span className="font-medium">{setup.defaultBenefit.name}</span>
+            <Badge variant="secondary">Applied to unconfigured fields</Badge>
+          </div>
+        ) : (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Choose benefits explicitly</AlertTitle>
+            <AlertDescription>
+              {setup.defaultBenefitWarning
+                ? `${setup.defaultBenefitWarning} Choose an active trust benefit for every mapped field.`
+                : "No upload default is available. Choose an active trust benefit for every mapped field."}
+            </AlertDescription>
+          </Alert>
+        )}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>File Column</TableHead>
-                <TableHead>
-                  <ArrowRight className="h-4 w-4 inline" />
-                </TableHead>
-                <TableHead>Trust Benefit</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mappedBenefitFields.map((field) => (
-                <TableRow key={field.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{field.name}</Badge>
-                      {field.description && (
-                        <span className="text-xs text-muted-foreground">
-                          {field.description}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={getBenefitForField(field.id)}
-                      onValueChange={(value) =>
-                        handleBenefitChange(field.id, value)
-                      }
-                    >
-                      <SelectTrigger className="w-[300px]">
-                        <SelectValue placeholder="Select a benefit..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_none">
-                          <span className="text-muted-foreground">
-                            -- No benefit (skip) --
-                          </span>
-                        </SelectItem>
-                        {activeBenefits.map((benefit) => (
-                          <SelectItem key={benefit.id} value={benefit.id}>
-                            <div className="flex items-center gap-2">
-                              <span>{benefit.name}</span>
-                              {benefit.benefitTypeName && (
-                                <Badge variant="outline" className="text-xs">
-                                  {benefit.benefitTypeName}
-                                </Badge>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
+        {setup.defaultBenefitWarning && setup.defaultBenefit && (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>{setup.defaultBenefitWarning}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold">Mapped benefit eligibility fields</h3>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Eligibility field</TableHead>
+                  <TableHead className="w-10"><ArrowRight className="h-4 w-4" /></TableHead>
+                  <TableHead>Trust benefit</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {mappedFields.map((field) => {
+                  const currentId = getBenefitForField(field.id);
+                  const saved = benefitConfig.find((entry) => entry.fieldId === field.id);
+                  const stale = !!saved && !activeBenefitIds.has(saved.benefitId);
+                  return (
+                    <TableRow key={field.id}>
+                      <TableCell>
+                        <div className="font-medium">{field.name}</div>
+                        {field.description && <p className="mt-1 text-xs text-muted-foreground">{field.description}</p>}
+                      </TableCell>
+                      <TableCell><ArrowRight className="h-4 w-4 text-muted-foreground" /></TableCell>
+                      <TableCell className="min-w-[260px]">
+                        <Select value={currentId} onValueChange={(value) => changeBenefit(field.id, value)}>
+                          <SelectTrigger aria-label={`Trust benefit for ${field.name}`} className={stale ? "border-destructive" : undefined}>
+                            <SelectValue placeholder="Choose an active benefit…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">— Choose a benefit —</SelectItem>
+                            {stale && saved?.benefitId && saved.benefitId !== "_none" && (
+                              <SelectItem value={saved.benefitId}>
+                                {saved.benefitName || saved.benefitId} (inactive or unavailable)
+                              </SelectItem>
+                            )}
+                            {activeBenefits.map((benefit: Benefit) => (
+                              <SelectItem key={benefit.id} value={benefit.id}>
+                                <span>{benefit.name}</span>
+                                {benefit.benefitTypeName && <span className="ml-2 text-xs text-muted-foreground">{benefit.benefitTypeName}</span>}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {stale && <p className="mt-1 text-xs text-destructive">This saved benefit is inactive or unavailable. Select a current benefit or clear it.</p>}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
 
-        {benefitConfig.filter((c) => c.benefitId).length > 0 && (
-          <Alert className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertTitle className="text-green-900 dark:text-green-100">
-              Configuration Summary
-            </AlertTitle>
-            <AlertDescription className="text-green-800 dark:text-green-200">
-              {benefitConfig.filter((c) => c.benefitId).length} benefit field(s)
-              configured. Workers with truthy values (Yes, Y, 1, X, etc.) in
-              these columns will receive the corresponding benefits.
+        {visibleConfigurationError ? (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Benefit mapping needs attention</AlertTitle>
+            <AlertDescription>
+              {invalidSavedConfigs.length > 0
+                ? "One or more saved benefits are no longer active. Replace or clear them, then choose an active benefit for every mapped field."
+                : visibleConfigurationError}
             </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>Benefit mapping complete</AlertTitle>
+            <AlertDescription>All {mappedFields.length} mapped field(s) have an active trust benefit association.</AlertDescription>
           </Alert>
         )}
 
         <div className="flex justify-end">
           <Button
-            onClick={() => saveMutation.mutate(benefitConfig)}
-            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || !!visibleConfigurationError || mappedIds.length === 0}
+            data-testid="button-save-benefits"
           >
-            {saveMutation.isPending ? "Saving..." : "Save Configuration"}
+            {saveMutation.isPending ? "Saving…" : "Save Configuration"}
           </Button>
         </div>
       </CardContent>

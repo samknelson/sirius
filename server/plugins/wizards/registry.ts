@@ -113,11 +113,11 @@ export class WizardPluginRegistry extends PluginRegistry<
    * `getState` wins; otherwise we derive a sensible default from the
    * persisted progress and the current step.
    */
-  stepState(
+  async stepState(
     plugin: WizardPlugin,
     step: WizardStepHandler,
     wizard: Wizard,
-  ): WizardStepState {
+  ): Promise<WizardStepState> {
     if (step.getState) return step.getState(wizard);
     const data = (wizard.data as any) || {};
     const p = data.progress?.[step.id];
@@ -128,11 +128,11 @@ export class WizardPluginRegistry extends PluginRegistry<
   }
 
   /** Build the per-instance manifest attached to the wizard load route. */
-  computeManifest(plugin: WizardPlugin, wizard: Wizard): WizardManifest {
+  async computeManifest(plugin: WizardPlugin, wizard: Wizard): Promise<WizardManifest> {
     const data = (wizard.data as any) || {};
     const currentStep =
       wizard.currentStep || this.firstStepId(plugin) || "";
-    const steps: WizardStepManifestEntry[] = plugin.steps.map((step) => {
+    const steps: WizardStepManifestEntry[] = await Promise.all(plugin.steps.map(async (step) => {
       const progress = data.progress?.[step.id];
       return {
         id: step.id,
@@ -144,7 +144,7 @@ export class WizardPluginRegistry extends PluginRegistry<
         component: step.component
           ? `${plugin.id}:${step.component}`
           : undefined,
-        state: this.stepState(plugin, step, wizard),
+        state: await this.stepState(plugin, step, wizard),
         requiredComponent: step.requiredComponent,
         requiredPolicy: step.requiredPolicy,
         progress: progress
@@ -155,7 +155,7 @@ export class WizardPluginRegistry extends PluginRegistry<
             }
           : undefined,
       };
-    });
+    }));
     return {
       wizardType: plugin.id,
       displayName: plugin.name,

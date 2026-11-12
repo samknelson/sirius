@@ -11,6 +11,7 @@ import type {
   WizardUpdateResult,
 } from "../types";
 import { reconcileInheritedColumnMapping } from "./feed-mapping";
+import { missingMappingGroups, type RequiredFieldGroup } from "../../../../shared/feed-mapping-requirements";
 
 /**
  * Shared Upload → Map → Validate → Process → Results step builders for the
@@ -209,6 +210,7 @@ export function buildMapStep(
   feed: FeedWizard,
   name = "Map Columns",
   description = "Map file columns to fields",
+  requiredFieldGroups: RequiredFieldGroup[] = [],
 ): WizardStepHandler {
   return {
     id: "map",
@@ -225,7 +227,8 @@ export function buildMapStep(
       const mode = data.mode || "create";
       const mapped = mappedFieldIds(mapping);
       const required = requiredFieldIds(feed.getFields?.() ?? [], mode);
-      const complete = required.every((id) => mapped.has(id));
+      const complete = required.every((id) => mapped.has(id)) &&
+        missingMappingGroups(mapping, requiredFieldGroups).length === 0;
       if (complete) return "completed";
       return wizard.currentStep === "map" ? "in_progress" : "pending";
     },
@@ -239,6 +242,7 @@ export function buildMapStep(
         columnMapping: data.columnMapping ?? {},
         mode: data.mode ?? "create",
         hasHeaders: data.hasHeaders ?? true,
+        ...(requiredFieldGroups.length ? { requiredFieldGroups } : {}),
       };
     },
     submit: (ctx: WizardStepContext) => {
@@ -272,6 +276,8 @@ export function buildMapStep(
           `Required fields are not mapped: ${missing.join(", ")}.`,
         );
       }
+      const missingGroups = missingMappingGroups(columnMapping, requiredFieldGroups);
+      if (missingGroups.length) throw new Error(missingGroups.map(group => group.message).join(" "));
       return {
         data: {
           columnMapping,

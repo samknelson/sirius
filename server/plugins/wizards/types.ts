@@ -132,7 +132,7 @@ export interface WizardStepHandler {
    * Server-computed completion state, derived from the wizard row. When
    * omitted, the dispatcher derives a default from progress + currentStep.
    */
-  getState?: (wizard: Wizard) => WizardStepState;
+  getState?: (wizard: Wizard) => WizardStepState | Promise<WizardStepState>;
 }
 
 /**

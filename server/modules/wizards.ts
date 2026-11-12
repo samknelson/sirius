@@ -260,7 +260,7 @@ export function registerWizardRoutes(
       // same load route (no bespoke poll route).
       const plugin = wizardPluginRegistry.get(wizard.type);
       if (plugin) {
-        const manifest = wizardPluginRegistry.computeManifest(plugin, wizard);
+        const manifest = await wizardPluginRegistry.computeManifest(plugin, wizard);
         return res.json({ ...wizard, manifest });
       }
 

@@ -521,7 +521,7 @@ export function registerWizardDispatcherRoutes(
           if (idx >= steps.length - 1) {
             return res.status(400).json({ message: "Already on last step" });
           }
-          const state = wizardPluginRegistry.stepState(
+          const state = await wizardPluginRegistry.stepState(
             plugin,
             steps[idx],
             wizard,

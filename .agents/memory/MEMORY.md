@@ -155,3 +155,4 @@
 - [Application-managed data columns](application-managed-data-columns.md) — generic `data` columns are extension space for site-specific/features; core admin forms must not display, edit, or overwrite them.
 - [Offline mailing completion](offline-mail-download-completion.md) — downloading the mailing CSV must mark the bulk message sent; no separate Mark Sent step.
 - [Colliding core migration histories](colliding-core-migration-histories.md) — when two branches stamp different work at one version, renumber one lineage and replay missing prerequisite work before its first consumer.
+- [Legal benefit uploads](gbhet-legal-benefit-uploads.md) — require an eligibility column and default to configured Legal benefit, never default blank eligibility cells or guess by name.

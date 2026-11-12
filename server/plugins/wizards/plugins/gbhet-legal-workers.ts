@@ -5,8 +5,15 @@ import type {
   WizardStepContext,
   WizardCreateContext,
   WizardCreateResult,
+  WizardUpdateContext,
 } from "../types";
-import type { FeedWizard, FeedField } from "../engine/feed";
+import type { FeedWizard } from "../engine/feed";
+import { storage } from "../../../storage";
+import {
+  mappedBenefitFieldIds, benefitConfigurationError, REQUIRED_BENEFIT_MAPPING_MESSAGE,
+  type BenefitFieldConfig,
+} from "../../../../shared/gbhet-legal-benefits";
+import { assertGbhetBenefitConfiguration, loadGbhetBenefitSetup } from "../gbhet-legal-benefits";
 import type { JsonSchema } from "@shared/json-schema-form";
 import { gbhetLegalWorkersMonthly } from "../engine/types/gbhet_legal_workers_monthly";
 import { gbhetLegalWorkersCorrections } from "../engine/types/gbhet_legal_workers_corrections";
@@ -42,32 +49,43 @@ import {
 
 const optionsStorage = createUnifiedOptionsStorage();
 
-/** Field ids of mapped benefit-eligibility columns (from either mapping shape). */
-function mappedBenefitFieldIds(feed: FeedWizard, data: any): string[] {
-  const mapping: Record<string, string> = data.columnMapping || {};
-  const keys = Object.keys(mapping);
-  const isOldFormat = keys.length > 0 && keys.every((k) => k.startsWith("col_"));
-  const mappedIds = new Set<string>(
-    isOldFormat
-      ? (Object.values(mapping).filter(
-          (v) => v && v !== "_unmapped",
-        ) as string[])
-      : keys.filter((k) => mapping[k] && mapping[k] !== "_unmapped"),
-  );
-  return (feed.getFields?.() ?? [])
-    .filter(
-      (f: FeedField) =>
-        f.type === "benefit" &&
-        (f as any).isBenefitEligibility &&
-        mappedIds.has(f.id),
-    )
-    .map((f: FeedField) => f.id);
+function isHistoricalImport(wizard: { status: string; data: unknown }) {
+  return ["completed", "completed_with_errors", "complete"].includes(wizard.status) &&
+    !!(wizard.data as any)?.processResults;
 }
 
-interface BenefitFieldConfig {
-  fieldId: string;
-  benefitId: string;
-  benefitName?: string;
+/** A change in associations changes what validation approved. Keep explicit
+ * choices, but discard downstream approvals/results rather than reusing them. */
+function clearLegalDownstream(data: Record<string, any>) {
+  const next: Record<string, any> = { ...data, progress: { ...data.progress } };
+  // Step results are shallow-merged by the dispatcher: null explicitly clears
+  // old approvals, whereas an omitted/deleted key would leave them in place.
+  next.validationResults = null;
+  next.processResults = null;
+  for (const id of ["benefits", "validate", "process", "review"]) delete next.progress[id];
+  return next;
+}
+
+async function prepareLegalUpdate(feed: FeedWizard, ctx: WizardUpdateContext) {
+  const result = prepareFeedDataUpdate(ctx);
+  if (result.error) return result;
+  const incoming = ctx.incoming as any;
+  const data = result.data as Record<string, any>;
+  if (incoming.columnMapping !== undefined &&
+      !mappedBenefitFieldIds(feed.getFields?.() ?? [], incoming.columnMapping).length) {
+    return { error: REQUIRED_BENEFIT_MAPPING_MESSAGE, status: 400 };
+  }
+  if (incoming.benefitConfig !== undefined) {
+    try {
+      await assertGbhetBenefitConfiguration(storage, feed.getFields?.() ?? [], data);
+    } catch (error) {
+      return { error: (error as Error).message, status: 400 };
+    }
+  }
+  const existing = (ctx.existing.data ?? {}) as Record<string, any>;
+  const changed = ["columnMapping", "hasHeaders", "mode", "uploadedFileId", "benefitConfig"]
+    .some(key => incoming[key] !== undefined && JSON.stringify(data[key]) !== JSON.stringify(existing[key]));
+  return { data: changed ? clearLegalDownstream(data) : data };
 }
 
 /** `custom` benefits step: map benefit-eligibility columns to trust benefits. */
@@ -78,19 +96,35 @@ function buildBenefitsStep(feed: FeedWizard): WizardStepHandler {
     description: "Associate benefit eligibility columns with trust benefits",
     kind: "custom",
     component: "GbhetBenefits",
-    getState: (wizard) => {
+    getState: async (wizard) => {
+      if (isHistoricalImport(wizard)) return "completed";
       const data = (wizard.data as any) || {};
-      // Nothing to configure if no benefit-eligibility column was mapped.
-      if (mappedBenefitFieldIds(feed, data).length === 0) return "completed";
-      if (Array.isArray(data.benefitConfig)) return "completed";
+      try {
+        await assertGbhetBenefitConfiguration(storage, feed.getFields?.() ?? [], data);
+        return "completed";
+      } catch {
+        // Incomplete/missing/unavailable choices never authorize navigation.
+      }
       return wizard.currentStep === "benefits" ? "in_progress" : "pending";
     },
-    submit: (ctx: WizardStepContext) => {
+    getData: async (ctx: WizardStepContext) => {
+      const setup = await loadGbhetBenefitSetup(ctx.storage, feed.getFields?.() ?? [], ctx.wizard.entityId);
+      const data = (ctx.wizard.data ?? {}) as Record<string, any>;
+      return {
+        ...setup, configurationError: benefitConfigurationError(
+          mappedBenefitFieldIds(feed.getFields?.() ?? [], data.columnMapping), data.benefitConfig,
+          new Set(setup.benefits.filter(benefit => benefit.isActive).map(benefit => benefit.id)),
+        ),
+      };
+    },
+    submit: async (ctx: WizardStepContext) => {
       const input = ctx.input as { benefitConfig?: BenefitFieldConfig[] };
       const benefitConfig = Array.isArray(input.benefitConfig)
         ? input.benefitConfig
         : [];
-      return { data: { benefitConfig } };
+      const data = { ...(ctx.wizard.data as any), benefitConfig };
+      await assertGbhetBenefitConfiguration(ctx.storage, feed.getFields?.() ?? [], data);
+      return { data: clearLegalDownstream(data) };
     },
   };
 }
@@ -107,8 +141,14 @@ function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
     description: "Validate rows and map any unrecognized employment statuses",
     kind: "run",
     component: "GbhetValidate",
-    getState: (wizard) => {
+    getState: async (wizard) => {
+      if (isHistoricalImport(wizard)) return "completed";
       const data = (wizard.data as any) || {};
+      try {
+        await assertGbhetBenefitConfiguration(storage, feed.getFields?.() ?? [], data);
+      } catch {
+        return wizard.currentStep === "validate" ? "in_progress" : "pending";
+      }
       const vr = data.validationResults;
       if (!vr) return wizard.currentStep === "validate" ? "in_progress" : "pending";
       const clean =
@@ -186,9 +226,24 @@ function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
 }
 
 function buildGbhetSteps(feed: FeedWizard): WizardStepHandler[] {
+  const map = buildMapStep(feed, "Map Columns", "Map file columns to legal worker fields", [{
+    fieldIds: (feed.getFields?.() ?? []).filter(field => field.type === "benefit" && field.isBenefitEligibility).map(field => field.id),
+    message: REQUIRED_BENEFIT_MAPPING_MESSAGE,
+  }]);
+  const originalMapSubmit = map.submit!;
+  const originalMapState = map.getState!;
+  map.getState = wizard => isHistoricalImport(wizard) ? "completed" : originalMapState(wizard);
+  map.submit = async ctx => {
+    const result = await originalMapSubmit(ctx);
+    const old = (ctx.wizard.data ?? {}) as Record<string, any>;
+    const incoming = result.data ?? {};
+    const changed = ["columnMapping", "mode", "hasHeaders"]
+      .some(key => JSON.stringify(incoming[key]) !== JSON.stringify(old[key]));
+    return { data: changed ? clearLegalDownstream({ ...old, ...incoming }) : incoming };
+  };
   return [
     buildUploadStep(feed, "Upload the legal workers file"),
-    buildMapStep(feed, "Map Columns", "Map file columns to legal worker fields"),
+    map,
     buildBenefitsStep(feed),
     buildGbhetValidateStep(feed),
     buildProcessStep(feed),
@@ -372,7 +427,7 @@ export const gbhetLegalWorkersMonthlyPlugin: WizardPlugin = {
   isMonthly: true,
   launchSchema: LAUNCH_SCHEMA,
   create: createMonthly,
-  prepareUpdate: prepareFeedDataUpdate,
+  prepareUpdate: ctx => prepareLegalUpdate(gbhetLegalWorkersMonthly, ctx),
   getFields: () => gbhetLegalWorkersMonthly.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersMonthly),
 };
@@ -387,7 +442,7 @@ export const gbhetLegalWorkersCorrectionsPlugin: WizardPlugin = {
   isMonthly: true,
   launchSchema: LAUNCH_SCHEMA,
   create: createCorrections,
-  prepareUpdate: prepareFeedDataUpdate,
+  prepareUpdate: ctx => prepareLegalUpdate(gbhetLegalWorkersCorrections, ctx),
   getFields: () => gbhetLegalWorkersCorrections.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersCorrections),
 };

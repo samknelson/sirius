@@ -35,6 +35,10 @@ import { ArrowRight, CheckCircle2, AlertCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
+import {
+  missingMappingGroups,
+  type RequiredFieldGroup,
+} from "@shared/feed-mapping-requirements";
 
 interface FeedField {
   id: string;
@@ -54,6 +58,7 @@ interface MapData {
   columnMapping: Record<string, string>;
   mode: "create" | "update";
   hasHeaders: boolean;
+  requiredFieldGroups?: RequiredFieldGroup[];
 }
 
 const UNMAPPED = "_unmapped";
@@ -133,6 +138,10 @@ export function FeedMap({ wizardId, step }: WizardStepComponentProps) {
           (!mapping[f.id] || mapping[f.id] === UNMAPPED),
       ),
     [fields, mapping, mode],
+  );
+  const missingGroups = useMemo(
+    () => missingMappingGroups(mapping, mapData?.requiredFieldGroups ?? []),
+    [mapping, mapData?.requiredFieldGroups],
   );
 
   const saveMutation = useMutation({
@@ -331,13 +340,22 @@ export function FeedMap({ wizardId, step }: WizardStepComponentProps) {
             </Alert>
           )}
 
+          {missingGroups.map((group, index) => (
+            <Alert key={`${index}-${group.message}`} variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Required mapping missing</AlertTitle>
+              <AlertDescription>{group.message}</AlertDescription>
+            </Alert>
+          ))}
+
           <div className="flex justify-end">
             <Button
               onClick={() => saveMutation.mutate()}
               disabled={
                 saveMutation.isPending ||
                 duplicateCols.size > 0 ||
-                missingRequired.length > 0
+                missingRequired.length > 0 ||
+                missingGroups.length > 0
               }
               data-testid="button-save-mapping"
             >

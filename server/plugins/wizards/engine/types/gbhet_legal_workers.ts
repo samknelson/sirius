@@ -3,6 +3,7 @@ import { FeedWizard, FeedField, ValidationError, type ValidationResults, type Pr
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
+import { assertGbhetBenefitConfiguration } from "../../gbhet-legal-benefits";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -457,6 +458,8 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
+    if (!wizard) throw new Error('Wizard not found');
+    await assertGbhetBenefitConfiguration(storage, this.getFields(), (wizard.data ?? {}) as Record<string, any>);
     const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
 
     return runContextStorage.run(ctx, async () => {
@@ -522,6 +525,8 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }) => void
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
+    if (!wizard) throw new Error('Wizard not found');
+    await assertGbhetBenefitConfiguration(storage, this.getFields(), (wizard.data ?? {}) as Record<string, any>);
     const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
     return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
   }
