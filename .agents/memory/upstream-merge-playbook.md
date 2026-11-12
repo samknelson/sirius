@@ -53,6 +53,19 @@ Recovery: `git merge --no-commit --no-ff origin/main`, then
 `git read-tree -u --reset stash@{0}` (worktree+index == stash tree), re-run
 check/lint, commit, `git stash drop`. Keep diagnostic commands stash-free.
 
+## Provider moves must preserve local-only paths
+When merging a provider-framework replacement, review offline/manual recording
+separately from online delivery. Do not move provider capability or credential
+resolution ahead of a local-only branch.
+
+**Why:** a merge that passed broad postal regressions still made recording
+hand-mailed letters depend on a deliverable online vendor. Local-only sites
+and disabled/missing-credential configurations lost offline recording.
+
+**How to apply:** add a no-provider regression for every offline branch affected
+by a shared setup refactor. Preserve local validation and send-once bookkeeping;
+only online execution should resolve the delivery connection.
+
 ## Notes → entity-notes rename (Sept 2026)
 Upstream renamed `notes`→`entity_notes`, `entity_type`→`context_id`,
 note-type `data.entityTypes`→`data.contextIds`, `/api/notes`→`/api/entity-notes`.
