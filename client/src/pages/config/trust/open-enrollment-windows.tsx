@@ -78,6 +78,7 @@ export default function OpenEnrollmentWindowsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<OpenEnrollmentWindow | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [confirmActiveWindowSave, setConfirmActiveWindowSave] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<OpenEnrollmentWindow | null>(
     null,
   );
@@ -164,6 +165,14 @@ export default function OpenEnrollmentWindowsPage() {
     form.startYmd !== "" &&
     form.endYmd !== "" &&
     form.endYmd >= form.startYmd;
+
+  const handleSave = () => {
+    if (editing && isOpenNow(editing)) {
+      setConfirmActiveWindowSave(true);
+      return;
+    }
+    saveMutation.mutate();
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -343,7 +352,7 @@ export default function OpenEnrollmentWindowsPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => saveMutation.mutate()}
+              onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
               data-testid="button-save"
             >
@@ -352,6 +361,33 @@ export default function OpenEnrollmentWindowsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={confirmActiveWindowSave}
+        onOpenChange={setConfirmActiveWindowSave}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change this open window?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Saving changes may immediately affect whether staff can launch
+              Open Enrollment. Elections already posted will not change.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-active-window-save-cancel">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              data-testid="button-active-window-save-confirm"
+            >
+              {saveMutation.isPending ? "Saving…" : "Save changes"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={!!deleteTarget}
