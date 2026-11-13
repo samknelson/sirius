@@ -397,7 +397,13 @@ export function WorkersTable({
   });
 
   // Fetch worker-employer summary
-  const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
+  const {
+    data: workerEmployers = [],
+    isPending: workerEmployersPending,
+    isError: workerEmployersError,
+    isFetching: workerEmployersFetching,
+    refetch: retryWorkerEmployers,
+  } = useQuery<WorkerEmployerSummary[]>({
     queryKey: ["/api/workers/employers/summary"],
     enabled: workers.length > 0,
   });
@@ -1944,7 +1950,24 @@ export function WorkersTable({
                   <td className="px-3 py-4 whitespace-nowrap">
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
-                        {employerIndicators.length > 0 ? (
+                        {workerEmployersPending ? (
+                          <span role="status" className="text-xs text-muted-foreground">Loading employers…</span>
+                        ) : workerEmployersError ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-destructive">Employers unavailable</span>
+                            <Button
+                              type="button"
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-xs"
+                              disabled={workerEmployersFetching}
+                              onClick={() => { void retryWorkerEmployers(); }}
+                              aria-label={`Retry employers for ${worker.contactName}`}
+                            >
+                              {workerEmployersFetching ? "Retrying…" : "Retry"}
+                            </Button>
+                          </div>
+                        ) : employerIndicators.length > 0 ? (
                           [...employerIndicators].sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0)).map((employer) => (
                             <Tooltip key={employer.id}>
                               <TooltipTrigger asChild>

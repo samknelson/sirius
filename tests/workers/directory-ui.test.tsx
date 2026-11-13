@@ -6,6 +6,15 @@ import { MultiSelect, type MultiSelectOption } from "../../client/src/components
 import { ContextualWorkerFilters } from "../../client/src/components/workers/contextual-worker-filters";
 import type { WorkerFilters } from "../../client/src/components/workers/workers-table";
 import { normalizeEmployerEmploymentFilters, updateEmployerSelection } from "../../shared/utils/employer-employment-filters";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { WorkersTable } from "../../client/src/components/workers/workers-table";
+
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ hasPermission: () => true }),
+}));
+vi.mock("@/contexts/TerminologyContext", () => ({
+  useTerminology: () => ({ term: (value: string) => value }),
+}));
 
 const choices: MultiSelectOption[] = [
   { value: "active", label: "Active", group: "Employed" },
@@ -212,5 +221,103 @@ describe("worker directory filter controls", () => {
       .toMatchObject({ employmentMode: "custom", employmentStatusIds: ["leave"] });
     expect(updateEmployerSelection<EmploymentFilters>({ employerIds: ["a"], employmentMode: "custom", employmentStatusIds: ["leave"] }, []))
       .toMatchObject({ employmentMode: undefined, employmentStatusIds: [] });
+  });
+});
+
+describe("worker directory employer summary states", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+  const summaryKey = ["/api/workers/employers/summary"];
+  const workers = [{
+    id: "worker-a", contactId: "contact-a", given: "Fictional", family: "Worker",
+    contact_name: "Fictional Worker", denorm_ms_ids: [], denorm_employer_ids: [],
+  }] as any;
+  const cell = () => container.querySelector('[data-testid="employment-indicators-worker-a"]')!;
+  const activeEmployers = [
+    { id: "other", name: "Other Works", isHome: false, employmentStatusEmployed: true },
+    { id: "terminated", name: "Former Works", isHome: false, employmentStatusEmployed: false },
+    { id: "home", name: "Home Works", isHome: true, employmentStatusName: "Leave", employmentStatusEmployed: true },
+  ];
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, queryFn: async () => [] } },
+    });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+  });
+
+  async function renderTable() {
+    await act(async () => root.render(
+      <QueryClientProvider client={client}>
+        <WorkersTable workers={workers} isLoading={false} />
+      </QueryClientProvider>,
+    ));
+  }
+
+  async function settle(action: () => void) {
+    await act(async () => {
+      action();
+      await new Promise(resolve => setTimeout(resolve, 10));
+    });
+  }
+
+  it("shows loading, not None, until a delayed summary returns employed badges in home-first order", async () => {
+    let resolve!: (value: unknown) => void;
+    client.setQueryDefaults(summaryKey, { queryFn: () => new Promise(done => { resolve = done; }) });
+    await renderTable();
+    expect(cell().textContent).toBe("Loading employers…");
+    expect(cell().querySelector('[role="status"]')).not.toBeNull();
+    expect(cell().textContent).not.toContain("None");
+    await settle(() => resolve([{ workerId: "worker-a", employers: activeEmployers }]));
+    expect([...cell().querySelectorAll('[data-testid^="employment-icon-"]')].map(el => el.getAttribute("data-testid")))
+      .toEqual(["employment-icon-home", "employment-icon-other"]);
+    expect(cell().textContent).not.toContain("Loading");
+    expect(cell().textContent).not.toContain("None");
+    expect(cell().querySelector('[data-testid="employment-icon-home"]')?.getAttribute("style")).toContain("34, 197, 94");
+  });
+
+  it.each([
+    ["empty summary", []],
+    ["empty relationships", [{ workerId: "worker-a", employers: [] }]],
+    ["terminated relationships only", [{ workerId: "worker-a", employers: [activeEmployers[1]] }]],
+  ])("shows None after a successful %s", async (_label, summary) => {
+    client.setQueryData(summaryKey, summary);
+    await renderTable();
+    expect(cell().textContent).toBe("None");
+  });
+
+  it.each([false, true])("shows a recoverable failure without claiming None (cached success: %s)", async (cached) => {
+    if (cached) client.setQueryData(summaryKey, [{ workerId: "worker-a", employers: [] }]);
+    let resolveRetry!: (value: unknown) => void;
+    const request = vi.fn()
+      .mockRejectedValueOnce(new Error("Summary unavailable"))
+      .mockImplementationOnce(() => new Promise(done => { resolveRetry = done; }));
+    client.setQueryDefaults(summaryKey, { queryFn: request });
+    await renderTable();
+    await settle(() => { if (cached) void client.refetchQueries({ queryKey: summaryKey }); });
+    expect(cell().textContent).toContain("Employers unavailable");
+    expect(cell().textContent).not.toContain("None");
+    await settle(() => (cell().querySelector("button") as HTMLButtonElement).click());
+    if (cached) {
+      expect(cell().textContent).toContain("Retrying…");
+      expect((cell().querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+    } else {
+      expect(cell().textContent).toBe("Loading employers…");
+    }
+    expect(cell().textContent).not.toContain("None");
+    await settle(() => resolveRetry([{ workerId: "worker-a", employers: activeEmployers }]));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(cell().textContent).not.toContain("unavailable");
+    expect(cell().querySelector('[data-testid="employment-icon-home"]')).not.toBeNull();
   });
 });
