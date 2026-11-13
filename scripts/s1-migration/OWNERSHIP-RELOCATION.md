@@ -31,10 +31,11 @@ individual operation modules, not the registration module or a core shim.
 | `server/storage/workers.ts` | `createWorkerForMigration`, `updateWorkerForMigration` | `scripts/s1-migration/load-contacts-workers.ts`; create also in `scripts/s1-migration/load-relationships.ts` | `workers.ts` |
 | `server/storage/workers.ts` | `getMigrationSiriusIdOwnershipSnapshot`, `applyMigrationSiriusIdOwnershipPlan` | snapshot: contacts/workers loader, relationships loader, `scripts/tools/s1-sirius-id-ownership.ts`, plugin `routes.ts`; apply: ownership CLI | `workers.ts`, `sirius-id-ownership.ts` |
 | `server/storage/workers/relations.ts` | `reconcileFromMigration` | `scripts/s1-migration/load-relationships.ts`; `scripts/oneoffs/s1-relationship-endpoint-retarget-smoke.ts` | `relations.ts` |
-| `server/storage/comm.ts` | `updateInteractionWithCommForMigration` | `scripts/s1-migration/load-call-logs.ts`; direct factory call in `scripts/oneoffs/s1-sync-comms-statuses-smoke.ts` | `communications.ts` |
 
 `reconcileForMigration` has no current caller and was retained in the plugin.
-`updateInteractionWithCommForMigration` still exists; it is not retired.
+Call-log communication reconciliation has been retired entirely. Approved
+S1 logs use the worker-notes importer; there is no communication operation
+to relocate or preserve.
 The refreshed method-name search found no additional application consumer
 outside the approved collisions route.
 
@@ -84,9 +85,6 @@ No migration method remains in core storage, its interfaces, or its exports.
 - Relation reconciliation uses shared validation, duplicate detection,
   old/new endpoint events, and role-history invalidation. Normal update
   forbids endpoint retargeting; do not weaken it to simplify extraction.
-- Communication reconciliation first proves both parent and child exist
-  before writing either. Preserve the interaction-medium restriction and
-  transaction boundary.
 - WMB traversal unions coverage workers with relevant event-only workers.
   Do not replace it with active-worker traversal. Reconciliation preserves
   scan-confirmed terminations, inference provenance, cutoff and dry-run rules.

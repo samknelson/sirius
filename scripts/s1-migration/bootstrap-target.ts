@@ -22,7 +22,7 @@
  *      facility, and staging-only components.
  *   5. Seeds: policies (all 7, incl. core PA/UH/EC/COBRA; a legacy R row is
  *      renamed in place to UH per the 2026-08-11 ruling), employment
- *      statuses, contribution accounts, BAO Hourly, genders, and call reasons.
+ *      statuses, contribution accounts, BAO Hourly, and genders.
  *      Materializes every singleton cron config and leaves every cron disabled.
  *
  * trust_providers / trust_benefits are NOT seeded here — they derive from
@@ -306,7 +306,6 @@ async function main() {
     runStep("BAO ledger and hourly baseline", path.join(base, "seed-bao-production-baseline.ts"));
     runStep("cron lockout", path.join(base, "lockout-bootstrap-crons.ts"));
     runStep("genders", path.join(base, "dev/seed-genders.ts"));
-    runStep("call reasons", path.join(base, "dev/seed-call-reasons.ts"));
   } finally {
     // Clear the marker this process set for its children.
     delete getRawProcessEnv().S1_BOOTSTRAP_LOCK_HELD;

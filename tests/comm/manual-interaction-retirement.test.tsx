@@ -60,25 +60,20 @@ describe("manual interaction retirement", () => {
     expect(appSource).toContain(`<ProtectedRoute tabId="comm-history" entityType="${entity === "workers" ? "worker" : "user"}">`);
   });
 
-  it("still renders historical interactions and their detail link", () => {
+  it.each(["sms", "email", "postal", "inapp", "offline"])("renders %s history and its detail link without interaction fields", (medium) => {
     const html = renderToStaticMarkup(
       <Router hook={() => ["/", () => {}]}><CommList records={[{
-        id: "historic-interaction",
+        id: "supported-comm",
         contactId: "contact",
-        medium: "interaction",
+        medium,
         status: "received",
         sent: "2024-01-01T12:00:00Z",
         received: null,
         data: null,
-        interactionDetails: {
-          id: "detail", commId: "historic-interaction", channel: "phone",
-          callReasonId: "reason", reasonName: "Benefit question", notes: "Called back",
-          data: null,
-        },
       }]} /></Router>,
     );
-    expect(html).toContain("Benefit question");
-    expect(html).toContain("/comm/historic-interaction");
+    expect(html).toContain("/comm/supported-comm");
+    expect(html).not.toContain("interaction");
   });
 });
 

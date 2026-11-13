@@ -19,7 +19,7 @@ export const messagingConfigurationHelp: SystemHelpEntry[] = [
     paths: [...contactRoots.map(root => `${root}/comm/history`), "/comm/%"],
     summary: "Review saved communication content and delivery status, distinguishing a recorded message from confirmed provider delivery or a recipient reading it.",
     details: `
-      <h3>Purpose</h3><p>Find prior communications for the contact and open a communication's details to investigate what was recorded.</p>
+      <h3>Purpose</h3><p>Find prior communications for the contact and open a communication's details to investigate what was recorded. Calls and visits belong in worker Notes, not Communication History; Call Reasons is no longer an option list.</p>
       <h3>Before you start</h3><p>History and individual communication access are checked separately from send actions. Saved messages may contain sensitive contact information.</p>
       <h3>How to use this page</h3><ol><li>Find the relevant channel and communication.</li><li>Review saved destination, content, status, and any provider information available.</li><li>Check failure information before considering another send.</li></ol>
       <h3>Results and status meanings</h3><p>History retains the delivered content and effective settings recorded at send time. Editing a communication record is not a recall or a replacement message in the recipient's inbox. Later template or branding changes do not rewrite old delivery evidence.</p>

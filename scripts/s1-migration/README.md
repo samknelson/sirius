@@ -1,6 +1,11 @@
 # S1 → S2 migration ETL
 
 Extract/staging framework for the S1 (Drupal 7 / MariaDB) → S2 migration.
+Approved S1 logs import through `load-log-notes.ts` into worker notes with
+BAO tags. The old call-log communication loader and call-reason seeds are
+retired; do not recreate them. Core migration 1220 refuses unexpected
+interaction records before removing the obsolete tables. See
+`docs/retired-call-comms.md` for verification and rollout boundaries.
 Full spec lives in `docs/s1-migration/` (**local-only, gitignored** — contains
 S1 environment details; never force-add it).
 
@@ -526,10 +531,8 @@ doesn't match. It must never point at production.
   dead; the loader scopes staged `sirius_contact` rows and resolves each
   directly via id_map `contact` (no worker hop, no month grain).
   **S2 home decision (unchanged, recorded here + in the loader header):**
-  NOT comm + comm_interaction (its `call_reason_id` is a NOT NULL FK into
-  the seeded MSR call reasons and its channel is constrained to the six
-  call/visit channels — a packet is not a member-service interaction) and
   NOT comm_postal (NOT NULL to-address columns; S1 has no packet address).
+  Calls and visits belong in worker notes, not communication child records.
   Instead: a parent-only `comm` row, medium `offline`, status `logged`,
   contact = the tagged contact. **Date anchor ruling (2026-08-11):** the
   contact node has no packet-received date; `sent` = `received` = the

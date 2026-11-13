@@ -20,14 +20,8 @@
  * worker hop, no month grain, no worker/month dedupe).
  *
  * S2 HOME DECISION (unchanged, still the record of it):
- * The N24 leading candidate was the comm + comm_interaction shape from
- * load-call-logs.ts. Investigation ruled that out: `comm_interaction`
- * requires a NOT NULL `call_reason_id` FK into the seeded MSR call reasons
- * and a channel constrained to the six call/visit channels
- * (INTERACTION_CHANNELS) — "received an enrollment packet" is not a member
- * service interaction, and forcing it in would require a fake call reason
- * plus a misused channel, polluting MSR interaction reporting. A
- * `comm_postal` child is also out: its to-address columns are NOT NULL and
+ * A packet receipt is an offline communication, not a call or visit note.
+ * A `comm_postal` child is also out: its to-address columns are NOT NULL and
  * S1 carries no packet address. The chosen home is the PARENT shape of the
  * same comm family: one plain `comm` row with
  *   medium   = 'offline'            (free-form varchar; the comm history UI

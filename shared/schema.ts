@@ -794,17 +794,6 @@ export const optionsCommTags = pgTable("options_comm_tags", {
   data: jsonb("data"),
 });
 
-// Call/interaction reasons (N21) — curated list; sirius_id is the normalized
-// S1 `field_sirius_type` string the migration loader keys by.
-export const optionsCallReason = pgTable("options_call_reason", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull(),
-  description: text("description"),
-  siriusId: varchar("sirius_id", { length: 255 }).unique(),
-  sequence: integer("sequence").notNull().default(0),
-  data: jsonb("data"),
-});
-
 export const optionsEventType = pgTable("options_event_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").unique(),
@@ -2063,17 +2052,6 @@ export const insertCommTagSchema = createInsertSchema(optionsCommTags).omit({
 export type OptionsCommTag = typeof optionsCommTags.$inferSelect;
 export type InsertOptionsCommTag = z.infer<typeof insertCommTagSchema>;
 
-export const insertCallReasonSchema = createInsertSchema(optionsCallReason).omit({
-  id: true,
-}).extend({
-  name: z.string().trim().min(1, "Name is required"),
-  siriusId: z.string().trim().nullable().optional(),
-  data: z.record(z.unknown()).nullable().optional(),
-});
-
-export type OptionsCallReason = typeof optionsCallReason.$inferSelect;
-export type InsertOptionsCallReason = z.infer<typeof insertCallReasonSchema>;
-
 export const insertWorkerWsSchema = createInsertSchema(optionsWorkerWs).omit({
   id: true,
 }).extend({
@@ -3217,48 +3195,6 @@ export const insertCommInappSchema = createInsertSchema(commInapp, {
 
 export type InsertCommInapp = z.infer<typeof insertCommInappSchema>;
 export type CommInapp = typeof commInapp.$inferSelect;
-
-// Communications - Interaction (structured call/office-visit log, N21)
-export const INTERACTION_CHANNELS = [
-  "call_from_member",
-  "call_to_member",
-  "office_visit",
-  "helpline",
-  "hotline",
-  "walk_in",
-  // "issue_reported": S1 migration ruling 2026-08-11 — S1 sirius_log category
-  // "issue reported for member" becomes its own interaction channel rather
-  // than folding into an existing channel or staying in cold archive.
-  "issue_reported",
-  // "letter": S1 migration ruling 2026-08-11 — S1 sirius_log category "letter"
-  // (7 "appeal denial" logs sent as written correspondence) becomes its own
-  // interaction channel rather than being skipped as category_unmapped.
-  "letter",
-  // "provider_call": S1 migration ruling 2026-08-12 — S1 sirius_log category
-  // "provider call" (1 "enrollment" log) becomes its own interaction channel:
-  // no generic call channel exists and the member-call channels don't fit a
-  // call with a provider.
-  "provider_call",
-] as const;
-export type InteractionChannel = (typeof INTERACTION_CHANNELS)[number];
-
-export const commInteraction = pgTable("comm_interaction", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
-  channel: varchar("channel").notNull(),
-  callReasonId: varchar("call_reason_id").notNull().references(() => optionsCallReason.id),
-  notes: text("notes"),
-  data: jsonb("data"),
-});
-
-export const insertCommInteractionSchema = createInsertSchema(commInteraction, {
-  channel: z.enum(INTERACTION_CHANNELS),
-}).omit({
-  id: true,
-});
-
-export type InsertCommInteraction = z.infer<typeof insertCommInteractionSchema>;
-export type CommInteraction = typeof commInteraction.$inferSelect;
 
 // Communications - Tag Links (many-to-many between comm and options_comm_tags)
 export const commTags = pgTable("comm_tags", {

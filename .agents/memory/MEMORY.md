@@ -194,3 +194,4 @@
 - [Branch-scoped CI/deploy dirs](branch-scoped-ci-files.md) — .github/deploy are branch-owned, never main; gitignore cannot untrack their files.
 - [Generated API doc addressing](generated-api-doc-addressing.md) — document addresses must invert the request resolver exactly: ids beat aliases, aliases can be ambiguous; keep the pair in one leaf.
 - [Quicksearch role-as-access](quicksearch-role-as-access.md) — role lists are the access decision; framework-gated sensitive clauses, pure clause planners, and cmdk `shouldFilter={false}`.
+- [Postgres verification targets](postgres-verification-target.md) — connectionString overrides a separate database option; assert current_database before disposable fixture writes.

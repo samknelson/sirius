@@ -43,33 +43,6 @@ export interface CommPostalDetails {
   data: Record<string, unknown> | null;
 }
 
-export interface CommInteractionDetails {
-  id: string;
-  commId: string;
-  channel: string;
-  callReasonId: string;
-  notes: string | null;
-  data: Record<string, unknown> | null;
-  reasonName?: string | null;
-}
-
-export const INTERACTION_CHANNEL_LABELS: Record<string, string> = {
-  call_from_member: "Call from member",
-  call_to_member: "Call to member",
-  office_visit: "Office visit",
-  helpline: "Helpline",
-  hotline: "Hotline",
-  walk_in: "Walk-in",
-  issue_reported: "Issue reported",
-  letter: "Letter",
-  provider_call: "Provider call",
-};
-
-export function interactionChannelLabel(channel: string | null | undefined): string {
-  if (!channel) return "-";
-  return INTERACTION_CHANNEL_LABELS[channel] ?? channel;
-}
-
 export interface ContactMainLink {
   type: "worker" | "employer_contact" | "trust_provider_contact";
   url: string;
@@ -101,7 +74,6 @@ export interface CommWithDetails {
   smsDetails?: CommSmsDetails | null;
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
-  interactionDetails?: CommInteractionDetails | null;
   tags?: CommTag[];
   contactMainLink?: ContactMainLink | null;
 }

@@ -2,8 +2,8 @@ import { s1EntityNotes } from '../../server/plugins/system/oneoff/plugins/s1-mig
 /**
  * S1 sirius_log → S2 worker notes importer.
  *
- * This is intentionally not a fork of load-call-logs.ts. The workbook-approved
- * rows become notes with BAO tags; every other sirius_log disposition remains
+ * The workbook-approved rows become notes with BAO tags;
+ * every other sirius_log disposition remains
  * out of scope. Output and diagnostics are aggregates only.
  */
 import { db } from "../../server/storage/db";

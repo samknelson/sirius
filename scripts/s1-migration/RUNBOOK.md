@@ -1400,7 +1400,7 @@ full-scanned and strict: any live count drift stops the daily run.
 
 **Gates** (any failure ⇒ exit 1; a later PASS never overrides an earlier
 failure — balance/month parity cover money and coverage, NOT contacts,
-beneficiaries, cardchecks, call logs, packet tags or other entity/config
+beneficiaries, cardchecks, log notes, packet tags or other entity/config
 state; loader-level exact verification is the convergence gate for those):
 
 | gate | fails when |
