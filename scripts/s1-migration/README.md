@@ -270,19 +270,21 @@ doesn't match. It must never point at production.
   addresses), `sirius_worker` → workers (+ worker_ids) with EXPLICIT
   `sirius_id = field_sirius_id` (**ruling 2026-08-06** — the nid is a disjoint
   node-counter space and loads as a "Legacy NID" `worker_ids` row instead;
-  type seeded `sirius_id='s1-legacy-nid'`; no "Sirius ID" row anymore) and a
-  post-load `setval` (the one raw-SQL write, spec-sanctioned). Missing/
-  non-numeric `field_sirius_id` → worker loads with a sequence-assigned
-  sirius_id + reject note (`sirius_id_assigned`/`sirius_id_not_numeric`);
+  type seeded `sirius_id='s1-legacy-nid'`; no "Sirius ID" row anymore).
+  Source IDs are parsed numerically and range-checked, then canonicalized
+  to strings for storage calls, exact owner comparisons, and verification.
+  Missing/non-numeric/out-of-range `field_sirius_id` blocks the run before
+  writes; there is no generated replacement.
   cross-worker collisions are FATAL (pre-write scan; colliding sirius_ids
   are distinct people per the 2026-08-06 fund finding — never dedupe/merge,
-  no allow flag). Re-runs repair
-  old nid-mapped rows in place (counters `oldMappingRepaired`,
-  `oldSiriusIdRowsRemoved`); swaps/cycles among old values are made
-  collision-safe by a parking pre-pass (`parkedForRekey`). SSN ownership is keyed on nid via id_map, not
+  no allow flag). Existing Sirius ID mismatches require the separate
+  hash-approved ownership repair; ordinary loads never rekey a worker.
+  SSN ownership is keyed on nid via id_map, not
   sirius_id. Absorbs hours-loader stubs: adopts the stub worker's
-  auto-created contact (no duplicate contact rows), stamps the real
-  sirius_id/ssn onto the stub worker, flips id_map stub=false. Email/SSN
+  auto-created contact (no duplicate contact rows), requires its Sirius ID
+  to already match the validated source, updates SSN/data, and flips
+  id_map stub=false. Ownership preflight may refuse a stub mapping as
+  insufficient proof; this boundary normalization does not bypass it. Email/SSN
   uniqueness pre-checked (dups → report, Q36); worker-level contact-style
   mirror fields ignored (N10, contact node wins). Storage side: workers
   storage gained `createWorkerForMigration`/`updateWorkerForMigration` —
@@ -290,6 +292,20 @@ doesn't match. It must never point at production.
   Note: T12's `data.duplicateEmail` stash and Q10's language column need a
   `contacts.data`/`contacts.language` schema addition that doesn't exist yet —
   duplicate emails currently live only in the run report.
+
+  **Diagnosing a missing worker-loader result:** the reported production-profile
+  aggregate showed exit 1 after 59.4 seconds with no result envelope, not a
+  child exception. Child output is inherited by the sync process and is not
+  embedded in that aggregate. An isolated fixture of the actual worker pass
+  reproduced a false `Sirius ID ownership changed after preflight` exception
+  for stored `"100"` versus staged `100` on mapped and stub workers. It also
+  demonstrated numeric creation inputs and false final-verification mismatches.
+  The boundary now uses the validated source's canonical string, without
+  coercing stored owners or changing preflight/collision rules. This confirms
+  the representation defect, not the precise exception from that production
+  run; that attribution still requires its child logs. Regression fixtures
+  run without database access:
+  `npx vitest run tests/s1-migration/worker-sirius-id-boundary.test.ts tests/s1-migration/sirius-id-ownership.test.ts tests/s1-migration/ownership-preflight.test.ts tests/s1-migration/sirius-id-ownership-snapshot.test.ts`.
 
 - `load-employers.ts` — T7+T24: `grievance_shop` → employers (absorbs
   hours-loader stubs in place; `sirius_id = String(nid)`; industry via term

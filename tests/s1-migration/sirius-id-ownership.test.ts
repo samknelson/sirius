@@ -85,6 +85,33 @@ describe("Sirius ID ownership planner", () => {
     expect(plan.rekeys).toEqual([]);
   });
 
+  it("reserves a numeric source claim only when the string-valued target ID is unowned", () => {
+    const claim = { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null };
+    const free = planSiriusIdOwnership(snapshot({ claims: [claim] }));
+    expect(free.decisions[0].action).toBe("new_claim_reserved");
+    expect(free.hardBlockers).toBe(0);
+
+    const occupied = planSiriusIdOwnership(snapshot({
+      claims: [claim],
+      workers: [{ id: "native", siriusId: "100", data: null, workerMappings: [], shellMappings: [] }],
+    }));
+    expect(occupied.decisions[0].action).toBe("blocked_owner_native");
+    expect(occupied.hardBlockers).toBe(1);
+    expect(occupied.rekeys).toEqual([]);
+  });
+
+  it("blocks duplicate numeric claims even when their source spellings differ", () => {
+    const plan = planSiriusIdOwnership(snapshot({
+      claims: [
+        { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
+        { sourceNid: 11, rawSiriusId: "000100", siriusId: 100, sourceIdProblem: null },
+      ],
+    }));
+    expect(plan.decisions.map(({ action }) => action)).toEqual(["source_duplicate", "source_duplicate"]);
+    expect(plan.hardBlockers).toBe(2);
+    expect(plan.rekeys).toEqual([]);
+  });
+
   it("retains nullable UUID-only shells in the snapshot without treating NULL as ID zero", () => {
     const plan = planSiriusIdOwnership(snapshot({ workers: [shell("null-shell", null)] }));
     expect(plan.rekeys).toEqual([]);

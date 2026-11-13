@@ -1203,7 +1203,9 @@ async function main() {
       // the invariant loud rather than allocating a substitute ID.
       throw new Error(`Sirius ID preflight invariant failed for staged worker nid ${w.nid} (raw=${fsidRaw == null ? "missing" : "invalid"})`);
     }
-    const expectedSirius = fsid;
+    // Source validation/planning is numeric; the worker storage contract is
+    // a string. Normalize only the validated source, never the stored owner.
+    const expectedSirius = String(fsid);
 
     /** workers.data reconcile: merge aatRequired into the existing data
      * object (other keys preserved); remove the key when the S1 field is
@@ -1553,7 +1555,7 @@ async function main() {
       // blocks the loader otherwise.
       const { value: vFsid } = fsidOf(w);
       if (vFsid != null) {
-        if (row.siriusId !== vFsid) {
+        if (row.siriusId !== String(vFsid)) {
           console.error(`VERIFY: worker nid ${w.nid} row has sirius_id ${row.siriusId}, expected field_sirius_id ${vFsid}`);
           verifyFailures++;
           verifyFailedWorkerNids.add(w.nid);
