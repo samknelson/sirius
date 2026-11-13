@@ -25,7 +25,7 @@ beforeEach(() => {
   fake.code = 0;
   fake.report = {
     command: "sync", mode: "daily", profile: "production", result: "PASS",
-    forceReconcile: false, skipStage: false, skipSeeders: true, keepGoing: false, dryRun: false,
+    forceReconcile: false, skipStage: false, skipSeeders: true, keepGoing: true, dryRun: false,
     financialLinkApprovals: { payment: false, ar: false },
     gates: { stage: "pass", fleet: "pass", parity: "pass", financialIdentity: "pass", wmbEvents: "disabled" },
     wmbEvents: { ...emptyWmbPhase(false), status: "disabled", reason: "awaiting-tested-image-activation" },
@@ -77,14 +77,27 @@ describe("actual scheduler wrapper financial path", () => {
     expect(fake.publish.mock.calls[0][0]).toBe("S1 daily sync failed");
     expect(process.exitCode).toBe(1);
   });
+  it("announces failure after a completed fleet containing a failed loader", async () => {
+    fake.code = 1;
+    fake.report.result = "FAIL";
+    fake.report.gates = { ...(fake.report.gates as object), fleet: "fail" };
+    fake.report.failures = ["elections: disallowed rejects: employer_ref_missing=1"];
+    await runWrapper();
+    expect(fake.publish.mock.calls[0][0]).toBe("S1 daily sync failed");
+    expect(JSON.parse(fake.publish.mock.calls[0][1])).toMatchObject({
+      status: "failure", result: "FAIL", gates: { fleet: "fail" },
+    });
+    expect(process.exitCode).toBe(1);
+  });
   it("refuses a child PASS without financial identity proof", async () => {
     delete fake.report.financialIdentity;
     await runWrapper();
     expect(fake.publish.mock.calls[0][0]).toBe("S1 daily sync failed");
     expect(process.exitCode).toBe(1);
   });
-  it("refuses injected operator approvals before launching a child", async () => {
-    process.argv.push("--approve-payment-links", "a".repeat(64));
+  it.each(["--approve-payment-links", "--keep-going", "--mode=daily", "--unknown"])(
+    "refuses caller argument %s before launching a child", async (flag) => {
+    process.argv.push(flag);
     const exit = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
     await import("../../scripts/s1-migration/run-scheduled-daily");
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));

@@ -104,12 +104,19 @@ loaders against ANY target (fresh branch or production), ensure:
 **Operational preconditions**
 - **Scheduled Phase 2 runs:** production automation uses
   `run-scheduled-daily.ts`, which invokes exactly `sync.ts --mode daily
-  --profile production`, accepts no forwarded arguments, publishes only an
+  --profile production --skip-seeders --keep-going`, accepts no forwarded arguments, publishes only an
   aggregate completion/finding summary to SNS, and exits nonzero whenever the
    sync or its result contract fails. It runs at 00:01 Pacific each Monday
    through Friday. The separate weekday 09:00 Pacific
-  `check-scheduled-daily-late.ts` task alerts if no ordinary production daily
-  run has passed since local midnight. AWS setup and operator gates are in
+  `check-scheduled-daily-late.ts` task alerts if no production daily
+  keep-going run has passed since local midnight. Failed loaders remain failures:
+  continuation attempts later loaders, never relaxes reject rules, and retains
+  overall FAIL, detailed reasons, and a failure notification. Startup and staging
+  prerequisites remain mandatory. Manual and final-freeze defaults are unchanged.
+  Deploy an updated immutable migration image and point the scheduler at its new
+  task-definition revision before expecting this behavior in production; a local
+  change or web-app deploy is insufficient. Deployment and reruns require separate
+  authorization. AWS setup and operator gates are in
   `docs/s1-migration/FC-ENVIRONMENT-SETUP.md` under “Automated Phase 2 daily
   sync.”
 - **Production network proof:** before Phase 1 and after any task-definition,

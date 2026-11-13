@@ -1546,6 +1546,26 @@ pass; and final-freeze PASS after the S1 side is restored.
     `run-scheduled-daily.ts` wrapper at 00:01 Pacific each Monday through
     Friday; it cannot forward
    `--skip-stage`, `--force-reconcile`, per-run allowances, or dry-run flags.
+   Its fixed internal command includes `--skip-seeders --keep-going`: a failed
+   loader does not stop attempts at the remaining fleet loaders. This is
+   **continuation, not acceptance of failed records**. Every failed loader and
+   reason remains in the detailed aggregate report and console failure summary;
+   any loader failure means overall `FAIL`, nonzero exit, and a failure alert.
+   Alerts remain aggregate-only, not a copy of detailed loader errors.
+   Startup, advisory-lock, write-fence, and staging failures still prevent fleet
+   execution. Downstream phase prerequisites and cleanup remain unchanged;
+   in particular, failed imports do not authorize historical WMB event work.
+   The wrapper still accepts **no caller arguments**, including `--keep-going`.
+   Manual sync and final-freeze defaults are unchanged.
+
+   **Rollout required:** build the updated `migration` image from an approved
+   immutable commit, register a migration task-definition revision pinned to
+   that image digest, and update the scheduler target to that revision through
+   the separately authorized rollout. A local code change or web-app deploy
+   does not update the scheduled migration image; in-flight runs retain their
+   old behavior. Confirm the task revision/image and `keepGoing=true` in the
+   next authorized run's report. This change does not authorize deployment,
+   schedule enablement, production mutation, or a rerun.
    Read the aggregate
    report (console or `s1_staging.runs`). Triage rules:
    - New reject class → triage (§5), obtain the fund ruling, then add it to

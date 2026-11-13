@@ -23,7 +23,7 @@ async function main(): Promise<void> {
        AND args->>'profile' = 'production'
        AND COALESCE((args->>'forceReconcile')::boolean, false) = false
        AND COALESCE((args->>'skipStage')::boolean, false) = false
-       AND COALESCE((args->>'keepGoing')::boolean, false) = false
+       AND COALESCE((args->>'keepGoing')::boolean, false) = true
        AND report->>'result' = 'PASS'
        AND started_at >= (
          (now() AT TIME ZONE 'America/Los_Angeles')::date

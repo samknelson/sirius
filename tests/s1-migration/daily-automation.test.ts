@@ -23,7 +23,7 @@ const passing = {
   forceReconcile: false,
   skipStage: false,
   skipSeeders: true,
-  keepGoing: false,
+  keepGoing: true,
   dryRun: false,
   financialLinkApprovals: { payment: false, ar: false },
   financialIdentity: { blocked: 0, mismatched: 0, counts: { attribution_mismatches: 0 } },
@@ -53,6 +53,7 @@ describe("scheduled S1 daily automation", () => {
       "--profile",
       "production",
       "--skip-seeders",
+      "--keep-going",
     ]);
     expect(() => assertNoForbiddenScheduledFlags([])).not.toThrow();
     for (const flag of [
@@ -94,6 +95,9 @@ describe("scheduled S1 daily automation", () => {
       financialIdentity: { blocked: 0, mismatched: 0, counts: { attribution_mismatches: 2 } } }))
       .toThrow(/identity evidence to pass/);
     expect(() => assertScheduledDailyReport({ ...passing, skipStage: true })).toThrow(/skipStage/);
+    expect(() => assertScheduledDailyReport({ ...passing, keepGoing: false })).toThrow(/keepGoing/);
+    expect(() => assertScheduledDailyReport({ ...passing, keepGoing: undefined })).toThrow(/keepGoing/);
+    expect(() => assertScheduledDailyReport({ ...passing, mode: "final-freeze" })).toThrow(/mode/);
     expect(() => assertScheduledDailyReport({ ...passing, skipSeeders: false })).toThrow(/skipSeeders/);
     const { skipSeeders: _omitted, ...withoutSkipSeeders } = passing;
     expect(() => assertScheduledDailyReport(withoutSkipSeeders)).toThrow(/skipSeeders/);

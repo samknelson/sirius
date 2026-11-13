@@ -4,11 +4,13 @@ import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { FLEET, PROFILES, validateSyncConfig } from "../../scripts/s1-migration/sync-config";
 import { parseFinancialSyncApprovals } from "../../scripts/s1-migration/lib/financial-sync-contract";
+import { SCHEDULED_SYNC_ARGS } from "../../scripts/s1-migration/lib/daily-automation";
 
 const fake = vi.hoisted(() => ({
   spawn: vi.fn(), query: vi.fn(), end: vi.fn(), release: vi.fn(), record: vi.fn(),
   resultPath: "", balanceIdentity: {} as unknown, moneyIdentity: {} as unknown,
   moneyFailure: false,
+  electionsFailure: false, stageFailure: false, wmb: vi.fn(),
 }));
 vi.mock("child_process", () => ({ spawnSync: fake.spawn }));
 vi.mock("../../server/storage/db", () => ({
@@ -43,7 +45,7 @@ vi.mock("../../scripts/s1-migration/lib/employer-rate-sync", () => ({
 }));
 vi.mock("../../scripts/s1-migration/lib/wmb-event-phase", () => ({
   emptyWmbPhase: () => ({ status: "skipped" }),
-  runWmbEventPhase: async () => ({ status: "pass" }),
+  runWmbEventPhase: fake.wmb,
 }));
 
 const cleanIdentity = () => ({ blocked: 0, mismatched: 0, counts: { attribution_mismatches: 0 } });
@@ -60,6 +62,9 @@ beforeEach(() => {
   fake.balanceIdentity = cleanIdentity();
   fake.moneyIdentity = cleanIdentity();
   fake.moneyFailure = false;
+  fake.electionsFailure = false;
+  fake.stageFailure = false;
+  fake.wmb.mockResolvedValue({ status: "pass" });
   fake.query.mockImplementation(async (text: string) => ({ rows: text.includes("pg_try_advisory_lock") ? [{ got: true }] : [] }));
   fake.record.mockResolvedValue(1);
   fake.end.mockResolvedValue(undefined);
@@ -67,7 +72,7 @@ beforeEach(() => {
     const script = basename(args[1]);
     let result: unknown;
     if (script === "stage.ts") {
-      result = { contractVersion: 2, step: "stage", mode: "daily", status: "pass",
+      result = { contractVersion: 2, step: "stage", mode: "daily", status: fake.stageFailure ? "fail" : "pass",
         mismatches: 0, acceptedLiveDrifts: 0, countEvidence: [{
           source: "sirius_worker", sourceCountBefore: 2, sourceCountAfter: 2,
           identitiesScanned: 2, stagedCount: 2, integrity: "pass", status: "pass",
@@ -88,7 +93,10 @@ beforeEach(() => {
         loader: step.loader, logicVersion: step.logicVersion, dryRun: false,
         forceReconcile: args.includes("--force-reconcile"),
         summary: { created: 0, updated: 0, unchanged: 2, deleted: 0, deactivated: 0, reportOnly: 0, rejected: 0 },
-        rejectGate: { status: "pass", counts: {}, allowed: [], disallowed: [] },
+        rejectGate: fake.electionsFailure && step.id === "elections"
+          ? { status: "fail", counts: { employer_ref_missing: 1 }, allowed: [],
+              disallowed: [{ reason: "employer_ref_missing", count: 1 }] }
+          : { status: "pass", counts: {}, allowed: [], disallowed: [] },
         verify: { status: "pass", failures: 0 }, findings: [], blockingFindings: [],
         runtime: { timeZone: { runtimeTimeZone: "America/Los_Angeles", dbSessionTimeZone: "America/Los_Angeles" } },
         detail: { financialIdentity: fake.moneyIdentity, accountId: "fund",
@@ -96,7 +104,8 @@ beforeEach(() => {
       };
     }
     writeFileSync(options.env.S1_RESULT_JSON_PATH, JSON.stringify(result));
-    return { status: 0 };
+    return { status: (fake.stageFailure && script === "stage.ts") ||
+      (fake.electionsFailure && script === "load-elections.ts") ? 1 : 0 };
   });
 });
 afterEach(() => {
@@ -106,8 +115,9 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-async function runFleet(extra: string[] = []) {
-  process.argv = ["node", "sync.ts", "--mode", "daily", "--profile", "production", "--skip-seeders", ...extra];
+async function runFleet(extra: string[] = [], scheduled = false) {
+  process.argv = scheduled ? ["node", ...SCHEDULED_SYNC_ARGS.slice(1)] :
+    ["node", "sync.ts", "--mode", "daily", "--profile", "production", "--skip-seeders", ...extra];
   await import("../../scripts/s1-migration/sync");
   await vi.waitFor(() => expect(fake.end).toHaveBeenCalledOnce());
   return JSON.parse(readFileSync(fake.resultPath, "utf8"));
@@ -115,6 +125,46 @@ async function runFleet(extra: string[] = []) {
 const calls = () => fake.spawn.mock.calls.map(([, args]) => args as string[]);
 
 describe("actual daily fleet financial wiring", () => {
+  it("continues the scheduled fleet after elections rejects without accepting the failure", async () => {
+    fake.electionsFailure = true;
+    const report = await runFleet([], true);
+    expect(calls().map(args => basename(args[1])).filter(script =>
+      FLEET.some(step => step.script === script))).toEqual(
+      FLEET.filter(step => !step.id.startsWith("seed-")).map(step => step.script),
+    );
+    expect(report).toMatchObject({ keepGoing: true, result: "FAIL",
+      gates: { stage: "pass", fleet: "fail", parity: "pass" } });
+    expect(report.fleetAbortedAt).toBeUndefined();
+    const reason = "elections: process exit 1; disallowed rejects: employer_ref_missing=1";
+    expect(report.failures).toContain(reason);
+    expect(report.fleet.find((step: { id: string }) => step.id === "elections"))
+      .toMatchObject({ status: "fail", failures: ["process exit 1", "disallowed rejects: employer_ref_missing=1"] });
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining(reason));
+    expect(fake.record).toHaveBeenCalledWith(expect.any(Date), expect.anything(),
+      expect.objectContaining({ result: "FAIL", failures: expect.arrayContaining([reason]) }));
+    expect(fake.wmb).toHaveBeenCalledWith(expect.objectContaining({ importSucceeded: false }));
+    expect(fake.release).toHaveBeenCalledOnce();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("does not start any fleet loader after scheduled staging fails", async () => {
+    fake.stageFailure = true;
+    const report = await runFleet([], true);
+    expect(calls().map(args => basename(args[1]))).toEqual(["stage.ts"]);
+    expect(report).toMatchObject({ result: "FAIL", gates: { stage: "fail", fleet: "fail" } });
+    expect(fake.wmb).not.toHaveBeenCalled();
+    expect(fake.release).toHaveBeenCalledOnce();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("retains manual fail-fast behavior after elections rejects", async () => {
+    fake.electionsFailure = true;
+    const report = await runFleet();
+    expect(report).toMatchObject({ keepGoing: false, fleetAbortedAt: "elections", result: "FAIL" });
+    expect(calls().map(args => basename(args[1]))).not.toContain("load-benefit-history.ts");
+    expect(process.exitCode).toBe(1);
+  });
+
   it("executes the scheduled argument path in order, checks parity and retains identity aggregates", async () => {
     const report = await runFleet();
     expect(report).toMatchObject({ result: "PASS", financialLinkApprovals: { payment: false, ar: false },

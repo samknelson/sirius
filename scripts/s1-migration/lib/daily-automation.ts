@@ -15,8 +15,10 @@ export const SCHEDULED_SYNC_ARGS = [
   "--profile",
   "production",
   "--skip-seeders",
+  "--keep-going",
 ] as const;
 
+// Caller-supplied flags remain forbidden, even those fixed internally above.
 export const FORBIDDEN_SCHEDULED_FLAGS = [
   "--skip-stage",
   "--force-reconcile",
@@ -147,7 +149,7 @@ export function assertScheduledDailyReport(report: DailySyncReport): void {
   if (report.forceReconcile !== false) violations.push("forceReconcile must be false");
   if (report.skipStage !== false) violations.push("skipStage must be false");
   if (report.skipSeeders !== true) violations.push("skipSeeders must be true");
-  if (report.keepGoing !== false) violations.push("keepGoing must be false");
+  if (report.keepGoing !== true) violations.push("keepGoing must be true");
   if (report.result !== "PASS" && report.result !== "FAIL") violations.push("result must be PASS or FAIL");
   const wmbEvents = sanitizedWmbEvents(report.wmbEvents);
   if (stringMap(report.gates).wmbEvents !== wmbEvents.status) violations.push("WMB event gate does not match phase");
