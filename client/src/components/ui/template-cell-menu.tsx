@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FundColorSwatches } from "./fund-color-swatches";
 import { formatTemplateCell, cellFormatValue, type CellFormat } from "./template-cell-format";
 import { editTable, TEMPLATE_FONTS, TEMPLATE_SIZES, TEMPLATE_TEXT_COLORS, TEMPLATE_CELL_COLORS, type TableOperation } from "./template-table-tools";
 
@@ -44,6 +45,7 @@ export function TemplateCellMenu({ cell, disabled, execute, close }: Props) {
     const selected = rgb ? `#${rgb.slice(1).map(n => Number(n).toString(16).padStart(2, "0")).join("")}` : value;
     return <div role="group" aria-label={label} className="space-y-1">
       <span className="text-xs">{label}: {value || "Default"}</span>
+      <FundColorSwatches label={label} onChange={hex => apply(property, hex)} disabled={disabled} />
       <div className="flex flex-wrap gap-1">
         {presets.map(hex => <button type="button" key={hex} disabled={disabled}
           aria-label={`${label} ${hex}`} title={hex} aria-pressed={selected.toLowerCase() === hex}

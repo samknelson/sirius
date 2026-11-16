@@ -1,4 +1,5 @@
 import type { SystemHelpEntry } from "./index";
+import { editorFormattingDetails } from "./editor-formatting";
 
 export const emailMessageDefaultsHelp: SystemHelpEntry = {
   id: "system:email-message-defaults",
@@ -18,7 +19,8 @@ export const emailMessageDefaultsHelp: SystemHelpEntry = {
     <p>Successful saves affect subsequent sends, including queued work when it is delivered. HTML and plain-text alternatives include the same combined content, in letterhead, body, footer order. Do not copy shared branding into templates or editable message bodies, or it will appear twice. Communication history retains the content and settings used at sending; later edits do not rewrite it.</p>
     <h3>Limitations and common problems</h3>
     <p>Neither block replaces a required subject or body or changes sending permissions, opt-in, allowlists, or provider requirements. Clear both blocks for unbranded delivery. Preview and save errors do not change saved settings; correct the content and try again.</p>
-    <p>For a reversed-out footer, use HTML source with inline background-color: #000000, color: #ffffff, and font-family: Arial, sans-serif on its container. Set color: #ffffff and text-decoration: underline on each link. These styles apply only to the footer, not the message body. Confirm email and website destinations before adding links; do not guess them. Email clients may adjust colors, especially in dark mode, so the browser preview cannot promise identical inbox rendering.</p>
+    <p>For a reversed-out footer, use Background and select its outer Container target, then choose Black. Set the text and each link to white separately; backgrounds do not recolor text for contrast. Confirm email and website destinations before adding links; do not guess them. Email clients may adjust colors, especially in dark mode, so the browser preview cannot promise identical inbox rendering.</p>
+    ${editorFormattingDetails}
   `,
 };
 
@@ -41,6 +43,7 @@ export const postalMessageDefaultsHelp: SystemHelpEntry = {
     <h3>Limitations and common problems</h3>
     <p>Lob-hosted templates and already-rendered remote documents are sent unchanged: the app cannot add letterheads, footers, or page counts to them. Sending permissions, opt-in, allowlists, and provider rules still apply.</p>
     <p>Letterhead content must fit within 6.5 inches wide and 2 inches high; footer content must fit within 6.5 inches wide and 0.75 inches high. The renderer reserves body space, mailing-address/barcode space, and printer clearances. Oversized content, page breaks in branding, or clipped layout content is refused rather than overlapped. Reduce text, font size, spacing, or images and preview again.</p>
+    ${editorFormattingDetails}
   `,
 };
 
@@ -62,5 +65,6 @@ export const composeMessageDefaultsHelp: SystemHelpEntry = {
     <p>The settings in effect when delivery runs apply to individual, bulk, automated, queued, and offline-record paths. Saving or previewing a template does not freeze site-wide settings. Communication history keeps the content and layout settings used for that communication.</p>
     <h3>Limitations and common problems</h3>
     <p>Lob-hosted templates and already-rendered remote documents remain unchanged. Blank defaults add nothing. Branding never replaces a required subject/body or bypasses permissions, opt-in, allowlists, or provider rules. Ask an admin to change site-wide defaults in Email Settings or Postal Settings. If a postal layout is refused, reduce oversized text, images, or table rows and preview again.</p>
+    ${editorFormattingDetails}
   `,
 };

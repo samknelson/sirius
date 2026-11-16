@@ -25,6 +25,7 @@ function EmailStudioFixture() {
   return <>
     <button type="button" onClick={() => setOpen(true)}>Open email editor</button>
     <TemplateStudio open={open} onOpenChange={setOpen} title="Edit email template"
+      fileTarget={{ configId: "worker_public", entityId: "worker-fixture" }}
       description="Changes are kept until you save the template"
       channel="email" contextId="compose-worker"
       fields={[{ key: "subject", label: "Subject", mode: "line" }, { key: "bodyHtml", label: "Body", mode: "html" }]}

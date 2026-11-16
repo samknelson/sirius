@@ -1,5 +1,6 @@
 import type { WidgetProps } from "@rjsf/utils";
 import { Input } from "@/components/ui/input";
+import { FundColorSwatches } from "@/components/ui/fund-color-swatches";
 
 /**
  * Widget for color-string fields. Renders a native color picker plus a
@@ -10,9 +11,12 @@ export function ColorWidget(props: WidgetProps) {
   const { id, value, onChange, disabled, readonly } = props;
   const v = typeof value === "string" && value ? value : "";
   return (
-    <div className="flex items-center gap-2">
+    <div className="space-y-2">
+      <FundColorSwatches label={props.label || "Color"} onChange={onChange} disabled={disabled || readonly} />
+      <div className="flex items-center gap-2">
       <input
         type="color"
+        aria-label={`${props.label || "Color"} custom color`}
         value={v || "#6b7280"}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled || readonly}
@@ -20,6 +24,7 @@ export function ColorWidget(props: WidgetProps) {
         data-testid={`color-${id}`}
       />
       <Input
+        aria-label={`${props.label || "Color"} value`}
         value={v}
         onChange={(e) => onChange(e.target.value || undefined)}
         placeholder="#000000"
@@ -27,6 +32,7 @@ export function ColorWidget(props: WidgetProps) {
         className="font-mono w-32"
         data-testid={`color-text-${id}`}
       />
+      </div>
     </div>
   );
 }

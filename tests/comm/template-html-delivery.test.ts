@@ -89,17 +89,18 @@ describe("imported message HTML delivery contract", () => {
     expect(delivered).not.toMatch(/javascript:|expression\s*\(|<script|onclick|onerror|position:|data:image/i);
   });
 
-  it("does not broaden unrelated HTML fields or plain text", () => {
+  it("keeps ordinary HTML at narrow presentation, not template layout, and leaves plain text alone", () => {
     const generic = { key: "body", syntax: "html" as const };
     expect(prepareAuthoredValue(generic, imported)).toBe(imported);
     expect(shapeRenderedValue(generic, '<p style="color:red">Hi</p><img src="https://example.com/a.png">'))
-      .toBe("<p>Hi</p>");
+      .toBe('<p style="color:red">Hi</p>');
     expect(prepareAuthoredValue(mediumField("sms", "body"), imported)).toBe(imported);
     expect(validateDeliveryFieldSpecs([{ key: "body", syntax: "text", htmlPolicy: "template-html" }]))
       .not.toEqual([]);
     const designed = '<div style="background-color:red"><img src="https://example.com/a.png"><table><tr><td style="padding:8px">Hi</td></tr></table></div>';
     const strict = sanitizeHtml(designed, "authored-document");
-    expect(strict).not.toMatch(/<div|<img|style=|src=/i);
+    expect(strict).not.toMatch(/<img|src=|padding:/i);
+    expect(strict).toContain('<div style="background-color:red">');
     expect(strict).toContain("<table>");
     expect(shapeRenderedValue(generic, designed)).toBe(strict);
   });

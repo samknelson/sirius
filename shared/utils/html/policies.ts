@@ -23,6 +23,8 @@ export interface HtmlSanitizeAllowlist {
   tags?: string[];
   /** Permitted attributes. `undefined` means DOMPurify's defaults. */
   attributes?: string[];
+  /** Narrow presentation declarations validated by the central CSS parser. */
+  presentation?: boolean;
   /**
    * Permitted URI schemes for href/src. Set on every policy that allows
    * links, so a `javascript:` or `data:` href can never survive.
@@ -76,8 +78,9 @@ export const HTML_SANITIZE_POLICIES = {
    */
   "rich-document": {
     description: "Staff-authored body copy with headings, lists, links and tables",
-    tags: RICH_DOCUMENT_TAGS,
-    attributes: RICH_DOCUMENT_ATTR,
+    tags: [...RICH_DOCUMENT_TAGS, "div", "span"],
+    attributes: [...RICH_DOCUMENT_ATTR, "style"],
+    presentation: true,
     uriPattern: SAFE_URI_PATTERN,
   },
 
@@ -88,8 +91,9 @@ export const HTML_SANITIZE_POLICIES = {
    */
   "authored-document": {
     description: "Editor-composed documents rendered back read-only (contracts, banners)",
-    tags: RICH_DOCUMENT_TAGS,
-    attributes: RICH_DOCUMENT_ATTR,
+    tags: [...RICH_DOCUMENT_TAGS, "div", "span"],
+    attributes: [...RICH_DOCUMENT_ATTR, "style"],
+    presentation: true,
     uriPattern: SAFE_URI_PATTERN,
   },
 
@@ -104,7 +108,8 @@ export const HTML_SANITIZE_POLICIES = {
       "b", "i", "em", "strong", "u", "p", "br", "ul", "ol", "li",
       "h1", "h2", "h3", "h4", "h5", "h6", "a", "span", "div",
     ],
-    attributes: ["href", "target", "rel", "class"],
+    attributes: ["href", "target", "rel", "class", "style"],
+    presentation: true,
     uriPattern: SAFE_URI_PATTERN,
   },
 

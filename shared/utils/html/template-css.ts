@@ -56,3 +56,15 @@ export function cleanTemplateStyle(css: string): string {
   return templateDeclarations(css).map(({ property, value, important }) =>
     `${property}:${value}${important ? "!important" : ""}`).join(";");
 }
+
+// Ordinary rich fields keep typography and solid colors, not template layout,
+// hiding/positioning, resources, custom properties, or arbitrary CSS.
+const RICH_PRESENTATION = new Set([
+  "font-family", "font-size", "font-weight", "font-style", "color", "background-color",
+  "text-decoration", "text-align", "line-height", "margin-bottom",
+]);
+
+export function cleanRichPresentation(css: string): string {
+  return templateDeclarations(css).filter(({ property }) => RICH_PRESENTATION.has(property))
+    .map(({ property, value, important }) => `${property}:${value}${important ? "!important" : ""}`).join(";");
+}

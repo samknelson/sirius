@@ -70,9 +70,24 @@ describe("imported template normalization", () => {
 
   it("validates final CSS and does not broaden unrelated document policies", () => {
     expect(normalizeTemplateHtml('<p style="color:{{color}}">X</p>', { preserveTokens: false })).toBe("<p>X</p>");
-    expect(sanitizeHtml('<div style="color:red"><img src="https://example.org/a">X</div>', "authored-document")).toBe("X");
+    expect(sanitizeHtml('<div style="color:red"><img src="https://example.org/a">X</div>', "authored-document")).toBe('<div style="color:red">X</div>');
     expect(sanitizeHtml('<p style="color:red;position:fixed">X</p>', "template-document")).toBe('<p style="color:red">X</p>');
   });
+
+  it.each(["authored-document", "rich-document", "styled-text"] as const)(
+    "retains only validated typography and solid backgrounds in %s", policy => {
+      const source = '<div style="background-color:#241F21;position:fixed;display:none;background-image:url(https://evil.test/a);--x:red">' +
+        '<p style="font-family:Arial,sans-serif;font-size:28px;font-weight:700;color:#ECEAEA;line-height:1.5">' +
+        '<a href="https://example.invalid" style="color:#CC0D12;background-color:expression(alert(1))">Fictional</a></p></div>';
+      const clean = sanitizeHtml(source, policy);
+      expect(clean).toContain("background-color:#241F21");
+      expect(clean).toContain("font-size:28px");
+      expect(clean).toContain("font-weight:700");
+      expect(clean).toContain("color:#CC0D12");
+      expect(clean).not.toMatch(/position|display|background-image|url\(|expression|--x/);
+      expect(sanitizeHtml(clean, policy)).toBe(clean);
+    },
+  );
 
   it("retains html inheritance and safe shorthand formatting", () => {
     const result = normalizeTemplateHtml(`<html><head><style>

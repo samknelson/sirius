@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Bold, Italic, List, ListOrdered, Link, Link2, Type, Code, Clock, Highlighter, Eraser, X } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Link2, Type, Code, Clock, Highlighter, Eraser, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
@@ -19,23 +13,7 @@ import { captureBookmark, restoreBookmark, TemplateEditorHistory } from "./templ
 import { imageFlowNode, moveImageInFlow, moveImageToRange, resizeImageBy, safeDesignUrl, setImageAlignment } from "./template-image-tools";
 import { TemplateImageOverlay } from "./template-image-overlay";
 import { insertAtSelection } from "./template-table-tools";
-
-const SPECIAL_CHARACTERS = [
-  { name: 'Copyright', symbol: '©' },
-  { name: 'Registered', symbol: '®' },
-  { name: 'Trademark', symbol: '™' },
-  { name: 'Bullet', symbol: '•' },
-  { name: 'En dash', symbol: '–' },
-  { name: 'Em dash', symbol: '—' },
-  { name: 'Left quote', symbol: '\u201C' },
-  { name: 'Right quote', symbol: '\u201D' },
-  { name: 'Left single quote', symbol: '\u2018' },
-  { name: 'Right single quote', symbol: '\u2019' },
-  { name: 'Ellipsis', symbol: '…' },
-  { name: 'Section', symbol: '§' },
-  { name: 'Paragraph', symbol: '¶' },
-  { name: 'Degree', symbol: '°' },
-];
+import { applyParagraphPreset, materializeNewTypography } from "./editor-typography";
 
 /**
  * Imperative surface for hosts (e.g. the Template Studio token browser)
@@ -337,6 +315,7 @@ export function SimpleHtmlEditor({
   }, [templateMode, disabled]);
   const toolSelectionLocked = useRef(false);
   const history = useRef(new TemplateEditorHistory());
+  const knownTypography = useRef(new WeakSet<Element>());
   useEffect(() => {
     if (!contextMenu) return;
     const frame = requestAnimationFrame(() => contextMenuRef.current?.querySelector("button")?.focus());
@@ -446,7 +425,7 @@ export function SimpleHtmlEditor({
   useEffect(() => {
     if (editorRef.current && !isFocused && !rawMode) {
       const editor = editorRef.current;
-      if (templateMode && representedDom.current?.node === editor && representedDom.current.value === value) return;
+      if (representedDom.current?.node === editor && representedDom.current.value === value) return;
       const ownEcho = lastEmitted.current === value;
       // An emitted value is only an echo until a host replacement arrives.
       // A later load of the same string must not be mistaken for that old echo.
@@ -459,11 +438,12 @@ export function SimpleHtmlEditor({
       const rendered = templateMode && enableTokens ? protectAttributeTokens(cleaned) : cleaned;
       if (editorRef.current.innerHTML !== rendered) {
         editorRef.current.innerHTML = rendered;
+        knownTypography.current = new WeakSet(editor.querySelectorAll("*"));
         lastRichRangeRef.current = null;
         setSelectedImage(null);
       }
       representedDom.current = { node: editor, value };
-      if (templateMode) {
+      {
         if (!ownEcho) {
           documentGeneration.current++;
           dropPending.current = false;
@@ -474,7 +454,7 @@ export function SimpleHtmlEditor({
         else if (history.current.entries[history.current.index]?.html !== rendered) history.current.push({ html: rendered });
         setSelectionVersion((version) => version + 1);
       }
-      if (templateMode && history.current.index < 0) history.current.reset({ html: rendered });
+      if (history.current.index < 0) history.current.reset({ html: rendered });
     }
   }, [value, isFocused, rawMode, enableTokens, cleanHtml]);
 
@@ -510,7 +490,7 @@ export function SimpleHtmlEditor({
       // only the collapsed selection browsers report after toolbar focus.
       if (toolSelectionLocked.current && sel.getRangeAt(0).collapsed) return;
       lastRichRangeRef.current = sel.getRangeAt(0).cloneRange();
-      if (templateMode) {
+      {
         const entry = history.current.entries[history.current.index];
         if (entry && entry.html === editorRef.current.innerHTML) entry.bookmark = captureBookmark(editorRef.current);
         setSelectionVersion((version) => version + 1);
@@ -519,7 +499,6 @@ export function SimpleHtmlEditor({
   }, [templateMode]);
 
   useEffect(() => {
-    if (!templateMode) return;
     document.addEventListener("selectionchange", saveRichSelection);
     return () => document.removeEventListener("selectionchange", saveRichSelection);
   }, [templateMode, saveRichSelection]);
@@ -567,6 +546,7 @@ export function SimpleHtmlEditor({
 
   const handleInput = (recordHistory = true) => {
     if (disabled || !editorRef.current || composing.current || mutationDepth.current > 0) return;
+    materializeNewTypography(editorRef.current, knownTypography.current);
     let serialized: string;
     if (enableTokens) {
       const clone = editorRef.current.cloneNode(true) as HTMLElement;
@@ -577,7 +557,7 @@ export function SimpleHtmlEditor({
     } else {
       serialized = editorRef.current.innerHTML;
     }
-    if (templateMode && recordHistory) history.current.push({
+    if (recordHistory) history.current.push({
       html: editorRef.current.innerHTML, bookmark: captureBookmark(editorRef.current),
     });
     emit(cleanHtml(restoreAttributeTokens(serialized)));
@@ -593,7 +573,7 @@ export function SimpleHtmlEditor({
     if (saved && selection && editorRef.current?.contains(saved.startContainer)) {
       selection.removeAllRanges();
       selection.addRange(saved);
-    } else if (templateMode) {
+    } else {
       restoreBookmark(editorRef.current);
     }
     saveRichSelection();
@@ -625,6 +605,7 @@ export function SimpleHtmlEditor({
     }
     if (!editorRef.current) return;
     editorRef.current.innerHTML = snapshot.html;
+    knownTypography.current = new WeakSet(editorRef.current.querySelectorAll("*"));
     setSelectedImage(null);
     editorRef.current.focus();
     restoreBookmark(editorRef.current, snapshot.bookmark);
@@ -632,14 +613,15 @@ export function SimpleHtmlEditor({
   };
 
   const execCommand = (command: string, value?: string) => {
-    if (templateMode && (command === "undo" || command === "redo")) {
+    if (command === "undo" || command === "redo") {
       moveHistory(command === "undo" ? -1 : 1);
       return;
     }
     execute(() => {
-      if (templateMode) document.execCommand("styleWithCSS", false, "true");
-      document.execCommand(command, false, value);
-      if (templateMode) document.execCommand("styleWithCSS", false, "false");
+      document.execCommand("styleWithCSS", false, "true");
+      if (command === "formatBlock" && editorRef.current) applyParagraphPreset(editorRef.current, value || "p");
+      else document.execCommand(command, false, value);
+      document.execCommand("styleWithCSS", false, "false");
     });
   };
 
@@ -680,17 +662,15 @@ export function SimpleHtmlEditor({
     contextRange.current = null;
   };
 
-  const handleInsertCharacter = (character: string) => {
-    execCommand('insertHTML', character);
-  };
-
   const toggleRawMode = () => {
     if (disabled) return;
     closeSlash();
     setSelectedImage(null);
     setContextMenu(null);
     if (rawMode) {
-      const next = templateMode ? cleanHtml(rawHtml) : rawHtml;
+      // The textarea owns the user's latest keystroke even when React's
+      // controlled-state render has not committed before a quick mode switch.
+      const next = cleanHtml(rawTextareaRef.current?.value ?? rawHtml);
       emit(next);
       setIsFocused(false);
       setRawMode(false);
@@ -704,7 +684,7 @@ export function SimpleHtmlEditor({
     if (disabled) return;
     const newValue = e.target.value;
     setRawHtml(newValue);
-    if (templateMode) history.current.push({
+    history.current.push({
       html: enableTokens ? protectAttributeTokens(cleanHtml(newValue)) : cleanHtml(newValue),
       source: newValue,
     });
@@ -713,7 +693,7 @@ export function SimpleHtmlEditor({
   };
 
   const handleTemplatePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
-    if (!templateMode || disabled) return;
+    if (disabled) return;
     event.preventDefault();
     const html = event.clipboardData.getData("text/html");
     const text = event.clipboardData.getData("text/plain");
@@ -799,7 +779,7 @@ export function SimpleHtmlEditor({
 
   const handleEditorKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
-    if (templateMode && (e.ctrlKey || e.metaKey) && !e.altKey) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
       const key = e.key.toLowerCase();
       if (key === "z" || key === "y") {
         e.preventDefault();
@@ -1126,9 +1106,9 @@ export function SimpleHtmlEditor({
         else if (containerRef.current?.contains(target)) toolSelectionLocked.current = true;
       }}>
       {/* Toolbar */}
-      {templateMode && !rawMode && (
+      {!rawMode && (
         <TemplateDesignTools editor={editorRef.current} disabled={disabled}
-          mode={templateMode} execute={execute} command={execCommand}
+          mode={templateMode ?? "rich"} execute={execute} command={execCommand}
           selectionVersion={selectionVersion} uploadImage={uploadImage}
           imagePanelRequest={imagePanelRequest}
           undo={() => moveHistory(-1)} redo={() => moveHistory(1)}
@@ -1138,7 +1118,7 @@ export function SimpleHtmlEditor({
           openTokenPicker={enableTokens ? openTokenPicker : undefined}
           testId={testId} />
       )}
-      {(!templateMode || rawMode) && <fieldset disabled={disabled} className={cn("flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0", templateMode && "sticky top-0 z-20 h-[46px] flex-nowrap px-1.5 py-0")}
+      {rawMode && <fieldset disabled={disabled} className={cn("flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0", templateMode && "sticky top-0 z-20 h-[46px] flex-nowrap px-1.5 py-0")}
         onMouseDown={(event) => { if (!rawMode) event.preventDefault(); }}>
         {templateMode && (
           <>
@@ -1156,101 +1136,6 @@ export function SimpleHtmlEditor({
               data-testid={testId ? `${testId}-redo` : undefined}>
               Redo
             </Button>
-          </>
-        )}
-        {!rawMode && (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => execCommand('bold')}
-              title="Bold"
-              data-testid={testId ? `${testId}-bold` : undefined}
-            >
-              <Bold size={16} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => execCommand('italic')}
-              title="Italic"
-              data-testid={testId ? `${testId}-italic` : undefined}
-            >
-              <Italic size={16} />
-            </Button>
-            <div className="w-px h-6 bg-border mx-1" />
-            {templateMode === "postal" && (
-              <Button type="button" variant="ghost" size="sm" disabled={disabled}
-                onClick={() => execCommand("insertHTML", '<div data-template-page-break="true" style="break-before: page;"></div><p><br></p>')}
-                data-testid={testId ? `${testId}-page-break` : undefined}>
-                Insert page break
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => execCommand('insertUnorderedList')}
-              title="Bullet List"
-              data-testid={testId ? `${testId}-ul` : undefined}
-            >
-              <List size={16} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => execCommand('insertOrderedList')}
-              title="Numbered List"
-              data-testid={testId ? `${testId}-ol` : undefined}
-            >
-              <ListOrdered size={16} />
-            </Button>
-            <div className="w-px h-6 bg-border mx-1" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={handleCreateLink}
-              title="Insert Link"
-              data-testid={testId ? `${testId}-link` : undefined}
-            >
-              <Link size={16} />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  title="Special Characters"
-                  data-testid={testId ? `${testId}-special` : undefined}
-                >
-                  <Type size={16} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {SPECIAL_CHARACTERS.map((char) => (
-                  <DropdownMenuItem
-                    key={char.symbol}
-                    onClick={() => handleInsertCharacter(char.symbol)}
-                    data-testid={testId ? `${testId}-char-${char.name.toLowerCase().replace(/\s/g, '-')}` : undefined}
-                  >
-                    <span className="font-mono text-lg mr-2">{char.symbol}</span>
-                    <span className="text-sm">{char.name}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <div className="w-px h-6 bg-border mx-1" />
           </>
         )}
         <Button
@@ -1299,15 +1184,12 @@ export function SimpleHtmlEditor({
           // content preference — same affordance as the raw-HTML textarea.
           style={{
             minHeight, resize: "vertical", overflow: "auto",
-            // A neutral email-safe writing baseline, not serialized into the
-            // template's HTML. Explicit formatting inside a template still wins.
-            ...(templateMode ? { fontFamily: "Arial, sans-serif", fontSize: "14px" } : {}),
+            fontFamily: "Arial, sans-serif", fontSize: "16px", fontWeight: 400,
           }}
           onInput={handleEditorInput}
           onCompositionStart={() => { composing.current = true; }}
           onCompositionEnd={() => { composing.current = false; handleEditorInput(); }}
           onBeforeInput={(event) => {
-            if (!templateMode) return;
             const inputType = (event.nativeEvent as InputEvent).inputType;
             if (inputType === "historyUndo" || inputType === "historyRedo") {
               event.preventDefault();
@@ -1452,7 +1334,8 @@ export function SimpleHtmlEditor({
             onClick={() => { restoreContextRange(); setContextMenu(null); action(); }}>{icon}<span>{label}</span></button>;
         return createPortal(<div ref={contextMenuRef} role="menu" data-template-context-menu aria-label={menuImage ? "Image actions" : "Editor selection actions"}
           className={`${dialog ? "absolute" : "fixed"} z-[120] max-h-[70vh] w-[min(20rem,calc(100vw-16px))] overflow-auto rounded-md border bg-popover p-1 shadow-md`}
-          style={{ left: contextMenu.left - (bounds?.left ?? 0), top: contextMenu.top - (bounds?.top ?? 0), maxWidth: "calc(100vw - 16px)" }}
+          style={{ left: contextMenu.left - (bounds?.left ?? 0), top: contextMenu.top - (bounds?.top ?? 0),
+            maxHeight: Math.min(window.innerHeight * 0.7, window.innerHeight - contextMenu.top - 8), maxWidth: "calc(100vw - 16px)" }}
           onKeyDown={event => {
             if (event.key === "Escape") {
               event.preventDefault();
@@ -1611,7 +1494,7 @@ export function SimpleHtmlEditor({
         }
         [contenteditable] strong,
         [contenteditable] b {
-          font-weight: 600;
+          font-weight: 700;
         }
         [contenteditable] em,
         [contenteditable] i {

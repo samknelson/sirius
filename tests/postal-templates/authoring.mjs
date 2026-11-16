@@ -1,5 +1,102 @@
 import assert from "node:assert/strict";
 
+// Shared authoring boundary exercised against both standard and template modes.
+export async function exerciseFontBackground(page, origin) {
+  await page.goto(`${origin}/editor-fixture`);
+  for (const name of ["fixture-unrelated", "fixture-email"]) {
+    const editor = `[data-testid="${name}"]`;
+    const toolbar = `div:has(> ${editor}) [data-template-design-toolbar]`;
+    const source = () => page.$eval(`[data-testid="${name}-source"]`, el => el.textContent);
+    const clickTool = async label => {
+      let button = await page.$(`${toolbar} [aria-label="${label}"]`);
+      if (!button || !await button.evaluate(el => !!el.getClientRects().length)) {
+        await page.click(`${toolbar} [aria-label="More formatting"]`);
+        button = await page.$(`${toolbar} [aria-label="${label}"]`) || await page.$(`[aria-label="${label}"]`);
+      }
+      await button.click();
+    };
+    const select = async (selector, collapse = false) => page.$eval(selector, (el, collapse) => {
+      el.closest("[contenteditable]").focus();
+      const range = document.createRange(); range.selectNodeContents(el);
+      if (collapse) range.collapse(false);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    }, collapse);
+    const setRaw = async html => {
+      await clickTool("HTML source");
+      await page.focus(`[data-testid="${name}-raw"]`);
+      await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
+      await page.keyboard.sendCharacter(html);
+      await page.click(`[data-testid="${name}-raw-mode"]`);
+    };
+    await page.click(editor); await page.keyboard.sendCharacter("Fictional authoring");
+    assert.match(await source(), /font-family:Arial,sans-serif/);
+    assert.match(await source(), /font-size:16px/);
+    assert.match(await source(), /font-weight:400/);
+    await select(`${editor} p`);
+    for (const [tag, size, weight] of [["h1", "28px", "700"], ["h2", "22px", "700"], ["h3", "18px", "700"], ["p", "16px", "400"]]) {
+      await page.select(`${toolbar} [aria-label="Paragraph"]`, tag);
+      const actual = await page.$eval(`${editor} ${tag}`, el => [getComputedStyle(el).fontSize, getComputedStyle(el).fontWeight]);
+      assert.deepEqual(actual, [size, weight]);
+    }
+    await setRaw('<div style="background-color:#ECEAEA"><div><p><a href="https://example.invalid" style="color:#CC0D12">Fictional footer</a></p><p>Second {{sample}}</p></div></div>');
+    const before = await source();
+    await select(`${editor} p`, true);
+    await clickTool("Background color");
+    const target = '[aria-label="Background target"]';
+    const options = await page.$$eval(`${target} option`, els => els.map(el => [el.value, el.textContent]));
+    assert.equal(options.length, 3, "Only current block and two document containers, never host");
+    await page.select(target, options.at(-1)[0]);
+    await page.click('[aria-label="Background Black #000000"]');
+    assert.equal(await page.$eval(`${editor} > div`, el => el.style.backgroundColor), "rgb(0, 0, 0)");
+    assert.equal(await page.$eval(`${editor} a`, el => el.style.color), "rgb(204, 13, 18)");
+    assert.equal(await page.$eval(editor, el => el.style.backgroundColor), "", "Never style editor host");
+    const black = await source();
+    await page.keyboard.press("Escape");
+    await clickTool("Undo"); assert.equal(await source(), before);
+    await clickTool("Redo"); assert.equal(await source(), black);
+    await clickTool("HTML source"); await page.click(`[data-testid="${name}-raw-mode"]`);
+    assert.equal(await source(), black, "Source/visual retained background and link color");
+    await select(`${editor} p`, true);
+    await clickTool("Background color");
+    assert.match(await page.$eval('[role="status"]', el => el.textContent), /No own background/);
+    await page.click('[aria-label="Background Red #CC0D12"]');
+    await page.select(target, options.at(-1)[0]);
+    const reset = await page.$('button::-p-text(Reset background)'); await reset.click();
+    assert.equal(await page.$eval(`${editor} > div`, el => el.style.backgroundColor), "");
+    assert.equal(await page.$eval(`${editor} p`, el => el.style.backgroundColor), "rgb(204, 13, 18)");
+    await page.keyboard.press("Escape");
+    // A range spanning two paragraphs reports mixed own colors and applies to
+    // those blocks only, never their containing footer or the editor host.
+    await page.$eval(editor, el => {
+      el.focus();
+      const paragraphs = el.querySelectorAll("p");
+      const range = document.createRange(); range.setStartBefore(paragraphs[0]); range.setEndAfter(paragraphs[1]);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await clickTool("Background color");
+    assert.match(await page.$eval('[role="status"]', el => el.textContent), /Mixed explicit backgrounds/);
+    await page.click('[aria-label="Background Light Grey #ECEAEA"]');
+    assert.deepEqual(await page.$$eval(`${editor} p`, els => els.map(el => el.style.backgroundColor)), ["rgb(236, 234, 234)", "rgb(236, 234, 234)"]);
+    assert.equal(await page.$eval(`${editor} > div`, el => el.style.backgroundColor), "");
+    await page.keyboard.press("Escape");
+    await setRaw('<p style="font-size:48px;font-weight:700"><b><span style="font-family:Georgia;font-size:32px;font-weight:900">Styled heading</span></b></p>');
+    await select(`${editor} p`, true);
+    await page.select(`${toolbar} [aria-label="Paragraph"]`, "h1");
+    await page.select(`${toolbar} [aria-label="Paragraph"]`, "p");
+    assert.deepEqual(await page.$eval(`${editor} p span`, el => [getComputedStyle(el).fontSize, getComputedStyle(el).fontWeight, getComputedStyle(el).fontFamily]), ["16px", "400", "Arial, sans-serif"]);
+    await page.setViewport({ width: 360, height: 900 });
+    await page.click(`${toolbar} [aria-label="More formatting"]`);
+    await page.select('[aria-label="Paragraph"]', "h2");
+    assert.equal(await page.$eval(`${editor} h2`, el => el.style.fontSize), "22px");
+    await page.keyboard.press("Escape");
+    assert.ok(await page.$(`${toolbar} [aria-label="Background color"]`));
+    await page.setViewport({ width: 1440, height: 1100 });
+    console.log(`PASS ${name}: serialized presets, full/compact Normal reset, nested background target, link preservation, reset/inheritance, undo/redo and source round trip`);
+  }
+}
+
 // Real editor commands only. DOM ranges simulate mouse selection, never mutations.
 export async function exerciseAuthoring(page, origin) {
   const id = value => `[data-testid="${value}"]`;

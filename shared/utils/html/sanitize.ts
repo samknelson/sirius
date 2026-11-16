@@ -10,7 +10,7 @@
  * pulls jsdom under Node. Boot-path code imports `./escape` directly.
  */
 import DOMPurify from "isomorphic-dompurify";
-import { templateDeclarations } from "./template-css";
+import { templateDeclarations, cleanRichPresentation } from "./template-css";
 import { decodeHtmlEntities } from "./entities";
 import {
   HTML_SANITIZE_POLICIES,
@@ -76,6 +76,15 @@ export function sanitizeHtml(
 
   if (policy === "template-document") {
     return sanitizeTemplateBody(html);
+  }
+  if (allowlist.presentation) {
+    const root = DOMPurify.sanitize(html, { ...config, RETURN_DOM: true }) as HTMLElement;
+    root.querySelectorAll("[style]").forEach(el => {
+      const style = cleanRichPresentation(el.getAttribute("style")!);
+      if (style) el.setAttribute("style", style);
+      else el.removeAttribute("style");
+    });
+    return root.innerHTML;
   }
   return DOMPurify.sanitize(html, config);
 }

@@ -5,12 +5,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Braces, ChevronDown, Columns2, Highlighter, ImageIcon, Italic, Link2, List, ListOrdered, MoreHorizontal, MousePointer2, Redo2, Table2, Type, Underline, Undo2 } from "lucide-react";
 import { TemplateImageTools, safeDesignUrl } from "./template-image-tools";
 import { clearTemplateFormatting, removeTemplateLink } from "./template-text-tools";
+import { FundColorSwatches } from "./fund-color-swatches";
+import { EditorBackgroundTools } from "./editor-background-tools";
 import { editTable, insertAtSelection, makeTable, tableRows, TEMPLATE_FONTS, TEMPLATE_SIZES, TEMPLATE_TEXT_COLORS, TEMPLATE_CELL_COLORS, type TableOperation } from "./template-table-tools";
 
 export interface TemplateDesignToolsProps {
   editor: HTMLDivElement | null;
   disabled: boolean;
-  mode: "email" | "postal";
+  mode: "email" | "postal" | "rich";
   execute: (mutation: () => void) => void;
   command: (name: string, value?: string) => void;
   selectionVersion: number;
@@ -48,7 +50,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const imagePanel = useRef<HTMLDetailsElement>(null);
   const [format, setFormat] = useState<Record<string, string>>({
-    block: "p", fontFamily: "Arial, sans-serif", fontSize: "14px",
+    block: "p", fontFamily: "Arial, sans-serif", fontSize: "16px",
   });
   const [active, setActive] = useState<Record<string, boolean | "mixed">>({});
   const [error, setError] = useState("");
@@ -82,7 +84,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     if (!toolbar) return;
     const update = () => {
       setCompact(toolbar.clientWidth < 730);
-      setUltraCompact(toolbar.clientWidth < 375);
+      setUltraCompact(toolbar.clientWidth < 460);
     };
     const observer = new ResizeObserver(update);
     observer.observe(toolbar);
@@ -320,6 +322,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       if (/^#[\da-f]{6}$/i.test(color)) style(property, color);
     };
     return <div className="space-y-2">
+      <FundColorSwatches label={highlight ? "Highlight" : "Text color"} onChange={apply} disabled={disabled} />
       <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={highlight ? "Highlight presets" : "Text color presets"}>
         {presets.map(color => <button key={color} type="button" aria-label={`Apply ${highlight ? "highlight" : "text color"} ${color}`} title={color}
           className="h-7 w-7 rounded border" style={{ backgroundColor: color }} onClick={() => apply(color)} />)}
@@ -404,7 +407,8 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
             <label className="text-xs">Padding (px)<Input aria-label="Cell padding" value={padding} onChange={e => setPadding(e.target.value)} /></label>
             <label className="text-xs">Border (px)<Input aria-label="Cell border" value={border} onChange={e => setBorder(e.target.value)} /></label>
           </div>
-          <label className="text-xs">Cell background<input aria-label="Cell background" type="color" value={toHex(background)} onChange={e => setBackground(e.target.value)} /></label>
+           <FundColorSwatches label="Cell background" onChange={setBackground} disabled={disabled} />
+           <label className="text-xs">Cell background<input aria-label="Cell background" type="color" value={toHex(background)} onChange={e => setBackground(e.target.value)} /></label>
           {select("Vertical alignment", vertical, [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]], setVertical)}
           <Button type="button" size="sm" disabled={!cell} onClick={() => run(() => {
             if (!cell || !editor?.contains(cell)) throw new Error("Select a table cell.");
@@ -423,7 +427,8 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   const buttonMenu = <div className="space-y-2">
           <label className="block text-xs">Button text<Input aria-label="Button text" value={buttonText} onChange={e => setButtonText(e.target.value)} /></label>
           <label className="block text-xs">Button link<Input aria-label="Button link" value={buttonLink} onChange={e => setButtonLink(e.target.value)} /></label>
-          <label className="text-xs">Button background<input aria-label="Button background" type="color" value={buttonColor} onChange={e => setButtonColor(e.target.value)} /></label>
+           <FundColorSwatches label="Button background" onChange={setButtonColor} disabled={disabled} />
+           <label className="text-xs">Button background<input aria-label="Button background" type="color" value={buttonColor} onChange={e => setButtonColor(e.target.value)} /></label>
           <Button type="button" size="sm" onClick={() => run(() => {
             if (!safeDesignUrl(buttonLink)) throw new Error("Enter a valid http(s), mailto or tel button link.");
             if (!editor) return;
@@ -460,22 +465,22 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       <summary data-testid={testId ? `${testId}-link` : undefined} className={insertRow}><Link2 className="h-4 w-4" />Link</summary>
       <div className="pb-2">{linkMenu}</div>
     </details>
-    <details ref={imagePanel} className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+    {mode !== "rich" && <details ref={imagePanel} className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary className={insertRow}><ImageIcon className="h-4 w-4" />Image</summary>
        <div className="pb-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} uploadImage={uploadImage} selectionVersion={selectionVersion} /></div>
-    </details>
-    <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+    </details>}
+    {mode !== "rich" && <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary className={insertRow}><Table2 className="h-4 w-4" />Table</summary>
       <div className="pb-2">{tableMenu}</div>
-    </details>
+    </details>}
     {mode === "email" && <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary className={insertRow}><Columns2 className="h-4 w-4" />Layout</summary>
       <div className="pb-2">{layoutMenu}</div>
     </details>}
-    <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+    {mode !== "rich" && <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary className={insertRow}><MousePointer2 className="h-4 w-4" />Button</summary>
       <div className="pb-2">{buttonMenu}</div>
-    </details>
+    </details>}
     {openTokenPicker && <Button type="button" size="sm" variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm font-normal" onClick={openTokenPicker}><Braces className="h-4 w-4" />Merge field</Button>}
     <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
       <summary data-testid={testId ? `${testId}-special` : undefined} className={insertRow}><Type className="h-4 w-4" />Special characters</summary>
@@ -509,6 +514,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       disabled={disabled || !canUndo} onClick={undo} data-testid={testId ? `${testId}-undo` : undefined}><Undo2 className="h-4 w-4" /></Button>}
     {redo && <Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)"
       disabled={disabled || !canRedo} onClick={redo} data-testid={testId ? `${testId}-redo` : undefined}><Redo2 className="h-4 w-4" /></Button>}
+    <EditorBackgroundTools editor={editor} disabled={disabled} execute={execute} selectionVersion={selectionVersion} />
     <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
     {!compact && select("Paragraph", format.block, paragraphOptions, value => command("formatBlock", value))}
     {!compact && select("Font", format.fontFamily?.replaceAll('"', ""), fontOptions, value => style("font-family", value))}

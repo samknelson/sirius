@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import puppeteer from "puppeteer-core";
-import { exerciseAuthoring } from "./authoring.mjs";
+import { exerciseAuthoring, exerciseFontBackground } from "./authoring.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const executablePath = process.env.CHROMIUM_PATH || [
@@ -125,7 +125,7 @@ try {
   await bounded("Vite listen", server.listen());
   const origin = `http://127.0.0.1:${server.config.server.port}`;
   console.log(`Vite listening at ${origin}; launching ${executablePath}`);
-  browser = await bounded("Chromium launch", puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-background-networking"] }));
+  browser = await bounded("Chromium launch", puppeteer.launch({ executablePath, headless: true, pipe: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-background-networking"] }));
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 1100 });
    page.setDefaultTimeout(30000);
@@ -143,13 +143,13 @@ try {
       if (url.href === managedImageUrl) return await request.respond({ status: 200, contentType: "image/png", body: imageBytes });
       assert.equal(url.origin, origin, `External network forbidden: ${url.href}`);
       if (url.pathname.startsWith("/api/")) {
-        if (url.pathname === "/api/template-assets" && request.method() === "POST") {
+        if (["/api/entity-files/worker_public/worker-fixture", "/api/entity-files/bulk_message/bulk-fixture"].includes(url.pathname) && request.method() === "POST") {
           assert.match(request.headers()["content-type"], /multipart\/form-data/);
           uploads++;
           if (uploadDelayMs) await new Promise(resolve => setTimeout(resolve, uploadDelayMs));
           if (uploadFailure) return await request.respond({ status: 503, contentType: "application/json",
             body: JSON.stringify({ message: "Template image storage is unavailable." }) });
-          return await request.respond({ status: 201, contentType: "application/json", body: JSON.stringify({ url: managedImageUrl }) });
+          return await request.respond({ status: 201, contentType: "application/json", body: JSON.stringify({ publicUrl: managedImageUrl }) });
         }
         // PDF generation is outside this regression. Serve an inert local PDF, never a provider.
         if (url.pathname === "/api/comm/postal/preview" && request.method() === "POST") {
@@ -199,6 +199,7 @@ try {
     await click(id);
     await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
     await page.keyboard.sendCharacter(text);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
   };
   const dropImage = async (id, mime = "image/png", paragraph = 0) => page.$eval(sel(id), (el, { bytes, mime, paragraph }) => {
     const text = el.querySelectorAll("p")[paragraph]?.firstChild;
@@ -437,6 +438,7 @@ try {
     await replaceByTyping("studio-editor-bodyHtml-raw", content.bodyHtml);
     await click("studio-editor-bodyHtml-raw-mode");
     await expectFields(content);
+    await page.waitForFunction(() => document.querySelector('[data-testid="studio-editor-bodyHtml-undo"]')?.disabled === false);
     assert.equal(await page.$eval(sel("studio-editor-bodyHtml-undo"), el => el.disabled), false);
     await click("button-load-template-saved-postal");
     await click("button-load-template-confirm");
@@ -522,8 +524,9 @@ try {
   await click("fixture-unrelated-raw-mode");
   await replaceByTyping("fixture-unrelated-raw", '<p style="color:red">Ordinary editor</p>');
   await click("fixture-unrelated-raw-mode");
-  assert.equal(await page.$eval(`${sel("fixture-unrelated")} p`, el => el.getAttribute("style")), null);
+  assert.equal(await page.$eval(`${sel("fixture-unrelated")} p`, el => el.style.color), "red");
   console.log("PASS imported layout, source/apply, attribute tokens, selection paste/toolbar, page break and local save/reopen; unrelated editor unchanged");
+  await exerciseFontBackground(page, origin);
   console.log("Opening one-off compose");
   const toolbarLayoutFailures = await exerciseAuthoring(page, origin);
   await page.goto(`${origin}/workers/worker-fixture/comm/send-postal`);

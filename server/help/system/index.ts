@@ -5,6 +5,7 @@ import { oneoffHelp } from "./oneoff";
 import { ediWizardTerminationHelp } from "./edi-termination-guidance";
 import { trustProvidersHelp } from "./trust-providers";
 import { trustBenefitColorOptionsHelp, trustBenefitColorSelectionHelp } from "./trust-benefit-colors";
+import { richEditorFormattingHelp } from "./editor-formatting";
 import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
 import { adminUserPermissionsHelp } from "./admin-user-permissions";
 import { emailMessageDefaultsHelp, postalMessageDefaultsHelp, composeMessageDefaultsHelp } from "./message-defaults";
@@ -45,6 +46,7 @@ export interface SystemHelpEntry {
 export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
+  richEditorFormattingHelp,
   maskModeHelp,
   workerPaymentChooserHelp,
   onlineCheckoutHelp,

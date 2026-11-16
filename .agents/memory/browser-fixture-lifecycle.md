@@ -73,3 +73,9 @@ Wait for a closed Radix popover's portal to disappear before reopening the same 
 **Why:** Rapid Chromium close/reopen actions can target the exiting portal; a group-selection click then appears to succeed while leaving the selection unchanged, even though the control's behavior is correct.
 
 **How to apply:** After Escape, wait for the popper wrapper to become hidden before the next trigger click. Keep the state assertion; do not weaken it to work around animation timing.
+
+Allow controlled-input updates to commit before a fixture's programmatic mode-switch click.
+
+**Why:** Back-to-back Chromium text insertion and synthetic `.click()` calls intermittently switched a rich editor from source mode using the previous input value. Waiting only for unchanged surrounding fields did not establish input readiness.
+
+**How to apply:** After replacing controlled source text, allow an animation frame before the next synthetic action and keep exact content/history assertions. Production mode switches should read the latest textarea value rather than assuming a pending controlled render has committed.
