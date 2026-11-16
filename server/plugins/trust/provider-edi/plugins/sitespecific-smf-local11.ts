@@ -10,7 +10,7 @@ import {
   registerTrustProviderEdiPlugin,
   type TrustProviderEdiContext,
 } from "../registry";
-import { str } from "../base";
+import { str, uppercaseEdiText } from "../base";
 import type { JsonSchema } from "@shared/json-schema-form";
 
 /**
@@ -199,7 +199,7 @@ registerTrustProviderEdiPlugin({
       out.push({
         pk: r.id,
         workerSsn: r.workerSsn ?? "",
-        workerName: r.workerName ?? "",
+        workerName: uppercaseEdiText(r.workerName) ?? "",
         workerId: r.workerId,
         employerName: r.employerName ?? "",
         employerCode: r.employerCode ?? "",

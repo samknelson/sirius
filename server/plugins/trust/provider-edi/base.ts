@@ -338,6 +338,23 @@ export interface EdiPerson {
   phoneNumber: string | null;
 }
 
+/** EDI-only casing; preserve absent/empty values and never mutate source contacts. */
+export function uppercaseEdiText(value: string | null): string | null {
+  return value == null ? value : value.toUpperCase();
+}
+
+function normalizeEdiPerson<T extends Pick<EdiPerson, "givenName" | "familyName" | "middleName" | "email">>(
+  person: T,
+): T {
+  return {
+    ...person,
+    givenName: uppercaseEdiText(person.givenName),
+    familyName: uppercaseEdiText(person.familyName),
+    middleName: uppercaseEdiText(person.middleName),
+    email: uppercaseEdiText(person.email),
+  };
+}
+
 export interface EdiDependent extends EdiPerson {
   relationId: string;
   /** Relation-type Sirius ID (e.g. SP/DP/C/QMSCO). */
@@ -617,7 +634,7 @@ export async function buildMemberUnits(
       for (const dep of depRows) {
         if (seenDepWorkers.has(dep.depWorkerId)) continue;
         seenDepWorkers.add(dep.depWorkerId);
-        dependents.push({
+        dependents.push(normalizeEdiPerson({
           relationId: dep.relationId!,
           relationSiriusId: dep.relationSiriusId ?? null,
           ssn: dep.ssn,
@@ -631,7 +648,7 @@ export async function buildMemberUnits(
           genderCode: dep.genderCode,
           postal: await primaryPostal(dep.contactId),
           phoneNumber: await primaryPhone(dep.contactId),
-        });
+        }));
       }
 
       units.push({
@@ -639,11 +656,11 @@ export async function buildMemberUnits(
         benefitSiriusId: siriusByBenefitId.get(wmb.benefitId) ?? null,
         isCobra: cobraEmployerIds.has(wmb.employerId),
         coverageStartYmd: coverageStartFor(wmb.workerId, wmb.year, wmb.month),
-        subscriber: {
+        subscriber: normalizeEdiPerson({
           ...subscriber,
           postal: subscriberPostal,
           phoneNumber: subscriberPhone,
-        },
+        }),
         dependents,
       });
     }

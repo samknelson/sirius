@@ -16,6 +16,49 @@ import {
 import type { LegacyLayout } from "./legacy-layouts";
 
 /**
+ * Script only the read results, not buildMemberUnits or the provider mappers.
+ * The real shared assembly and serializers run against mixed-case contacts.
+ * No write API is offered, and unexpected/missing reads fail the fixture.
+ */
+export function ediReadFixture(results: readonly (readonly unknown[])[]): {
+  ctx: TrustProviderEdiContext;
+  assertReadsConsumed(): void;
+} {
+  let next = 0;
+  const db = {
+    select() {
+      if (next >= results.length) throw new Error("Unexpected EDI fixture read");
+      const rows = results[next++];
+      const chain = {
+        from: () => chain,
+        where: () => chain,
+        innerJoin: () => chain,
+        leftJoin: () => chain,
+        orderBy: () => chain,
+        limit: () => chain,
+        then: (resolve: (value: readonly unknown[]) => unknown) =>
+          Promise.resolve(rows).then(resolve),
+      };
+      return chain;
+    },
+  };
+  const ctx = {
+    configId: "fixture-config",
+    configData: {},
+    providerId: null,
+    sftpClientId: null,
+    input: { asOfDate: "2026-10-01" },
+    storage: { readOnly: { query: (read: (db: unknown) => unknown) => read(db) } },
+  } as unknown as TrustProviderEdiContext;
+  return {
+    ctx,
+    assertReadsConsumed() {
+      if (next !== results.length) throw new Error(`EDI fixture used ${next}/${results.length} reads`);
+    },
+  };
+}
+
+/**
  * Every registered EDI plugin, ignoring component gating — a plugin behind a
  * disabled component still produces files elsewhere and still has to conform.
  */

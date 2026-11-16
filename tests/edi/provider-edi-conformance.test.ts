@@ -16,9 +16,12 @@
  * transcribed from the legacy PHP generators, not from the plugins.
  */
 import { describe, expect, it } from "vitest";
+import { parse } from "csv-parse/sync";
+import { buildMemberUnits } from "../../server/plugins/trust/provider-edi/base";
 import { LEGACY_LAYOUTS } from "./fixtures/legacy-layouts";
 import {
   encoderFor,
+  ediReadFixture,
   fieldSpans,
   padCell,
   registeredEdiPlugins,
@@ -26,6 +29,133 @@ import {
 } from "./fixtures/harness";
 
 const plugins = registeredEdiPlugins();
+
+describe("EDI-only personal field casing through every registered feed", () => {
+  for (const plugin of plugins) {
+    for (const blank of [null, ""] as const) {
+      it(`${plugin.id} uppercases mixed-case people and preserves ${JSON.stringify(blank)} behavior`, async () => {
+        const subscriber = Object.freeze({
+          contactId: "sub-contact", workerSiriusId: "1234", ssn: "123456789",
+          givenName: 'aNa,"Ann"', familyName: "deLaCruz".repeat(6),
+          middleName: "joAnne", email: "aNa.Example@Example.com",
+          birthDate: "1980-01-02", genderCode: "F",
+        });
+        const dependent = Object.freeze({
+          ...subscriber, contactId: "dep-contact", workerSiriusId: "5678",
+          givenName: "eLi", familyName: "McKay", middleName: "raE",
+          email: "eLi.Example@Example.com",
+          depWmbId: "1-dep-wmb", depWorkerId: "dep-worker", sourceRelationId: "rel",
+          relationId: "rel", subscriberWorkerId: "sub-worker", relationSiriusId: "SP",
+          benefitId: "benefit", year: 2026, month: 10,
+        });
+        const missing = Object.freeze({
+          ...dependent, depWmbId: "2-blank-wmb", depWorkerId: "blank-worker",
+          contactId: "blank-contact", relationId: "blank-rel",
+          givenName: blank, familyName: blank, middleName: blank, email: blank,
+        });
+        const qmsco = Object.freeze({
+          ...missing, depWmbId: "3-qmsco-wmb", depWorkerId: "qmsco-worker",
+          contactId: "qmsco-contact", relationId: "qmsco-rel", relationSiriusId: "QMSCO",
+        });
+        const postal = Object.freeze({
+          street: "12 Mixed Case St", city: "Los Angeles", state: "Ca", postalCode: "90001",
+        });
+        const local11 = plugin.id.endsWith("-local11");
+        const hours = Object.freeze({
+          id: "wmb", workerName: 'aNa,"Ann" deLaCruz', workerSsn: subscriber.ssn,
+          workerId: "sub-worker", employerName: "Mixed Case Employer", employerCode: "Emp",
+          hoursYear: 2026, hoursMonth: 10, hoursAmt: 123, hoursType: "Regular",
+        });
+        const needsExtraRead = /-(healthnet|delta|expressscripts|carelon)$/.test(plugin.id);
+        const fixture = ediReadFixture(local11 ? [[hours]] : [
+          [{ id: "wmb", workerId: "sub-worker", benefitId: "benefit", employerId: "employer", year: 2026, month: 10 }],
+          [], // COBRA employers
+          [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
+          [{ workerId: "sub-worker", year: 2026, month: 10 }],
+          [dependent, missing, qmsco],
+          [subscriber], [postal], [{ phoneNumber: "2135550100" }],
+          [postal], [], [postal], [], [postal], [],
+          ...(needsExtraRead ? [[]] : []),
+        ]);
+        // Check the shared model as well as the real provider mapper/serializer.
+        // A fresh fixture is needed because scripted reads are consumed once.
+        if (!local11) {
+          const modelFixture = ediReadFixture([
+            [{ id: "wmb", workerId: "sub-worker", benefitId: "benefit", employerId: "employer", year: 2026, month: 10 }],
+            [], [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
+            [], [dependent, missing, qmsco],
+            [subscriber], [postal], [], [postal], [], [postal], [], [postal], [],
+          ]);
+          const [unit] = await buildMemberUnits(["wmb"], modelFixture.ctx);
+          expect(unit.subscriber).toMatchObject({
+            givenName: 'ANA,"ANN"', middleName: "JOANNE", email: "ANA.EXAMPLE@EXAMPLE.COM",
+            postal, genderCode: "F", workerSiriusId: "1234",
+          });
+          expect(unit.dependents.find(d => d.relationId === "blank-rel")).toMatchObject({
+            givenName: blank, familyName: blank, middleName: blank, email: blank,
+          });
+          modelFixture.assertReadsConsumed();
+        }
+        const rows = await plugin.processBatch(["wmb"], fixture.ctx);
+        fixture.assertReadsConsumed();
+        const esi = plugin.id.endsWith("-expressscripts");
+        expect(rows).toHaveLength(local11 ? 1 : esi ? 3 : 4);
+        for (const [i, row] of rows.entries()) {
+          const source = i === 0 ? subscriber : i === 1 ? dependent : missing;
+          const expected: Record<string, string> = local11
+            ? { workerName: 'ANA,"ANN" DELACRUZ' }
+            : {
+                firstName: source.givenName?.toUpperCase() ?? "",
+                lastName: source.familyName?.toUpperCase() ?? "",
+                middleName: source.middleName?.toUpperCase() ?? "",
+                middleInitial: (source.middleName?.toUpperCase() ?? "").slice(0, 1),
+                subscriberName: 'ANA,"ANN" ' + subscriber.familyName.toUpperCase(),
+                memberName: [source.givenName, source.familyName].filter(Boolean).join(" ").toUpperCase(),
+                email: source.email?.toUpperCase() ??
+                  (plugin.id.endsWith("-hinge") && i === 2 ? "ANA.EXAMPLE@EXAMPLE.COM" : ""),
+              };
+          // Empty strings also trigger Hinge's ordinary-dependent fallback.
+          if (plugin.id.endsWith("-hinge") && i === 2) expected.email = "ANA.EXAMPLE@EXAMPLE.COM";
+          for (const key of Object.keys(expected)) {
+            if (key in row) expect(row[key], key).toBe(expected[key]);
+          }
+          const encoded = plugin.encodeRow(row, fixture.ctx);
+          const expectedRow = { ...row, ...expected };
+          if (plugin.csvFields) {
+            const cells = parse(encoded)[0] as string[];
+            expect(cells).toEqual(plugin.csvFields!.map(f => f.get?.(expectedRow) ?? ""));
+            if (i === 0) expect(encoded).toContain('"ANA,""ANN""');
+          } else {
+            // Legacy pins cover Kaiser, HealthNet and Delta. Other feeds still
+            // get casing/structural checks using their declared layout here;
+            // the separate fixture-inventory test continues to expose that gap.
+            const layout = LEGACY_LAYOUTS[plugin.id] ?? {
+              totalWidth: plugin.ediFields.reduce((sum, f) => sum + f.width, 0),
+              fields: plugin.ediFields.map(f => [f.name, f.width] as const),
+            };
+            expect(encoded).toHaveLength(layout.totalWidth);
+            for (const [j, span] of fieldSpans(layout).entries()) {
+              const field = plugin.ediFields[j];
+              expect(encoded.slice(span.start, span.start + span.width), span.name)
+                .toBe(padCell(field.get?.(expectedRow) ?? "", span.width, field.align));
+            }
+          }
+          if (local11) {
+            expect(row.employerName).toBe("Mixed Case Employer");
+            expect(row.hoursType).toBe("Regular");
+          } else {
+            expect(row.city).toBe("Los Angeles");
+            if ("street" in row) expect(row.street).toBe(postal.street);
+          }
+        }
+        // Frozen source records also make accidental in-place normalization throw.
+        expect(subscriber.email).toBe("aNa.Example@Example.com");
+        expect(dependent.givenName).toBe("eLi");
+        expect(hours.workerName).toBe('aNa,"Ann" deLaCruz');
+      });
+    }
+  }
+});
 
 describe("every registered EDI provider has an expected layout", () => {
   it("at least one provider is registered", () => {
