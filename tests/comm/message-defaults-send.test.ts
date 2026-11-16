@@ -139,7 +139,7 @@ describe("shared delivery boundaries and effective history snapshots", () => {
   beforeEach(() => {
     state.records.length = state.details.length = 0;
     state.defaults.clear();
-    state.defaults.set("message_defaults:email", { letterheadHtml: "<p>EMAILBRAND</p>" });
+    state.defaults.set("message_defaults:email", { letterheadHtml: "<p>EMAILBRAND</p>", footerHtml: "<p>EMAILFOOTER</p>" });
     state.defaults.set("message_defaults:postal", { letterheadHtml: "<p>POSTALBRAND</p>", footerHtml: "<p>FOOTER</p>", showPageCount: true });
     state.optin = state.allowlist = true; state.mode = "test";
     vi.clearAllMocks();
@@ -150,8 +150,10 @@ describe("shared delivery boundaries and effective history snapshots", () => {
     expect((await sendEmail({ ...email, sendOffline: offline })).success).toBe(true);
     const detail = state.details[0];
     expect(detail.bodyHtml.match(/EMAILBRAND/g)).toHaveLength(1);
+    expect(detail.bodyHtml.match(/EMAILFOOTER/g)).toHaveLength(1);
+    expect(detail.bodyHtml).toMatch(/EMAILBRAND[\s\S]*BODY[\s\S]*EMAILFOOTER/);
     expect(detail.bodyText).toBe(htmlToPlainText(detail.bodyHtml));
-    expect(detail.data.messageDefaults).toEqual({ letterheadHtml: "<p>EMAILBRAND</p>" });
+    expect(detail.data.messageDefaults).toEqual({ letterheadHtml: "<p>EMAILBRAND</p>", footerHtml: "<p>EMAILFOOTER</p>" });
     if (offline) expect(state.emailProvider).not.toHaveBeenCalled();
     else expect(state.emailProvider).toHaveBeenCalledWith(expect.objectContaining({ html: detail.bodyHtml, text: detail.bodyText }));
     state.defaults.set("message_defaults:email", { letterheadHtml: "<p>LATERBRAND</p>" });
@@ -159,6 +161,8 @@ describe("shared delivery boundaries and effective history snapshots", () => {
     expect(state.details[1].bodyHtml).toContain("LATERBRAND");
     expect(detail.bodyHtml).not.toContain("LATERBRAND");
     expect(detail.data.messageDefaults.letterheadHtml).toBe("<p>EMAILBRAND</p>");
+    expect(detail.data.messageDefaults.footerHtml).toBe("<p>EMAILFOOTER</p>");
+    expect(state.details[1].bodyHtml).not.toContain("EMAILFOOTER");
     expect(email.bodyHtml).toBe("<p>BODY</p>");
   });
 
@@ -166,6 +170,7 @@ describe("shared delivery boundaries and effective history snapshots", () => {
     expect((await sendEmail({ ...email, bodyHtml: undefined, bodyText: "SYSTEM <notice>\nNext" })).success).toBe(true);
     expect(state.details[0].bodyHtml).toContain("SYSTEM &lt;notice&gt;<br>Next");
     expect(state.details[0].bodyText).toContain("EMAILBRAND");
+    expect(state.details[0].bodyText).toContain("EMAILFOOTER");
     for (const request of [{ ...email, subject: "" }, { ...email, bodyHtml: "" }]) {
       expect(await sendEmail(request)).toMatchObject({ success: false, errorCode: "VALIDATION_ERROR" });
     }
@@ -227,6 +232,7 @@ describe("shared delivery boundaries and effective history snapshots", () => {
     expect((await deliverEmail(bulkStorage, "bulk", "contact", [], undefined, [], offline)).success).toBe(true);
     expect((await deliverPostal(bulkStorage, "bulk", "contact", [], undefined, [], offline)).success).toBe(true);
     expect(state.details[0].bodyHtml.match(/EMAILBRAND/g)).toHaveLength(1);
+    expect(state.details[0].bodyHtml.match(/EMAILFOOTER/g)).toHaveLength(1);
     expect(state.details[1].body.match(/POSTALBRAND/g)).toHaveLength(1);
     expect(emailSource.bodyHtml).toBe("<p>BULKBODY</p>");
     expect(postalSource.bodyHtml).toBe("<p>BULKLETTER</p>");
@@ -240,6 +246,7 @@ describe("shared delivery boundaries and effective history snapshots", () => {
     expect(state.postalProvider).toHaveBeenCalledOnce();
     expect(state.details[0].bodyText).toContain("EMAILBRAND");
     expect(state.details[0].bodyText).toContain("AUTOMATED TEXT");
+    expect(state.details[0].bodyHtml.match(/EMAILFOOTER/g)).toHaveLength(1);
     expect(state.details[1].body).toContain("POSTALBRAND");
     expect(state.details[1].body).toContain("AUTOMATED LETTER");
     expect(state.details[1].data.messageDefaults.showPageCount).toBe(true);

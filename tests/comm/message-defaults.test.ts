@@ -86,13 +86,13 @@ describe("site-wide message defaults", () => {
   it("defaults to empty, independently persists both media, and clearing never touches provider/unrelated settings", async () => {
     saved.set("service_config:email", { defaultProvider: "sendgrid", providers: {} });
     saved.set("other", { keep: true });
-    expect(await getEmailDefaults()).toEqual({ letterheadHtml: "" });
+    expect(await getEmailDefaults()).toEqual({ letterheadHtml: "", footerHtml: "" });
     expect(await getPostalDefaults()).toEqual({ letterheadHtml: "", footerHtml: "", showPageCount: false });
     expect((await call("email", "PUT", { letterheadHtml: "<b>Email brand</b>" })).status).toBe(200);
     expect((await call("postal", "PUT", { letterheadHtml: "<b>Postal brand</b>", footerHtml: "<p>Footer</p>", showPageCount: true })).status).toBe(200);
     // Provider changes do not change either brand.
     saved.set("service_config:email", { defaultProvider: "local", providers: {} });
-    expect(await (await call("email")).json()).toEqual({ letterheadHtml: "<b>Email brand</b>" });
+    expect(await (await call("email")).json()).toEqual({ letterheadHtml: "<b>Email brand</b>", footerHtml: "" });
     expect(await (await call("postal")).json()).toEqual({ letterheadHtml: "<b>Postal brand</b>", footerHtml: "<p>Footer</p>", showPageCount: true });
     expect((await call("email", "PUT", { letterheadHtml: "" })).status).toBe(200);
     expect((await getPostalDefaults()).letterheadHtml).toBe("<b>Postal brand</b>");
@@ -110,7 +110,7 @@ describe("site-wide message defaults", () => {
   });
 
   it("validates strict bounded fields, rejects tokens, and strips unsafe HTML before saving", async () => {
-    for (const value of [{ letterheadHtml: "{{worker}}" }, { letterheadHtml: "x".repeat(50_001) }, { header: "no" }]) {
+    for (const value of [{ letterheadHtml: "{{worker}}" }, { footerHtml: "{{contact}}" }, { footerHtml: "x".repeat(50_001) }, { letterheadHtml: "x".repeat(50_001) }, { header: "no" }]) {
       expect((await call("email", "PUT", value)).status).toBe(400);
     }
     expect((await call("postal", "PUT", { showPageCount: "true" })).status).toBe(400);
@@ -162,7 +162,7 @@ describe("site-wide message defaults", () => {
     expect(textOnly.html).toContain("&lt;worker&gt;<br>");
     expect(textOnly.text).toContain("Hello <worker>");
     expect(textOnly.text).toContain("Second line & details");
-    expect(prepareEmailContent({ bodyText: "Unchanged" }, { letterheadHtml: "" })).toEqual({ html: undefined, text: "Unchanged" });
+    expect(prepareEmailContent({ bodyText: "Unchanged" }, validateEmailDefaults({}))).toEqual({ html: undefined, text: "Unchanged" });
     expect(() => prepareEmailContent({ bodyHtml: "" }, defaults)).toThrow("body");
   });
 
@@ -174,15 +174,45 @@ describe("site-wide message defaults", () => {
     expect(snapshot.letterheadHtml).toBe("First");
   });
 
+  it("preserves safe reversed footer styles through preview/save and supports footer-only delivery", async () => {
+    const footerHtml = '<div style="background-color:#000000;color:#ffffff;font-family:Arial,sans-serif;padding:16px;position:fixed"><p>Fictional Fund</p><a href="https://example.invalid" style="color:#ffffff;text-decoration:underline" onclick="bad()">Example Website</a></div>';
+    const draft = { letterheadHtml: "<p>HEADER</p>", footerHtml };
+    const preview = await (await call("email", "POST", draft, "admin", "/preview")).json();
+    expect(saved.size).toBe(0);
+    expect((await call("email", "PUT", draft)).status).toBe(200);
+    const defaults = await getEmailDefaults();
+    for (const style of ["background-color:#000000", "color:#ffffff", "font-family:Arial,sans-serif", "text-decoration:underline"]) {
+      expect(defaults.footerHtml).toContain(style);
+      expect(preview.html).toContain(style);
+    }
+    expect(defaults.footerHtml).not.toMatch(/onclick|position/);
+    const result = prepareEmailContent({ bodyHtml: "<p>BODY</p>" }, defaults);
+    expect(result.html).toBe(`${defaults.letterheadHtml}\n<div><p>BODY</p></div>\n${defaults.footerHtml}`);
+    expect(result.text).toMatch(/HEADER[\s\S]*BODY[\s\S]*Fictional Fund[\s\S]*Example Website/);
+    const footerOnly = validateEmailDefaults({ footerHtml });
+    expect(prepareEmailContent({ bodyText: "PLAIN <body>" }, footerOnly).text).toContain("Fictional Fund");
+    for (const source of [{ bodyHtml: "" }, { bodyText: "  " }, { bodyHtml: "<script>bad()</script>" }]) {
+      expect(() => prepareEmailContent(source, footerOnly)).toThrow("body");
+    }
+    expect((await call("email", "PUT", { ...defaults, footerHtml: "" })).status).toBe(200);
+    expect(await getEmailDefaults()).toEqual({ letterheadHtml: "<p>HEADER</p>", footerHtml: "" });
+  });
+
   it("registers narrowly matched, sanitized built-in help without touching local help", () => {
     for (const medium of ["email", "postal"]) {
       const help = findSystemHelpsForPath(`/config/${medium}`).find((entry) => entry.id === `system:${medium}-message-defaults`);
       expect(help?.source).toBe("system");
       expect(help?.details).toContain("<h3>How to use this page</h3>");
       expect(help?.details).toContain("queued");
+      if (medium === "email") {
+        expect(help?.details).toContain("Email Footer");
+        expect(help?.details).toContain("dark mode");
+      }
       for (const path of [`/config/${medium}/extra`, "/config/helps", "/workers/123", "/config/email-other"]) {
         expect(findSystemHelpsForPath(path).some((entry) => entry.id === help?.id)).toBe(false);
       }
     }
+    expect(findSystemHelpsForPath("/workers/fixture/comm/send-email")
+      .find((entry) => entry.id === "system:compose-message-defaults")?.details).toContain("Email Footer");
   });
 });

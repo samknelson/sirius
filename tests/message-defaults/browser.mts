@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import puppeteer from "puppeteer-core";
 import express from "express";
 import { registerMessageDefaultsRoutes } from "../../server/modules/message-defaults";
+import { prepareEmailContent, validateEmailDefaults } from "../../server/services/comm/message-defaults";
 import { registerCommPostalPreviewRoutes } from "../../server/modules/comm-postal-preview";
 // @ts-expect-error Test-only I/O boundary shared with the Node loader.
 import { saved as backendDefaults } from "../comm/fixtures/postal-runtime-stubs.mjs";
@@ -16,7 +17,7 @@ import { mkdir } from "node:fs/promises";
 // No application server, database mutations, provider configuration or sends.
 const root = process.cwd();
 const saved: Record<string, any> = {
-  email: { letterheadHtml: "" },
+  email: { letterheadHtml: "", footerHtml: "" },
   postal: { letterheadHtml: "", footerHtml: "", showPageCount: false },
 };
 const requests: Array<{ path: string; method: string; body: any }> = [];
@@ -56,7 +57,7 @@ try {
   await server.listen();
   browser = await puppeteer.launch({
     executablePath: ["/repl/tools/bin/chromium", "/usr/bin/chromium"].find(existsSync),
-    headless: true, timeout: 60_000, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    headless: true, pipe: true, timeout: 60_000, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(120_000);
@@ -97,7 +98,7 @@ try {
       }
       if (method === "GET") return void json(failLoad ? { message: "Fixture load refusal" } : saved[medium], failLoad ? 500 : 200);
       if (failSave) return void json({ message: "Fixture save refusal" }, 422);
-      saved[medium] = structuredClone(body); return void json(saved[medium]);
+      saved[medium] = medium === "email" ? validateEmailDefaults(body) : structuredClone(body); return void json(saved[medium]);
     }
     if (url.pathname === "/api/comm/postal/preview") return void await realPreview();
     if (url.pathname === "/api/admin/letter-templates/fixture" && method === "GET") return void json({
@@ -115,7 +116,7 @@ try {
         Object.entries(body.values).map(([key, rendered]) => [key, { rendered, unknownTokens: [], missingValues: [], emptyValues: [] }]),
       ),
     });
-    if (url.pathname === "/api/comm/email/preview") return void json({ html: saved.email.letterheadHtml + body.bodyHtml, text: (saved.email.letterheadHtml + body.bodyHtml).replace(/<[^>]*>/g, "") });
+    if (url.pathname === "/api/comm/email/preview") return void json(prepareEmailContent(body, validateEmailDefaults(saved.email)));
     if (/^\/api\/config\/(email|postal)$/.test(url.pathname)) return void json({
       defaultProvider: "local", providers: [{ id: "local", displayName: "Local", supportedFeatures: [] }],
       currentProvider: { id: "local", supportedFeatures: [], connection: { success: false } },
@@ -129,7 +130,11 @@ try {
     await page.waitForFunction((text) => Array.from(document.querySelectorAll("button")).some((button) => button.textContent?.trim() === text), {}, text);
     const buttons = await page.$$("button");
     for (const button of buttons) {
-      if ((await button.evaluate((el) => el.textContent?.trim())) === text) { await button.click(); return; }
+      if ((await button.evaluate((el) => el.textContent?.trim())) === text) {
+        await button.focus();
+        await page.keyboard.press("Enter");
+        return;
+      }
     }
     throw new Error(`No button: ${text}`);
   };
@@ -143,15 +148,33 @@ try {
   await goto("/config/email");
   await page.waitForSelector('[data-testid="email-letterhead-editor"]');
   await fillEditor("email-letterhead-editor", "EMAIL DRAFT");
+  if (!await page.$('[data-testid="email-footer-editor-raw-mode"]')) {
+    await page.click('section[aria-labelledby="email-footer-label"] button[aria-label="More formatting"]');
+  }
+  await page.click('[data-testid="email-footer-editor-raw-mode"]');
+  await page.waitForSelector('[data-testid="email-footer-editor-raw"]');
+  await page.type('[data-testid="email-footer-editor-raw"]', '<div style="background-color:#000000;color:#ffffff;font-family:Arial,sans-serif;padding:16px"><p>Fictional Fund</p><a href="https://example.invalid" style="color:#ffffff;text-decoration:underline">Example Website</a></div>');
+  await page.click('[data-testid="email-footer-editor-raw-mode"]');
+  await page.waitForSelector('[data-testid="email-footer-editor"][contenteditable="true"]');
   await clickText("Preview unsaved changes");
   await page.waitForSelector('iframe[title="Rendered email preview"]');
   assert.equal(saved.email.letterheadHtml, "");
+  assert.equal(saved.email.footerHtml, "");
   const emailFrame = await (await page.$('iframe[title="Rendered email preview"]'))!.contentFrame();
   assert.match(await emailFrame!.$eval("body", (el) => el.textContent!), /EMAIL DRAFT/);
+  assert.deepEqual(await emailFrame!.$eval("a", (el) => {
+    const style = getComputedStyle(el);
+    const container = getComputedStyle(el.parentElement!);
+    return [style.color, style.textDecorationLine, container.backgroundColor, container.fontFamily];
+  }), ["rgb(255, 255, 255)", "underline", "rgb(0, 0, 0)", "Arial, sans-serif"]);
+  assert.equal(await emailFrame!.$eval("body", (el) => getComputedStyle(el).color), "rgb(0, 0, 0)");
+  await mkdir("generated-artifacts/message-defaults", { recursive: true });
+  await page.screenshot({ path: "generated-artifacts/message-defaults/email-footer-preview.png", fullPage: true });
   await clickText("Close"); await page.waitForSelector('[role="dialog"]', { hidden: true });
   await clickText("Save defaults");
   await page.waitForFunction(() => Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Save defaults")?.disabled === true);
   assert.match(saved.email.letterheadHtml, /EMAIL DRAFT/);
+  assert.match(saved.email.footerHtml, /Fictional Fund/);
   await goto("/config/email");
   await page.waitForSelector('[data-testid="email-letterhead-editor"]');
   assert.match(await page.$eval('[data-testid="email-letterhead-editor"]', (el) => el.textContent!), /EMAIL DRAFT/);
@@ -159,6 +182,7 @@ try {
   await page.click('[data-testid="button-help-more-system:email-message-defaults"]');
   await page.waitForSelector('[role="dialog"]');
   assert.match(await page.$eval('[role="dialog"]', (el) => el.textContent!), /queued work/);
+  assert.match(await page.$eval('[role="dialog"]', (el) => el.textContent!), /Email Footer/);
   await clickText("Close"); await page.waitForSelector('[role="dialog"]', { hidden: true });
   await goto("/config/postal");
   await fillEditor("postal-letterhead-editor", "POSTAL DRAFT");
@@ -193,7 +217,7 @@ try {
   await page.click('[data-testid="button-help-more-system:postal-message-defaults"]');
   assert.match(await page.$eval('[role="dialog"]', (el) => el.textContent!), /every page/);
   await page.setViewport({ width: 402, height: 874 });
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
   await clickText("Close"); await page.waitForSelector('[role="dialog"]', { hidden: true });
   await mkdir("generated-artifacts/message-defaults", { recursive: true });
   await page.screenshot({ path: "generated-artifacts/message-defaults/postal-settings-mobile.png", fullPage: true });
@@ -202,6 +226,7 @@ try {
   await fillEditor("input-email-body", "COMPOSE BODY");
   await page.waitForSelector('iframe[title="Email body preview"]');
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('iframe[title="Email body preview"]')?.srcdoc.includes("EMAIL DRAFT"));
+  assert.match(await page.$eval('iframe[title="Email body preview"]', (el) => (el as HTMLIFrameElement).srcdoc), /Fictional Fund/);
   assert.doesNotMatch(await page.$eval('[data-testid="input-email-body"] [contenteditable="true"]', (el) => el.textContent!), /EMAIL DRAFT/);
   await goto("/config/helps");
   await page.waitForSelector("table");
@@ -216,6 +241,11 @@ try {
   failSave = false; await clickText("Save defaults");
   await page.waitForFunction(() => Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Save defaults")?.disabled === true);
   assert.equal(saved.email.letterheadHtml, "");
+  assert.match(saved.email.footerHtml, /Fictional Fund/);
+  await clickText("Clear Email Footer");
+  await clickText("Save defaults");
+  await page.waitForFunction(() => Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Save defaults")?.disabled === true);
+  assert.equal(saved.email.footerHtml, "");
   assert.match(saved.postal.letterheadHtml, /POSTAL DRAFT/);
   // Load errors refuse to show editable blanks, rather than overwriting settings.
   failLoad = true;

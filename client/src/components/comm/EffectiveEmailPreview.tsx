@@ -28,7 +28,7 @@ export function EffectiveEmailPreview({ bodyHtml, testId }: { bodyHtml: string; 
     <iframe title="Email body preview" sandbox="" referrerPolicy="no-referrer" className="w-full min-h-96 border-0 bg-white"
       data-testid={testId}
       srcDoc={`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>body{font:14px Arial,sans-serif;padding:12px;overflow-wrap:anywhere}img{max-width:100%}table{border-collapse:collapse}</style></head><body>${result.html ?? ""}</body></html>`} />
-    <p className="text-xs text-muted-foreground">Includes the current site-wide Email Letterhead. Settings are selected again when the message is delivered.</p>
+    <p className="text-xs text-muted-foreground">Includes the current site-wide Email Letterhead before the body and Email Footer after it. Keep branding out of templates to avoid duplicates. Settings are selected again when the message is delivered; email clients may adjust colors, including in dark mode.</p>
     <details className="text-xs"><summary>Plain-text alternative</summary><pre className="whitespace-pre-wrap break-words">{result.text}</pre></details>
   </div>;
 }

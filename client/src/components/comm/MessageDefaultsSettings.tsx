@@ -50,12 +50,13 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
     showPageCount: Boolean(data?.showPageCount),
   }), [data]);
   const dirty = draft.letterheadHtml !== saved.letterheadHtml
-    || (isPostal && (draft.footerHtml !== saved.footerHtml || draft.showPageCount !== saved.showPageCount));
+    || draft.footerHtml !== saved.footerHtml
+    || (isPostal && draft.showPageCount !== saved.showPageCount);
 
   const saveMutation = useMutation({
     mutationFn: async (values: Defaults) => await apiRequest("PUT", basePath, isPostal
       ? values
-      : { letterheadHtml: values.letterheadHtml }) as Defaults,
+      : { letterheadHtml: values.letterheadHtml, footerHtml: values.footerHtml }) as Defaults,
     onSuccess: (result) => {
       const normalized = {
         letterheadHtml: result?.letterheadHtml ?? draft.letterheadHtml,
@@ -84,7 +85,7 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
         credentials: "include",
         body: JSON.stringify(isPostal
           ? { letterheadHtml: draft.letterheadHtml, footerHtml: draft.footerHtml, showPageCount: draft.showPageCount }
-          : { letterheadHtml: draft.letterheadHtml }),
+          : { letterheadHtml: draft.letterheadHtml, footerHtml: draft.footerHtml }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -122,12 +123,12 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                {isPostal ? "Postal letterhead & footer" : "Email letterhead"}
+                {isPostal ? "Postal letterhead & footer" : "Email letterhead & footer"}
               </CardTitle>
               <CardDescription className="mt-1 max-w-3xl">
                 {isPostal
                   ? "Set the shared letterhead and footer for postal messages. A postal header is not supported."
-                  : "Set a shared letterhead that appears above the individual email message content."}
+                  : "Set shared content shown in order: Email Letterhead, message body, then Email Footer. Keep branding out of templates to avoid duplicates."}
               </CardDescription>
             </div>
             {data && <Badge variant={dirty ? "secondary" : "outline"}>{dirty ? "Unsaved changes" : "Saved"}</Badge>}
@@ -172,28 +173,27 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
                 />
               </section>
 
-              {isPostal && (
-                <>
-                  <section className="space-y-2" aria-labelledby="postal-footer-label">
+                  <section className="space-y-2" aria-labelledby={`${channel}-footer-label`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <Label id="postal-footer-label">Postal Footer</Label>
-                        <p className="text-xs text-muted-foreground">Repeated on every page, including continuation pages. Keep within 6.5 inches wide and 0.75 inches high.</p>
+                        <Label id={`${channel}-footer-label`}>{isPostal ? "Postal Footer" : "Email Footer"}</Label>
+                        <p className="text-xs text-muted-foreground">{isPostal ? "Repeated on every page, including continuation pages. Keep within 6.5 inches wide and 0.75 inches high." : "Shown once below the message body, even without a letterhead. Use inline background, text, and link styles; email clients may adjust colors in dark mode. Confirm link destinations before saving."}</p>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => setDraft((current) => ({ ...current, footerHtml: "" }))} disabled={saveMutation.isPending || !draft.footerHtml}>
-                        <Trash2 className="mr-2 h-4 w-4" />Clear Postal Footer
+                        <Trash2 className="mr-2 h-4 w-4" />Clear {isPostal ? "Postal" : "Email"} Footer
                       </Button>
                     </div>
                     <SimpleHtmlEditor
                       value={draft.footerHtml || ""}
                       onChange={(footerHtml) => setDraft((current) => ({ ...current, footerHtml }))}
                       placeholder="Add a closing note or contact details…"
-                      templateMode="postal"
+                      templateMode={channel}
                       disabled={saveMutation.isPending}
                       minHeight={140}
-                      data-testid="postal-footer-editor"
+                      data-testid={`${channel}-footer-editor`}
                     />
                   </section>
+              {isPostal && (
                   <div className="flex items-start justify-between gap-4 rounded-md border p-4">
                     <div className="space-y-1">
                       <Label htmlFor="postal-page-count">Show page count</Label>
@@ -206,7 +206,6 @@ export function MessageDefaultsSettings({ channel }: { channel: Channel }) {
                       onCheckedChange={(showPageCount) => setDraft((current) => ({ ...current, showPageCount }))}
                     />
                   </div>
-                </>
               )}
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">

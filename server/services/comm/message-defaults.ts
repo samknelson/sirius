@@ -13,7 +13,7 @@ function clean(html: string): string {
 
 export function validateEmailDefaults(value: unknown): EmailMessageDefaults {
   const parsed = emailMessageDefaultsSchema.parse(value);
-  return { letterheadHtml: clean(parsed.letterheadHtml) };
+  return { letterheadHtml: clean(parsed.letterheadHtml), footerHtml: clean(parsed.footerHtml) };
 }
 
 export function validatePostalDefaults(value: unknown): PostalMessageDefaults {
@@ -38,12 +38,16 @@ export function prepareEmailContent(
   defaults: EmailMessageDefaults,
 ): { html?: string; text?: string } {
   const body = source.bodyHtml === undefined ? undefined : clean(source.bodyHtml);
-  // Validate source BEFORE branding: a letterhead cannot make a blank message
+  // Validate source BEFORE branding: letterhead/footer cannot make a blank message
   // deliverable. Plain-text-only system callers are escaped, never parsed.
   if (!(body ?? source.bodyText ?? "").trim()) throw new Error("A message body is required.");
-  if (!defaults.letterheadHtml) {
+  if (!defaults.letterheadHtml && !defaults.footerHtml) {
     return { html: body, text: body === undefined ? source.bodyText : htmlToPlainText(body) };
   }
-  const html = `${defaults.letterheadHtml}\n<div>${body ?? escapeHtml(source.bodyText ?? "").replace(/\r?\n/g, "<br>")}</div>`;
+  const html = [
+    defaults.letterheadHtml,
+    `<div>${body ?? escapeHtml(source.bodyText ?? "").replace(/\r?\n/g, "<br>")}</div>`,
+    defaults.footerHtml,
+  ].filter(Boolean).join("\n");
   return { html, text: htmlToPlainText(html) };
 }

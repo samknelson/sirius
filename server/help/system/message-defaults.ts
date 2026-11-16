@@ -3,21 +3,22 @@ import type { SystemHelpEntry } from "./index";
 export const emailMessageDefaultsHelp: SystemHelpEntry = {
   id: "system:email-message-defaults",
   paths: ["/config/email"],
-  summary: "Manage email delivery and the site-wide Email Letterhead automatically added before outgoing messages without changing saved templates.",
+  summary: "Manage email delivery and the shared Email Letterhead and Email Footer added to outgoing messages without changing saved templates.",
   details: `
     <h3>Purpose</h3>
-    <p><strong>Email Letterhead</strong> adds fixed formatted content before every app-sent email body, including individual, bulk, automated, plain-text-only system messages, and offline records.</p>
+    <p><strong>Email Letterhead</strong> adds fixed formatted content before every app-sent email body; <strong>Email Footer</strong> adds content once after it. This includes individual, bulk, automated, plain-text-only system messages, and offline records. Either block can be used independently.</p>
     <h3>Before you start</h3>
     <p>You need admin access to change Email Settings. Email and Postal Letterheads are independent and remain saved when you change providers. Do not put recipient-specific tokens in site-wide defaults.</p>
     <h3>How to use this page</h3>
-    <ol><li>Edit <strong>Email Letterhead</strong> using the formatted-content editor.</li>
+    <ol><li>Edit <strong>Email Letterhead</strong> and <strong>Email Footer</strong> independently using the formatted-content editors.</li>
     <li>Select <strong>Preview unsaved changes</strong> to see an example without saving or sending a message.</li>
     <li>Select <strong>Save defaults</strong> to apply the change site-wide.</li>
-    <li>To remove the letterhead, select <strong>Clear Email Letterhead</strong>, then <strong>Save defaults</strong>.</li></ol>
+    <li>To remove either block, select <strong>Clear Email Letterhead</strong> or <strong>Clear Email Footer</strong>, then <strong>Save defaults</strong>.</li></ol>
     <h3>Results and status meanings</h3>
-    <p>Successful saves affect subsequent sends, including queued work when it is delivered. HTML and plain-text alternatives include the same combined content. Templates and editable message bodies stay separate from the automatic letterhead. Communication history retains the content and settings used at sending; later edits do not rewrite it.</p>
+    <p>Successful saves affect subsequent sends, including queued work when it is delivered. HTML and plain-text alternatives include the same combined content, in letterhead, body, footer order. Do not copy shared branding into templates or editable message bodies, or it will appear twice. Communication history retains the content and settings used at sending; later edits do not rewrite it.</p>
     <h3>Limitations and common problems</h3>
-    <p>A letterhead does not replace a required subject or body and does not change sending permissions, opt-in, allowlists, or provider requirements. A blank letterhead preserves unbranded delivery. Preview errors do not change saved settings; correct the content and try again.</p>
+    <p>Neither block replaces a required subject or body or changes sending permissions, opt-in, allowlists, or provider requirements. Clear both blocks for unbranded delivery. Preview and save errors do not change saved settings; correct the content and try again.</p>
+    <p>For a reversed-out footer, use HTML source with inline background-color: #000000, color: #ffffff, and font-family: Arial, sans-serif on its container. Set color: #ffffff and text-decoration: underline on each link. These styles apply only to the footer, not the message body. Confirm email and website destinations before adding links; do not guess them. Email clients may adjust colors, especially in dark mode, so the browser preview cannot promise identical inbox rendering.</p>
   `,
 };
 
@@ -57,7 +58,7 @@ export const composeMessageDefaultsHelp: SystemHelpEntry = {
     <h3>Purpose</h3>
     <p>Delivery previews include the current site-wide defaults. Editable bodies and saved templates contain only message-specific content; do not copy the letterhead or footer into them.</p>
     <h3>Results and status meanings</h3>
-    <p>Email uses the <strong>Email Letterhead</strong>, including in its plain-text alternative. App-composed postal letters use the independent <strong>Postal Letterhead</strong> once at the beginning of the first page, with <strong>Postal Footer</strong> and optional “Page X of Y” numbering repeated on every page. There is no separate postal header.</p>
+    <p>Email uses <strong>Email Letterhead</strong>, then the message body, then <strong>Email Footer</strong>, including readable content in its plain-text alternative. Email clients may adjust colors, including in dark mode. App-composed postal letters use the independent <strong>Postal Letterhead</strong> once at the beginning of the first page, with <strong>Postal Footer</strong> and optional “Page X of Y” numbering repeated on every page. There is no separate postal header.</p>
     <p>The settings in effect when delivery runs apply to individual, bulk, automated, queued, and offline-record paths. Saving or previewing a template does not freeze site-wide settings. Communication history keeps the content and layout settings used for that communication.</p>
     <h3>Limitations and common problems</h3>
     <p>Lob-hosted templates and already-rendered remote documents remain unchanged. Blank defaults add nothing. Branding never replaces a required subject/body or bypasses permissions, opt-in, allowlists, or provider rules. Ask an admin to change site-wide defaults in Email Settings or Postal Settings. If a postal layout is refused, reduce oversized text, images, or table rows and preview again.</p>

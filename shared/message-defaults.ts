@@ -7,6 +7,7 @@ const fixedHtml = z.string().max(50_000).refine(
 );
 export const emailMessageDefaultsSchema = z.object({
   letterheadHtml: fixedHtml.default(""),
+  footerHtml: fixedHtml.default(""),
 }).strict();
 export const postalMessageDefaultsSchema = z.object({
   letterheadHtml: fixedHtml.default(""),

@@ -197,3 +197,4 @@
 - [Postgres verification targets](postgres-verification-target.md) — connectionString overrides a separate database option; assert current_database before disposable fixture writes.
 - [Scheduled sync failures](scheduled-sync-failure-policy.md) — continue daily loaders but retain FAIL; never interpret continuation as permission to relax reject rules.
 - [Pre-release payment cutover](pre-release-payment-cutover.md) — owner permits deleting legacy attempt-based dev payments and evidence; this is not authority to delete future production payments.
+- [Shared email footer activation](shared-email-footer-boundary.md) — confirm Fund link destinations before activation; software verification uses fictional content and does not authorize live defaults.
