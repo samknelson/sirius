@@ -55,23 +55,39 @@ blocks deletion.
 
 ## Durable records and compatibility
 
-`ledger_payment_attempts` remains the single attempt lifecycle. Its existing
-IDs, idempotency keys, provider intent references, gateway references, and
-payment links remain valid. `ledger_payment_attempt_events` is the same inbox,
-now unique by gateway and provider event ID. Receipt and completed processing
-are separate; a duplicate receipt can still need its effects retried.
+The ledger payment owns checkout from initiation onward. Checkout state is
+separate from accounting status: a draft has no received date or postings;
+processing becomes pending, and successful settlement clears and posts the
+same payment. The checkout session ID and payment ID are the same.
 
-Account/entity relationships are copied from the existing EA during migration.
-Historical payer identity, consent, and missing timestamps remain unknown.
-Saved-method creator and date come from entity metadata, not new provenance
-columns. Legacy duplicate method rows retain their IDs and tokens; only the
-canonical row receives the new unique provider identity.
+Private checkout columns enforce unique client keys, gateway-scoped provider
+references and restrictive references. The bounded, versioned lifecycle
+snapshot stores consent, immutable allocation evidence and separately retryable
+method saving. Generic payment responses omit the private columns.
 
-Attempt updates cannot rewrite the account, gateway, currency, amount, payer,
-or consent snapshot. The attempt's unique payment link is the canonical
-reverse lookup; there is no second checkout-session table or duplicate
-payment-side lifecycle. Pending ACH attempts remain reserved and recoverable.
-The existing webhook URL remains supported.
+Verified webhooks reconcile provider state directly. Unknown payments receive
+503 so the provider retries; no payment is manufactured. A successful response
+is sent only after internal effects finish. Scheduled bounded scans retry
+incomplete payments and method saving, fairly rotating both successful polls
+and failures. Missing provider references are recovered using the original key.
+The existing webhook and receipt URL formats remain supported.
+
+### Pre-release destructive cutover
+
+The owner confirmed that this product has not shipped and expressly authorized
+discarding old attempt-based development payments, their related postings and
+event evidence without an archive. Migration 1222 performs that cleanup in one
+transaction, refuses inconsistent payment links, and drops both former tables.
+Unrelated manual/imported payments are retained. An exclusive table lock waits
+for existing settlement transactions; old binaries then fail on the removed
+tables rather than independently settling. Stop all old application processes
+before starting the cutover version. Do not use a rolling deployment.
+
+This is not a preservation migration for live financial data. Deleted test
+payments and their URLs cannot be restored by reverting code; restoration
+requires an independently retained pre-cutover database backup. No backup is
+created by this migration, as expressly authorized. Never run this cleanup on
+future live payments.
 
 ## Staged activation
 

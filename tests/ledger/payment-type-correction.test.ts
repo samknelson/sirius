@@ -17,7 +17,6 @@ vi.mock("../../server/storage/transaction-context", () => ({
             case "ledger": return mocks.state.entries;
             case "ledger_ea": return mocks.state.eas;
             case "ledger_accounts": return mocks.state.accounts;
-            case "ledger_payment_attempts": return mocks.state.attempts;
             case "plugin_configs": return mocks.state.configs;
             default: throw Error("Unexpected table");
           }
@@ -107,7 +106,7 @@ describe("reviewed payment type correction", () => {
     if (kind === "missing") mocks.state.entries = [];
     if (kind === "extra-config") mocks.state.configs.push({ ...mocks.state.configs[0] });
     if (kind === "upload") mocks.state.payments[0].details = { baoUploadSource: { wizardIds: ["w1"] } };
-    if (kind === "online") mocks.state.attempts.push({ id: "attempt", ledgerPaymentId: "p1" });
+    if (kind === "online") mocks.state.payments[0].checkoutState = "succeeded";
     if (kind === "gateway") mocks.state.accounts[0].gatewayConfigId = "gateway";
     if (kind === "wrong-key") mocks.state.entries[0].chargePluginKey = "stale";
     if (kind === "wrong-sign") mocks.state.entries[0].amount = "50.00";
@@ -205,7 +204,7 @@ describe("reviewed payment type correction", () => {
     const source = readFileSync("server/modules/ledger/payment-type-correction.ts", "utf8");
     expect(source).toContain("IN SHARE ROW EXCLUSIVE MODE");
     expect(source).toContain("SET LOCAL lock_timeout = '5s'");
-    for (const table of ["ledger_payments", "ledger_payment_attempts", "ledger_ea", "ledger_accounts", "plugin_configs_charge"]) {
+    for (const table of ["ledger_payments", "ledger_ea", "ledger_accounts", "plugin_configs_charge"]) {
       expect(source).toContain(table);
     }
     expect(source.indexOf("await lockInventory(true)")).toBeLessThan(source.indexOf("const before = await readInventory(id)"));

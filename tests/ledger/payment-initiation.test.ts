@@ -61,10 +61,7 @@ describe("payment initiation failure boundary", () => {
     mocks.create.mockRejectedValueOnce(new PaymentInitiationRejected("method_disabled", "Enable card payments"));
     await expect(start(true)).rejects.toBeInstanceOf(PaymentInitiationRejected);
     expect(mocks.row).toMatchObject({ status: "failed", failureCode: "method_disabled", providerIntentRef: null, ledgerPaymentId: null });
-    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: "payment.initiation_rejected", providerEventId: "initiation-rejected:attempt",
-    }));
-    expect(mocks.processed).toHaveBeenCalledWith("gw", "initiation-rejected:attempt");
+    expect(mocks.row.failureCode).toBe("method_disabled");
     await expect(start()).rejects.toThrow("has ended");
     expect(mocks.create).toHaveBeenCalledTimes(1);
   });
@@ -95,7 +92,7 @@ describe("payment initiation failure boundary", () => {
     mocks.create.mockRejectedValueOnce(new PaymentInitiationRejected("method_disabled", "Enable card payments"));
     await expect(start()).rejects.toBeInstanceOf(PaymentInitiationRejected);
     expect(mocks.row.status).toBe("failed");
-    expect(mocks.audit).toHaveBeenCalledTimes(1);
+    expect(mocks.row.failureCode).toBe("method_disabled");
     await expect(start()).rejects.toThrow("has ended");
     expect(mocks.create).toHaveBeenCalledTimes(1);
   });

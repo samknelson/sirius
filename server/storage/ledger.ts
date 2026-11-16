@@ -1,4 +1,5 @@
 import { createNoopValidator } from './utils/validation';
+import { publicPayment } from "@shared/ledger/payment-lifecycle";
 import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
 import { checkoutMinor, type CheckoutCreditTransfer } from "@shared/ledger/checkout-selection";
 import { eventBus, EventType } from "../services/event-bus";
@@ -676,8 +677,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
   return {
     async getAll(): Promise<LedgerPayment[]> {
       const client = getClient();
-      return await client.select().from(ledgerPayments)
-        .orderBy(desc(ledgerPayments.id));
+      return (await client.select().from(ledgerPayments)
+        .orderBy(desc(ledgerPayments.id))).map(publicPayment);
     },
 
     async get(id: string): Promise<(LedgerPayment & { dateCreated: Date | null }) | undefined> {
@@ -691,14 +692,14 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           eq(entityMetadata.entityId, ledgerPayments.id),
         ))
         .where(eq(ledgerPayments.id, id));
-      return row ? { ...row.payment, dateCreated: row.createdDate } : undefined;
+      return row ? { ...publicPayment(row.payment), dateCreated: row.createdDate ?? row.payment.checkoutCreatedAt } : undefined;
     },
 
     async getByIds(ids: string[]): Promise<LedgerPayment[]> {
       if (ids.length === 0) return [];
       const client = getClient();
-      return await client.select().from(ledgerPayments)
-        .where(inArray(ledgerPayments.id, ids));
+      return (await client.select().from(ledgerPayments)
+        .where(inArray(ledgerPayments.id, ids))).map(publicPayment);
     },
 
     async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]> {
@@ -713,7 +714,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .where(eq(ledgerPayments.ledgerEaId, ledgerEaId))
         .orderBy(desc(ledgerPayments.id));
 
-      return results.map(row => ({ ...row.payment, createdDate: row.createdDate }));
+      return results.map(row => ({ ...publicPayment(row.payment), createdDate: row.createdDate }));
     },
 
     async getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]> {
@@ -742,7 +743,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .orderBy(desc(ledgerPayments.id));
 
       return results.map(row => ({
-        ...row.payment,
+        ...publicPayment(row.payment),
         createdDate: row.createdDate,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
@@ -793,7 +794,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .offset(offset);
 
       const data = results.map(row => ({
-        ...row.payment,
+        ...publicPayment(row.payment),
         createdDate: row.createdDate,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
@@ -805,6 +806,11 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async create(insertPayment: InsertLedgerPayment): Promise<LedgerPayment> {
+      for (const key of Object.keys(insertPayment)) {
+        if (key.startsWith("checkout")) throw new Error("Checkout fields are server-owned");
+      }
+      if ((insertPayment.details as Record<string, unknown> | null)?.paymentAttemptId)
+        throw new Error("Online payments can only be created through checkout");
       validate.validateOrThrow(insertPayment);
       const client = getClient();
       // Validate currency match between payment type and account
@@ -831,10 +837,13 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       const [payment] = await client.insert(ledgerPayments)
         .values(insertPayment as any)
         .returning();
-      return payment;
+      return publicPayment(payment);
     },
 
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
+      for (const key of Object.keys(paymentUpdate)) {
+        if (key.startsWith("checkout")) throw new Error("Checkout fields are server-owned");
+      }
       validate.validateOrThrow(id);
       const client = getClient();
       const [current] = await client.select().from(ledgerPayments)
@@ -881,7 +890,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .set(paymentUpdate as any)
         .where(eq(ledgerPayments.id, id))
         .returning();
-      return payment || undefined;
+      return payment ? publicPayment(payment) : undefined;
     },
 
     async settleOnline(id, status, clearedAt) {
@@ -891,7 +900,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           sqlRaw`${ledgerPayments.details}->>'paymentAttemptId' IS NOT NULL`,
           inArray(ledgerPayments.status, ["pending", "canceled", "error"])))
         .returning();
-      return payment;
+      return payment ? publicPayment(payment) : undefined;
     },
 
     async delete(id: string): Promise<boolean> {
@@ -2846,7 +2855,7 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
         .orderBy(sqlRaw`${ledgerPayments.dateReceived} DESC NULLS LAST`);
 
       return rows.map((r) => ({
-        ...(r.payment as LedgerPayment),
+        ...publicPayment(r.payment),
         createdDate: r.createdDate,
         entityType: r.ea.entityType,
         entityId: r.ea.entityId,

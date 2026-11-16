@@ -73,13 +73,6 @@ export async function initiatePayment(
           failureCode: cause.code, failureMessage: cause.message, reservationExpiresAt: null,
         });
         if (!updated) throw new Error("Payment rejection could not be saved");
-        const eventId = `initiation-rejected:${attempt.id}`;
-        await storage.ledger.paymentAttempts.recordEvent({
-          gatewayConfigId: current.gatewayConfigId, attemptId: current.id,
-          providerEventId: eventId, eventType: "payment.initiation_rejected",
-          payload: { failureCode: cause.code },
-        });
-        await storage.ledger.paymentAttempts.markEventProcessed(current.gatewayConfigId, eventId);
         return { error: cause };
       }
       // Commit uncertainty even though the HTTP request fails. Never expose

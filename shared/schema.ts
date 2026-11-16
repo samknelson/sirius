@@ -1023,58 +1023,34 @@ export const ledgerPayments = pgTable("ledger_payments", {
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
-});
-
-/**
- * A provider charge attempt is separate from a ledger payment.  The provider
- * may remain processing (ACH) or send several/out-of-order webhook updates;
- * this durable row is the idempotency and reconciliation boundary.
- */
-export const ledgerPaymentAttempts = pgTable("ledger_payment_attempts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workerId: varchar("worker_id").references(() => workers.id, { onDelete: "restrict" }),
-  accountId: varchar("account_id").notNull().references(() => ledgerAccounts.id, { onDelete: "restrict" }),
-  entityType: varchar("entity_type").notNull(),
-  entityId: varchar("entity_id").notNull(),
-  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "restrict" }),
-  saveMethod: boolean("save_method").notNull().default(false),
-  consent: jsonb("consent"),
-  statementSelection: jsonb("statement_selection"),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-  completedAt: timestamp("completed_at"),
-  ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id, { onDelete: "restrict" }),
-  gatewayConfigId: varchar("gateway_config_id").notNull(),
-  paymentMethodId: varchar("payment_method_id"),
-  providerIntentRef: text("provider_intent_ref"),
-  idempotencyKey: text("idempotency_key").notNull(),
-  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
-  status: text("status").notNull().default("requires_action"),
-  reservationExpiresAt: timestamp("reservation_expires_at"),
-  ledgerPaymentId: varchar("ledger_payment_id").references(() => ledgerPayments.id, { onDelete: "set null" }),
-  lastProviderEventCreated: integer("last_provider_event_created"),
-  failureMessage: text("failure_message"),
-  failureCode: text("failure_code"),
-  metadata: jsonb("metadata"),
+  checkoutState: text("checkout_state"),
+  checkoutKey: text("checkout_key"),
+  checkoutProviderRef: text("checkout_provider_ref"),
+  checkoutGatewayId: varchar("checkout_gateway_id"),
+  checkoutAccountId: varchar("checkout_account_id").references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+  checkoutWorkerId: varchar("checkout_worker_id").references(() => workers.id, { onDelete: "restrict" }),
+  checkoutCreatorId: varchar("checkout_creator_id").references(() => users.id, { onDelete: "restrict" }),
+  checkoutMethodId: varchar("checkout_method_id"),
+  checkoutCurrency: varchar("checkout_currency", { length: 10 }),
+  checkoutData: jsonb("checkout_data"),
+  checkoutCreatedAt: timestamp("checkout_created_at"),
+  checkoutUpdatedAt: timestamp("checkout_updated_at"),
 }, (table) => [
   foreignKey({
-    name: "ledger_payment_attempts_gateway_config_fkey",
-    columns: [table.gatewayConfigId],
+    name: "ledger_payments_checkout_gateway_fkey",
+    columns: [table.checkoutGatewayId],
     foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
   foreignKey({
-    name: "ledger_payment_attempts_payment_method_fkey",
-    columns: [table.paymentMethodId],
+    name: "ledger_payments_checkout_method_fkey",
+    columns: [table.checkoutMethodId],
     foreignColumns: [ledgerPaymentMethods.id],
   }).onDelete("restrict"),
-  unique("ledger_payment_attempts_idempotency_key_unique").on(table.idempotencyKey),
-  unique("ledger_payment_attempts_provider_intent_unique").on(table.providerIntentRef),
-  uniqueIndex("ledger_payment_attempts_ledger_payment_unique").on(table.ledgerPaymentId),
-  index("ledger_payment_attempts_worker_idx").on(table.workerId),
-  index("ledger_payment_attempts_ea_status_idx").on(table.ledgerEaId, table.status),
-  index("ledger_payment_attempts_payer_created_idx").on(table.createdByUserId, table.createdAt),
-  check("ledger_payment_attempts_status_check", sql`${table.status} IN ('created','requires_action','processing','succeeded','failed','canceled','expired')`),
+  unique("ledger_payments_checkout_key_unique").on(table.checkoutKey),
+  unique("ledger_payments_checkout_provider_unique").on(table.checkoutGatewayId, table.checkoutProviderRef),
+  index("ledger_payments_checkout_recovery_idx").on(table.checkoutUpdatedAt, table.id),
+  index("ledger_payments_checkout_ea_idx").on(table.ledgerEaId, table.checkoutState),
+  check("ledger_payments_checkout_state_check", sql`${table.checkoutState} IS NULL OR ${table.checkoutState} IN ('created','requires_action','processing','succeeded','failed','canceled','expired')`),
 ]);
 export const ledgerEa = pgTable("ledger_ea", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1920,6 +1896,9 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
 
 export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
   id: true,
+  checkoutState: true, checkoutKey: true, checkoutProviderRef: true, checkoutGatewayId: true,
+  checkoutAccountId: true, checkoutWorkerId: true, checkoutCreatorId: true, checkoutMethodId: true,
+  checkoutCurrency: true, checkoutData: true, checkoutCreatedAt: true, checkoutUpdatedAt: true,
 });
 
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
@@ -2187,7 +2166,7 @@ export type InsertLedgerAccount = z.infer<typeof insertLedgerAccountSchema>;
 export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
-export type LedgerPayment = typeof ledgerPayments.$inferSelect;
+export type LedgerPayment = Omit<typeof ledgerPayments.$inferSelect, typeof import("./ledger/payment-lifecycle").PRIVATE_PAYMENT_FIELDS[number]>;
 
 /** A payment list row with its metadata creation date exposed under the API name. */
 export type LedgerPaymentWithCreatedDate = LedgerPayment & {
@@ -3376,36 +3355,4 @@ export type LedgerPaymentMethodWithCreatedDate = LedgerPaymentMethod & {
   createdBy?: string | null;
 };
 
-export const insertLedgerPaymentAttemptSchema = createInsertSchema(ledgerPaymentAttempts).omit({
-  id: true,
-});
-
-export type InsertLedgerPaymentAttempt = z.infer<typeof insertLedgerPaymentAttemptSchema>;
-
-export const ledgerPaymentAttemptEvents = pgTable("ledger_payment_attempt_events", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  attemptId: varchar("attempt_id"),
-  gatewayConfigId: varchar("gateway_config_id").notNull(),
-  providerEventId: text("provider_event_id").notNull(),
-  eventType: text("event_type").notNull(),
-  providerCreated: integer("provider_created"),
-  payload: jsonb("payload"),
-  receivedAt: timestamp("received_at").default(sql`now()`).notNull(),
-  processedAt: timestamp("processed_at"),
-  error: text("error"),
-}, (table) => [
-  foreignKey({
-    name: "ledger_payment_attempt_events_attempt_fkey",
-    columns: [table.attemptId],
-    foreignColumns: [ledgerPaymentAttempts.id],
-  }).onDelete("restrict"),
-  foreignKey({
-    name: "ledger_payment_attempt_events_gateway_fkey",
-    columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsWcVendors.id],
-  }).onDelete("restrict"),
-  unique("ledger_payment_attempt_events_provider_event_unique").on(table.gatewayConfigId, table.providerEventId),
-  index("ledger_payment_attempt_events_pending_idx").on(table.processedAt, table.receivedAt),
-]);
-
-export type LedgerPaymentAttempt = typeof ledgerPaymentAttempts.$inferSelect;
+export type { CheckoutPayment as LedgerPaymentAttempt, CreateCheckoutPayment as InsertLedgerPaymentAttempt } from "./ledger/payment-lifecycle";

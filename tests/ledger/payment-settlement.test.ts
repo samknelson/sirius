@@ -16,7 +16,11 @@ vi.mock("stripe", async importOriginal => {
 let attempt: any;
 let ledgerPayment: any;
 const paymentCreate = vi.fn();
-const paymentGet = vi.fn(async () => ledgerPayment);
+const paymentGet = vi.fn(async () => ledgerPayment ??= {
+  id: "payment-1", status: "draft", amount: attempt.amount, paymentType: "financial-usd",
+  ledgerEaId: attempt.ledgerEaId, dateReceived: null, dateCleared: null,
+  details: { paymentAttemptId: attempt.id },
+});
 const paymentUpdate = vi.fn(async (_id: string, status: string, clearedAt?: Date) => {
   const patch = { status, ...(clearedAt ? { dateCleared: clearedAt } : {}) };
   ledgerPayment = { ...ledgerPayment, ...patch };
@@ -29,6 +33,11 @@ const cancel = vi.fn();
 const createSession = vi.fn();
 let configuredTypes: Array<{ id: string; category: string; currencyCode: string; direction: "charge" | "credit" }> = [];
 const events = {
+  receive: vi.fn(async (_id: string, status: string, details: unknown) => {
+    await paymentCreate({ ...ledgerPayment, status, details, dateReceived: new Date().toISOString(),
+      dateCleared: status === "cleared" ? new Date().toISOString() : null }, { requireAccountId: attempt.accountId });
+    attempt.ledgerPaymentId = ledgerPayment.id;
+  }),
   lockEa: vi.fn(),
   lockAttempt: vi.fn(),
   get: vi.fn(async () => ({ ...attempt })),
@@ -182,9 +191,7 @@ describe("online settlement", () => {
     expect(paymentCreate).toHaveBeenCalledOnce();
     expect(paymentCreate.mock.calls[0][0]).toMatchObject({
       ledgerEaId: "ea-1", status: "cleared", amount: "100.00",
-      memo: "Administrator payment on behalf of worker",
-      details: { adminAssisted: true, adminActorUserId: "admin-1",
-        adminConfirmation: { ...ADMIN_PAYMENT_CONFIRMATION, accepted: true },
+      details: { adminAssisted: true,
         proposedAllocation: [
           { eaId: "ea-1", amount: "60.00", statementYmd: "2026-01-01" },
           { eaId: "ea-1", amount: "40.00", statementYmd: "2026-02-01" },
@@ -249,10 +256,8 @@ describe("online settlement", () => {
     attempt.consent = null;
     await processPaymentEvidence("attempt-1", "gateway-1", success());
     expect(paymentCreate.mock.calls[0][0]).toMatchObject({
-      memo: "Admin test payment",
       details: {
-        adminTest: true, adminTestPurpose: "Verify gateway",
-        adminTestActorUserId: "admin-1", providerTestMode: true,
+        adminTest: true, providerTestMode: true,
       },
     });
     expect(attempt.consent).toBeNull();
@@ -494,16 +499,10 @@ describe("online settlement", () => {
     retrieve.mockResolvedValue({
       providerRef: "ref-1", status: "succeeded", amountMinor: 10000, currency: "USD",
     });
-    events.listPendingEvents.mockResolvedValueOnce([{
-      attemptId: attempt.id, gatewayConfigId: attempt.gatewayConfigId,
-      providerEventId: "event-1", receivedAt: new Date(Date.now() - 60_000),
-      payload: { type: "payment.succeeded", providerRef: "ref-1", methodRef: "pm-1" },
-    }]);
-    events.listForRecovery.mockResolvedValueOnce([]);
-    await recoverOnlinePayments();
+    const recovery = await recoverOnlinePayments();
     expect(methodUpsert).not.toHaveBeenCalled();
     expect(events.markEventProcessed).not.toHaveBeenCalled();
-    expect(events.markEventError).toHaveBeenCalledOnce();
+    expect(recovery.failures).toBe(1);
     expect(paymentCreate).not.toHaveBeenCalled();
   });
 
@@ -626,7 +625,7 @@ describe("online settlement", () => {
       metadata: expect.objectContaining({ paymentPurpose: "admin_test" }),
     }));
     expect(paymentCreate.mock.calls[0][0]).toMatchObject({
-      memo: "Admin test payment", details: { adminTest: true, adminTestActorUserId: "admin-1" },
+      details: { adminTest: true },
     });
   });
 
@@ -673,7 +672,7 @@ describe("online settlement", () => {
     createSession.mockRejectedValueOnce(new PaymentInitiationRejected("method_disabled", "Card is disabled"));
     await recoverOnlinePayments();
     expect(attempt.status).toBe("failed");
-    expect(events.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "payment.initiation_rejected" }));
+    expect(attempt.failureCode).toBe("method_disabled");
     // Storage excludes this row in real scans; even a stale scan cannot create.
     await recoverOnlinePayments();
     expect(createSession).toHaveBeenCalledTimes(1);

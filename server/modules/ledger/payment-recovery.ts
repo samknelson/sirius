@@ -13,46 +13,6 @@ const ONE_DAY = 24 * 60 * 60 * 1000;
 /** Bounded reconciliation uses provider idempotency to recover lost create responses. */
 export async function recoverOnlinePayments(): Promise<{ attempts: number; events: number; failures: number }> {
   let failures = 0;
-  const events = await storage.ledger.paymentAttempts.listPendingEvents(BATCH_SIZE);
-  for (const event of events) {
-    try {
-      const payload = event.payload as Record<string, unknown> | null;
-      const ref = typeof payload?.providerRef === "string" ? payload.providerRef : undefined;
-      const attempt = event.attemptId ? await storage.ledger.paymentAttempts.get(event.attemptId) :
-        ref ? await storage.ledger.paymentAttempts.getByProviderIntent(ref, event.gatewayConfigId) : undefined;
-      if (!attempt || !ref) {
-        // The create response may still be outstanding. After a day the
-        // attempt scan can recover it independently; retain the unknown
-        // event as an auditable ignored receipt instead of starving the queue.
-        if (Date.now() - new Date(event.receivedAt).getTime() > ONE_DAY) {
-          await storage.ledger.paymentAttempts.markEventIgnored(event.gatewayConfigId, event.providerEventId, "Unknown payment attempt");
-        }
-        continue;
-      }
-      if (attempt.gatewayConfigId !== event.gatewayConfigId ||
-          (attempt.providerIntentRef && attempt.providerIntentRef !== ref)) {
-        await storage.ledger.paymentAttempts.markEventIgnored(event.gatewayConfigId, event.providerEventId, "Payment reference mismatch");
-        continue;
-      }
-      const resolved = await resolveGateway(attempt.gatewayConfigId, { allowDisabled: true });
-      if (!resolved.plugin.retrievePayment) throw new SettlementRefusal("Payment retrieval is unavailable");
-      const payment = await resolved.plugin.retrievePayment(resolved.context, ref);
-      if ((payload?.type === "payment.succeeded" && payment.status !== "succeeded") ||
-          (payload?.type === "payment.failed" && !["failed", "succeeded"].includes(payment.status))) {
-        throw new SettlementRefusal("Provider has not confirmed the received event yet");
-      }
-      await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, {
-        ...evidenceFromPayment(payment),
-        methodRef: payment.methodRef ?? (typeof payload?.methodRef === "string" ? payload.methodRef : undefined),
-      });
-      await storage.ledger.paymentAttempts.markEventProcessed(event.gatewayConfigId, event.providerEventId);
-    } catch (error) {
-      failures++;
-      const reason = settlementError(error);
-      await storage.ledger.paymentAttempts.markEventError(event.gatewayConfigId, event.providerEventId, reason);
-      await logSettlementFailure(event.attemptId, reason);
-    }
-  }
   const attempts = await storage.ledger.paymentAttempts.listForRecovery(
     BATCH_SIZE, new Date(Date.now() - TEN_MINUTES),
   );
@@ -132,9 +92,10 @@ export async function recoverOnlinePayments(): Promise<{ attempts: number; event
     } catch (error) {
       failures++;
       await logSettlementFailure(attempt.id, settlementError(error));
+    } finally {
       // Keep the oldest failing row from monopolizing every bounded batch.
       await storage.ledger.paymentAttempts.touchRecovery(attempt.id);
     }
   }
-  return { attempts: attempts.length, events: events.length, failures };
+  return { attempts: attempts.length, events: 0, failures };
 }

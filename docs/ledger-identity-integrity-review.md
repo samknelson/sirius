@@ -52,8 +52,8 @@ when present; blanks normalize to NULL. Account names/settings/activation remain
 editable. External mapping is not evidence of permanent business identity:
 changing an ID can affect import lookup; changing a gateway can affect future
 provider routing. `server/modules/ledger/payment-gateway-context.ts` resolves
-gateway configuration; payment attempts retain their own gateway snapshot in
-`ledger_payment_attempts`. A different current gateway can be intentional and
+gateway configuration; online payments retain their own gateway snapshot in
+`ledger_payments.checkout_gateway_id`. A different current gateway can be intentional and
 does not prove an old attempt was routed incorrectly. Review account audit
 history and source mappings before deciding any correction.
 

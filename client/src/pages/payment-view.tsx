@@ -94,6 +94,11 @@ function PaymentViewContent() {
 
   return (
     <div className="space-y-6">
+      {!!details.paymentAttemptId && payment.status === "draft" && (
+        <p className="text-sm text-muted-foreground" role="status">
+          Checkout has started, but money has not been received. Complete or check the existing checkout before paying again.
+        </p>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Payment Details</CardTitle>

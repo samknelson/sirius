@@ -94,6 +94,10 @@ function snapshot(quote: CheckoutQuote, id = "attempt") {
     statementSelection: quote.statementSelection,
     metadata: { checkoutQuote: quote, invoicePeriods: quote.invoicePeriods }, saveMethod: false,
   };
+  fixture.tables.ledger_payments.push({
+    id, status: "draft", amount: quote.amount, ledger_ea_id: "ea", payment_type: "financial",
+    date_received: null, date_cleared: null, details: { paymentAttemptId: id }, allocated: false,
+  });
 }
 const settle = () => settlePayment(fixture.attempt.id, "gateway", {
   type: "payment.succeeded", providerRef: "ref", amountMinor: Math.round(Number(fixture.attempt.amount) * 100), currency: "USD",
@@ -110,6 +114,12 @@ beforeEach(async () => {
   fixture.ledger = {
     ...createLedgerStorage(),
     paymentAttempts: {
+      receive: async (id: string, status: string, details: unknown) => {
+        const row = fixture.tables.ledger_payments.find((r: any) => r.id === id);
+        if (!row) throw new Error("Fixture checkout payment missing");
+        Object.assign(row, { status, details, date_received: new Date(), date_cleared: status === "cleared" ? new Date() : null });
+        fixture.attempt.ledgerPaymentId = id;
+      },
       lockAttempt: async () => {}, lockEa: async () => {},
       get: async () => fixture.attempt,
       claimLedgerPosting: async (_id: string, paymentId: string) => {
@@ -157,7 +167,7 @@ describe("cross-period credit settlement against ledger storage", () => {
     expect((await fixture.ledger.invoices.listForEa("ea"))[0].invoiceBalance).toBe("0.00");
     expect(fixture.tables.ledger.filter(row => row.charge_plugin === "payment-simple-allocation")
       .map(row => row.amount).sort()).toEqual(["-500.00", "-802.05"]);
-    expect(second.ledgerPaymentId).toBe("posted-second");
+    expect(second.ledgerPaymentId).toBe("second");
   });
   it("full150 clears Jan100 Feb100 March-50, with zero account and invoice balances after replay", async () => {
     const preview = await quote();

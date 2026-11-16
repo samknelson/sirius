@@ -9,15 +9,15 @@ import {
 describe("worker Stripe payment attempt backend", () => {
   it("keeps provider events and application idempotency keys unique", () => {
     const schema = readFileSync("shared/schema.ts", "utf8");
-    expect(schema).toContain("ledger_payment_attempts_idempotency_key_unique");
-    expect(schema).toContain("ledger_payment_attempt_events_provider_event_unique");
+    expect(schema).toContain("ledger_payments_checkout_key_unique");
+    expect(schema).toContain("ledger_payments_checkout_provider_unique");
   });
 
   it("verifies raw Stripe signatures before applying webhook state", () => {
     const source = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
     expect(source).toContain("rawBody");
     expect(source).toContain("verifyWebhook");
-    expect(source).toContain("recordEvent");
+    expect(source).toContain("retry webhook");
     expect(source).toContain("stale");
     expect(source).toContain("attempt.gatewayConfigId !== req.params.gatewayConfigId");
     expect(source).toContain("attempt.providerIntentRef !== providerRef");
@@ -31,7 +31,7 @@ describe("worker Stripe payment attempt backend", () => {
     expect(settlement).toContain('payment.canceled');
     expect(route).not.toContain("Settled payment exceeds the current payable balance");
     expect(storage).toContain("reservationExpiresAt");
-    expect(storage).toContain("A missing reference does not prove");
+    expect(storage).toContain("Only provider-confirmed cancellation releases");
   });
 
   it("requires an enabled component and signed webhook before charging", () => {

@@ -607,9 +607,6 @@ describe("online checkout HTTP contract", () => {
     const scope = `${entityType}/${entityId}/ea-1`;
     expect((await checkout(body, scope)).status).toBe(409);
     expect(liveAttempts.get("idem-1")).toMatchObject({ status: "failed", failureCode: "method_disabled" });
-    expect(mocks.storage.ledger.paymentAttempts.recordEvent).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: "payment.initiation_rejected", attemptId: "idem-1", payload: { failureCode: "method_disabled" },
-    }));
     const preview = await (await fetch(`${base}/api/ledger/checkout/${scope}`)).json();
     expect(preview.quote).toMatchObject({ postedBalance: "150.00", pendingPayments: "0.00", available: "150.00" });
     expect((await checkout(body, scope)).status).toBe(409);
@@ -775,7 +772,7 @@ describe("online checkout HTTP contract", () => {
       const response = await checkout(valid({ paymentMethodType: selected }));
       expect(response.status).toBe(201);
       expect(await response.json()).toMatchObject({
-        id: "attempt-1", status: "created", ledgerPaymentId: null, clientSecret: "cs-created",
+        id: "attempt-1", status: "created", ledgerPaymentId: "attempt-1", clientSecret: "cs-created",
       });
       expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(expect.objectContaining({
         metadata: expect.objectContaining({ paymentTypes: [selected] }),
@@ -807,8 +804,8 @@ describe("online checkout HTTP contract", () => {
     });
     const receipt = await fetch(`${base}/api/ledger/checkout/sessions/attempt-1`);
     expect(receipt.status).toBe(200);
-    expect(await receipt.json()).toMatchObject({ status: "succeeded", ledgerPaymentId: null });
-    expect(await (await checkout(valid())).json()).toMatchObject({ status: "succeeded", ledgerPaymentId: null });
+    expect(await receipt.json()).toMatchObject({ status: "succeeded", ledgerPaymentId: "attempt-1" });
+    expect(await (await checkout(valid())).json()).toMatchObject({ status: "succeeded", ledgerPaymentId: "attempt-1" });
     const legacy = await fetch(`${base}/api/ledger/payment-attempts/attempt-1`);
     expect(await legacy.json()).toMatchObject({ status: "processing", ledgerPaymentId: null });
   });
@@ -832,7 +829,7 @@ describe("online checkout HTTP contract", () => {
     const pending = await (await fetch(`${base}/api/ledger/checkout/sessions/attempt-1`)).json();
     expect(pending).toMatchObject({
       paymentStatus: "pending", dateReceived: "2026-09-01T12:00:00.000Z",
-      dateCleared: null, ledgerPaymentId: "payment-1",
+      dateCleared: null, ledgerPaymentId: "attempt-1",
     });
     const cleared = await (await fetch(`${base}/api/ledger/checkout/sessions/attempt-1`)).json();
     expect(cleared).toMatchObject({

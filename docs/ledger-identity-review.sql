@@ -7,7 +7,6 @@ SET LOCAL lock_timeout = '5s';
 
 SELECT to_regclass('public.ledger_ea') IS NOT NULL AS has_ea,
        to_regclass('public.ledger_accounts') IS NOT NULL AS has_accounts,
-       to_regclass('public.ledger_payment_attempts') IS NOT NULL AS has_attempts,
        to_regclass('public.ledger_payments') IS NOT NULL AS has_payments,
        to_regclass('public.winston_logs') IS NOT NULL AS has_logs
 \gset
@@ -29,26 +28,19 @@ SELECT count(*) AS duplicate_account_entity_groups FROM (
 ) duplicates;
 -- Zero does NOT prove type-aware lookups cannot conflict with the type-blind UNIQUE.
 \if :has_accounts
-\if :has_attempts
+\if :has_payments
 SELECT count(*) AS attempts,
   count(*) FILTER (WHERE ea.id IS NULL) AS missing_ea,
-  count(*) FILTER (WHERE ea.id IS NOT NULL AND ROW(a.account_id,a.entity_type,a.entity_id)
-    IS DISTINCT FROM ROW(ea.account_id,ea.entity_type,ea.entity_id)) AS coordinate_mismatches,
+  count(*) FILTER (WHERE ea.id IS NOT NULL AND a.checkout_account_id
+    IS DISTINCT FROM ea.account_id) AS coordinate_mismatches,
   count(*) FILTER (WHERE ac.id IS NULL) AS missing_current_account,
-  count(*) FILTER (WHERE ac.id IS NOT NULL AND upper(a.currency) IS DISTINCT FROM upper(ac.currency_code)) AS currency_mismatches
-FROM public.ledger_payment_attempts a
+  count(*) FILTER (WHERE ac.id IS NOT NULL AND upper(a.checkout_currency) IS DISTINCT FROM upper(ac.currency_code)) AS currency_mismatches
+FROM public.ledger_payments a
 LEFT JOIN public.ledger_ea ea ON ea.id=a.ledger_ea_id
-LEFT JOIN public.ledger_accounts ac ON ac.id=ea.account_id;
-\if :has_payments
-SELECT count(*) AS attempts_with_linked_payment,
-  count(*) FILTER (WHERE p.id IS NULL) AS missing_payment,
-  count(*) FILTER (WHERE p.id IS NOT NULL AND p.ledger_ea_id IS DISTINCT FROM a.ledger_ea_id) AS primary_ea_mismatches,
-  count(*) FILTER (WHERE p.id IS NOT NULL AND p.details->>'paymentAttemptId' IS DISTINCT FROM a.id) AS provider_marker_mismatches
-FROM public.ledger_payment_attempts a LEFT JOIN public.ledger_payments p ON p.id=a.ledger_payment_id
-WHERE a.ledger_payment_id IS NOT NULL;
-\endif
+LEFT JOIN public.ledger_accounts ac ON ac.id=ea.account_id
+WHERE a.checkout_state IS NOT NULL;
 \else
-\echo 'Attempt snapshot review skipped: attempts table absent.'
+\echo 'Checkout snapshot review skipped: payments table absent.'
 \endif
 \endif
 \else

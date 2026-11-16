@@ -87,18 +87,16 @@ describe("permanent ledger identity across HTTP, storage and PostgreSQL", () => 
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(), status text NOT NULL, allocated boolean NOT NULL DEFAULT false,
         amount numeric(10,2) NOT NULL, payment_type varchar NOT NULL REFERENCES options_ledger_payment_type,
         ledger_ea_id varchar NOT NULL REFERENCES ledger_ea, details jsonb, date_received timestamp,
-        date_cleared timestamp, memo text
+        date_cleared timestamp, memo text,
+        checkout_state text, checkout_key text, checkout_provider_ref text, checkout_gateway_id varchar,
+        checkout_account_id varchar, checkout_worker_id varchar, checkout_creator_id varchar, checkout_method_id varchar,
+        checkout_currency varchar(10), checkout_data jsonb, checkout_created_at timestamp, checkout_updated_at timestamp
       );
       CREATE TABLE ledger (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(), charge_plugin varchar NOT NULL, charge_plugin_key varchar NOT NULL,
         charge_plugin_config_id varchar, amount numeric(10,2) NOT NULL, ea_id varchar NOT NULL REFERENCES ledger_ea ON DELETE RESTRICT,
         reference_type varchar, reference_id varchar, date timestamp, memo text, data jsonb, statement_ymd date NOT NULL,
         UNIQUE(charge_plugin,charge_plugin_key)
-      );
-      CREATE TABLE ledger_payment_attempts (
-        id varchar PRIMARY KEY, ledger_ea_id varchar REFERENCES ledger_ea ON DELETE RESTRICT,
-        account_id varchar, entity_type varchar, entity_id varchar, currency varchar, amount numeric, status text,
-        statement_selection jsonb, gateway_config_id varchar, ledger_payment_id varchar
       );
       CREATE TABLE winston_logs (id serial PRIMARY KEY, module text,operation text,level text,meta jsonb);
       CREATE TABLE identity_test_metadata (id varchar PRIMARY KEY, rev integer, data jsonb);
@@ -122,7 +120,7 @@ describe("permanent ledger identity across HTTP, storage and PostgreSQL", () => 
   beforeEach(async () => {
     state.checked = [];
     await pool.query(`
-      TRUNCATE ledger,ledger_payments,ledger_payment_attempts,ledger_ea,ledger_accounts,options_ledger_payment_type,identity_test_metadata CASCADE;
+      TRUNCATE ledger,ledger_payments,ledger_ea,ledger_accounts,options_ledger_payment_type,identity_test_metadata CASCADE;
       INSERT INTO ledger_accounts(id,name,currency_code) VALUES ('account','Original','USD'),('same-unit','Other','USD'),('cross-unit','Other unit','EUR');
       INSERT INTO ledger_ea(id,account_id,entity_type,entity_id,data) VALUES
         ('ea','account','worker','participant','{"note":"original"}'),
@@ -134,7 +132,6 @@ describe("permanent ledger identity across HTTP, storage and PostgreSQL", () => 
       INSERT INTO ledger(id,charge_plugin,charge_plugin_key,amount,ea_id,statement_ymd,reference_type,reference_id) VALUES
         ('charge','fixture','charge',100,'ea','2026-01-01',NULL,NULL),
         ('allocation','fixture','allocation',-40,'ea','2026-01-01','payment','payment');
-      INSERT INTO ledger_payment_attempts VALUES ('attempt','ea','account','worker','participant','USD',40,'succeeded','[{"amount":"40.00"}]','gateway','payment');
       INSERT INTO identity_test_metadata VALUES ('ea',3,'{"note":"original"}');
     `);
   });
@@ -142,7 +139,7 @@ describe("permanent ledger identity across HTTP, storage and PostgreSQL", () => 
     method, headers: { "content-type": "application/json", "x-fixture-role": role }, body: JSON.stringify(body),
   });
   async function snapshot() {
-    const tables = ["ledger_ea", "ledger_accounts", "ledger", "ledger_payments", "ledger_payment_attempts", "identity_test_metadata"];
+    const tables = ["ledger_ea", "ledger_accounts", "ledger", "ledger_payments", "identity_test_metadata"];
     const rows: Record<string, unknown> = {};
     for (const table of tables) rows[table] = (await pool.query(`SELECT * FROM ${table} ORDER BY id`)).rows;
     rows.balance = await state.storage.ledger.ea.getBalance("ea");
@@ -269,9 +266,9 @@ describe("permanent ledger identity across HTTP, storage and PostgreSQL", () => 
     await state.storage.ledger.entries.update("allocation", { eaId: "destination" });
     expect(await state.storage.ledger.ea.getBalance("destination")).toBe("60.00");
     expect(await state.storage.ledger.ea.getBalance("ea")).toBe("0.00");
-    expect((await pool.query("SELECT ledger_ea_id,entity_id FROM ledger_payment_attempts")).rows[0]).toEqual({ ledger_ea_id: "ea", entity_id: "participant" });
+    expect((await pool.query("SELECT entity_id FROM ledger_ea WHERE id='ea'")).rows[0]).toEqual({ entity_id: "participant" });
     const response = await request("/api/ledger/ea/ea", {}, "staff", "DELETE");
-    expect(response.status).toBe(409); // attempt still references this EA
+    expect(response.status).toBe(204); // all financial references were deliberately moved above
     expect((await request("/api/ledger/ea/empty", {}, "staff", "DELETE")).status).toBe(204);
   });
   it("runs the aggregate integrity procedure read-only without exposing participant or gateway IDs", async () => {

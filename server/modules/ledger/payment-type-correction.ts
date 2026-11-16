@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { ledger, ledgerPayments, ledgerEa, ledgerAccounts, ledgerPaymentAttempts, optionsLedgerPaymentType, pluginConfigs, pluginConfigsCharge, winstonLogs } from "@shared/schema";
+import { ledger, ledgerPayments, ledgerEa, ledgerAccounts, optionsLedgerPaymentType, pluginConfigs, pluginConfigsCharge, winstonLogs } from "@shared/schema";
 import type { PaymentTypeCorrectionPreview, PaymentTypeCorrectionResult } from "@shared/payment-type-correction";
 import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { requireAccess } from "../../services/access-policy-evaluator";
@@ -28,7 +28,7 @@ export interface CorrectionInventory {
   entries: (typeof ledger.$inferSelect)[];
   eas: (typeof ledgerEa.$inferSelect)[];
   accounts: (typeof ledgerAccounts.$inferSelect)[];
-  attempts: (typeof ledgerPaymentAttempts.$inferSelect)[];
+  attempts: Array<{ id: string; ledgerPaymentId: string }>;
   configs: Array<{ config: typeof pluginConfigs.$inferSelect; charge: typeof pluginConfigsCharge.$inferSelect | null }>;
 }
 
@@ -121,8 +121,8 @@ async function lockInventory(applying: boolean) {
   // SHARE ROW EXCLUSIVE also serializes competing confirmations. Preview uses
   // SHARE, does not write, and releases its consistent inventory immediately.
   await client.execute(applying
-    ? sql`LOCK TABLE options_ledger_payment_type, ledger_payments, ledger, ledger_ea, ledger_accounts, ledger_payment_attempts, plugin_configs, plugin_configs_charge IN SHARE ROW EXCLUSIVE MODE`
-    : sql`LOCK TABLE options_ledger_payment_type, ledger_payments, ledger, ledger_ea, ledger_accounts, ledger_payment_attempts, plugin_configs, plugin_configs_charge IN SHARE MODE`);
+    ? sql`LOCK TABLE options_ledger_payment_type, ledger_payments, ledger, ledger_ea, ledger_accounts, plugin_configs, plugin_configs_charge IN SHARE ROW EXCLUSIVE MODE`
+    : sql`LOCK TABLE options_ledger_payment_type, ledger_payments, ledger, ledger_ea, ledger_accounts, plugin_configs, plugin_configs_charge IN SHARE MODE`);
 }
 
 async function readInventory(id: string): Promise<CorrectionInventory> {
@@ -138,9 +138,7 @@ async function readInventory(id: string): Promise<CorrectionInventory> {
     .sort((a, b) => a.id.localeCompare(b.id));
   const eas = (await client.select().from(ledgerEa)).sort((a, b) => a.id.localeCompare(b.id));
   const accounts = (await client.select().from(ledgerAccounts)).sort((a, b) => a.id.localeCompare(b.id));
-  const attempts = (ids.size ? await client.select().from(ledgerPaymentAttempts)
-    .where(inArray(ledgerPaymentAttempts.ledgerPaymentId, [...ids])) : []).filter(a => ids.has(a.ledgerPaymentId!))
-    .sort((a, b) => a.id.localeCompare(b.id));
+  const attempts = payments.filter(p => p.checkoutState != null).map(p => ({ id: p.id, ledgerPaymentId: p.id }));
   const configs = (await client.select({ config: pluginConfigs, charge: pluginConfigsCharge }).from(pluginConfigs)
     .leftJoin(pluginConfigsCharge, eq(pluginConfigs.id, pluginConfigsCharge.id))).sort((a, b) => a.config.id.localeCompare(b.config.id));
   return { type, payments, entries, eas, accounts, attempts, configs };

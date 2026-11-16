@@ -394,7 +394,7 @@ export function registerLedgerPaymentAttemptRoutes(
     id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId, accountId: a.accountId,
     amount: a.amount, currency: a.currency, status: a.status,
     canCancel: a.status === "created" && !!a.providerIntentRef && !a.ledgerPaymentId,
-    ledgerPaymentId: a.ledgerPaymentId ?? null,
+    ledgerPaymentId: a.id,
     statementSelection: a.statementSelection ?? [],
     creditTransfers: a.metadata?.checkoutQuote?.creditTransfers ?? [],
     isAdminTest: a.metadata?.adminTest?.isAdminTest === true,
@@ -403,7 +403,7 @@ export function registerLedgerPaymentAttemptRoutes(
     failureMessage: a.status === "failed" ? a.failureMessage : null, ...extra,
   });
   const receipt = async (a: any) => {
-    const payment = a.ledgerPaymentId ? await storage.ledger.payments.get(a.ledgerPaymentId) : null;
+    const payment = await storage.ledger.payments.get(a.id);
     return safeAttempt(a, {
       paymentStatus: payment?.status ?? null,
       dateReceived: payment?.dateReceived ?? null,
@@ -1010,33 +1010,14 @@ export function registerLedgerPaymentAttemptRoutes(
         ? await storage.ledger.paymentAttempts.get(attemptId) : undefined;
       const attempt = metadataAttempt ?? (providerRef
         ? await storage.ledger.paymentAttempts.getByProviderIntent(providerRef, req.params.gatewayConfigId) : undefined);
-      // Keep only reconciliation fields, never the raw provider object (which
-      // may contain a client secret, billing details or free-form metadata).
-      const newlyRecorded = await storage.ledger.paymentAttempts.recordEvent({
-        gatewayConfigId: req.params.gatewayConfigId,
-        attemptId: attempt?.gatewayConfigId === req.params.gatewayConfigId ? attempt.id : null,
-        providerEventId: event.eventId, eventType: event.providerEventType,
-        providerCreated: event.providerCreated ?? null,
-        payload: {
-          type: event.type, providerRef, amountMinor: event.amountMinor,
-          currency: event.currency, methodRef: event.methodRef, customerRef: event.customerRef,
-        },
-      });
       receivedEventId = event.eventId;
-      const complete = async () => storage.ledger.paymentAttempts.completeEvent(
-        req.params.gatewayConfigId, event.eventId,
-      );
       if (event.type === "unsupported") {
-        await storage.ledger.paymentAttempts.markEventIgnored(req.params.gatewayConfigId, event.eventId, "Unsupported provider event");
         return res.json({ received: true, unsupported: true });
       }
       if (!attempt) {
-        // The provider may beat the create response that stores its reference.
-        // Retain this as unfinished for replay/reconciliation, not completed.
-        await storage.ledger.paymentAttempts.completeEvent(
-          req.params.gatewayConfigId, event.eventId, "Payment attempt not found",
-        );
-        return res.json({ received: true });
+        // No manufactured payment and no acknowledged, forgotten inbox work.
+        // Providers retry a non-2xx response; recovery uses the original key.
+        return error(res, 503, "Payment not found yet; retry webhook");
       }
       if (attempt.gatewayConfigId !== req.params.gatewayConfigId) {
         throw new SettlementRefusal("Payment gateway mismatch");
@@ -1047,20 +1028,19 @@ export function registerLedgerPaymentAttemptRoutes(
       if (attempt.providerIntentRef && attempt.providerIntentRef !== providerRef) {
         throw new SettlementRefusal("Payment reference mismatch");
       }
-      const transition = await processPaymentEvidence(attempt.id, req.params.gatewayConfigId, event);
-      await complete();
-      return res.json({ received: true, ...(transition === "stale" ? { stale: true } : {}), ...(newlyRecorded ? {} : { duplicate: true }) });
+      if (!resolved.plugin.retrievePayment) throw new SettlementRefusal("Payment retrieval is unavailable");
+      const current = await resolved.plugin.retrievePayment(resolved.context, providerRef);
+      if (current.providerRef !== providerRef) throw new SettlementRefusal("Payment reference mismatch");
+      if (event.type === "payment.succeeded" && current.status !== "succeeded")
+        throw new SettlementRefusal("Provider has not confirmed the received event yet");
+      const transition = await processPaymentEvidence(attempt.id, req.params.gatewayConfigId, evidenceFromPayment(current));
+      return res.json({ received: true, ...(transition === "stale" ? { stale: true } : {}) });
     } catch (e) {
       if (receivedEventId) {
         if (e instanceof SettlementRefusal &&
             ["Payment gateway mismatch", "Payment reference mismatch", "Payment amount or currency mismatch", "Payment customer mismatch"].includes(e.message)) {
-          await storage.ledger.paymentAttempts.markEventIgnored(req.params.gatewayConfigId, receivedEventId, e.message);
           return res.json({ received: true, ignored: true });
         }
-        await storage.ledger.paymentAttempts.completeEvent(
-          req.params.gatewayConfigId, receivedEventId,
-          settlementError(e),
-        );
         await logSettlementFailure(null, settlementError(e));
       }
       if (sendIfMaintenanceRefusal(res, e)) return;

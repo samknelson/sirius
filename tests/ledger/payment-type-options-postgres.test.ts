@@ -75,7 +75,10 @@ describe("option validation through storage, HTTP, imports and concurrent postin
       CREATE TABLE ledger_payments (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(), status text, allocated boolean DEFAULT false,
         amount numeric, payment_type varchar REFERENCES options_ledger_payment_type,
-        ledger_ea_id varchar, details jsonb, date_received timestamp, date_cleared timestamp, memo text
+        ledger_ea_id varchar, details jsonb, date_received timestamp, date_cleared timestamp, memo text,
+        checkout_state text, checkout_key text, checkout_provider_ref text, checkout_gateway_id varchar,
+        checkout_account_id varchar, checkout_worker_id varchar, checkout_creator_id varchar, checkout_method_id varchar,
+        checkout_currency varchar(10), checkout_data jsonb, checkout_created_at timestamp, checkout_updated_at timestamp
       );
       CREATE TABLE options_department (id varchar PRIMARY KEY DEFAULT gen_random_uuid(), name text, description text, data jsonb);
       CREATE TABLE options_worker_ratings (id varchar PRIMARY KEY DEFAULT gen_random_uuid(), name text, parent varchar, sirius_id varchar, data jsonb);

@@ -67,7 +67,8 @@ export const onlinePaymentReceiptHelp: SystemHelpEntry = {
   summary: "Check one payment's provider and ledger status, keep its confirmation number, and resolve uncertainty before considering another payment.",
   details: `
     <h3>Purpose</h3>
-    <p>Use <strong>Payment receipt</strong> to follow an existing attempt through provider confirmation, processing, and ledger posting.</p>
+    <p>Online checkout creates one payment record before contacting the provider. Its confirmation number stays the same through authentication, processing, and settlement.</p>
+    <p><strong>Draft</strong> means checkout has started but money has not been received. It does not create ledger credit, and its received date remains unknown. <strong>Pending</strong> means the provider is processing the payment, including ACH; it is not cleared money. <strong>Cleared</strong> means settlement and ledger posting completed. Online payments are provider-managed and cannot be manually edited, deleted, or posted.</p>
     <h3>Before you start</h3>
     <p>You must be signed in as the checkout creator and still have payment authority for this payer. The receipt URL alone does not grant access. Staff cannot perform online payment actions.</p>
     <p><strong>Do not pay again while the outcome is unknown, processing, or awaiting ledger posting.</strong> A status error is not evidence of payment failure. Leaving this page does not cancel the payment.</p>

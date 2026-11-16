@@ -1,46 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { readFileSync } from "node:fs";
-import { ledger, ledgerPaymentAttempts, ledgerPaymentAttemptEvents, ledgerPaymentMethods } from "@shared/schema";
+import { ledgerPayments, insertLedgerPaymentSchema } from "@shared/schema";
+import { PRIVATE_PAYMENT_FIELDS, publicPayment, paymentLifecycleSchema } from "@shared/ledger/payment-lifecycle";
 
-describe("durable online payment compatibility", () => {
-  it("allows new-method and employer attempts without inventing a legacy payer", () => {
-    expect(ledgerPaymentAttempts.workerId.notNull).toBe(false);
-    expect(ledgerPaymentAttempts.paymentMethodId.notNull).toBe(false);
-    expect(ledgerPaymentAttempts.createdByUserId.notNull).toBe(false);
-    expect(ledgerPaymentAttempts.createdAt.default).toBeUndefined();
-    expect(ledgerPaymentAttempts.completedAt.default).toBeUndefined();
-    expect(ledgerPaymentAttempts.accountId.notNull).toBe(true);
-    expect(ledgerPaymentAttempts.gatewayConfigId.notNull).toBe(true);
-    expect(ledgerPaymentAttempts.currency.notNull).toBe(true);
+describe("payment-owned checkout contract", () => {
+  it("enforces separate client and provider idempotency at the database boundary", () => {
+    const config = getTableConfig(ledgerPayments);
+    expect(config.uniqueConstraints.map(c => c.columns.map(x => x.name))).toContainEqual(["checkout_key"]);
+    expect(config.uniqueConstraints.map(c => c.columns.map(x => x.name))).toContainEqual(["checkout_gateway_id", "checkout_provider_ref"]);
+    for (const name of ["checkout_gateway_id", "checkout_method_id", "checkout_creator_id", "checkout_worker_id", "checkout_account_id"])
+      expect(config.foreignKeys.find(f => f.reference().columns[0].name === name)?.onDelete).toBe("restrict");
   });
-
-  it("retains unknown events and deduplicates separately for each gateway", () => {
-    expect(ledgerPaymentAttemptEvents.attemptId.notNull).toBe(false);
-    expect(ledgerPaymentAttemptEvents.processedAt.default).toBeUndefined();
-    const unique = getTableConfig(ledgerPaymentAttemptEvents).uniqueConstraints;
-    expect(unique.find(c => c.name === "ledger_payment_attempt_events_provider_event_unique")?.columns.map(c => c.name))
-      .toEqual(["gateway_config_id", "provider_event_id"]);
+  it("strips private lifecycle data at runtime and excludes it from ordinary writes", () => {
+    const row = Object.fromEntries(PRIVATE_PAYMENT_FIELDS.map(k => [k, "private"]));
+    expect(publicPayment({ ...row, id: "payment", status: "draft" })).toEqual({ id: "payment", status: "draft" });
+    for (const key of PRIVATE_PAYMENT_FIELDS) expect(insertLedgerPaymentSchema.shape).not.toHaveProperty(key);
   });
-
-  it("restricts history deletion and scopes saved provider identities", () => {
-    const fk = getTableConfig(ledger).foreignKeys.find(f => f.reference().columns[0].name === "ea_id");
-    expect(fk?.onDelete).toBe("restrict");
-    const unique = getTableConfig(ledgerPaymentMethods).uniqueConstraints;
-    expect(unique.find(c => c.name === "ledger_paymentmethods_gateway_provider_unique")?.columns.map(c => c.name))
-      .toEqual(["gateway_config_id", "provider_method_ref"]);
-  });
-
-  it("migrates in place without reassigning identities or settling pending ACH", () => {
-    const migration = readFileSync("scripts/migrate/core/1200_generalize_online_payments.ts", "utf8");
-    expect(migration).not.toMatch(/DELETE FROM|TRUNCATE|SET status\s*=/i);
-    expect(migration).toContain("FROM ledger_ea e WHERE e.id = a.ledger_ea_id");
-    expect(migration).not.toContain("DEFERRABLE INITIALLY DEFERRED");
-    expect(readFileSync("scripts/migrate/core/1201_restore_payment_attempt_immediate_fk.ts", "utf8"))
-      .toContain("NOT DEFERRABLE");
-    expect(migration).toContain("r.n = 1");
-    expect(migration).toContain("'online-card'");
-    expect(migration).toContain("'online-bank-ach'");
-    expect(migration).not.toMatch(/SET created_by_user_id|SET consent|SET processed_at/);
+  it("rejects an event inbox or unknown lifecycle version", () => {
+    const data = { version: 1, saveMethod: false, consent: null, statementSelection: [], metadata: {},
+      reservationExpiresAt: null, completedAt: null, lastProviderEventCreated: null, failureMessage: null, failureCode: null };
+    expect(paymentLifecycleSchema.safeParse(data).success).toBe(true);
+    expect(paymentLifecycleSchema.safeParse({ ...data, events: [] }).success).toBe(false);
+    expect(paymentLifecycleSchema.safeParse({ ...data, version: 2 }).success).toBe(false);
   });
 });

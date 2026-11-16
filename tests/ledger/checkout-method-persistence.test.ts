@@ -12,8 +12,8 @@ import { eq, SQL, sql } from "drizzle-orm";
 import { getTableConfig, PgDialect, type PgTable } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  entityMetadata, ledgerPaymentMethods, ledgerPaymentAttempts, ledgerGatewayCustomers,
-  ledgerPaymentAttemptEvents, ledgerEa, ledgerPayments,
+  entityMetadata, ledgerPaymentMethods, ledgerGatewayCustomers,
+  ledgerEa, ledgerPayments, ledgerAccounts, optionsLedgerPaymentType,
 } from "@shared/schema";
 import { CHECKOUT_SAVE_METHOD_CONSENT } from "@shared/ledger/checkout-save-consent";
 
@@ -30,6 +30,8 @@ vi.mock("../../server/storage/transaction-context", () => ({
   onAfterCommit: vi.fn(),
 }));
 vi.mock("../../server/storage", () => ({ get storage() { return state.storage; } }));
+vi.mock("../../server/storage/db", () => ({ get db() { return state.db; } }));
+vi.mock("../../server/services/migration-runner", () => ({ registerMigration: vi.fn() }));
 vi.mock("../../server/logger", () => ({ storageLogger: { error: vi.fn() } }));
 vi.mock("../../server/storage/middleware/logging", () => ({ defineLoggingConfig: (v: unknown) => v }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({
@@ -149,8 +151,8 @@ describe("checkout method durable storage and listing", () => {
     // Use production column definitions; omit unrelated FKs in this isolated
     // slice. Install the actual uniqueness contracts exercised by upserts.
     const dialect = new PgDialect();
-    for (const table of [entityMetadata, ledgerEa, ledgerPayments, ledgerPaymentAttempts,
-      ledgerPaymentMethods, ledgerGatewayCustomers, ledgerPaymentAttemptEvents] as PgTable[]) {
+    for (const table of [entityMetadata, ledgerEa, ledgerPayments, ledgerAccounts, optionsLedgerPaymentType,
+      ledgerPaymentMethods, ledgerGatewayCustomers] as PgTable[]) {
       const config = getTableConfig(table);
       const columns = config.columns.map(c => {
         const def = c.default === undefined ? "" : c.default instanceof SQL
@@ -162,11 +164,12 @@ describe("checkout method durable storage and listing", () => {
     await pool.query(`
       CREATE UNIQUE INDEX ON ledger_paymentmethods(gateway_config_id,provider_method_ref);
       CREATE UNIQUE INDEX ON ledger_gateway_customers(entity_type,entity_id,gateway_config_id);
-      CREATE UNIQUE INDEX ON ledger_payment_attempts(idempotency_key);
-      CREATE UNIQUE INDEX ON ledger_payment_attempts(provider_intent_ref);
-      CREATE UNIQUE INDEX ON ledger_payment_attempts(ledger_payment_id);
-      CREATE UNIQUE INDEX ON ledger_payment_attempt_events(gateway_config_id,provider_event_id);
+      CREATE UNIQUE INDEX ON ledger_payments(checkout_key);
+      CREATE UNIQUE INDEX ON ledger_payments(checkout_gateway_id,checkout_provider_ref);
       CREATE TABLE fixture_allocations(payment_id text PRIMARY KEY);
+      CREATE TABLE plugin_configs_wc_vendors(id varchar PRIMARY KEY);
+      INSERT INTO plugin_configs_wc_vendors VALUES ('gateway');
+      CREATE TABLE ledger(id varchar PRIMARY KEY, reference_type text, reference_id varchar, charge_plugin text);
     `);
     const app = express();
     app.use(express.json({ verify: (req, _res, buffer) => {
@@ -184,8 +187,10 @@ describe("checkout method durable storage and listing", () => {
     if (directory) rmSync(directory, { recursive: true, force: true });
   });
   beforeEach(async () => {
-    await pool.query(`TRUNCATE ledger_ea,ledger_payments,ledger_payment_attempts,ledger_paymentmethods,
-      ledger_gateway_customers,ledger_payment_attempt_events,entity_metadata,fixture_allocations`);
+    await pool.query(`TRUNCATE ledger_ea,ledger_payments,ledger_paymentmethods,ledger_accounts,options_ledger_payment_type,
+      ledger_gateway_customers,entity_metadata,fixture_allocations`);
+    await pool.query(`INSERT INTO ledger_accounts(id,name,currency_code) VALUES ('account','Fixture','USD');
+      INSERT INTO options_ledger_payment_type(id,name,currency_code,category,direction) VALUES ('financial','Fixture','USD','financial','credit')`);
     await pool.query(`INSERT INTO ledger_ea(id,account_id,entity_type,entity_id) VALUES ('ea','account','worker','worker')`);
     state.creates = [];
     state.customerCreates = 0;
@@ -226,6 +231,29 @@ describe("checkout method durable storage and listing", () => {
   const request = (path: string, body?: unknown, worker = "worker") => fetch(origin + path, {
     method: body ? "POST" : "GET", headers: { "content-type": "application/json", "x-worker": worker },
     ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  it("removes only authorized legacy test payments and can restart the migration", async () => {
+    await pool.query(`
+      CREATE TABLE ledger_payment_attempts(id varchar PRIMARY KEY,ledger_payment_id varchar,
+        ledger_ea_id varchar, amount numeric);
+      CREATE TABLE ledger_payment_attempt_events(id varchar PRIMARY KEY);
+      INSERT INTO ledger_payments(id,status,amount,payment_type,ledger_ea_id,details) VALUES
+        ('old-payment','cleared',10,'financial','ea','{"paymentAttemptId":"old-attempt"}'),
+        ('manual-payment','cleared',20,'financial','ea',NULL);
+      INSERT INTO ledger_payment_attempts VALUES ('old-attempt','old-payment','ea',10);
+      INSERT INTO ledger_payment_attempt_events VALUES ('old-event');
+      INSERT INTO ledger VALUES
+        ('old-posting','payment','old-payment','fixture'),
+        ('manual-posting','payment','manual-payment','fixture');
+    `);
+    const { default: migration } = await import("../../scripts/migrate/core/1222_consolidate_online_payments");
+    await migration.up();
+    await migration.up();
+    expect((await pool.query("SELECT id FROM ledger_payments ORDER BY id")).rows).toEqual([{ id: "manual-payment" }]);
+    expect((await pool.query("SELECT id FROM ledger ORDER BY id")).rows).toEqual([{ id: "manual-posting" }]);
+    expect((await pool.query("SELECT to_regclass('ledger_payment_attempts') AS attempts, to_regclass('ledger_payment_attempt_events') AS events")).rows[0])
+      .toEqual({ attempts: null, events: null });
+    expect(state.creates).toHaveLength(0);
   });
   const deliver = async (status: string, eventId = `evt_${status}`, valid = true) => {
     const created = Math.floor(Date.now() / 1000);
@@ -277,7 +305,7 @@ describe("checkout method durable storage and listing", () => {
     if (type === "us_bank_account") {
       expect(await listed()).toEqual([]);
       state.intent.status = "succeeded";
-      await pool.query(`UPDATE ledger_payment_attempts SET created_at=now()-interval '1 hour' WHERE id=$1`, [value.id]);
+      await pool.query(`UPDATE ledger_payments SET checkout_created_at=now()-interval '1 hour' WHERE id=$1`, [value.id]);
       await recoverOnlinePayments();
     }
     await Promise.all([evidence(value.id), evidence(value.id)]);
@@ -300,7 +328,8 @@ describe("checkout method durable storage and listing", () => {
     expect(state.creates[1].setup_future_usage).toBeUndefined();
     expect(await methods.get(list[0].id)).toEqual(original);
     expect(await listed()).toHaveLength(1);
-    await onePayment();
+    expect((await pool.query("SELECT count(*) FROM ledger_payments WHERE status='draft'")).rows[0].count).toBe("1");
+    expect((await pool.query("SELECT count(*) FROM fixture_allocations")).rows[0].count).toBe("1");
     providerConfirms(type);
     await evidence(reused.value.id);
     await evidence(reused.value.id);
@@ -318,7 +347,7 @@ describe("checkout method durable storage and listing", () => {
     await onePayment();
     expect(await listed()).toEqual([]);
     expect((await attempts.get(value.id))?.metadata).not.toHaveProperty("methodSavedAt");
-    await pool.query(`UPDATE ledger_payment_attempts SET created_at=now()-interval '1 hour'`);
+    await pool.query(`UPDATE ledger_payments SET checkout_created_at=now()-interval '1 hour'`);
     await recoverOnlinePayments();
     await evidence(value.id);
     expect(await listed()).toHaveLength(1);
@@ -352,7 +381,7 @@ describe("checkout method durable storage and listing", () => {
     const { value } = await start("us_bank_account", save ? {} : { saveMethod: false, saveMethodConsent: undefined });
     providerConfirms("us_bank_account", "processing");
     expect((await deliver("processing", "evt_bad", false)).status).toBe(400);
-    expect((await pool.query("SELECT count(*) FROM ledger_payment_attempt_events")).rows[0].count).toBe("0");
+    expect((await attempts.get(value.id))?.status).not.toBe("processing");
     expect((await deliver("processing")).status).toBe(200);
     const pending = await attempts.get(value.id);
     const received = await state.storage.ledger.payments.get(pending!.ledgerPaymentId);
@@ -364,14 +393,12 @@ describe("checkout method durable storage and listing", () => {
     state.failSaveStamp = save;
     expect((await deliver("succeeded")).status).toBe(save ? 500 : 200);
     if (save) {
-      const unfinished = await attempts.getEvent("gateway", "evt_succeeded");
-      expect(unfinished?.processedAt).toBeNull();
-      expect(unfinished?.error).toBeTruthy();
+      const unfinished = await attempts.get(value.id);
+      expect((unfinished?.metadata as any)?.methodSavedAt).toBeUndefined();
+      expect(unfinished?.status).toBe("succeeded");
     }
     expect((await deliver("succeeded")).status).toBe(200);
-    const completed = await attempts.getEvent("gateway", "evt_succeeded");
-    expect(completed?.processedAt).toBeInstanceOf(Date);
-    expect(completed?.error).toBeNull();
+    expect((await attempts.get(value.id))?.status).toBe("succeeded");
     expect((await deliver("processing")).status).toBe(200);
     expect((await deliver("canceled")).status).toBe(200);
     const receiptResponse = await request(`/api/ledger/checkout/sessions/${value.id}`);
@@ -417,9 +444,7 @@ describe("checkout method durable storage and listing", () => {
     state.intent.status = "succeeded";
     state.failAllocation = true;
     expect((await deliver("succeeded")).status).toBe(500);
-    const event = await attempts.getEvent("gateway", "evt_succeeded");
-    expect(event?.processedAt).toBeNull();
-    expect(event?.error).toBeTruthy();
+    expect((await attempts.get(value.id))?.status).toBe("processing");
     const rolledBack = await state.storage.ledger.payments.get(original.id);
     expect(rolledBack).toMatchObject({ status: "pending", dateCleared: null, dateReceived: original.dateReceived });
     expect((await attempts.get(value.id))?.status).toBe("processing");

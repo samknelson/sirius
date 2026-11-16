@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
       gatewayCustomers: { get: vi.fn() },
       payments: { create: vi.fn(), get: vi.fn() },
       paymentAttempts: {
+        receive: vi.fn(),
         get: vi.fn(),
         getByProviderIntent: vi.fn(),
         lockAttempt: vi.fn(),
@@ -153,6 +154,9 @@ describe("worker payable account routes", () => {
       ...gateway(),
       plugin: {
         id: "dummy",
+        retrievePayment: vi.fn().mockResolvedValue({
+          providerRef: "pi-fixture", status: "succeeded", amountMinor: 4000, currency: "USD",
+        }),
         verifyWebhook: vi.fn().mockReturnValue({
           eventId: "event-1", type: "payment.succeeded",
           providerEventType: "payment.succeeded", providerRef: "pi-fixture",
@@ -165,10 +169,11 @@ describe("worker payable account routes", () => {
     mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({
       ...attempt, ledgerPaymentId: alreadyPosted ? "payment-existing" : null,
     });
-    mocks.storage.ledger.payments.get.mockResolvedValue(alreadyPosted ? {
-      id: "payment-existing", ledgerEaId: "ea-dp", status: "cleared",
+    mocks.storage.ledger.payments.get.mockResolvedValue({
+      id: "attempt-1", ledgerEaId: "ea-dp", status: alreadyPosted ? "cleared" : "draft",
+      amount: "40.00", paymentType: "financial-usd", dateReceived: alreadyPosted ? new Date() : null,
       details: { paymentAttemptId: "attempt-1" },
-    } : undefined);
+    });
     // Settlement now validates the payment EA (and its account) before
     // inserting the ledger payment.
     mocks.storage.ledger.ea.get.mockResolvedValue(workerEa("ea-dp", "account-dp"));
@@ -185,9 +190,8 @@ describe("worker payable account routes", () => {
       expect(mocks.storage.ledger.paymentAttempts.claimLedgerPosting).not.toHaveBeenCalled();
     } else {
       expect(mocks.storage.ledger.paymentAttempts.lockAttempt.mock.invocationCallOrder[0])
-        .toBeLessThan(mocks.storage.ledger.payments.create.mock.invocationCallOrder[0]);
-      expect(mocks.storage.ledger.payments.create.mock.invocationCallOrder[0])
-        .toBeLessThan(mocks.storage.ledger.paymentAttempts.claimLedgerPosting.mock.invocationCallOrder[0]);
+        .toBeLessThan(mocks.storage.ledger.paymentAttempts.receive.mock.invocationCallOrder[0]);
+      expect(mocks.storage.ledger.payments.create).not.toHaveBeenCalled();
     }
   });
 

@@ -1,12 +1,11 @@
 import { assertAdminAssistedPaymentProvenance } from "./admin-assisted-payment";
-import { randomUUID } from "node:crypto";
 import type { LedgerPayment, LedgerPaymentAttempt } from "@shared/schema";
 import type { NormalizedGatewayEvent, NormalizedPayment } from "../../plugins/wc-vendors/payment-types";
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { resolveGateway } from "./payment-gateway-context";
-import { createPaymentFromRequestBody, triggerPaymentChargePlugins } from "./payments";
+import { triggerPaymentChargePlugins } from "./payments";
 import { paymentEventMatchesAmount, selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-attempt-state";
 import { storageLogger } from "../../logger";
 import { checkoutMinor, type CheckoutCreditTransfer } from "@shared/ledger/checkout-selection";
@@ -83,24 +82,21 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
     if (status === "processing" || status === "succeeded") {
       // A linked row is the durable receipt timestamp. Never replace it on
       // webhook replay, recovery, or a later (even conflicting) provider event.
-      const linked: LedgerPayment | undefined = attempt.ledgerPaymentId
-        ? await storage.ledger.payments.get(attempt.ledgerPaymentId) : undefined;
-      if (attempt.ledgerPaymentId && !linked) throw new SettlementRefusal("Linked ledger payment is missing");
+      const linked = await storage.ledger.payments.get(attempt.id);
+      if (!linked) throw new SettlementRefusal("Ledger payment is missing");
       if (linked && (linked.ledgerEaId !== attempt.ledgerEaId ||
           (linked.details as Record<string, unknown> | null)?.paymentAttemptId !== attempt.id))
         throw new SettlementRefusal("Linked ledger payment does not match attempt");
       if (linked?.status === "cleared" && status === "processing") return "stale";
-      if (linked && !["pending", "cleared", "canceled", "error"].includes(linked.status))
+      if (linked && !["draft", "pending", "cleared", "canceled", "error"].includes(linked.status))
         throw new SettlementRefusal("Linked ledger payment has an unexpected status");
       if (linked?.status === "cleared" && status === "succeeded") {
         // The attempt's separate method-save effect can still be retried.
       } else {
       const options = await types.list("ledger-payment-type");
-      const preferred = (attempt.metadata as Record<string, unknown> | null)?.ledgerPaymentTypeId;
-      const paymentType = options.find(t => t.id === preferred && t.category === "financial" &&
+      const paymentType = options.find(t => t.id === linked.paymentType && t.category === "financial" &&
         t.direction === "credit" &&
-        t.currencyCode?.toUpperCase() === attempt.currency.toUpperCase()) ??
-        selectFinancialPaymentType(options, attempt.currency);
+        t.currencyCode?.toUpperCase() === attempt.currency.toUpperCase());
       if (!paymentType) throw new SettlementRefusal("No financial ledger payment type is configured");
       const selection = attempt.statementSelection as Array<{ invoiceNumber: string; amount: string }> | null;
       const allocations = selection?.length
@@ -135,41 +131,25 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
         if (creditTotal !== checkoutMinor(quote.creditAdjustment ?? "0.00")) throw new SettlementRefusal("Checkout credit attribution snapshot is incomplete");
       }
       if (linked && (linked.amount !== attempt.amount || linked.paymentType !== paymentType.id ||
-          !linked.dateReceived || JSON.stringify((linked.details as any)?.proposedAllocation) !== JSON.stringify(allocations)))
+          (linked.dateReceived && JSON.stringify((linked.details as any)?.proposedAllocation) !== JSON.stringify(allocations))))
         throw new SettlementRefusal("Linked payment differs from checkout snapshot");
       if (status === "succeeded" && quote?.creditTransfers?.length)
         await storage.ledger.entries.applyCheckoutCreditTransfers(attempt.id, attempt.ledgerEaId, quote.creditTransfers);
       let payment: LedgerPayment | undefined = linked;
-      if (!payment) {
-        const now = new Date();
-        const result = await createPaymentFromRequestBody({
-          id: randomUUID(), status: status === "succeeded" ? "cleared" : "pending",
-          allocated: false, amount: attempt.amount,
-          paymentType: paymentType.id, ledgerEaId: attempt.ledgerEaId,
-          dateReceived: now.toISOString(),
-          dateCleared: status === "succeeded" ? now.toISOString() : null,
-          memo: adminTest ? "Admin test payment" : adminAssisted ? "Administrator payment on behalf of worker" : "Online payment", details: {
+      if (!linked.dateReceived) {
+        await storage.ledger.paymentAttempts.receive(attempt.id, status === "succeeded" ? "cleared" : "pending", {
             provider: gatewayId, paymentAttemptId: attempt.id,
-            providerIntentRef: evidence.providerRef, proposedAllocation: allocations,
+            proposedAllocation: allocations,
             statementSelection: selection ?? [],
             creditTransfers: quote?.creditTransfers ?? [],
-            ...(adminAssisted ? {
-              adminAssisted: true,
-              adminActorUserId: metadata!.adminAssisted.actorUserId,
-              adminConfirmation: metadata!.adminAssisted.confirmation,
-            } : {}),
+            ...(adminAssisted ? { adminAssisted: true } : {}),
             ...(adminTest ? {
               adminTest: true,
-              adminTestPurpose: metadata!.adminTest.purpose,
-              adminTestActorUserId: metadata!.adminTest.actorUserId,
               providerTestMode: true,
             } : {}),
-          },
-        }, { requireAccountId: attempt.accountId });
-        if (!result.ok) throw new SettlementRefusal(result.message);
-        payment = result.payment;
-        if (!(await storage.ledger.paymentAttempts.claimLedgerPosting(attempt.id, result.payment.id)))
-          throw new Error("Payment link could not be claimed");
+        });
+        payment = await storage.ledger.payments.get(attempt.id);
+        if (!payment) throw new Error("Payment receipt could not be read");
       } else if (status === "succeeded") {
         payment = await storage.ledger.payments.settleOnline(payment.id, "cleared", new Date());
         if (!payment) throw new Error("Linked ledger payment could not be cleared");
