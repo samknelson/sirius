@@ -18,6 +18,12 @@ vi.mock("../../server/storage", () => ({ storage: {
     getById: async () => state.wizard,
     getReportData: (...args: unknown[]) => state.getRows(...args),
     update: (...args: unknown[]) => state.update(...args),
+    mergeData: async (_id: string, patch: Record<string, unknown>) => {
+      state.wizard.data = { ...state.wizard.data, ...patch };
+      return state.wizard;
+    },
+    deleteReportData: async () => { state.rows = []; },
+    saveReportData: async (_id: string, _pk: string, data: unknown) => { state.rows.push({ data }); },
   },
   sftpClientDestinations: { getById: async () => ({
     id: "destination", name: "Fixture", data: { protocol: "sftp", host: "fixture.invalid", port: 22, username: "fixture", password: "fixture" },
@@ -138,6 +144,60 @@ describe("authorized, read-only Deliver exports", () => {
     });
     expect(response.status).toBe(500);
     expect(state.upload).not.toHaveBeenCalled();
+  });
+  it.each(["in_progress", "failed"])("refuses old or partial generation while %s", async status => {
+    state.wizard.data.progress = { run: { status } };
+    for (const format of ["provider", "carrier-csv"]) {
+      expect((await get(`/deliver/export?format=${format}`)).status).toBe(500);
+    }
+    const handler = trustProviderEdiWizardPlugin.steps.find(step => step.id === "deliver")!;
+    const { storage } = await import("../../server/storage");
+    const ctx = { wizard: state.wizard, wizardId: "saved", storage, input: {}, req: {} } as any;
+    expect(await handler.getData!(ctx)).toMatchObject({ ready: false });
+    await expect(handler.submit!(ctx)).rejects.toThrow(/Generate/);
+    expect(state.getRows).not.toHaveBeenCalled();
+    expect(state.upload).not.toHaveBeenCalled();
+  });
+  it("hides Results data and CSV after a later generation batch fails", async () => {
+    const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
+    const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue(
+      Array.from({ length: 101 }, (_, i) => `row-${i}`),
+    );
+    const process = vi.spyOn(plugin, "processBatch")
+      .mockImplementationOnce(async batch => batch.map(pk => ({ pk, firstName: "Partial fixture" })))
+      .mockRejectedValueOnce(new Error("fixture later batch failure"));
+    try {
+      state.wizard.data.reportMeta.columns = [{ id: "firstName", header: "Old column" }];
+      state.wizard.data.progress = { run: { status: "in_progress", runId: "fixture" } };
+      const { storage } = await import("../../server/storage");
+      const run = trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!;
+      const ctx = {
+        wizard: state.wizard, wizardId: "saved", runId: "fixture", storage,
+        input: {}, req: {}, reportProgress: async () => {
+          expect(state.rows).toHaveLength(100);
+          expect(state.wizard.data.reportMeta).toBeNull();
+          for (const path of ["/results/data", "/results/export"]) {
+            const response = await get(path);
+            expect(response.status).toBe(500);
+            expect(await response.text()).not.toContain("Partial fixture");
+          }
+        },
+      } as any;
+      await expect(run.run!(ctx)).rejects.toThrow("fixture later batch failure");
+      expect(state.rows).toHaveLength(100);
+      expect(state.wizard.data.reportMeta).toBeNull();
+      state.wizard.data.progress.run.status = "failed";
+      for (const path of ["/results/data", "/results/export"]) {
+        const response = await get(path);
+        expect(response.status).toBe(500);
+        expect(await response.text()).not.toContain("Partial fixture");
+      }
+      expect(state.getRows).not.toHaveBeenCalled();
+      expect(state.upload).not.toHaveBeenCalled();
+    } finally {
+      keys.mockRestore();
+      process.mockRestore();
+    }
   });
   it("SFTP and re-delivery ignore QA selection and use native bytes and filename", async () => {
     const handler = trustProviderEdiWizardPlugin.steps.find(step => step.id === "deliver")!;

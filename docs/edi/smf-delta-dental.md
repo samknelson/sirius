@@ -89,7 +89,7 @@ never invent values for optional carrier fields.
 | Business Level 4–7 | 217–264 | 12×4 | | Blank — handbook: Reserved |
 | Benefit Package ID / Eff / Term | 265–288 | 8×3 | | Blank — handbook: Reserved |
 | Eligibility Effective Date | 289–296 | 8 | Y | First month of the member's contiguous `trust_wmb` run for the benefit, `YYYYMMDD` |
-| Eligibility Termination Date | 297–304 | 8 | | Blank — a full file lists currently covered members only; termination is expressed by omission (see §8 Q3) |
+| Eligibility Termination Date | 297–304 | 8 | | Blank for active members; opt-in explicit termination rows carry the person's last covered date, YYYYMMDD (see termination-policy.md) |
 | Mailing Address 1 | 305–359 | 55 | Y | Primary active postal `street` (per member; falls back to blank when the member has no address) |
 | Mailing Address 2–3 | 360–469 | 55×2 | | Blank — S2 stores a single street line |
 | Mailing Address City | 470–499 | 30 | Y | Postal `city` |
@@ -149,9 +149,11 @@ NID, contact NID, subscriber number, premium columns) appear anywhere.
    848–1240 from the QMSCO responsible-party worker. S2 has no
    responsible-party source on the relation model, so the block is blank.
    Confirm whether Delta requires it for QMSCO members.
-3. **Eligibility Termination Date.** As a full monthly file, terminated
-   members simply drop off the next file and the field is always blank.
-   Confirm Delta does not require a final terminating record.
+3. **Eligibility Termination Date.** Omission remains the default. The
+   shared opt-in policy can include final subscriber/dependent records
+   independently. The handbook explicitly defines positions 297–304 as
+   the last date of coverage; no change-action code is added to this full
+   file. Confirm operational activation with the carrier before enabling.
 4. **Detail Division ID.** `00002`/`09002` (COBRA) are the established
    SMF divisions; the handbook only says divisions are Delta-assigned.
    Confirm the division set if the group structure ever changes.

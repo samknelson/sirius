@@ -18,6 +18,7 @@ interface DeliverStepData {
   ready: boolean;
   filename?: string;
   rowCount?: number;
+  terminationCounts?: { subscribers: number; dependents: number; inferred: number } | null;
   destinationId?: string | null;
   destinationName?: string | null;
   delivery?: {
@@ -144,6 +145,14 @@ function DeliverStepContent({ wizardId, step }: Pick<WizardStepComponentProps, "
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {data.terminationCounts && <div className="text-sm" role="status">
+          <p>Explicit terminations: {data.terminationCounts.subscribers} subscriber(s),{" "}
+            {data.terminationCounts.dependents} dependent(s).</p>
+          {data.terminationCounts.inferred > 0 && <p>
+            {data.terminationCounts.inferred} ending(s) use retained coverage-inferred history,
+            not a failed eligibility scan. Review that historical evidence before delivery.
+          </p>}
+        </div>}
         <p className="text-sm text-muted-foreground">
           Downloads contain sensitive personal and coverage data. Store and share them securely.
           Carrier-layout CSV is for QA, not provider submission; unlike Results CSV, it shows

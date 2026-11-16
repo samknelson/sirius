@@ -23,6 +23,11 @@ and the template for correcting the remaining carriers.
 
 ## How each reference is structured (the template)
 
+Shared opt-in subscriber/dependent termination settings, evidence rules,
+calendar windows and carrier-specific blockers are documented in
+[termination-policy.md](termination-policy.md). Existing configurations remain
+termination-by-omission; Local 11 hours is not a membership file.
+
 Every carrier document records, in this order:
 
 1. **Source specification** — the carrier document name, version, and date

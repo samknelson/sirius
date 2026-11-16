@@ -1,4 +1,5 @@
 import type { SystemHelpEntry } from "./index";
+import { ediTerminationGuidance } from "./edi-termination-guidance";
 
 export const conditionalDomainHelp: SystemHelpEntry[] = [
   {
@@ -17,6 +18,7 @@ export const conditionalDomainHelp: SystemHelpEntry[] = [
     summary: "Review configured EDI generation and delivery runs, verifying benefit scope, period, and saved results before generating another provider file.",
     details: `
       <h3>Purpose</h3><p>Review enabled EDI file configurations and their most recent generation or delivery wizard.</p>
+      ${ediTerminationGuidance}
       <h3>Before you start</h3><p>Administrator access, Providers EDI, and a valid file configuration are required. File membership follows the configured benefit identifier; do not assume every benefit belongs to the provider merely because this page names it.</p>
       <h3>How to use this page</h3><ol><li>Review the configuration, period, and most recent wizard.</li><li>Open existing work and inspect its results before starting a new run.</li><li>On Deliver, choose <strong>Provider file</strong> (the default) for the carrier-native file or <strong>Carrier-layout CSV</strong> for QA. Protect these sensitive personal and coverage exports; store and share them only through approved secure channels.</li><li>Review file population and destination before selecting Deliver or Re-deliver; those actions transfer the native Provider file via SFTP regardless of the download choice.</li></ol>
       <h3>Results and status meanings</h3><p>A wizard's Completed or Failed state describes its saved work. Generation and external delivery are distinct steps; inspect the relevant result rather than assuming a generated file was accepted by a provider. Both downloads use saved generated rows, including previously delivered runs, without regenerating, completing delivery, or contacting the provider.</p>

@@ -476,6 +476,7 @@ export async function buildMemberUnits(
       ? await db
           .select({
             workerId: trustWmb.workerId,
+            benefitId: trustWmb.benefitId,
             year: trustWmb.year,
             month: trustWmb.month,
           })
@@ -489,13 +490,14 @@ export async function buildMemberUnits(
       : [];
     const monthsByWorker = new Map<string, Set<string>>();
     for (const m of allMonths) {
-      let set = monthsByWorker.get(m.workerId);
-      if (!set) monthsByWorker.set(m.workerId, (set = new Set()));
+      const key = `${m.workerId}|${m.benefitId}`;
+      let set = monthsByWorker.get(key);
+      if (!set) monthsByWorker.set(key, (set = new Set()));
       set.add(`${m.year}-${m.month}`);
     }
     /** Walk back from (year, month) while the previous month exists. */
-    function coverageStartFor(workerId: string, year: number, month: number): string {
-      const set = monthsByWorker.get(workerId);
+    function coverageStartFor(workerId: string, benefitId: string, year: number, month: number): string {
+      const set = monthsByWorker.get(`${workerId}|${benefitId}`);
       let y = year;
       let m = month;
       while (set) {
@@ -655,7 +657,7 @@ export async function buildMemberUnits(
         wmb,
         benefitSiriusId: siriusByBenefitId.get(wmb.benefitId) ?? null,
         isCobra: cobraEmployerIds.has(wmb.employerId),
-        coverageStartYmd: coverageStartFor(wmb.workerId, wmb.year, wmb.month),
+        coverageStartYmd: coverageStartFor(wmb.workerId, wmb.benefitId, wmb.year, wmb.month),
         subscriber: normalizeEdiPerson({
           ...subscriber,
           postal: subscriberPostal,

@@ -25,6 +25,14 @@ import { carrierLayoutCsv } from "../../trust/provider-edi/carrier-csv";
 const WIZARD_ID = "trust_provider_edi";
 const COMPONENT = "trust.providers.edi";
 
+function hasGeneratedReport(wizard: Wizard): boolean {
+  const data = wizard.data as any;
+  const status = data?.progress?.run?.status;
+  // Older saved reports predate run progress. Preserve those downloads, but
+  // once a run has progress only its completed state can expose output.
+  return !!data?.reportMeta && (status === undefined || status === "completed");
+}
+
 interface SelectedConfig {
   configId: string;
   pluginId: string;
@@ -138,7 +146,11 @@ const paramsStep: WizardStepHandler = {
     const data = (wizard.data as any) || {};
     return data.input ? "completed" : "pending";
   },
-  submit: (ctx) => ({ data: { input: ctx.input ?? {} } }),
+  submit: (ctx) => ({
+    data: {
+      input: ctx.input ?? {}, reportMeta: null, recordCount: null, delivery: null,
+    },
+  }),
 };
 
 /** Step 3 — generate: defer keys + batches to the EDI plugin. */
@@ -163,6 +175,14 @@ const runStep: WizardStepHandler = {
     const plugin = resolvePlugin(selected.pluginId);
     const ediCtx = buildEdiContext(ctx, selected);
 
+    // Invalidate the old description BEFORE replacing any rows. Keep concurrent
+    // runner progress intact, and honor the run ownership fence when supplied.
+    const invalidated = await ctx.storage.wizards.mergeData(
+      ctx.wizardId, { reportMeta: null, recordCount: null, delivery: null },
+      "run", ctx.runId,
+    );
+    if (!invalidated) throw new Error("EDI generation no longer owns this run");
+
     // The registry guarantees getPrimaryKeys (default filled at registration).
     const keys = await plugin.getPrimaryKeys!(ediCtx);
     const columns = plugin.getColumns();
@@ -171,6 +191,7 @@ const runStep: WizardStepHandler = {
     const BATCH = 100;
     let processed = 0;
     let saved = 0;
+    const terminationCounts = { subscribers: 0, dependents: 0, inferred: 0 };
     for (let i = 0; i < keys.length; i += BATCH) {
       const batch = keys.slice(i, i + BATCH);
       const rows = await plugin.processBatch(batch, ediCtx);
@@ -179,6 +200,9 @@ const runStep: WizardStepHandler = {
         if (!pk) continue;
         await ctx.storage.wizards.saveReportData(ctx.wizardId, pk, row);
         saved++;
+        if (row.terminationRole === "subscriber") terminationCounts.subscribers++;
+        if (row.terminationRole === "dependent") terminationCounts.dependents++;
+        if (row.terminationEvidence === "coverage inferred") terminationCounts.inferred++;
       }
       processed += batch.length;
       if (keys.length > 0) {
@@ -196,6 +220,7 @@ const runStep: WizardStepHandler = {
           recordCount: saved,
           columns,
           primaryKeyField: "pk",
+          terminationCounts,
         },
         recordCount: saved,
         delivery: null,
@@ -211,9 +236,22 @@ const resultsStep: WizardStepHandler = {
   description: "Preview the generated records",
   kind: "results",
   component: "ResultsTable",
+  // Both generic /data and /export use getData, so neither can read a partial
+  // batch or stale report after failed regeneration.
+  getData: async (ctx) => {
+    if (!hasGeneratedReport(ctx.wizard)) {
+      throw new Error("Complete EDI generation before viewing or exporting Results");
+    }
+    const reportMeta = (ctx.wizard.data as any).reportMeta;
+    const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
+    return {
+      reportMeta, columns: reportMeta.columns ?? [],
+      records: rows.map(row => row.data),
+      recordCount: reportMeta.recordCount ?? rows.length,
+    };
+  },
   getState: (wizard) => {
-    const data = (wizard.data as any) || {};
-    return data.reportMeta ? "completed" : "pending";
+    return hasGeneratedReport(wizard) ? "completed" : "pending";
   },
 };
 
@@ -244,7 +282,7 @@ const deliverStep: WizardStepHandler = {
   exportFile: async (ctx, format) => {
     if (format !== "provider" && format !== "carrier-csv") throw new Error("Unknown EDI download format");
     const selected = readSelectedConfig(ctx.wizard);
-    if (!selected || !(ctx.wizard.data as any)?.reportMeta) {
+    if (!selected || !hasGeneratedReport(ctx.wizard)) {
       throw new Error("Generate the file before downloading it");
     }
     const plugin = resolvePlugin(selected.pluginId);
@@ -269,7 +307,7 @@ const deliverStep: WizardStepHandler = {
   getData: async (ctx) => {
     const data = (ctx.wizard.data as any) || {};
     const selected = readSelectedConfig(ctx.wizard);
-    if (!selected || !data.reportMeta) {
+    if (!selected || !hasGeneratedReport(ctx.wizard)) {
       return { ready: false, delivery: data.delivery ?? null };
     }
     const plugin = resolvePlugin(selected.pluginId);
@@ -283,6 +321,7 @@ const deliverStep: WizardStepHandler = {
       ready: true,
       filename: plugin.buildFilename(ediCtx),
       rowCount: data.reportMeta.recordCount,
+      terminationCounts: data.reportMeta.terminationCounts ?? null,
       destinationId: selected.sftpClientId,
       destinationName,
       delivery: data.delivery ?? null,
@@ -291,7 +330,7 @@ const deliverStep: WizardStepHandler = {
   submit: async (ctx) => {
     const data = (ctx.wizard.data as any) || {};
     const selected = readSelectedConfig(ctx.wizard);
-    if (!selected || !data.reportMeta) {
+    if (!selected || !hasGeneratedReport(ctx.wizard)) {
       throw new Error("Generate the file before delivering it");
     }
     if (!selected.sftpClientId) {

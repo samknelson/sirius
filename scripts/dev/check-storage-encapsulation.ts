@@ -71,6 +71,7 @@ const READONLY_FLAG_EXEMPT_FILES = [
   // queries live here while the `needsReadOnlyDb: true` flag is declared on
   // the single trust_provider_edi wizard wrapper that drives them.
   'server/plugins/trust/provider-edi/base.ts',
+  'server/plugins/trust/provider-edi/termination-population.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-healthnet.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser.ts',
   // Shared SMF helper module (medical-plan group lookup) used by the SMF

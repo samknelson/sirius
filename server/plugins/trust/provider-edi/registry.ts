@@ -4,6 +4,7 @@ import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import type { BasePluginMetadata } from "../../_core";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { storage as storageType } from "../../../storage";
+import { withMembershipLifecycle } from "./membership-lifecycle";
 
 /**
  * Context handed to an EDI plugin's data functions. Everything the plugin
@@ -182,7 +183,7 @@ class TrustProviderEdiPluginRegistry extends PluginRegistry<
       }
       plugin.getPrimaryKeys = (ctx) => wmbPrimaryKeys(ctx, siriusIds);
     }
-    super.register(plugin);
+    super.register(withMembershipLifecycle(plugin));
     logger.info(`Trust provider EDI plugin registered: ${plugin.id}`, {
       service: "trust-provider-edi-registry",
     });

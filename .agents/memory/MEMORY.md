@@ -159,8 +159,6 @@
 - [Enrollment dependent-age scope](enrollment-dependent-age-boundary.md) — dependent's 26th birthday, add-only; no handicapped-child exception or monthly eligibility policy change.
 - [Enrollment self-service authority](enrollment-self-service-authority.md) — worker scope limits worker accounts; staff may still complete guided enrollment for any worker without their own worker link.
 - [DC correction authority](disability-credit-correction-authority.md) — a threshold-only removal releases capacity, not reserves it; restoration uses the saved threshold and never displaces other months.
-- [Admin-assisted payments](admin-assisted-payment-authority.md) — admins need real payments on a worker's behalf, not test-only authority tied to system mode.
-- [Stripe delivery evidence](stripe-delivery-evidence.md) — check v1 endpoints AND v2 destinations, payloads and subscriptions; zero pending deliveries does not prove payment delivery.
 - [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.
 - [A plugin kind id is stored data](plugin-kind-id-is-data.md) — the id IS the plugin_kind discriminator + subsidiary table name, so renaming one is a data migration; drift gate matches FK/PK/unique STRUCTURALLY, so declared names can be fiction.
 - [Component-neutral plugin kinds](component-neutral-plugin-kind.md) — un-gating moves the gate to each plugin; inheriting routes need an explicit one, and consumers must stop assuming the founding component's shape.
@@ -176,7 +174,7 @@
 - [Freeman migration count semantics](freeman-migration-count-semantics.md) — matched existing child records count as updated even when values did not change.
 - [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
-- Postgres sessions — [checkout initialization](postgres-checkout-initialization.md) must finish before handoff; [idle status](idle-session-status-checks.md) polling never renews the deadline.
+- [Postgres sessions](postgres-sessions.md) — checkout initialization must finish before handoff; idle-status polling never renews the deadline.
 - [Configured external auth fails closed](configured-external-auth-fail-closed.md) — saved external-auth selection is the contract; disabled/unavailable verifier must refuse, never fall back to a default credential mode.
 - [Credentials in SPA entry URLs](spa-entry-url-credentials.md) — remove before app bootstrap, set initial no-referrer policy, dispatch once, and never retain in query caches or page state.
 - [Permission-dependent public response caching](permission-dependent-public-response-caching.md) — viewer-specific enrichment needs private/no-store + Vary: Cookie and a viewer-scoped browser query key.
@@ -195,5 +193,5 @@
 - [Quicksearch role-as-access](quicksearch-role-as-access.md) — role lists are the access decision; framework-gated sensitive clauses, pure clause planners, and cmdk `shouldFilter={false}`.
 - [Postgres verification targets](postgres-verification-target.md) — connectionString overrides a separate database option; assert current_database before disposable fixture writes.
 - [Scheduled sync failures](scheduled-sync-failure-policy.md) — continue daily loaders but retain FAIL; never interpret continuation as permission to relax reject rules.
-- [Pre-release payment cutover](pre-release-payment-cutover.md) — owner permits deleting legacy attempt-based dev payments and evidence; this is not authority to delete future production payments.
+- [Carrier termination authority](carrier-termination-authority.md) — opt-in ended-person inclusion, not active-member filtering; date examples never establish status codes.
 - [Shared email footer activation](shared-email-footer-boundary.md) — confirm Fund link destinations before activation; software verification uses fictional content and does not authorize live defaults.

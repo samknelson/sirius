@@ -195,6 +195,15 @@ last coverage row was removed.
 Confirmed scan terminations take precedence; the COBRA reconciler ignores
 inferred events. Inferred events remain visible to historical event queries.
 
+Membership EDI exports may opt into explicit subscriber/dependent endings.
+They accept retained inferred events only with last-covered WMB evidence,
+reconstructible family ownership and no later coverage; conflicting current
+scan decisions block generation. EDI never creates events from missing months
+or runs this backfill automatically. Its lookback counts coverage-end months,
+not event months: a November termination event represents an October 31 end.
+See [the EDI termination policy](edi/termination-policy.md) for carrier blockers
+and the warning that stored-coverage inference is not complete source-history proof.
+
 Read-only validation queries (adjust month and benefit as appropriate):
 
 ```sql

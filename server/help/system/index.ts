@@ -2,6 +2,7 @@ import type { Help } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
 import { oneoffHelp } from "./oneoff";
+import { ediWizardTerminationHelp } from "./edi-termination-guidance";
 import { trustProvidersHelp } from "./trust-providers";
 import { trustBenefitColorOptionsHelp, trustBenefitColorSelectionHelp } from "./trust-benefit-colors";
 import { workerBenefitsSummaryHelp } from "./worker-benefits-summary";
@@ -75,6 +76,7 @@ const entries: SystemHelpEntry[] = [
   ...additionalPluginKindHelp,
   ...reportTypeHelp,
   oneoffHelp,
+  ediWizardTerminationHelp,
   denormStatusHelp,
   denormRelationshipsHelp,
 ];

@@ -15,6 +15,9 @@ Consult these existing decision notes when changing payment workflows:
 - [Ledger currency discovery](ledger-currency-discovery.md) — discovery and payable monetary validation have different scope.
 - [Financial correction boundaries](financial-correction-boundaries.md) — uncertain historical attribution is never auto-repaired.
 - [Employer assignment authority](employer-payment-assignment-authority.md) — employer permissions deliberately cover all current contact assignments, not per-employer exceptions.
+- [Admin-assisted payments](admin-assisted-payment-authority.md) — admins need real payments on a worker's behalf, not test-only authority tied to system mode.
+- [Stripe delivery evidence](stripe-delivery-evidence.md) — check v1 endpoints and v2 destinations, payloads and subscriptions; zero pending deliveries does not prove payment delivery.
+- [Pre-release payment cutover](pre-release-payment-cutover.md) — owner permits deleting legacy attempt-based dev payments and evidence, not future production payments.
 
 **Why:** These decisions protect related financial workflows but have distinct approval and historical-evidence boundaries. Keep their original detail accessible without crowding the always-loaded index.
 
