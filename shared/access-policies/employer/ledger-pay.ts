@@ -1,17 +1,15 @@
 import { definePolicy, registerPolicy, type PolicyContext } from "../index";
+import { checkEmployerPaymentAssignment } from "./payment-assignment";
 const policy = definePolicy({
-  id: "employer.ledger.pay",
-  description: "Pay for an employer account with an explicit contact grant",
+  id: "employer.ledger.pay.own",
+  description: "Pay for any employer currently assigned to your contact",
   scope: "entity",
   entityType: "employer",
   component: "ledger",
   noAdminBypass: true,
   skipCache: true,
   async evaluate(ctx: PolicyContext) {
-    if (!(await ctx.hasPermission("employer.ledger.pay")) || !(await ctx.entityId)) return { granted: false, reason: "Payment grant required" };
-    const contact = await ctx.getUserContact();
-    const ok = contact && await ctx.storage.employerContacts?.hasPaymentGrantForUser?.(ctx.user.id, ctx.entityId, "pay");
-    return { granted: !!ok, reason: ok ? "Explicit payment grant" : "No active payment grant" };
+    return checkEmployerPaymentAssignment(ctx, "employer.ledger.pay.own");
   },
 });
 registerPolicy(policy);

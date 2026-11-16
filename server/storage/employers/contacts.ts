@@ -1,5 +1,5 @@
 import { getClient } from '../transaction-context';
-import { employerContacts, employerContactPaymentGrants, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type Employer, type EmployerContactPaymentGrant } from "@shared/schema";
+import { employerContacts, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type Employer } from "@shared/schema";
 import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "../middleware/logging";
 import type { ContactsStorage } from "../contacts";
@@ -37,9 +37,7 @@ export interface EmployerContactStorage {
    */
   isLinkedToEmployerContact(userId: string): Promise<boolean>;
   getContactIndicatorsByEmployer(employerIds?: string[]): Promise<Array<{ employerId: string; contactId: string; contactName: string | null; contactTypeName: string | null; icon: string | null; hasActiveUser: boolean }>>;
-  getPaymentGrant(employerContactId: string): Promise<EmployerContactPaymentGrant | null>;
-  setPaymentGrant(employerContactId: string, grant: { canPay: boolean; canManageMethods: boolean }): Promise<EmployerContactPaymentGrant>;
-  hasPaymentGrantForUser(userId: string, employerId: string, capability: "pay" | "methods"): Promise<boolean>;
+  hasAssignment(contactId: string, employerId: string): Promise<boolean>;
 }
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
@@ -409,33 +407,13 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         hasActiveUser: row.userId !== null && row.isActive === true,
       }));
     },
-    async getPaymentGrant(employerContactId: string) {
-      const [row] = await getClient().select().from(employerContactPaymentGrants)
-        .where(eq(employerContactPaymentGrants.employerContactId, employerContactId));
-      return row ?? null;
-    },
-    async setPaymentGrant(employerContactId: string, grant) {
-      const [row] = await getClient().insert(employerContactPaymentGrants)
-        .values({ employerContactId, ...grant })
-        .onConflictDoUpdate({
-          target: employerContactPaymentGrants.employerContactId,
-          set: grant,
-        }).returning();
-      return row;
-    },
-    async hasPaymentGrantForUser(userId: string, employerId: string, capability) {
-      // Keep this as a live, employer-scoped grant lookup: callers rely on
-      // revocations taking effect immediately, and grants on another
-      // employer-contact link must never authorize this employer.
-      const column = capability === "pay"
-        ? employerContactPaymentGrants.canPay
-        : employerContactPaymentGrants.canManageMethods;
-      const rows = await getClient().select({ id: employerContactPaymentGrants.id })
-        .from(employerContactPaymentGrants)
-        .innerJoin(employerContacts, eq(employerContactPaymentGrants.employerContactId, employerContacts.id))
+    async hasAssignment(contactId: string, employerId: string) {
+      // Live lookup of the resolved contact, never cached or inferred from type.
+      const rows = await getClient().select({ id: employerContacts.id })
+        .from(employerContacts)
+        .innerJoin(employers, eq(employerContacts.employerId, employers.id))
         .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
-        .innerJoin(users, sql`lower(${contacts.email}) = lower(${users.email})`)
-        .where(and(eq(users.id, userId), eq(employerContacts.employerId, employerId), eq(column, true)))
+        .where(and(eq(employerContacts.contactId, contactId), eq(employerContacts.employerId, employerId)))
         .limit(1);
       return rows.length > 0;
     },
@@ -568,13 +546,5 @@ export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactS
         return `Deleted employer contact "${contactName}"`;
       }
     },
-    setPaymentGrant: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) => beforeState?.employerId,
-      before: async (args, storage) => storage.get(args[0]),
-      after: async (args, result) => result,
-      getDescription: () => "Updated employer contact online payment authority",
-    }
   }
 };

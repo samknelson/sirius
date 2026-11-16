@@ -372,18 +372,18 @@ describe("worker payment method setup routes", () => {
     expect(h.balanceReads.getByEntityWithBalance).not.toHaveBeenCalled();
   });
 
-  it("rejects a method belonging to another worker before provider access", async () => {
+  it.each(["worker", "employer"])("rejects a method belonging to another %s before provider access", async (entityType) => {
     h.methods.push({
       id: "method-other",
-      entityType: "worker",
-      entityId: "worker-2",
+      entityType,
+      entityId: `${entityType}-2`,
       gatewayConfigId: "gateway-1",
       paymentMethod: "pm_other",
       isActive: true,
       isDefault: true,
     });
     const response = await request(
-      "/api/ledger/payment-methods/worker/worker-1/method-other",
+      `/api/ledger/payment-methods/${entityType}/${entityType}-1/method-other`,
       { method: "DELETE" },
     );
     expect(response.status).toBe(403);

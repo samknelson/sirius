@@ -155,7 +155,7 @@ export default function EmployerLedgerAccounts() {
       <CardContent>
         {payable.isError && <p className="mb-4 text-sm text-muted-foreground" data-testid="employer-payment-guidance">
           {(payable.error as { status?: number })?.status === 403
-            ? "Billing contact status alone does not grant payment access. Ask an administrator to enable online payments for your contact at this employer."
+            ? "To pay, you need employer.ledger.pay.own and a current contact assignment to this employer. Ask an administrator to review your roles and assignment; Billing contact type alone does not authorize payment."
             : getApiErrorMessage(payable.error, "Online payment is unavailable right now.")}
         </p>}
         {isFormOpen && (

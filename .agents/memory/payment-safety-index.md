@@ -14,6 +14,7 @@ Consult these existing decision notes when changing payment workflows:
 - [Payment editor lifecycle](payment-editor-lifecycle.md) — hydration is not a deliberate allocation change.
 - [Ledger currency discovery](ledger-currency-discovery.md) — discovery and payable monetary validation have different scope.
 - [Financial correction boundaries](financial-correction-boundaries.md) — uncertain historical attribution is never auto-repaired.
+- [Employer assignment authority](employer-payment-assignment-authority.md) — employer permissions deliberately cover all current contact assignments, not per-employer exceptions.
 
 **Why:** These decisions protect related financial workflows but have distinct approval and historical-evidence boundaries. Keep their original detail accessible without crowding the always-loaded index.
 

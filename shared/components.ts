@@ -176,12 +176,12 @@ export const componentRegistry: ComponentDefinition[] = [
         description: "Manage worker saved payment methods"
       },
       {
-        key: "employer.ledger.pay",
-        description: "Pay employer ledger balances with an explicit grant"
+        key: "employer.ledger.pay.own",
+        description: "Pay balances for all employers currently assigned to your contact, using existing methods or one-time payments; does not allow saving or managing methods"
       },
       {
-        key: "employer.ledger.methods",
-        description: "Manage employer saved payment methods with an explicit grant"
+        key: "employer.ledger.methods.manage.own",
+        description: "Save, remove and change default payment methods for all employers currently assigned to your contact; does not authorize payment"
       }
     ]
   },

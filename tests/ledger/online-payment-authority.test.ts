@@ -16,6 +16,8 @@ import {
   assertOnlinePaymentAuthority,
   OnlinePaymentAuthorityError,
 } from "../../server/modules/ledger/online-payment-authority";
+import payPolicy from "../../shared/access-policies/employer/ledger-pay";
+import methodsPolicy from "../../shared/access-policies/employer/ledger-methods";
 
 function request(session: Record<string, unknown> = {}) {
   return { session } as any;
@@ -48,7 +50,7 @@ describe("assertOnlinePaymentAuthority", () => {
       user: { id: req.session?.masqueradeUserId ?? "staff-user" },
     }));
     const grants = new Set(["target:worker.ledger.pay:worker-1", "target:worker.ledger.methods:worker-1",
-      "contact:employer.ledger.pay:emp-1"]);
+      "contact:employer.ledger.pay.own:emp-1"]);
     checkAccessInline.mockImplementation(async (req, policy, entityId) => {
       const actor = req.session?.masqueradeUserId ?? "staff-user";
       if (policy === "staff") return { granted: actor === "staff-user" };
@@ -62,7 +64,7 @@ describe("assertOnlinePaymentAuthority", () => {
     await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-1", "pay")).resolves.toBe("contact");
     await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-1", "methods")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
     await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-2", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
-    grants.delete("contact:employer.ledger.pay:emp-1");
+    grants.delete("contact:employer.ledger.pay.own:emp-1");
     await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-1", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
     grants.delete("target:worker.ledger.pay:worker-1");
     await expect(assertOnlinePaymentAuthority(target, "worker", "worker-1", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
@@ -71,12 +73,67 @@ describe("assertOnlinePaymentAuthority", () => {
     await expect(assertOnlinePaymentAuthority(request(), "worker", "worker-1", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
   });
 
-  it("uses the employer capability policy directly for fresh grants", async () => {
-    checkAccessInline.mockResolvedValueOnce({ granted: false }).mockResolvedValueOnce({ granted: true });
+  it("uses the employer capability policy directly for fresh assignments", async () => {
+    checkAccessInline.mockResolvedValue({ granted: true });
     await expect(assertOnlinePaymentAuthority(request(), "employer", "emp-1", "methods"))
       .resolves.toBe("user-1");
-    expect(checkAccessInline).toHaveBeenCalledWith(request(), "employer.ledger.methods", "emp-1");
+    expect(checkAccessInline).toHaveBeenCalledWith(request(), "employer.ledger.methods.manage.own", "emp-1");
+    expect(checkAccessInline).not.toHaveBeenCalledWith(expect.anything(), "staff");
     expect(checkAccessInline).not.toHaveBeenCalledWith(expect.anything(), "employer.mine", expect.anything());
+  });
+});
+
+describe.each([payPolicy, methodsPolicy])("$id permission and live-assignment boundary", (policy) => {
+  it("requires each independent permission and checks every employer afresh, even for staff/admin", async () => {
+    // Use the real evaluator to cover component gating, bypass and cache behavior.
+    const { evaluatePolicy } = await vi.importActual<typeof import("../../server/services/access-policy-evaluator")>(
+      "../../server/services/access-policy-evaluator",
+    );
+    const actor = { id: "effective-contact", email: "contact@example.test" } as any;
+    const permissions = new Set(["staff", "admin"]);
+    const assignments = new Set(["contact-1:emp-1", "contact-1:emp-2"]);
+    const storage = {
+      contacts: { getContactByEmail: vi.fn(async () => ({ id: "contact-1" })) },
+      employerContacts: { hasAssignment: vi.fn(async (contactId: string, employerId: string) =>
+        assignments.has(`${contactId}:${employerId}`)) },
+    };
+    const access = {
+      hasPermission: async (_id: string, key: string) => permissions.has(key),
+      getUserPermissions: async () => [...permissions],
+      getUser: async () => actor,
+    };
+    let enabled = true;
+    const check = (employerId?: string, user = actor) => evaluatePolicy(
+      user, policy.id, storage, access, async () => enabled, employerId,
+    );
+
+    expect((await check("emp-1")).granted).toBe(false); // Assignment + staff/admin isn't enough.
+    const other = policy.id === payPolicy.id ? methodsPolicy.id : payPolicy.id;
+    permissions.add(other);
+    expect((await check("emp-1")).granted).toBe(false); // Independent capabilities.
+    permissions.add(policy.id);
+    for (const id of ["emp-1", "emp-2"]) expect((await check(id)).granted).toBe(true);
+    expect((await check("emp-3")).granted).toBe(false); // Permission alone isn't enough.
+    assignments.delete("contact-1:emp-1");
+    expect((await check("emp-1")).granted).toBe(false); // Previously allowed; no cache.
+    assignments.add("other-contact:emp-1");
+    expect((await check("emp-1")).granted).toBe(false); // Reassigned to someone else.
+    assignments.add("contact-1:emp-1");
+    expect((await check("emp-1")).granted).toBe(true);
+    permissions.delete(policy.id);
+    expect((await check("emp-1")).granted).toBe(false);
+    permissions.add(policy.id);
+    enabled = false;
+    expect((await check("emp-1")).granted).toBe(false);
+    enabled = true;
+    expect((await check()).granted).toBe(false);
+    expect((await check("emp-1", null)).granted).toBe(false);
+    storage.contacts.getContactByEmail.mockResolvedValueOnce(null as any);
+    expect((await check("emp-1")).granted).toBe(false);
+    // The original staff contact's assignment never supplies the effective user's contact.
+    storage.contacts.getContactByEmail.mockResolvedValueOnce({ id: "other-contact" });
+    expect((await check("emp-2")).granted).toBe(false);
+    expect(storage.employerContacts.hasAssignment).toHaveBeenLastCalledWith("other-contact", "emp-2");
   });
 });
 

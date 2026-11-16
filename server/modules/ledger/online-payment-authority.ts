@@ -30,8 +30,8 @@ export const assertAdminTestPaymentAuthority = assertAdminPaymentAuthority;
 
 /**
  * Authorize a checkout or saved-method operation without relying on the
- * evaluator's entity cache. Employer grants are deliberately read from the
- * database on every call so revocation takes effect immediately.
+ * evaluator's entity cache. Employer assignments are read from the
+ * database on every call so removal takes effect immediately.
  */
 export async function assertOnlinePaymentAuthority(
   req: Request,
@@ -41,19 +41,23 @@ export async function assertOnlinePaymentAuthority(
 ): Promise<string> {
   const context = await buildContext(req);
   if (!context.user) throw new OnlinePaymentAuthorityError("Authentication required");
-  const staff = await checkAccessInline(req, "staff");
-  if (staff.granted) throw new OnlinePaymentAuthorityError("Staff cannot perform online payment actions");
+   if (entityType === "worker") {
+     const staff = await checkAccessInline(req, "staff");
+     if (staff.granted) throw new OnlinePaymentAuthorityError("Staff cannot perform online payment actions");
+   }
 
-  const policy = `${entityType}.ledger.${capability}`;
+   const policy = entityType === "employer"
+     ? capability === "pay" ? "employer.ledger.pay.own" : "employer.ledger.methods.manage.own"
+     : `${entityType}.ledger.${capability}`;
   if (entityType === "worker") {
     const result = await checkAccessInline(req, policy, entityId);
     if (!result.granted) throw new OnlinePaymentAuthorityError(result.reason);
   } else {
     // Evaluate the capability policy itself: it checks the permission,
-    // component, and the current grant in one uncached operation.
+     // component, and the current assignment in one uncached operation.
     const authorized = await checkAccessInline(req, policy, entityId);
     if (!authorized.granted) {
-      throw new OnlinePaymentAuthorityError("No active payment grant for this employer");
+       throw new OnlinePaymentAuthorityError("Employer payment permission and current employer assignment required");
     }
   }
   return context.user.id;

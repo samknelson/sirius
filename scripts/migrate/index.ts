@@ -75,6 +75,7 @@ import "./core/1217_unify_job_runs";
 import "./core/1218_oneoff_run_state";
 import "./core/1219_real_owner_public_images";
 import "./core/1220_retire_call_comms";
+import "./core/1221_employer_payment_own_permissions";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

@@ -394,7 +394,9 @@ function PaymentMethodsContent() {
           {methodCapabilities?.canManageMethods === false && (
             <Alert className="mb-6" data-testid="alert-payment-methods-view-only">
               <AlertDescription>
-                You can view saved payment methods, but your account does not have permission to manage them.
+                You can view saved payment methods. Managing them requires employer.ledger.methods.manage.own
+                and a current contact assignment to this employer. Ask an administrator to review your roles
+                and assignment. Payment permission is separate.
               </AlertDescription>
             </Alert>
           )}

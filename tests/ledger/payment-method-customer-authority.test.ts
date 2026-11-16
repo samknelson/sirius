@@ -53,18 +53,18 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   h.authority.mockRejectedValue(
-    Object.assign(new Error("No active payment grant for this employer"), { status: 403 }),
+    Object.assign(new Error("Employer payment permission and current employer assignment required"), { status: 403 }),
   );
 });
 
 describe("payment-method customer side effects", () => {
-  it("only advertises method management for the target with a separate methods grant", async () => {
+  it("only advertises method management for the target with separate methods authority", async () => {
     h.authority.mockImplementation(async (req, type, id, capability) => {
       if (req.session.masqueradeUserId === "contact-1" &&
           type === "employer" && id === "employer-1" && capability === "methods") {
         return "contact-1";
       }
-      throw Object.assign(new Error("No methods grant"), { status: 403 });
+      throw Object.assign(new Error("Method permission and assignment required"), { status: 403 });
     });
     const url = `${baseUrl}/api/ledger/payment-methods/employer/employer-1/capabilities`;
     expect(await (await fetch(url)).json()).toEqual({ canManageMethods: false });
