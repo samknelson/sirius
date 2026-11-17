@@ -7,7 +7,7 @@ All cron jobs must have non-overlap locking, not an opt-in per-plugin capability
 
 **Why:** The user explicitly stated there is no situation where two processes should both run the same cron job, rejecting the proposed optional-locking approach.
 
-**How to apply:** Preserve job-specific fencing alongside generic execution locks. Periodic connection checks must not turn into heartbeat-expiry lock stealing: a stalled heartbeat does not prove the old executor stopped. Distinguish coordinated starts from guaranteed exclusion of side effects after connection loss.
+**How to apply:** Preserve job-specific fencing alongside generic execution locks. Distinguish coordinated starts from guaranteed exclusion of side effects after connection loss. On 2026-11-17 the user requested a plan to replace reserved connections with table-backed leases named `semaphores`; this is a proposed direction, not implementation approval. Its timeout takeover must explicitly acknowledge that a stalled heartbeat does not prove the old executor stopped.
 
 Abandoned-history recovery requires running-history admission to share the execution lock, not just the plugin invocation.
 
