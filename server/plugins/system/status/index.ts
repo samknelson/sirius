@@ -44,6 +44,7 @@ import "./plugins/instance";
 import "./plugins/container";
 import "./plugins/system-mode";
 import "./plugins/database-connection";
+import "./plugins/core-migrations";
 import "./plugins/database-disk";
 import "./plugins/filesystems";
 import "./plugins/wc-usage";
