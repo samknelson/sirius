@@ -1,18 +1,21 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
   storage,
   FreemanEdlsFullResetUnexpectedError,
 } from "../../../../storage";
-import { getClient, runInSavepoint, runInTransaction } from "../../../../storage/transaction-context";
+import { getClient, runInSavepoint, runInTransaction, runOutsideTransaction } from "../../../../storage/transaction-context";
 import {
   validate as validateEdlsSheet,
   type CrewInput,
 } from "../../../../storage/edls/sheets";
 import { wcRequest } from "../../../../services/webclient";
 import { logger } from "../../../../logger";
-import { withNotificationsSuppressed } from "../../../../middleware/request-context";
+import { getRequestContext, requestContext } from "../../../../middleware/request-context";
+import { isMaintenanceActive } from "../../../../services/maintenance-flag";
+import { isComponentEnabled } from "../../../components";
 import { getEdlsSettings } from "../../../edls/supervisor-context";
 import { recomputeDenormEntity } from "../../../../plugins/system/denorm/registry";
 import {
@@ -35,6 +38,7 @@ import {
 import {
   FREEMAN_EDLS_FETCH_SHEETS_OPERATION,
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
+  FREEMAN_EDLS_MIGRATE_COMPONENT_ID,
 } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 import { importedJobNumber } from "./job-number";
 
@@ -44,6 +48,7 @@ const LEGACY_FREEMAN_MIGRATE_STATUSES = [...FREEMAN_MIGRATE_STATUSES, "trash"] a
 export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STATUS";
 
 export const FREEMAN_MIGRATE_RUN_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_RUN";
+const FREEMAN_MIGRATE_PROGRESS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_PROGRESS";
 export const FREEMAN_EDLS_FULL_RESET_CONFIRMATION = "DELETE ALL WORKERS";
 export const FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION = "full-reset-diagnostics-v2";
 const EPOCH = "1970-01-01T00:00:00.000Z";
@@ -97,6 +102,7 @@ type FreemanSheetOutcome =
   | "would_update"
   | "created"
   | "updated"
+  | "unchanged"
   | "failed";
 
 interface FreemanMigrateError {
@@ -142,7 +148,7 @@ export interface FreemanMigrateReport {
   stoppedEarly: boolean;
   statuses: Array<{
     status: FreemanMigrateStatus; label: string;
-    fetched: number; valid: number; created: number; updated: number; failed: number;
+    fetched: number; valid: number; created: number; updated: number; unchanged: number; failed: number;
     records: FreemanMigrateRecordCounts;
     page: number; nextPage: number; complete: boolean;
     stoppedEarly?: boolean;
@@ -167,6 +173,19 @@ export interface FreemanMigrateReport {
 }
 
 const lifecycleSchema = z.enum(["idle", "starting", "running", "stopping", "stopped", "completed", "failed"]);
+
+interface SheetProgress {
+  status: FreemanMigrateStatus;
+  page: number;
+  phase: "fetching" | "processing" | "finished";
+  sheet?: { nid?: string; title: string };
+  pageSize?: number;
+  result?: FreemanMigrateSheetResult;
+}
+type ProgressCallback = (progress: SheetProgress) => Promise<void>;
+type ImportWrite = <T>(fn: () => Promise<T>) => Promise<T>;
+
+class FreemanRunOwnershipError extends Error {}
 
 function emptyRecordCounts(): FreemanMigrateRecordCounts {
   return {
@@ -367,6 +386,7 @@ function sheetFailure(error: unknown): FreemanMigrateError {
     "More than one worker matches the normalized Freeman EIN",
     "More than one worker matches the normalized Teamsters 631 ID",
     "More than one migrated worker has the same Freeman source identity",
+    "Freeman EIN conflict",
     "No employment status is configured",
     "More than one Freeman crew lead has the same source ID",
   ];
@@ -769,6 +789,14 @@ async function resolveWorker(
   const t631Id = text(pick(source, "worker_id", "workerId"));
   const normalizedT631 = t631Id?.replace(/\D/g, "") || null;
   const einAlias = `freeman_ein:${normalizedEin}`;
+  const assertCanAttachEin = async (workerId: string) => {
+    const ids = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
+    const plannedOtherEin = !live && [...(planState?.workers.entries() ?? [])]
+      .some(([alias, owner]) => owner === workerId && alias.startsWith("freeman_ein:") && alias !== einAlias);
+    if (ids.some(id => id.typeId === idTypes.ein) || plannedOtherEin) {
+      throw new Error("Freeman EIN conflict: matched worker already has a different EIN; identity left unchanged.");
+    }
+  };
 
   const matchByDigits = async (
     typeId: string,
@@ -806,6 +834,7 @@ async function resolveWorker(
     : undefined;
   const t631WorkerId = existingT631WorkerId ?? plannedT631WorkerId;
   if (t631WorkerId) {
+    await assertCanAttachEin(t631WorkerId);
     if (live) {
       // The normalized EIN lookup above found no owner while the worker-ID
       // table is locked, so the fallback worker can safely acquire it.
@@ -841,6 +870,7 @@ async function resolveWorker(
   }
   const nameWorkerId = nameMatches[0];
   if (nameWorkerId) {
+    await assertCanAttachEin(nameWorkerId);
     if (live) {
       await storage.workerIds.createWorkerId({
         workerId: nameWorkerId,
@@ -910,7 +940,7 @@ async function ensureWorkerEmployment(
   const employmentStatus = statuses.find((status) => status.employed) ?? statuses[0];
   if (!employmentStatus) throw new Error("No employment status is configured for worker association.");
   const date = new Date(`${ymd}T00:00:00Z`);
-  await client.insert(workerHours).values({
+  const values = {
     workerId,
     employerId,
     year: date.getUTCFullYear(),
@@ -919,7 +949,12 @@ async function ensureWorkerEmployment(
     employmentStatusId: employmentStatus.id,
     hours: null,
     home: false,
-  }).onConflictDoNothing({
+  };
+  const [existingHours] = await client.select({ id: workerHours.id }).from(workerHours).where(and(
+    eq(workerHours.workerId, workerId), eq(workerHours.employerId, employerId),
+    eq(workerHours.year, values.year), eq(workerHours.month, values.month), eq(workerHours.day, 1),
+  ));
+  const inserted = existingHours ? [] : await client.insert(workerHours).values(values).onConflictDoNothing({
     target: [
       workerHours.workerId,
       workerHours.employerId,
@@ -927,8 +962,17 @@ async function ensureWorkerEmployment(
       workerHours.month,
       workerHours.day,
     ],
-  });
-  await recomputeDenormEntity("worker_employment", workerId);
+  }).returning({ id: workerHours.id });
+  // A prior import may have written hours but not the derived relationship.
+  // Check actual payloads, rather than trusting the cached source or existence.
+  const expected = await storage.workerHours.getCurrentEmployment(workerId);
+  const actual = await storage.workerEmploymentDenorm.getByWorker(workerId);
+  const canonical = (rows: Array<{ employerId: string; home: boolean; jobTitle: string | null }>) =>
+    rows.map(({ employerId, home, jobTitle }) => ({ employerId, home, jobTitle }))
+      .sort((a, b) => a.employerId.localeCompare(b.employerId));
+  if (inserted.length || !isDeepStrictEqual(canonical(expected), canonical(actual))) {
+    await recomputeDenormEntity("worker_employment", workerId);
+  }
   return employmentStatus.id;
 }
 
@@ -979,7 +1023,7 @@ async function reconcileSheet(
   idTypes: FreemanWorkerIdTypes,
   planState?: FreemanMigratePlanState,
 ): Promise<{
-  kind: "created" | "updated";
+  kind: "created" | "updated" | "unchanged";
   sheetId?: string;
   records: FreemanMigrateRecordCounts;
   workers: Array<{ id: string; kind: "created" | "updated" }>;
@@ -1139,22 +1183,33 @@ async function reconcileSheet(
   for (const kind of workerKinds.values()) records.workers[kind]++;
 
   const existingCrewIdentityCounts = new Map<string, number>();
+  const existingCrewIds = new Map<string, string>();
+  const desiredCrewIdentities = new Set<string>();
+  for (const plan of crewPlans) {
+    if (desiredCrewIdentities.has(plan.identity)) {
+      throw reportedError("source", "ambiguous_crew_identity", "More than one source crew has the same identity.");
+    }
+    desiredCrewIdentities.add(plan.identity);
+  }
   const existingAssignmentWorkerCounts = new Map<string, number>();
   if (existing) {
     const existingCrews = await storage.edlsCrews.getBySheetId(existing.id);
     for (const existingCrew of existingCrews) {
       const migration = record(record(existingCrew.data).freemanMigration);
       const existingSource = record(migration.source);
-      incrementCount(
-        existingCrewIdentityCounts,
-        sourceCrewIdentity(existingSource, existingCrew.sequence),
-      );
+      const identity = sourceCrewIdentity(existingSource, existingCrew.sequence);
+      if (existingCrewIds.has(identity)) {
+        throw reportedError("relation_resolution", "ambiguous_crew_identity", "More than one stored crew matches the same source identity.");
+      }
+      existingCrewIds.set(identity, existingCrew.id);
+      incrementCount(existingCrewIdentityCounts, identity);
       for (const assignment of await storage.edlsAssignments.getByCrewId(existingCrew.id)) {
         incrementCount(existingAssignmentWorkerCounts, assignment.workerId);
       }
     }
   }
   for (const plan of crewPlans) {
+    plan.input.id = existingCrewIds.get(plan.identity);
     if (consumeCount(existingCrewIdentityCounts, plan.identity)) records.crews.updated++;
     else records.crews.created++;
     for (const assignment of plan.assignments) {
@@ -1281,7 +1336,10 @@ async function reconcileSheet(
       ),
     );
   }
-  await storage.freemanEdlsMigrateStaging.setTargetSheetId(nid, targetId, sheet);
+  const stagedData = record(staged?.data);
+  if (stagedData.targetSheetId !== targetId || !isDeepStrictEqual(stagedData.passportSheet, sheet)) {
+    await storage.freemanEdlsMigrateStaging.setTargetSheetId(nid, targetId, sheet);
+  }
   return {
     kind: result.kind,
     sheetId: targetId,
@@ -1304,7 +1362,10 @@ async function runStatus(
   planState: FreemanMigratePlanState,
   shouldStop?: () => Promise<boolean>,
   diagnostics?: { correlationId: string },
+  onProgress?: ProgressCallback,
+  importWrite: ImportWrite = runInTransaction,
 ) {
+  await onProgress?.({ status, page: cursor.page, phase: "fetching" });
   const result = await wcRequest({
     vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
     operation: FREEMAN_EDLS_FETCH_SHEETS_OPERATION,
@@ -1336,7 +1397,7 @@ async function runStatus(
   }
   const unwrapped = unwrapSheets(result.value.data);
   const sheets = unwrapped.sheets;
-  let created = 0; let updated = 0;
+  let created = 0; let updated = 0; let unchanged = 0;
   const records = emptyRecordCounts();
   const statusWorkers = new Map<string, "created" | "updated">();
   const sheetResults: FreemanMigrateSheetResult[] = [];
@@ -1347,6 +1408,7 @@ async function runStatus(
       break;
     }
     const identity = sourceIdentity(sheet);
+    await onProgress?.({ status, page: cursor.page, phase: "processing", sheet: identity, pageSize: sheets.length });
     try {
       const sheetPlanState = mode === "test"
         ? {
@@ -1360,7 +1422,7 @@ async function runStatus(
         }
         : undefined;
       const reconciled = mode === "live"
-        ? await runInTransaction(() => reconcileSheet(sheet, status, true, employerId, idTypes))
+        ? await importWrite(() => reconcileSheet(sheet, status, true, employerId, idTypes))
         : await reconcileSheet(sheet, status, false, employerId, idTypes, sheetPlanState);
       if (sheetPlanState) {
         planState.workers = sheetPlanState.workers;
@@ -1371,6 +1433,7 @@ async function runStatus(
       }
       if (reconciled.kind === "created") created++;
       else if (reconciled.kind === "updated") updated++;
+      else unchanged++;
       addRecordCounts(records, reconciled.records);
       for (const worker of reconciled.workers) {
         const previous = statusWorkers.get(worker.id);
@@ -1394,6 +1457,7 @@ async function runStatus(
           : {}),
       });
     } catch (error) {
+      if (error instanceof FreemanRunOwnershipError) throw error;
       const failure = sheetFailure(error);
       const diagnostic = error instanceof FreemanMigrateReportedError
         && error.report.code === "canonical_save_failed"
@@ -1422,7 +1486,14 @@ async function runStatus(
         details: failure.details,
       });
     }
+    // reconcileSheet's transaction has committed (or rolled back) before this
+    // callback. Never advertise a successful sheet from inside its transaction.
+    await onProgress?.({
+      status, page: cursor.page, phase: "processing", sheet: identity,
+      pageSize: sheets.length, result: sheetResults[sheetResults.length - 1],
+    });
   }
+  await onProgress?.({ status, page: cursor.page, phase: "finished", pageSize: sheets.length });
   if (!stoppedEarly && mode === "live" && shouldStop) {
     stoppedEarly = await shouldStop();
   }
@@ -1434,6 +1505,7 @@ async function runStatus(
     valid: sheetResults.length - failed,
     created,
     updated,
+    unchanged,
     failed,
     records,
     complete: !interrupted && sheets.length < limit,
@@ -1454,22 +1526,24 @@ export async function getFreemanMigrateStatus() {
   if (stopRequested && isActiveLifecycle(run.lifecycle)) {
     run = { ...run, lifecycle: "stopping", stopRequested: true };
   }
-  if (isActiveLifecycle(run.lifecycle) && run.heartbeatAt) {
-    const stale = Date.now() - new Date(run.heartbeatAt).getTime() > 2 * 60_000;
-    if (stale) {
-      run = {
-        ...run, lifecycle: "failed", stopRequested: false,
-        finishedAt: new Date().toISOString(),
-        error: "The migration server process was interrupted. Start again to resume from the last completed batch.",
-      };
-      await writeRunControl(run);
-      await writeStopRequest(false);
-    }
-  }
+  // A heartbeat is an observation, not authority to interrupt a lock holder.
+  const heartbeatStale = isActiveLifecycle(run.lifecycle)
+    && (!run.heartbeatAt || Date.now() - new Date(run.heartbeatAt).getTime() > 2 * 60_000);
+  const progress = await readBatchProgress();
   return {
     variableName: FREEMAN_MIGRATE_STATUS_VARIABLE,
     statuses: (await readState()).statuses,
     run,
+    recovery: {
+      enabled: run.recoveryEnabled && !stopRequested && isActiveLifecycle(run.lifecycle),
+      heartbeatStale,
+      deferredReason: isMaintenanceActive() && run.recoveryEnabled
+        ? "Waiting for maintenance mode to end." : run.deferredReason,
+      resumedAt: run.resumedAt,
+      resumeCount: run.resumeCount,
+    },
+    currentBatch: progress?.runStartedAt === run.startedAt && progress.batchNumber > run.batchCount
+      ? progress : null,
     warning: "Legacy paging uses mutable offsets; records can move during a sweep. Failed sheets do not stop later pages; fix the cause and use Start Over to replay them.",
   };
 }
@@ -1496,6 +1570,9 @@ async function runFreemanMigrateUnlocked(
   raw: unknown,
   shouldStop?: () => Promise<boolean>,
   diagnostics?: { correlationId: string },
+  onProgress?: ProgressCallback,
+  importWrite?: ImportWrite,
+  saveState: (state: FreemanMigrateState) => Promise<void> = writeState,
 ): Promise<FreemanMigrateReport> {
   const { limit } = runSchema.parse(raw ?? {});
   const startedAt = new Date().toISOString();
@@ -1587,6 +1664,7 @@ async function runFreemanMigrateUnlocked(
         valid: 0,
         created: 0,
         updated: 0,
+        unchanged: 0,
         failed: 0,
         records: emptyRecordCounts(),
         page: cursor.page,
@@ -1619,6 +1697,8 @@ async function runFreemanMigrateUnlocked(
         planState,
         shouldStop,
         diagnostics,
+        onProgress,
+        importWrite,
       );
       const complete = report.complete;
       next.statuses[status] = nextCursorAfterReport(cursor, sweepStartedAt, report);
@@ -1632,6 +1712,7 @@ async function runFreemanMigrateUnlocked(
         break;
       }
     } catch (error) {
+      if (error instanceof FreemanRunOwnershipError) throw error;
       const failure = statusFailure(error);
       logger.error("Freeman EDLS status import failed", {
         service: "freeman-edls-migrate",
@@ -1647,7 +1728,7 @@ async function runFreemanMigrateUnlocked(
       });
       statuses.push({
         status, label: STATUS_LABELS[status],
-        fetched: 0, valid: 0, created: 0, updated: 0, failed: 0,
+        fetched: 0, valid: 0, created: 0, updated: 0, unchanged: 0, failed: 0,
         records: emptyRecordCounts(),
         page: cursor.page, nextPage: cursor.page, complete: false,
         request,
@@ -1665,7 +1746,7 @@ async function runFreemanMigrateUnlocked(
   if (!stoppedEarly && mode === "live" && shouldStop) {
     stoppedEarly = await shouldStop();
   }
-  if (mode === "live") await writeState(next);
+  if (mode === "live") await saveState(next);
   return {
     correlationId: diagnostics?.correlationId,
     mode,
@@ -1683,14 +1764,33 @@ export async function runFreemanMigrate(
   diagnostics?: { correlationId: string },
 ): Promise<FreemanMigrateReport> {
   if (mode === "test") return runFreemanMigrateUnlocked(mode, raw, undefined, diagnostics);
-  return withFreemanMigrateLock(async () => {
+  return withFreemanMigrateLock(async (lock) => {
     await assertNoActiveFreemanMigrate();
-    return runFreemanMigrateUnlocked(mode, raw, undefined, diagnostics);
+    const { limit } = runSchema.parse(raw ?? {});
+    const now = new Date().toISOString();
+    const control = { ...emptyRunControl(), runId: randomUUID(), lifecycle: "running" as const, startedAt: now, heartbeatAt: now, limit };
+    await withControlLock(async () => {
+      await writeStopRequest(false);
+      await writeRunControl(control);
+    });
+    const guard = createRunGuard(control.runId, lock);
+    try {
+      return await runTrackedBatch(limit, control, guard, false, diagnostics);
+    } catch (error) {
+      if (!(error instanceof FreemanRunOwnershipError)) {
+        await guard.assertOwned();
+        await changeRun(control.runId, (latest) => ({
+          ...latest, lifecycle: "failed", finishedAt: new Date().toISOString(),
+          error: "The live batch stopped because of an unexpected local error. Start again to resume.",
+        }));
+      }
+      throw error;
+    }
   });
 }
 
 export async function withFreemanMigrateLock<T>(
-  fn: () => Promise<T>,
+  fn: (lock: FreemanMigrationLock) => Promise<T>,
 ): Promise<T> {
   const lock = await storage.advisoryLock.tryAcquireSession(
     "freeman-edls-migrate-run",
@@ -1698,7 +1798,7 @@ export async function withFreemanMigrateLock<T>(
   );
   if (!lock) throw new FreemanMigrateConflictError("A Freeman migration run is already in progress.");
   try {
-    return await fn();
+    return await fn(lock);
   } finally {
     await lock.release();
   }
@@ -1719,9 +1819,11 @@ async function readRunControl(): Promise<FreemanMigrateRunControl> {
 
 function emptyRunControl(): FreemanMigrateRunControl {
   return {
+    runId: null, recoveryEnabled: false, actorId: null, originalActorId: null,
+    resumedAt: null, resumeCount: 0, deferredReason: null,
     lifecycle: "idle", limit: null, stopRequested: false,
     startedAt: null, finishedAt: null, heartbeatAt: null, batchCount: 0,
-    totals: { fetched: 0, valid: 0, created: 0, updated: 0, failed: 0, records: emptyRecordCounts() },
+    totals: { fetched: 0, valid: 0, created: 0, updated: 0, unchanged: 0, failed: 0, records: emptyRecordCounts() },
     latestBatch: null, error: null,
   };
 }
@@ -1762,6 +1864,13 @@ async function writeRunControl(state: FreemanMigrateRunControl): Promise<void> {
 }
 
 const runControlSchema = z.object({
+  runId: z.string().nullable().default(null),
+  recoveryEnabled: z.boolean().default(false),
+  actorId: z.string().nullable().default(null),
+  originalActorId: z.string().nullable().default(null),
+  resumedAt: z.string().nullable().default(null),
+  resumeCount: z.number().int().nonnegative().default(0),
+  deferredReason: z.string().nullable().default(null),
   lifecycle: lifecycleSchema,
   limit: z.number().int().min(1).max(100).nullable(),
   stopRequested: z.boolean(),
@@ -1774,6 +1883,7 @@ const runControlSchema = z.object({
     valid: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     updated: z.number().int().nonnegative(),
+    unchanged: z.number().int().nonnegative().default(0),
     failed: z.number().int().nonnegative(),
     records: z.object({
       crews: z.object({ created: z.number(), updated: z.number() }),
@@ -1784,6 +1894,53 @@ const runControlSchema = z.object({
   latestBatch: z.unknown().nullable(),
   error: z.string().nullable(),
 }).strict();
+
+const batchProgressSchema = z.object({
+  runStartedAt: z.string(),
+  batchNumber: z.number().int().positive(),
+  updatedAt: z.string(),
+  status: z.enum(FREEMAN_MIGRATE_STATUSES),
+  page: z.number().int().nonnegative(),
+  phase: z.enum(["fetching", "processing", "finished"]),
+  sheet: z.object({ nid: z.string().optional(), title: z.string() }).nullable(),
+  pageSize: z.number().int().nonnegative().nullable(),
+  completedSheets: z.number().int().nonnegative(),
+  created: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+  unchanged: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  outcomes: z.array(z.object({
+    nid: z.string().optional(),
+    sheetId: z.string().optional(),
+    title: z.string(),
+    sourceStatus: z.enum(FREEMAN_MIGRATE_STATUSES),
+    outcome: z.enum(["created", "updated", "unchanged", "failed", "would_create", "would_update"]),
+    message: z.string().optional(),
+    details: z.string().optional(),
+    omittedAssignments: z.array(z.object({
+      crewIndex: z.number(), assignmentIndex: z.number(),
+      message: z.string(), details: z.string().optional(),
+    })).optional(),
+  })),
+}).strict();
+type BatchProgress = z.infer<typeof batchProgressSchema>;
+
+async function readBatchProgress(): Promise<BatchProgress | null> {
+  const row = await storage.variables.getByName(FREEMAN_MIGRATE_PROGRESS_VARIABLE);
+  if (!row?.value) return null;
+  try {
+    return batchProgressSchema.parse(typeof row.value === "string" ? JSON.parse(row.value) : row.value);
+  } catch {
+    return null; // Old/no progress is not evidence that work has completed.
+  }
+}
+
+async function writeBatchProgress(progress: BatchProgress): Promise<void> {
+  const value = JSON.stringify(progress);
+  const row = await storage.variables.getByName(FREEMAN_MIGRATE_PROGRESS_VARIABLE);
+  if (row) await storage.variables.update(row.id, { value });
+  else await storage.variables.create({ name: FREEMAN_MIGRATE_PROGRESS_VARIABLE, value });
+}
 
 async function readStopRequest(): Promise<boolean> {
   const variable = await storage.variables.getByName(FREEMAN_MIGRATE_STOP_VARIABLE);
@@ -1850,6 +2007,7 @@ function addReportTotals(control: FreemanMigrateRunControl, report: FreemanMigra
     control.totals.valid += status.valid;
     control.totals.created += status.created;
     control.totals.updated += status.updated;
+    control.totals.unchanged += status.unchanged;
     control.totals.failed += status.failed;
     for (const kind of ["crews", "assignments", "workers"] as const) {
       control.totals.records[kind].created += status.records[kind].created;
@@ -1869,70 +2027,216 @@ async function writeStopRequest(requested: boolean): Promise<void> {
   else await storage.variables.create({ name: FREEMAN_MIGRATE_STOP_VARIABLE, value });
 }
 
-async function executeBackgroundRun(limit: number, lock: FreemanMigrationLock): Promise<void> {
+function withControlLock<T>(fn: () => Promise<T>): Promise<T> {
+  return storage.advisoryLock.withTransactionLock("freeman-edls-migrate-control", fn);
+}
+
+async function changeRun(
+  runId: string,
+  change: (current: FreemanMigrateRunControl) => FreemanMigrateRunControl | Promise<FreemanMigrateRunControl>,
+): Promise<void> {
+  await withControlLock(async () => {
+    const current = await readRunControl();
+    if (current.runId !== runId) throw new FreemanRunOwnershipError("The migration run has changed.");
+    await writeRunControl(await change(current));
+  });
+}
+
+async function executionEligibility(control: FreemanMigrateRunControl) {
+  if (isMaintenanceActive()) return { reason: "Waiting for maintenance mode to end." };
+  for (const component of ["edls", "sitespecific.freeman", FREEMAN_EDLS_MIGRATE_COMPONENT_ID]) {
+    if (!await isComponentEnabled(component)) return { reason: "Waiting for the required migration components to be enabled." };
+  }
+  const actor = control.actorId ? await storage.users.getUser(control.actorId) : undefined;
+  if (!actor?.isActive || !await storage.users.userHasPermission(actor.id, "admin")) {
+    return { reason: "The initiating user is unavailable, inactive, or no longer has admin permission. Stop this run and start again as an authorized administrator." };
+  }
+  const original = control.originalActorId ? await storage.users.getUser(control.originalActorId) : undefined;
+  if (control.originalActorId && !original?.isActive) return { reason: "The original initiating account is unavailable or inactive." };
+  return { actor, original, reason: null };
+}
+
+function createRunGuard(runId: string, lock: FreemanMigrationLock, background = false) {
+  const assertOwned = async () => {
+    try {
+      await lock.assertHeld();
+      if ((await readRunControl()).runId !== runId) throw new Error("Run changed.");
+    } catch {
+      throw new FreemanRunOwnershipError("The migration no longer owns its execution lock.");
+    }
+  };
+  // This short transaction fence also serializes the last in-flight sheet with
+  // a replacement worker after a lock connection dies. Check again BEFORE
+  // commit, rolling back the old sheet if ownership was lost during its save.
+  const write: ImportWrite = (fn) => storage.advisoryLock.withTransactionLock(
+    "freeman-edls-migrate-work",
+    async () => {
+      await assertOwned();
+      const result = await fn();
+      await assertOwned();
+      return result;
+    },
+  );
+  const shouldStop = async () => {
+    await assertOwned();
+    const current = await readRunControl();
+    if (current.lifecycle === "stopping" || await readStopRequest()) return true;
+    if (background) {
+      const { reason } = await executionEligibility(current);
+      if (reason) {
+        await changeRun(runId, (latest) => ({ ...latest, deferredReason: reason }));
+        return true;
+      }
+    }
+    return false;
+  };
+  return { assertOwned, write, shouldStop };
+}
+type RunGuard = ReturnType<typeof createRunGuard>;
+
+async function runTrackedBatch(
+  limit: number,
+  control: FreemanMigrateRunControl,
+  guard: RunGuard,
+  background: boolean,
+  diagnostics?: { correlationId: string },
+): Promise<FreemanMigrateReport> {
+  let heartbeatWrite = Promise.resolve();
+  const heartbeat = setInterval(() => {
+    heartbeatWrite = heartbeatWrite.then(async () => {
+      await guard.assertOwned();
+      await changeRun(control.runId!, (latest) => isActiveLifecycle(latest.lifecycle)
+        ? { ...latest, heartbeatAt: new Date().toISOString() } : latest);
+    }).catch(() => {
+      logger.warn("Freeman migration heartbeat could not be persisted", {
+        service: "freeman-edls-migrate",
+      });
+    });
+  }, 30_000);
+  const progress: BatchProgress = {
+    runStartedAt: control.startedAt!,
+    batchNumber: control.batchCount + 1,
+    updatedAt: new Date().toISOString(), status: "draft", page: 0,
+    phase: "fetching", sheet: null, pageSize: null, completedSheets: 0,
+    created: 0, updated: 0, unchanged: 0, failed: 0, outcomes: [],
+  };
+  let nextState: FreemanMigrateState | undefined;
   try {
-    let control = await readRunControl();
-    control = { ...control, lifecycle: "running", heartbeatAt: new Date().toISOString() };
-    await writeRunControl(control);
-    while (true) {
-      control = await readRunControl();
-      if (await readStopRequest()) {
-        await writeRunControl({
-          ...control, lifecycle: "stopped", stopRequested: false,
-          finishedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(),
-        });
+    const report = await runFreemanMigrateUnlocked("live", { limit }, guard.shouldStop, diagnostics, async (event) => {
+      progress.updatedAt = new Date().toISOString();
+      progress.status = event.status;
+      progress.page = event.page;
+      progress.phase = event.phase;
+      progress.sheet = event.sheet ?? null;
+      progress.pageSize = event.pageSize ?? null;
+      if (event.result) {
+        progress.completedSheets++;
+        if (event.result.outcome === "created") progress.created++;
+        else if (event.result.outcome === "updated") progress.updated++;
+        else if (event.result.outcome === "unchanged") progress.unchanged++;
+        else if (event.result.outcome === "failed") progress.failed++;
+        progress.outcomes.push(event.result);
+      }
+      await guard.write(() => writeBatchProgress(progress));
+    }, guard.write, async (state) => { nextState = state; });
+    // Cursor and finalized totals are one checkpoint. A crash before commit
+    // replays the old page; a crash after commit resumes the next one.
+    await guard.write(() => changeRun(control.runId!, async (latest) => {
+      const stop = latest.lifecycle === "stopping" || await readStopRequest();
+      const deferred = background && !stop && Boolean(latest.deferredReason);
+      const failed = reportHasFatalFailure(report);
+      const completed = !background || (!report.stoppedEarly
+        && report.statuses.length === FREEMAN_MIGRATE_STATUSES.length
+        && report.statuses.every((status) => status.complete));
+      addReportTotals(latest, report);
+      latest.batchCount++;
+      latest.latestBatch = report;
+      latest.heartbeatAt = new Date().toISOString();
+      if (failed || stop || (completed && !deferred)) {
+        latest.lifecycle = failed ? "failed" : stop ? "stopped" : "completed";
+        latest.finishedAt = new Date().toISOString();
+        latest.recoveryEnabled = false;
+        latest.stopRequested = false;
+        latest.deferredReason = null;
+        latest.error = failed ? "The latest batch failed. Review its failure details, then start again to retry." : null;
         await writeStopRequest(false);
+      }
+      if (nextState) await writeState(nextState);
+      return latest;
+    }));
+    return report;
+  } finally {
+    clearInterval(heartbeat);
+    await heartbeatWrite;
+  }
+}
+
+async function executeBackgroundRun(runId: string, limit: number, lock: FreemanMigrationLock): Promise<void> {
+  const guard = createRunGuard(runId, lock, true);
+  try {
+    await guard.assertOwned();
+    while (true) {
+      const control = await readRunControl();
+      if (await guard.shouldStop()) {
+        await guard.write(() => settleStop(runId));
         return;
       }
-      let heartbeatWrite = Promise.resolve();
-      const heartbeat = setInterval(() => {
-        heartbeatWrite = heartbeatWrite.then(async () => {
-          const latest = await readRunControl();
-          if (isActiveLifecycle(latest.lifecycle)) {
-            await writeRunControl({ ...latest, heartbeatAt: new Date().toISOString() });
-          }
-        }).catch((error) => {
-          logger.warn("Freeman migration heartbeat could not be persisted", {
-            service: "freeman-edls-migrate",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
-      }, 30_000);
-      let report: FreemanMigrateReport;
-      try {
-        report = await runFreemanMigrateUnlocked("live", { limit }, readStopRequest);
-      } finally {
-        clearInterval(heartbeat);
-        await heartbeatWrite;
-      }
-      control = await readRunControl();
-      const stopRequested = report.stoppedEarly || await readStopRequest();
-      addReportTotals(control, report);
-      control.batchCount += 1;
-      control.latestBatch = report;
-      control.heartbeatAt = new Date().toISOString();
-      // A status-level error means the page itself could not be fetched or
-      // interpreted, so continuing could silently skip data. Individual sheet
-      // failures are different: their transactions rolled back, their safe
-      // details are in the report, and the cursor has advanced so later sheets
-      // can still migrate. Start Over replays those sheets after they are fixed.
-      const failed = reportHasFatalFailure(report);
-      const completed = !report.stoppedEarly
-        && report.statuses.length === FREEMAN_MIGRATE_STATUSES.length
-        && report.statuses.every((status) => status.complete);
-      if (failed || stopRequested || completed) {
-        control.lifecycle = failed ? "failed" : stopRequested ? "stopped" : "completed";
-        control.finishedAt = new Date().toISOString();
-        control.error = failed ? "The latest batch failed. Review its safe failure details, then start again to retry." : null;
-        control.stopRequested = false;
-      }
-      await writeRunControl(control);
-      if (failed || stopRequested || completed) await writeStopRequest(false);
-      if (failed || completed || control.lifecycle === "stopped") return;
+      await runTrackedBatch(limit, control, guard, true);
+      const latest = await readRunControl();
+      if (!isActiveLifecycle(latest.lifecycle) || latest.deferredReason) return;
+    }
+  } catch (error) {
+    if (!(error instanceof FreemanRunOwnershipError)) {
+      await guard.assertOwned();
+      await changeRun(runId, async (latest) => {
+        if (latest.lifecycle === "stopping" || await readStopRequest()) {
+          await writeStopRequest(false);
+          return { ...latest, lifecycle: "stopped", recoveryEnabled: false, stopRequested: false, finishedAt: new Date().toISOString() };
+        }
+        // Maintenance can begin during a sheet. Its transaction rolls back;
+        // leave durable intent intact and let the next tick retry eligibility.
+        if (isMaintenanceActive()) return latest;
+        return {
+          ...latest, lifecycle: "failed", recoveryEnabled: false,
+          finishedAt: new Date().toISOString(),
+          error: "The background migration stopped because of an unexpected local error. Start again to resume.",
+        };
+      });
+      logger.error("Freeman background migration failed", { service: "freeman-edls-migrate" });
     }
   } finally {
     await lock.release();
   }
+}
+
+async function settleStop(runId: string): Promise<void> {
+  await changeRun(runId, async (latest) => {
+    if (latest.lifecycle !== "stopping" && !await readStopRequest()) return latest;
+    await writeStopRequest(false);
+    return {
+      ...latest, lifecycle: "stopped", recoveryEnabled: false, stopRequested: false,
+      finishedAt: new Date().toISOString(), deferredReason: null,
+    };
+  });
+}
+
+function launchBackground(control: FreemanMigrateRunControl, lock: FreemanMigrationLock) {
+  // Neither an HTTP request's transaction nor the cron emitter's actor is the
+  // resumed import's context. Reconstruct only its saved, freshly checked actor.
+  backgroundRun = runOutsideTransaction(async () => {
+    const eligible = await executionEligibility(control);
+    if (!eligible.actor || eligible.reason) {
+      await lock.release();
+      return;
+    }
+    await requestContext.run({
+      userId: eligible.actor.id, userEmail: eligible.actor.email ?? undefined,
+      originalUserId: eligible.original?.id, originalUserEmail: eligible.original?.email ?? undefined,
+      suppressNotifications: true,
+    }, () => executeBackgroundRun(control.runId!, control.limit!, lock));
+  }).catch(() => {
+    logger.error("Freeman migration worker could not continue", { service: "freeman-edls-migrate" });
+  }).finally(async () => { await lock.release(); backgroundRun = null; });
 }
 
 export async function startFreemanMigrate(raw: unknown): Promise<ReturnType<typeof getFreemanMigrateStatus>> {
@@ -1950,34 +2254,29 @@ export async function startFreemanMigrate(raw: unknown): Promise<ReturnType<type
     if (!lock) {
       throw new FreemanMigrateConflictError("A Freeman migration run is already in progress.");
     }
-    const existing = await readRunControl();
-    if (isActiveLifecycle(existing.lifecycle) || backgroundRun) {
-      throw new FreemanMigrateConflictError("A Freeman migration run is already in progress.");
-    }
-    const now = new Date().toISOString();
-    // Clear a previous run's stop flag before advertising this run as active.
-    // Once "starting" is visible, every subsequent stop request belongs to
-    // this run and must not be erased by startup.
-    await writeStopRequest(false);
-    await writeRunControl({
-      ...emptyRunControl(), lifecycle: "starting", limit, startedAt: now, heartbeatAt: now,
+    const context = getRequestContext();
+    const control = {
+      ...emptyRunControl(), runId: randomUUID(), recoveryEnabled: true,
+      actorId: context?.userId ?? null, originalActorId: context?.originalUserId ?? null,
+      lifecycle: "running" as const, limit,
+      startedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(),
+    };
+    const eligible = await executionEligibility(control);
+    if (eligible.reason) throw new FreemanMigrateConflictError(eligible.reason);
+    await withControlLock(async () => {
+      const existing = await readRunControl();
+      // Legacy/foreground orphans may be replaced manually only after acquiring
+      // the execution lock AND observing an old heartbeat.
+      if (isActiveLifecycle(existing.lifecycle) && (existing.recoveryEnabled
+        || (existing.heartbeatAt && Date.now() - Date.parse(existing.heartbeatAt) <= 120_000))) {
+        throw new FreemanMigrateConflictError("A Freeman migration run is already in progress. Stop it before starting another.");
+      }
+      await writeStopRequest(false);
+      await writeRunControl(control);
     });
     const runLock = lock;
     lock = null;
-    backgroundRun = withNotificationsSuppressed(() => executeBackgroundRun(limit, runLock))
-      .catch(async (error) => {
-        logger.error("Freeman background migration failed", {
-          service: "freeman-edls-migrate",
-          error: error instanceof Error ? error.message : String(error),
-        });
-        const control = await readRunControl();
-        await writeRunControl({
-          ...control, lifecycle: "failed", stopRequested: false,
-          finishedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(),
-          error: "The background migration stopped because of an unexpected local error. Start again to resume.",
-        });
-      })
-      .finally(() => { backgroundRun = null; });
+    launchBackground(control, runLock);
     return getFreemanMigrateStatus();
   } finally {
     if (lock) await lock.release();
@@ -1986,13 +2285,59 @@ export async function startFreemanMigrate(raw: unknown): Promise<ReturnType<type
 }
 
 export async function stopFreemanMigrate(): Promise<ReturnType<typeof getFreemanMigrateStatus>> {
-  // The stop flag is the request and getFreemanMigrateStatus overlays the
-  // visible "stopping" lifecycle from it. Writing a copied run-control record
-  // here can overwrite a terminal state reached concurrently by the worker.
-  await writeStopRequest(true);
-  const control = await readRunControl();
-  if (!isActiveLifecycle(control.lifecycle)) {
-    await writeStopRequest(false);
-  }
+  await withControlLock(async () => {
+    const control = await readRunControl();
+    if (!isActiveLifecycle(control.lifecycle)) return;
+    await writeStopRequest(true);
+    await writeRunControl({ ...control, lifecycle: "stopping", stopRequested: true, recoveryEnabled: false });
+  });
+  // If the worker died, no one is left to acknowledge the durable stop. The
+  // same bounded recovery check settles it, never launching replacement work.
+  await recoverFreemanMigrate();
   return getFreemanMigrateStatus();
+}
+
+export async function recoverFreemanMigrate(): Promise<void> {
+  return runOutsideTransaction(async () => {
+    if (startReserved || backgroundRun || isMaintenanceActive()) return;
+    startReserved = true;
+    let lock: FreemanMigrationLock | null = null;
+    try {
+      const candidate = await readRunControl();
+      if (!isActiveLifecycle(candidate.lifecycle)
+        || (!candidate.recoveryEnabled && candidate.lifecycle !== "stopping")) return;
+      lock = await storage.advisoryLock.tryAcquireSession("freeman-edls-migrate-run", { timeoutMs: 0 });
+      if (!lock) return;
+      await lock.assertHeld();
+      let launch: FreemanMigrateRunControl | undefined;
+      await withControlLock(async () => {
+        const current = await readRunControl();
+        if (current.runId !== candidate.runId || !isActiveLifecycle(current.lifecycle)) return;
+        if (current.lifecycle === "stopping" || await readStopRequest()) {
+          await writeStopRequest(false);
+          await writeRunControl({ ...current, lifecycle: "stopped", recoveryEnabled: false,
+            stopRequested: false, finishedAt: new Date().toISOString(), deferredReason: null });
+          return;
+        }
+        if (!current.recoveryEnabled || !current.runId || !current.limit) return;
+        const { reason } = await executionEligibility(current);
+        if (reason) {
+          await writeRunControl({ ...current, deferredReason: reason });
+          return;
+        }
+        launch = { ...current, lifecycle: "running", deferredReason: null,
+          heartbeatAt: new Date().toISOString(), resumedAt: new Date().toISOString(),
+          resumeCount: current.resumeCount + 1 };
+        await writeRunControl(launch);
+      });
+      if (launch) {
+        const runLock = lock;
+        lock = null;
+        launchBackground(launch, runLock);
+      }
+    } finally {
+      if (lock) await lock.release();
+      startReserved = false;
+    }
+  });
 }

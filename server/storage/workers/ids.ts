@@ -1,6 +1,6 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
-import { workerIds, optionsWorkerIdType, type WorkerId, type InsertWorkerId } from "@shared/schema";
+import { getClient, runInTransaction } from '../transaction-context';
+import { workers, workerIds, optionsWorkerIdType, type WorkerId, type InsertWorkerId } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
@@ -26,6 +26,7 @@ export interface WorkerIdForList {
 }
 
 export interface WorkerIdStorage {
+  reconcileWorkerId(workerId: string, typeId: string, value: string, dryRun: boolean, source: { typeId: string; value: string }): Promise<{ deleted: number; created: number }>;
   getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]>;
   getWorkerId(id: string): Promise<WorkerId | undefined>;
   createWorkerId(workerId: InsertWorkerId): Promise<WorkerId>;
@@ -58,6 +59,35 @@ export interface WorkerIdStorage {
 
 export function createWorkerIdStorage(): WorkerIdStorage {
   return {
+    async reconcileWorkerId(workerId, typeId, value, dryRun, source) {
+      if (!value.trim()) throw new Error("Cannot reconcile a blank worker ID.");
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Same lock order as the Freeman importer; blocks even direct SQL writers.
+        if (!dryRun) await client.execute(sql`LOCK TABLE ${workerIds} IN SHARE ROW EXCLUSIVE MODE`);
+        const workerQuery = client.select({ id: workers.id }).from(workers)
+          .where(eq(workers.id, workerId));
+        const [worker] = await (dryRun ? workerQuery : workerQuery.for("update"));
+        if (!worker) throw new Error("Worker no longer exists.");
+        const ids = await this.getWorkerIdsByWorkerId(workerId);
+        const sourceRows = ids.filter(row => row.typeId === source.typeId);
+        if (sourceRows.length !== 1 || sourceRows[0].value !== source.value) {
+          throw new Error("ambiguous_t631_identity: worker's T631 identity changed or is ambiguous");
+        }
+        const holder = await this.getWorkerIdByTypeAndValue(typeId, value);
+        if (holder && holder.workerId !== workerId) throw new Error("ein_conflict: incoming EIN belongs to another worker");
+        const rows = ids.filter(row => row.typeId === typeId);
+        const keep = rows.find(row => row.value === value);
+        const remove = rows.filter(row => row.id !== keep?.id);
+        if (!dryRun) {
+          // Use the public logged facade: internal this.* mutation calls bypass logging.
+          const { storage } = await import("../database");
+          for (const row of remove) await storage.workerIds.deleteWorkerId(row.id);
+          if (!keep) await storage.workerIds.createWorkerId({ workerId, typeId, value });
+        }
+        return { deleted: remove.length, created: keep ? 0 : 1 };
+      });
+    },
     async getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]> {
       const client = getClient();
       return client.select().from(workerIds).where(eq(workerIds.workerId, workerId));

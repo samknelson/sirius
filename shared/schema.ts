@@ -753,6 +753,7 @@ export const workerIds = pgTable("worker_ids", {
   value: text("value").notNull(),
 }, (table) => ({
   uniqueTypeValue: unique().on(table.typeId, table.value),
+  uniqueWorkerType: unique("worker_ids_worker_id_type_id_unique").on(table.workerId, table.typeId),
 }));
 
 export const workerWsh = pgTable("worker_wsh", {

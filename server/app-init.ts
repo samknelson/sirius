@@ -633,6 +633,13 @@ export async function bootstrapApp(
   const { initializeConfigurationCoherency } = await import("./services/configuration-cache-registry");
   await initializeConfigurationCoherency(roles.has("api-user"));
 
+  if (roles.has("api-user")) {
+    const { initializeFreemanMigrateRecovery } = await import(
+      "./modules/sitespecific/freeman/edls-migrate/recovery"
+    );
+    await initializeFreemanMigrateRecovery();
+  }
+
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

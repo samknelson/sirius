@@ -84,3 +84,31 @@ mtime_ms = 1792936540442
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/2c1df709-aa9f-4ebe-94a4-f57b3b8b623a/017fa237-e990-4e3f-818f-ae9e49f0f339"
 storage_version_token = "1792936548698016"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "EglujXJASytXpIq7tjvDE"
+uri = "file://attached_assets/bao-dev-storage-changes.xlsx"
+type = "table"
+title = "BAO Storage Changes"
+description = "Excel inventory: 443 rows across 71 paths, with the four requested columns, filters, frozen headers, and comparison notes."
+logical_id = "2d49be5a-0457-4d99-9a74-a0fbf3e46c51"
+content_hash = "sha256:2b3792cea7a2ce5c3808acdaba0db904be80f70c08a35bf3e90bbff96e0dbbf0"
+size = 24795
+mtime_ms = 1794396860574
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/2d49be5a-0457-4d99-9a74-a0fbf3e46c51/90fcabce-e87f-4853-8725-7616e62330f5"
+storage_version_token = "1794396876200066"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "_bs74_7Mwh8cMoHki5ErD"
+uri = "file://attached_assets/bao-dev-schema-changes-non-sitespecific.xlsx"
+type = "table"
+title = "Schema Changes — Non-site-specific Tables"
+description = "25 table entries: 8 full new-table definitions and 17 existing-table changes. Includes the four requested columns and a separate sheet for two JSON-contract changes."
+logical_id = "3dbdde7e-0110-493b-957c-59a1ed593641"
+content_hash = "sha256:5cb01d815ec1b35cda5e47dd9fc30c6514407e99485f3cb6bc79ae9e527e0239"
+size = 13928
+mtime_ms = 1794398044975
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:6df5f98a-763b-4214-8d4b-274c33305989/3dbdde7e-0110-493b-957c-59a1ed593641/9cca4dae-35a6-4f28-9415-1de608e2afdf"
+storage_version_token = "1794398054562052"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

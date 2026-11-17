@@ -91,7 +91,10 @@ export function registerWorkerIdsRoutes(
       console.error("Error creating worker ID:", error);
       
       // Check for unique constraint violation
-      if (error.code === '23505' && error.constraint === 'worker_ids_type_id_value_unique') {
+      if ((error.cause ?? error).code === '23505' && (error.cause ?? error).constraint === 'worker_ids_worker_id_type_id_unique') {
+        return res.status(409).json({ message: "This worker already has an ID of this type. Edit or delete the existing ID first." });
+      }
+      if ((error.cause ?? error).code === '23505' && (error.cause ?? error).constraint === 'worker_ids_type_id_value_unique') {
         return res.status(409).json({ 
           message: "This ID value already exists for this type. Worker IDs must be unique." 
         });
@@ -167,7 +170,10 @@ export function registerWorkerIdsRoutes(
       console.error("Error updating worker ID:", error);
       
       // Check for unique constraint violation
-      if (error.code === '23505' && error.constraint === 'worker_ids_type_id_value_unique') {
+      if ((error.cause ?? error).code === '23505' && (error.cause ?? error).constraint === 'worker_ids_worker_id_type_id_unique') {
+        return res.status(409).json({ message: "This worker already has an ID of this type. Edit or delete the existing ID first." });
+      }
+      if ((error.cause ?? error).code === '23505' && (error.cause ?? error).constraint === 'worker_ids_type_id_value_unique') {
         return res.status(409).json({ 
           message: "This ID value already exists for this type. Worker IDs must be unique." 
         });
