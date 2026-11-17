@@ -8,6 +8,9 @@ import {
 } from "../plugins/system/cron";
 import { getEnabledComponentIds } from "../modules/components";
 import { readConfigurationSnapshot } from "../storage/configuration-revisions";
+import { pool } from "../storage/db";
+import { isMaintenanceActive } from "../services/maintenance-flag";
+import { CronOwnership } from "./ownership";
 
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
@@ -28,18 +31,42 @@ interface ScheduledJob {
   task: cron.ScheduledTask;
 }
 
-class CronScheduler {
+export class CronScheduler {
   private scheduledJobs: Map<string, ScheduledJob> = new Map();
   private isRunning: boolean = false;
   private ownsWork = false;
   private snapshotGeneration = 0;
-  private reloadFlight?: Promise<void>;
+  private reloadFlight?: { token: number; promise: Promise<void> };
   private scheduleWarnings: string[] = [];
+  private readonly ownership = new CronOwnership({
+    connect: () => pool.connect(),
+    acquired: async token => {
+      if (this.ownership.owns(token)) await this.loadAndScheduleJobs(token);
+    },
+    lost: () => this.clearSchedules(),
+    report: (event, error) => {
+      const message = {
+        acquired: "Cron scheduler ownership acquired",
+        standby: "Cron scheduler on standby; another process owns scheduling",
+        lost: "Cron scheduler ownership lost; automatic scheduling stopped",
+        error: "Cron scheduler ownership unavailable; will retry",
+      }[event];
+      const meta = { service: "cron-scheduler", ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}) };
+      if (event === "lost" || event === "error") logger.warn(message, meta);
+      else logger.info(message, meta);
+    },
+  });
 
-  setOwnership(ownsWork: boolean): void { this.ownsWork = ownsWork; }
+  setOwnership(ownsWork: boolean): void {
+    this.ownsWork = ownsWork;
+    if (!ownsWork) void this.stop();
+  }
   isStarted(): boolean { return this.isRunning; }
   invalidateSnapshot(): void { this.snapshotGeneration++; }
   getScheduleSummary(): string {
+    if (this.isRunning && this.ownership.token === undefined) {
+      return "Cron scheduler on standby; waiting for database-backed ownership. No jobs scheduled here.";
+    }
     const count = this.scheduledJobs.size;
     return `${count} job${count === 1 ? "" : "s"} scheduled.` +
       (this.scheduleWarnings.length ? ` Skipped jobs: ${this.scheduleWarnings.join("; ")}.` : "");
@@ -56,66 +83,47 @@ class CronScheduler {
     logger.info('Starting cron scheduler', { service: 'cron-scheduler' });
     this.isRunning = true;
 
-    try {
-      await this.loadAndScheduleJobs();
-      logger.info('Cron scheduler started successfully', {
-        service: 'cron-scheduler',
-        jobCount: this.scheduledJobs.size,
-      });
-    } catch (error) {
-      // A failed load may already have scheduled some jobs. Return to a clean
-      // stopped state so a deferred maintenance-exit retry can really start.
-      await this.stop();
-      logger.error('Failed to start cron scheduler', {
-        service: 'cron-scheduler',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+    // Election and standby waits must not hold up application readiness.
+    this.ownership.start();
   }
 
   async stop(): Promise<void> {
-    this.invalidateSnapshot();
-    if (!this.isRunning) {
-      return;
-    }
-
-    logger.info('Stopping cron scheduler', { service: 'cron-scheduler' });
-
-    for (const [jobName, { task }] of Array.from(this.scheduledJobs.entries())) {
-      task.destroy();
-      logger.debug(`Stopped scheduled job: ${jobName}`, { service: 'cron-scheduler' });
-    }
-
-    this.scheduledJobs.clear();
     this.isRunning = false;
+    this.ownership.stop();
+  }
 
-    logger.info('Cron scheduler stopped', { service: 'cron-scheduler' });
+  private clearSchedules(): void {
+    this.invalidateSnapshot();
+    for (const { task } of this.scheduledJobs.values()) task.destroy();
+    this.scheduledJobs.clear();
+    this.scheduleWarnings = [];
   }
 
   async reload(): Promise<void> {
     // A selected reload must never start cron in a non-owning API role, or
     // bypass the existing maintenance-startup deferral.
     if (!this.ownsWork || !this.isRunning) return;
+    const token = this.ownership.token;
+    if (token === undefined) return; // the next takeover reads current storage
     logger.info('Reloading cron scheduler', { service: 'cron-scheduler' });
     this.invalidateSnapshot();
-    await this.loadAndScheduleJobs();
+    await this.loadAndScheduleJobs(token);
   }
 
-  private async loadAndScheduleJobs(): Promise<void> {
-    if (this.reloadFlight) return this.reloadFlight;
+  private async loadAndScheduleJobs(token: number): Promise<void> {
+    if (this.reloadFlight?.token === token) return this.reloadFlight.promise;
     const work = (async () => {
-      while (this.isRunning) {
+      while (this.isRunning && this.ownership.owns(token)) {
         const generation = this.snapshotGeneration;
         const envelopes = await readConfigurationSnapshot(() => storage.pluginConfigs.search('cron', { enabled: true }));
-        if (!this.isRunning) return;
+        if (!this.isRunning || !this.ownership.owns(token)) return;
         if (generation !== this.snapshotGeneration) continue;
         const next = new Map<string, ScheduledJob>();
         const warnings: string[] = [];
         for (const envelope of envelopes) {
           const job = this.toScheduledJob(envelope);
           try {
-            const task = this.scheduleJob(job, warnings);
+            const task = this.scheduleJob(job, warnings, token);
             if (task) next.set(job.configurationId, { job, task });
           } catch (error) {
             // Persisted bad job configuration is isolated, not a failure to
@@ -146,8 +154,11 @@ class CronScheduler {
         return;
       }
     })();
-    this.reloadFlight = work;
-    try { await work; } finally { this.reloadFlight = undefined; }
+    const flight = { token, promise: work };
+    this.reloadFlight = flight;
+    try { await work; } finally {
+      if (this.reloadFlight === flight) this.reloadFlight = undefined;
+    }
   }
 
   /** Project a plugin-config envelope into the scheduler's normalized job shape. */
@@ -162,7 +173,7 @@ class CronScheduler {
     };
   }
 
-  private scheduleJob(job: ScheduledCronJob, warnings: string[]): cron.ScheduledTask | undefined {
+  private scheduleJob(job: ScheduledCronJob, warnings: string[], token: number): cron.ScheduledTask | undefined {
     // Check if a plugin is registered for this job
     if (!cronPluginRegistry.has(job.name)) {
       warnings.push(`${job.name}: no registered plugin`);
@@ -186,7 +197,11 @@ class CronScheduler {
     const task = cron.createTask(
       job.schedule,
       async () => {
-        await this.executeJob(job, false);
+        const authorized = () => this.isRunning && this.ownership.owns(token) &&
+          this.scheduledJobs.get(job.configurationId)?.task === task && !isMaintenanceActive();
+        // Destroyed timers can already have callbacks queued in the event loop.
+        if (!authorized()) return;
+        await this.executeJob(job, false, undefined, "live", authorized);
       }
     );
 
@@ -198,7 +213,7 @@ class CronScheduler {
     return task;
   }
 
-  async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<string> {
+  async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live", authorized: () => boolean = () => true): Promise<string> {
     const startedAt = new Date();
 
     // Create run record - id and startedAt are auto-generated
@@ -224,6 +239,18 @@ class CronScheduler {
     });
 
     try {
+      const skipLostOwnership = async () => {
+        if (isManual || authorized()) return false;
+        await storage.jobRuns.update(runId, {
+          status: "skipped", completedAt: new Date(),
+          output: JSON.stringify({ message: "Skipped: automatic scheduling authority changed before execution." }),
+        });
+        return true;
+      };
+      if (!isManual && !authorized()) {
+        await skipLostOwnership();
+        return runId;
+      }
       // Get the plugin to access default settings + component gating
       const plugin = cronPluginRegistry.get(job.name);
 
@@ -255,6 +282,10 @@ class CronScheduler {
       const mergedSettings = { ...defaultSettings, ...job.settings };
 
       // Execute the plugin
+      if (!isManual && !authorized()) {
+        await skipLostOwnership();
+        return runId;
+      }
       const summary = await executeCronPlugin(job.name, {
         configurationId: job.configurationId,
         jobId: job.name,

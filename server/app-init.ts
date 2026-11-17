@@ -10,6 +10,7 @@ import { captureRequestContext } from "./middleware/request-context";
 import { initializeSessionHistoryListener } from "./services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
+import { installCronShutdownHooks } from "./cron/shutdown";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
 import { initializeDenormPluginSystem } from "./plugins/system/denorm";
 import { initializeDataRetentionPluginSystem } from "./plugins/system/data-retention";
@@ -619,6 +620,7 @@ export async function bootstrapApp(
   // api-ws-only containers never initialize either singleton.
   cronScheduler.setOwnership(roles.has("api-user"));
   if (roles.has("api-user")) {
+    installCronShutdownHooks(server, () => cronScheduler.stop());
     const { getSession } = await import("./auth");
     const sessionMiddleware = getSession();
     initializeWebSocket(server, sessionMiddleware);

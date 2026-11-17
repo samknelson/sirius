@@ -184,6 +184,11 @@ export async function shutdownAndExit(server: Server | undefined): Promise<void>
     exitCode: RESTART_EXIT_CODE,
   });
 
+  // Release the dedicated scheduler connection before pool.end(), which
+  // otherwise waits for that checked-out session forever.
+  const { cronScheduler } = await import("../cron");
+  await cronScheduler.stop();
+
   try {
     const { shutdown: shutdownWebsockets } = await import("./websocket");
     shutdownWebsockets();
