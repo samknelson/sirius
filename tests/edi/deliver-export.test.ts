@@ -93,15 +93,62 @@ describe("authorized, read-only Deliver exports", () => {
     expect(state.update).not.toHaveBeenCalled();
     expect(state.upload).not.toHaveBeenCalled();
   });
-  it("blocks unsupported saved choices before admitting generation, ignoring unsaved request input", async () => {
-    state.wizard.data.terminationPolicy = { explicitSubscriberTerminations: true, explicitDependentTerminations: false, terminationLookbackMonths: 1 };
+  it("validates saved choices before admitting generation, ignoring unsaved request input", async () => {
+    state.wizard.data.terminationPolicy = { explicitSubscriberTerminations: true, explicitDependentTerminations: false, terminationLookbackMonths: 13 };
     const response = await fetch(`${base}/run/run`, {
       method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" },
-      body: JSON.stringify({ input: { explicitSubscriberTerminations: false } }),
+      body: JSON.stringify({ input: { explicitSubscriberTerminations: false, terminationLookbackMonths: 1 } }),
     });
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain("Kaiser");
+    expect(await response.text()).toContain("Termination lookback months");
     expect(state.writeProgress).not.toHaveBeenCalled();
+  });
+  it("recovers Carelon through Parameters save, Generate and both downloads without delivery", async () => {
+    state.wizard.data.config.pluginId = "sitespecific-smf-carelon";
+    state.wizard.data.progress = { run: { status: "failed", error: "Historical contract refusal" } };
+    const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-smf-carelon")!;
+    const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue(["history"]);
+    const process = vi.spyOn(plugin, "processBatch").mockResolvedValue([{
+      pk: "history", memberStatus: "C", coverageEnd: "20261031",
+      terminationRole: "subscriber", terminationEvidence: "coverage inferred",
+    }]);
+    state.writeProgress.mockImplementation(async (_id, step, runId, patch, _initial, data = {}) => {
+      state.wizard.data = { ...state.wizard.data, ...data, progress: {
+        ...state.wizard.data.progress, [step]: { ...state.wizard.data.progress?.[step], ...patch, runId },
+      } };
+      return state.wizard;
+    });
+    const post = (path: string, input: unknown) => fetch(`${base}${path}`, {
+      method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" },
+      body: JSON.stringify({ input }),
+    });
+    try {
+      const saved = await post("/params/submit", {
+        asOfDate: "2026-11-01", explicitSubscriberTerminations: true,
+        explicitDependentTerminations: true, terminationLookbackMonths: 1,
+      });
+      expect(saved.status).toBe(200);
+      expect(state.wizard.data).toMatchObject({
+        reportMeta: null, delivery: null,
+        previousGeneration: { error: "Historical contract refusal" },
+        terminationPolicy: { explicitSubscriberTerminations: true, explicitDependentTerminations: true },
+      });
+      expect((await get("/deliver/data")).status).toBe(200);
+      expect(await (await get("/deliver/data")).json()).toMatchObject({ ready: false });
+      expect((await post("/run/run", { explicitSubscriberTerminations: false })).status).toBe(202);
+      await vi.waitFor(() => expect(state.wizard.data.progress.run.status).toBe("completed"));
+      expect(process.mock.calls[0][1].terminationPolicy).toEqual({ subscribers: true, dependents: true, months: 1 });
+      expect(state.wizard.data.reportMeta.terminationCounts).toEqual({ subscribers: 1, dependents: 0, inferred: 1 });
+      for (const format of ["provider", "carrier-csv"]) {
+        const response = await get(`/deliver/export?format=${format}`);
+        expect(response.status).toBe(200);
+        expect(await response.text()).toContain("20261031");
+      }
+      expect(state.upload).not.toHaveBeenCalled();
+    } finally {
+      keys.mockRestore();
+      process.mockRestore();
+    }
   });
   it("refuses rows replaced during a concurrent generation", async () => {
     const oldWizard = structuredClone(state.wizard);

@@ -26,7 +26,9 @@ const imageCases = [
   ["/workers/fixture/comm/send-email", "system:studio-public-images"],
   ["/config/email", "system:studio-public-images"],
 ] as const;
-const selectedCases = process.argv.includes("--public-images") ? imageCases : cases;
+const terminationCases = [["/wizards/fixture", "system:edi-wizard-terminations"]] as const;
+const terminationMode = process.argv.includes("--edi-terminations");
+const selectedCases = terminationMode ? terminationCases : process.argv.includes("--public-images") ? imageCases : cases;
 const server = await createServer({
   configFile: false, envFile: false, root,
   cacheDir: path.join(root, "node_modules/.vite-help-fixture"),
@@ -46,7 +48,7 @@ try {
   await server.listen();
   browser = await puppeteer.launch({
     executablePath: ["/repl/tools/bin/chromium", "/usr/bin/chromium"].find(existsSync),
-    headless: true, timeout: 60_000, args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    headless: true, pipe: true, timeout: 60_000, args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(120_000);
@@ -82,6 +84,11 @@ try {
         assert.match(text, /public/i);
         assert.match(text, /cancel/i);
         assert.match(text, /owner/i);
+      } else if (id === "system:edi-wizard-terminations") {
+        assert.match(text, /All nine membership carriers support generation/);
+        assert.match(text, /does not establish carrier\s+acceptance/);
+        assert.match(text, /Carelon/);
+        assert.doesNotMatch(text, /turn both flags off|contract.*blocker/i);
       } else if (id === "system:staff-payment-entry") {
         assert.match(text, /Select image/);
         assert.match(text, /Retry attachment/);
@@ -92,7 +99,7 @@ try {
         assert.match(text, /annual/i);
         assert.match(text, /restor/i);
       }
-      assert.equal(await page.$$eval('[data-testid="text-help-details"] h3', nodes => nodes.length) >= 4, true);
+      assert.equal(await page.$$eval('[data-testid="text-help-details"] h3', nodes => nodes.length) >= (terminationMode ? 3 : 4), true);
       assert.equal(await page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true);
     }
   }
@@ -105,7 +112,7 @@ try {
     assert.equal(await page.$(`[data-testid="button-edit-help-${id}"]`), null);
   }
   assert.match(await page.$eval('[data-testid="row-help-fixture-local"]', el => el.textContent!), /Local procedure remains intact/);
-  for (const route of ["/workers/fixture/sitespecific/bao/dp", "/bao/dc/queue/extra", "/employers/fixture/wizards/extra", "/ea/fixture/payments", "/ea/fixture/payments/newish"]) {
+  for (const route of terminationMode ? ["/wizards", "/wizards-other/fixture", "/Wizards/fixture", "/trust/providers"] : ["/workers/fixture/sitespecific/bao/dp", "/bao/dc/queue/extra", "/employers/fixture/wizards/extra", "/ea/fixture/payments", "/ea/fixture/payments/newish"]) {
     await page.goto(`http://127.0.0.1:5196${route}`, { waitUntil: "networkidle0" });
     for (const [, id] of selectedCases) assert.equal(await page.$(`[data-testid="help-summary-${id}"]`), null);
   }

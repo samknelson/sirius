@@ -38,13 +38,6 @@ export function effectiveRunTerminationPolicy(data: Record<string, any>) {
   return readTerminationPolicy(data.terminationPolicy ?? data.config?.data ?? {});
 }
 
-export function assertTerminationContract(pluginId: string, policy: ReturnType<typeof readTerminationPolicy>) {
-  const blocker = terminationContractBlocker(pluginId);
-  if ((policy.subscribers || policy.dependents) && blocker) {
-    throw new Error(`Explicit termination generation blocked: ${blocker} Turn both settings off in Parameters and Save to retain omission mode.`);
-  }
-}
-
 export function readTerminationPolicy(data: Record<string, unknown> = {}) {
   for (const name of ["explicitSubscriberTerminations", "explicitDependentTerminations"]) {
     if (data[name] !== undefined && typeof data[name] !== "boolean") {
@@ -82,28 +75,4 @@ export function terminationWindow(asOf: string, months: number) {
   }
   const report = monthIndex(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)));
   return { report, firstEnd: report - months, lastEnd: report - 1 };
-}
-
-/** Evidence inventory: see docs/edi/termination-policy.md. No invented status codes. */
-export function terminationContractBlocker(id: string): string | null {
-  switch (id) {
-    case "sitespecific-smf-delta":
-    case "sitespecific-smf-hinge":
-    case "sitespecific-smf-mlk":
-      return null;
-    case "sitespecific-smf-carelon":
-      return "Carelon MSTACD: the reference only establishes A/C for active/COBRA members, not the status for an explicit termination.";
-    case "sitespecific-smf-dentwell":
-      return "Dentwell / Dyntl (LADC) Status: confirm whether blank is valid with TerminationDate, or supply the required termination code.";
-    case "sitespecific-smf-vsp":
-      return "VSP Subscriber Status Code: A/C is documented only for active/COBRA members; explicit termination coding is unverified.";
-    case "sitespecific-bao-healthnet":
-      return "Health Net Pay Status Code: AC/CO does not establish explicit termination coding for subscribers or dependents.";
-    case "sitespecific-bao-kaiser":
-      return "Kaiser Current Eligibility Status / Eligibility Status: blank validity with Termination Date is unverified.";
-    case "sitespecific-smf-expressscripts":
-      return "Express Scripts Coverage Code Status: blank validity with Participant Expiration Date is unverified.";
-    default:
-      return "No explicit termination contract has been documented for this membership carrier.";
-  }
 }

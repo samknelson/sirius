@@ -34,6 +34,12 @@ export interface TrustProviderEdiContext {
   input: Record<string, unknown>;
   /** Resolved once from saved run choices (or an old run's config snapshot). */
   terminationPolicy?: ReturnType<typeof import("./termination-policy").readTerminationPolicy>;
+  /**
+   * Historical reconstruction only: a carrier records member keys deliberately
+   * excluded by its ordinary feed selector (e.g. the ESI QMSCO split).
+   * Missing rows not explicitly recorded here still fail reconstruction.
+   */
+  excludedMemberKeys?: Set<string>;
   storage: typeof storageType;
 }
 

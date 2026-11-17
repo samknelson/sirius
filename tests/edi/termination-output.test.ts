@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "csv-parse/sync";
 
-const fixture = vi.hoisted(() => ({ units: [] as any[], candidates: [] as any[], contexts: [] as any[] }));
+const fixture = vi.hoisted(() => ({
+  units: [] as any[], events: [] as any[], coverage: [] as any[], relations: [] as any[], contexts: [] as any[],
+}));
 vi.mock("../../server/plugins/trust/provider-edi/base", async importOriginal => {
   const actual = await importOriginal<typeof import("../../server/plugins/trust/provider-edi/base")>();
   return { ...actual,
@@ -13,16 +15,18 @@ vi.mock("../../server/plugins/trust/provider-edi/base", async importOriginal => 
     },
   };
 });
-vi.mock("../../server/plugins/trust/provider-edi/termination-population", () => ({
-  loadTerminationCandidates: async (ctx: any) => fixture.candidates.filter(c =>
-    c.role === "subscriber" ? (ctx.terminationPolicy?.subscribers ?? ctx.configData.explicitSubscriberTerminations)
-      : (ctx.terminationPolicy?.dependents ?? ctx.configData.explicitDependentTerminations)),
-}));
+vi.mock("../../server/plugins/trust/provider-edi/termination-population", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../server/plugins/trust/provider-edi/termination-population")>();
+  return { ...actual, loadTerminationCandidates: async (ctx: TrustProviderEdiContext) =>
+    actual.selectTerminationCandidates(fixture.events, fixture.coverage, fixture.relations,
+      new Set(), String(ctx.input.asOfDate), ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData)),
+  };
+});
 import { registeredEdiPlugins, requireEdiPlugin } from "./fixtures/harness";
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { carrierLayoutCsv } from "../../server/plugins/trust/provider-edi/carrier-csv";
 import { validateAgainstSchema } from "../../server/lib/json-schema-validator";
-import { terminationContractBlocker } from "../../server/plugins/trust/provider-edi/termination-policy";
+import { readTerminationPolicy } from "../../server/plugins/trust/provider-edi/termination-policy";
 import type { TrustProviderEdiContext } from "../../server/plugins/trust/provider-edi/registry";
 import { trustProviderEdiWizardPlugin } from "../../server/plugins/wizards/plugins/trust-provider-edi";
 
@@ -44,14 +48,22 @@ beforeEach(() => {
     wmb: { id, workerId: id, benefitId: "benefit", year: 2026, month: id === "active" ? 11 : 10 },
     benefitSiriusId: "D", isCobra: id === "history", coverageStartYmd: "2026-01-01",
     subscriber: person,
-    dependents: [{ ...person, ssn: "009876543", relationId: "relation", relationSiriusId: "QMSCO" }],
+    dependents: [{ ...person, ssn: "009876543", relationId: "relation", relationSiriusId: "SP" }],
   }));
-  fixture.candidates = ["subscriber", "dependent"].map(role => ({
-    eventId: role, benefitId: "benefit", workerId: role, familyWmbId: "history",
-    rowKey: role === "subscriber" ? "history" : "history:relation",
-    role, start: role === "subscriber" ? "2026-01-01" : "2026-09-01",
-    end: "2026-10-31", evidence: "coverage inferred",
+  fixture.events = ["history", "child"].map(workerId => ({
+    id: workerId, benefitId: "benefit", workerId, year: 2026, month: 11,
+    data: { provenance: "coverage_inferred" },
   }));
+  fixture.coverage = [
+    ...Array.from({ length: 10 }, (_, i) => ({ workerId: "history", month: i + 1, sourceRelationId: null })),
+    ...[9, 10].map(month => ({ workerId: "child", month, sourceRelationId: "relation" })),
+  ].map(r => ({
+    ...r, id: r.workerId === "history" && r.month === 10 ? "history" : `${r.workerId}-${r.month}`,
+    benefitId: "benefit", year: 2026, employerId: "COBRA",
+  }));
+  fixture.relations = [{
+    id: "relation", worker1: "history", worker2: "child", startYmd: "2020-01-01", endYmd: "2026-10-31",
+  }];
 });
 
 describe("registered carrier lifecycle composition", () => {
@@ -68,22 +80,49 @@ describe("registered carrier lifecycle composition", () => {
     expect(requireEdiPlugin("sitespecific-smf-local11").configSchema?.properties?.terminationLookbackMonths).toBeUndefined();
     expect(requireEdiPlugin("sitespecific-smf-local11").inputSchema?.properties?.terminationLookbackMonths).toBeUndefined();
   });
-  for (const id of ["delta", "hinge", "mlk"]) {
-    it.each([[false, false], [true, false], [false, true], [true, true]])(
-      `${id}: generates only selected term roles (%s/%s), preserving active rows`, async (subs, deps) => {
-        const plugin = requireEdiPlugin(`sitespecific-smf-${id}`);
+  for (const plugin of registeredEdiPlugins().filter(p => p.benefitSiriusIds?.length)) {
+    it.each([
+      [false, false, false], [true, false, false], [false, true, false], [true, true, false],
+      [false, false, true], [true, false, true], [false, true, true], [true, true, true],
+    ])(
+      `${plugin.id}: selected term roles (%s/%s), COBRA %s`, async (subs, deps, cobra) => {
+        fixture.units.find(u => u.wmb.id === "history").isCobra = cobra;
         const ctx = context(subs, deps);
+        const baseline = await plugin.processBatch(["active"], context());
+        const historical = await plugin.processBatch(["history"], {
+          ...context(), input: { asOfDate: "2026-10-31" },
+        });
+        const params = trustProviderEdiWizardPlugin.steps.find(s => s.id === "params")!;
+        const run = trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!;
+        const w = { data: {
+          config: { configId: "fixture", pluginId: plugin.id, data: {} },
+          input: ctx.input, terminationPolicy: {
+            explicitSubscriberTerminations: subs, explicitDependentTerminations: deps, terminationLookbackMonths: 1,
+          },
+        } } as any;
+        expect(run.getRunBlocker!(w)).toBeUndefined();
+        expect(params.getSchema!(w)?.description).not.toMatch(/blocked|MSTACD/);
         const keys = await plugin.getPrimaryKeys!(ctx);
         // Split across separate batches to exercise stable keys.
         const rows = (await Promise.all(keys.map(key => plugin.processBatch([key], ctx)))).flat();
-        expect(rows.filter(r => !r.terminationRole)).toHaveLength(2);
+        expect(baseline).toHaveLength(2);
+        expect(rows.filter(r => !r.terminationRole)).toEqual(baseline);
         const terms = rows.filter(r => r.terminationRole);
         expect(terms).toHaveLength(Number(subs) + Number(deps));
+        expect(terms.map(r => r.terminationRole).sort()).toEqual([
+          ...(deps ? ["dependent"] : []), ...(subs ? ["subscriber"] : []),
+        ]);
         for (const row of terms) {
           expect(row.coverageEnd).toBe("20261031");
           expect(row.coverageStart).toBe(row.terminationRole === "dependent" ? "20260901" : "20260101");
           expect(plugin.encodeRow(row, ctx)).toContain("20261031");
-          if (id === "delta") expect(row.divisionId).toBe("09002");
+          // All status, demographic, layout and COBRA values come from the
+          // existing encoder unchanged; only lifecycle dates/key/evidence differ.
+          const original = historical.find(r => r.pk === (row.terminationRole === "subscriber" ? "history" : "history:relation"))!;
+          expect(row).toEqual({
+            ...original, pk: row.pk, coverageStart: row.coverageStart, coverageEnd: "20261031",
+            terminationRole: row.terminationRole, terminationEnd: "2026-10-31", terminationEvidence: "coverage inferred",
+          });
         }
         expect(new Set(rows.map(r => r.pk)).size).toBe(rows.length);
         if (terms.length) expect(fixture.contexts.some(c => c.input.asOfDate === "2026-10-31")).toBe(true);
@@ -92,28 +131,53 @@ describe("registered carrier lifecycle composition", () => {
         const records = qa.filter(r => r[0].startsWith("QA-only record kind:"));
         expect(records).toHaveLength(native.length);
         records.forEach((record, i) => {
-          if (plugin.outputFormat === "csv") expect(record.slice(1)).toEqual(parse(native[i])[0]);
+          if (plugin.outputFormat === "csv") expect(record.slice(1)).toEqual(parse(native[i])[0] ?? []);
           else expect(record.slice(1).join("")).toBe(native[i]);
         });
-        if (id === "delta") expect(native.at(-1)?.slice(2, 9).trim()).toBe(String(rows.length + 2));
+        const fields = plugin.csvFields ?? plugin.ediFields;
+        const endIndex = fields.findIndex(f => /^(Eligibility Termination Date|term_date|TERM DT|GRPEXP|TerminationDate|Vision Coverage End Date|Termination Date|Coverage End Date|Participant Expiration Date)$/.test(f.name));
+        expect(endIndex).toBeGreaterThanOrEqual(0);
+        const details = qa.filter(r => r[0] === "QA-only record kind: detail");
+        expect(details.map(r => r[endIndex + 1].trim())).toEqual(rows.map(r => String(r.coverageEnd ?? "")));
+        if (plugin.id.endsWith("-delta")) expect(native.at(-1)?.slice(2, 9).trim()).toBe(String(rows.length + 2));
       },
     );
   }
-  it("refuses unresolved status contracts before population, while omission still works", async () => {
-    for (const plugin of registeredEdiPlugins().filter(p => p.benefitSiriusIds?.length && terminationContractBlocker(p.id))) {
-      for (const [subs, deps] of [[true, false], [false, true], [true, true]]) {
-        await expect(plugin.getPrimaryKeys!(context(subs, deps))).rejects.toThrow(/Explicit termination generation blocked/);
-        await expect(plugin.processBatch(["active"], context(subs, deps))).rejects.toThrow(/Explicit termination generation blocked/);
-      }
-      expect(await plugin.getPrimaryKeys!(context())).toEqual(["active"]);
-    }
-  });
   it("keeps missing settings equivalent to false for saved runs", async () => {
     const plugin = requireEdiPlugin("sitespecific-smf-delta");
     const ctx = context();
     const before = await plugin.processBatch(["active"], ctx);
     ctx.configData = {};
     expect(await plugin.processBatch(["active"], ctx)).toEqual(before);
+  });
+  it.each([
+    [false, false], [true, false], [false, true], [true, true],
+  ])("keeps the ESI QMSCO feed split for both ended roles (%s/%s)", async (subs, deps) => {
+    const plugin = requireEdiPlugin("sitespecific-smf-expressscripts");
+    for (const qmsco of ["include", "exclude"]) {
+      fixture.units.forEach(u => { u.dependents[0].relationSiriusId = "QMSCO"; });
+      const ctx = context(subs, deps);
+      ctx.input.qmsco = qmsco;
+      const baseline = await plugin.processBatch(["active"], { ...ctx, configData: {} });
+      const rows = await plugin.processBatch(await plugin.getPrimaryKeys!(ctx), ctx);
+      expect(rows.filter(r => !r.terminationRole)).toEqual(baseline);
+      const terms = rows.filter(r => r.terminationRole);
+      expect(terms.map(r => r.terminationRole)).toEqual(
+        qmsco === "include" ? (deps ? ["dependent"] : []) : (subs ? ["subscriber"] : []),
+      );
+      for (const row of terms) {
+        expect(row.coverageEnd).toBe("20261031");
+        expect(row.memberLevelAddressType).toBe(qmsco === "include" ? "C" : "");
+        expect(row.contractType).toBe("CB");
+      }
+    }
+  });
+  it("still refuses a missing historical row that the carrier did not intentionally exclude", async () => {
+    fixture.units = fixture.units.filter(u => u.wmb.id !== "history");
+    const plugin = requireEdiPlugin("sitespecific-smf-carelon");
+    const ctx = context(true, true);
+    const keys = await plugin.getPrimaryKeys!(ctx);
+    await expect(plugin.processBatch(keys, ctx)).rejects.toThrow(/could not be reconstructed/);
   });
   it("all nine serializers and QA layouts carry their declared end date field", () => {
     for (const plugin of registeredEdiPlugins().filter(p => p.benefitSiriusIds?.length)) {
@@ -215,7 +279,7 @@ describe("wizard-owned settings and legacy editing", () => {
       expect(w.data.terminationPolicy).toBeUndefined(); // reads/unsaved edits cannot mutate old runs
     }
   });
-  it("retains legacy policy on carrier reselection and rechecks Carelon before run", async () => {
+  it("retains legacy policy on carrier reselection and admits Carelon after Parameters save", async () => {
     const w = wizard({ config: { configId: "old", pluginId: "sitespecific-smf-delta", data: policy(false, true, 4) } });
     const selected = await config.submit!({
       wizard: w, input: { configId: "carelon" }, storage: { pluginConfigs: {
@@ -228,10 +292,8 @@ describe("wizard-owned settings and legacy editing", () => {
     expect(run.getRunBlocker!(w)).toMatch(/Save Parameters/);
     const saved = await params.submit!({ wizard: w, input: params.getFormData!(w) } as any);
     Object.assign(w.data, saved.data);
-    expect(params.getSchema!(w)?.description).toMatch(/Carelon MSTACD/);
-    expect(run.getRunBlocker!(w)).toMatch(/Carelon MSTACD/);
-    await expect(run.run!({ wizard: w } as any)).rejects.toThrow(/Carelon MSTACD/);
-    Object.assign(w.data, (await params.submit!({ wizard: w, input: policy(false, false, 1) } as any)).data);
+    expect(params.getSchema!(w)?.description).toMatch(/Generation does not establish carrier acceptance/);
+    expect(params.getFormData!(w)).toMatchObject(policy(false, true, 4));
     expect(run.getRunBlocker!(w)).toBeUndefined();
   });
   it("rejects parameter changes while generating and rejects invalid lookbacks", () => {

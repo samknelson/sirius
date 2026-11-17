@@ -282,4 +282,20 @@ describe("audited authenticated workflow help", () => {
     expect(details("ledger-authorization-settings")).toMatch(/not retroactively/);
     expect(details("quicksearch-plugin-configuration")).toMatch(/no.*(?:per-record|additional)|not assume an additional per-record/i);
   });
+
+  it("offers all membership termination combinations without changing help scope or local records", () => {
+    const help = getSystemHelp("system:edi-wizard-terminations")!;
+    expect(help.source).toBe("system");
+    expect(help.paths).toEqual(["/wizards/%"]);
+    expect(help.details).toBe(sanitizeHtml(help.details!, "rich-document"));
+    expect(help.details).toMatch(/All nine membership carriers support generation/);
+    expect(help.details).toMatch(/does not establish carrier\s+acceptance/);
+    expect(help.details).not.toMatch(/turn both flags off|contract.*blocker|unsupported carrier status/i);
+    for (const path of ["/wizards/example", "/wizards/example/params", "/wizards/example/"]) {
+      expect(idsFor(path)).toContain(help.id);
+    }
+    for (const path of ["/wizards", "/wizards-other/example", "/Wizards/example", "/trust/providers", "/config/helps"]) {
+      expect(idsFor(path)).not.toContain(help.id);
+    }
+  });
 });

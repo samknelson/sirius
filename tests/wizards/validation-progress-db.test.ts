@@ -142,4 +142,42 @@ describe("wizard run progress (database)", () => {
       await storage.wizards.delete(wizard.id);
     }
   });
+  it("starts Delta after Parameters clears progress, retaining ownership through completion and regeneration", async () => {
+    await import("../../server/plugins/trust/provider-edi/plugins/sitespecific-smf-delta");
+    const { trustProviderEdiWizardPlugin } = await import("../../server/plugins/wizards/plugins/trust-provider-edi");
+    const params = trustProviderEdiWizardPlugin.steps.find(step => step.id === "params")!;
+    const wizard = await storage.wizards.create({
+      type: "trust_provider_edi", status: "draft", data: {
+        config: { configId: "fixture", pluginId: "sitespecific-smf-delta", data: {} },
+        progress: { run: { status: "failed", error: "Previous failure" } },
+      },
+    });
+    try {
+      for (const runId of ["first", "regenerated"]) {
+        const fresh = (await storage.wizards.getById(wizard.id))!;
+        const saved = await params.submit!({ wizard: fresh, input: {
+          asOfDate: "2026-11-01", explicitSubscriberTerminations: true,
+          explicitDependentTerminations: true, terminationLookbackMonths: 1,
+        } } as any);
+        const updated = (await storage.wizards.update(wizard.id, {
+          data: { ...(fresh.data as any), ...saved!.data },
+        }, wizard.type, fresh.data))!;
+        expect((updated.data as any).progress.run).toBeNull();
+        const started = await storage.wizards.writeStepProgress(wizard.id, "run", runId,
+          { status: "in_progress" }, true, {}, undefined, undefined, wizard.type, "safe-retry", updated.data);
+        expect((started?.data as any)?.progress.run).toEqual({ status: "in_progress", runId });
+        expect(await storage.wizards.writeStepProgress(wizard.id, "run", "competitor",
+          { status: "in_progress" }, true, {}, undefined, undefined, wizard.type, "safe-retry")).toBeUndefined();
+        expect(await storage.wizards.mergeData(wizard.id, { recordCount: 1 }, "run", runId)).toBeDefined();
+        expect(await storage.wizards.writeStepProgress(wizard.id, "run", runId,
+          { status: "completed", percentComplete: 100 }, false,
+          { reportMeta: { recordCount: 1 } })).toBeDefined();
+        const completed = (await storage.wizards.getById(wizard.id))!;
+        expect((completed.data as any).progress.run.status).toBe("completed");
+        expect((completed.data as any).reportMeta.recordCount).toBe(1);
+      }
+    } finally {
+      await storage.wizards.delete(wizard.id);
+    }
+  });
 });

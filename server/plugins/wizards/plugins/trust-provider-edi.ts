@@ -10,7 +10,7 @@ import { assembleEdiFileLines } from "../../trust/provider-edi/base";
 import { carrierLayoutCsv } from "../../trust/provider-edi/carrier-csv";
 import {
   effectiveRunTerminationPolicy, newRunTerminationPolicy, terminationPolicyFields,
-  readTerminationPolicy, assertTerminationContract,
+  readTerminationPolicy,
 } from "../../trust/provider-edi/termination-policy";
 import { validateAgainstSchema } from "../../../lib/json-schema-validator";
 
@@ -102,9 +102,6 @@ function generationBlocker(wizard: Wizard): string | undefined {
     if (!(wizard.data as any)?.input) return "Save Parameters before generating.";
     const validation = validateAgainstSchema(parameterSchema(wizard), savedParameters(wizard));
     if (!validation.valid) return `Correct and save Parameters: ${validation.errors?.join("; ")}`;
-    if (resolvePlugin(selected.pluginId).benefitSiriusIds?.length) {
-      assertTerminationContract(selected.pluginId, effectiveRunTerminationPolicy(wizard.data as any));
-    }
   } catch (error) {
     return error instanceof Error ? error.message : "Invalid saved termination policy.";
   }

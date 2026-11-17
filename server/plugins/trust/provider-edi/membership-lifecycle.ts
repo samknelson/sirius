@@ -1,7 +1,7 @@
 import type { TrustProviderEdiPlugin, TrustProviderEdiContext } from "./registry";
 import { effectiveBenefitSiriusIds, resolveBenefitIds, ymdCompact } from "./base";
 import { loadTerminationCandidates, type TerminationCandidate } from "./termination-population";
-import { readTerminationPolicy, assertTerminationContract, terminationContractBlocker, terminationProperties } from "./termination-policy";
+import { readTerminationPolicy, terminationProperties } from "./termination-policy";
 
 /**
  * Compose once at registration. The carrier still owns its layout and all
@@ -14,14 +14,8 @@ export function withMembershipLifecycle(plugin: TrustProviderEdiPlugin): TrustPr
   const process = plugin.processBatch.bind(plugin);
   const columns = plugin.getColumns.bind(plugin);
   const populations = new WeakMap<TrustProviderEdiContext, Map<string, TerminationCandidate>>();
-  const blocker = terminationContractBlocker(plugin.id);
-  function check(ctx: TrustProviderEdiContext) {
-    const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
-    assertTerminationContract(plugin.id, policy);
-    return policy;
-  }
   async function population(ctx: TrustProviderEdiContext) {
-    const policy = check(ctx);
+    const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
     if (!policy.subscribers && !policy.dependents) return new Map<string, TerminationCandidate>();
     const cached = populations.get(ctx);
     if (cached) return cached;
@@ -37,9 +31,9 @@ export function withMembershipLifecycle(plugin: TrustProviderEdiPlugin): TrustPr
       ...plugin.inputSchema, type: "object",
       properties: { ...plugin.inputSchema?.properties, ...terminationProperties },
       description: [plugin.inputSchema?.description,
-        blocker ? `Explicit termination generation is blocked pending carrier confirmation: ${blocker}` :
-          "Explicit terminations include ended people; active membership is unchanged.",
-        "Save run parameters before generating. Turn both flags off for omission mode. Saving invalidates previous output; regeneration is required.",
+        "All subscriber/dependent termination combinations are supported for generation. Each enabled role includes evidenced ended people; active membership is unchanged.",
+        "Existing carrier status mappings are preserved. Generation does not establish carrier acceptance of these fields.",
+        "Save run parameters before generating. Both flags off selects omission mode. Saving invalidates previous output; regeneration is required.",
       ].filter(Boolean).join(" "),
     },
     getColumns: () => [
@@ -49,13 +43,13 @@ export function withMembershipLifecycle(plugin: TrustProviderEdiPlugin): TrustPr
       { id: "terminationEvidence", header: "Termination evidence", type: "string", width: 160 },
     ],
     async getPrimaryKeys(ctx) {
-      check(ctx);
       populations.delete(ctx); // every regeneration re-evaluates authoritative history
       const terms = await population(ctx);
       return [...await getKeys(ctx), ...terms.keys()];
     },
     async processBatch(keys, ctx) {
-      check(ctx);
+      // Keep parameter validation even for active-only batches.
+      if (!ctx.terminationPolicy) readTerminationPolicy(ctx.configData);
       const active = keys.filter(k => !k.startsWith("termination:"));
       const rows = active.length ? await process(active, ctx) : [];
       const termKeys = keys.filter(k => k.startsWith("termination:"));
@@ -70,12 +64,14 @@ export function withMembershipLifecycle(plugin: TrustProviderEdiPlugin): TrustPr
         groups.set(candidate.end, group);
       }
       for (const [end, candidates] of groups) {
+        const excludedMemberKeys = new Set<string>();
         const historical = await process(
           [...new Set(candidates.map(c => c.familyWmbId))],
-          { ...ctx, input: { ...ctx.input, asOfDate: end } },
+          { ...ctx, input: { ...ctx.input, asOfDate: end }, excludedMemberKeys },
         );
         const byKey = new Map(historical.map(r => [String(r.pk), r]));
         for (const candidate of candidates) {
+          if (excludedMemberKeys.has(candidate.rowKey)) continue;
           const row = byKey.get(candidate.rowKey);
           if (!row) throw new Error(`Termination event ${candidate.eventId}: carrier member row could not be reconstructed. No file should be delivered.`);
           rows.push({

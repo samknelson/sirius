@@ -40,6 +40,10 @@ last-covered month. Existing contact details are used; this is not an archive of
 old mailing addresses. Retained relation records remain the identity authority;
 deleted or incorrectly rewritten historical relations require data repair.
 Accepted stored-coverage inference is not proof of complete legacy source history.
+Ordinary feed selectors still apply: Express Scripts' QMSCO-only file omits
+subscribers and non-QMSCO dependents, and its exclude file omits QMSCO dependents,
+for both active and ended people. A deliberately excluded row is not a
+reconstruction failure; other missing historical rows remain errors.
 
 ## Carrier reference inventory
 
@@ -48,34 +52,40 @@ Accepted stored-coverage inference is not proof of complete legacy source histor
 | Delta | Eligibility Termination Date, 297–304, YYYYMMDD | Supported. Supplied Enterprise SFL Traders Handbook v1.1 says **last date of coverage**, member/dependent. Full-file action field remains blank; legacy generator also supplies this end date without a change action. |
 | Hinge | term_date, YYYYMMDD | Supported date-only legacy layout: `attached_assets/edi_hinge_1785869374692.inc`, row mapping calls coverage_end_date; no action/status field. |
 | MLK | TERM DT, YYYYMMDD | Supported date-only legacy layout: `attached_assets/edi_mlk_1785869374693.inc`, row mapping calls coverage_end_date; no action/status field. |
-| Carelon | GRPEXP, YYYYMMDD | Blocked: MSTACD A/C is active/COBRA coding, not verified termination coding. |
-| Dentwell / Dyntl / LADC | TerminationDate, YYYYMMDD | Blocked: supplied legacy generator leaves Status blank; validity for explicit termination is not established. |
-| VSP | Vision Coverage End Date, YYYYMMDD | Blocked: Subscriber Status Code A/C is not verified termination coding. |
-| Kaiser | Termination Date, YYYYMMDD | Blocked: blank Current Eligibility Status and Eligibility Status require confirmation. |
-| Health Net | Coverage End Date, YYYYMMDD | Blocked: Pay Status Code AC/CO and blank dependent status require confirmation. |
-| Express Scripts | Participant Expiration Date, YYYYMMDD | Blocked: blank Coverage Code Status requires confirmation. |
+| Carelon | GRPEXP, YYYYMMDD | Supported; existing MSTACD A/C mapping unchanged. |
+| Dentwell / Dyntl / LADC | TerminationDate, YYYYMMDD | Supported; Status remains blank. |
+| VSP | Vision Coverage End Date, YYYYMMDD | Supported; existing Subscriber Status Code A/C mapping unchanged. |
+| Kaiser | Termination Date, YYYYMMDD | Supported; Current Eligibility Status and Eligibility Status remain blank. |
+| Health Net | Coverage End Date, YYYYMMDD | Supported; subscriber Pay Status Code AC/CO and blank dependent status unchanged. |
+| Express Scripts | Participant Expiration Date, YYYYMMDD | Supported; Coverage Code Status remains blank. |
 
 Carelon `20261031` and Delta/Dyntl `20260930` are analyst formatting examples,
 not constants or status-code evidence. Existing encoders carry coverageEnd
-unchanged into both native and carrier-layout QA output. Unsupported contracts
-fail before reading population or persisting rows, even when no terms happen
-to qualify; do not treat a quiet month as contract approval.
+unchanged into both native and carrier-layout QA output. All nine carriers support
+generation with subscriber/dependent flags off/off, on/off, off/on and on/on,
+subject to ordinary configuration and historical evidence prerequisites.
+Enabled roles include qualifying ended people independently; disabled roles omit
+ended people, never active members. Existing status, demographic, layout and COBRA
+mappings remain unchanged. No termination-specific status codes are invented.
+Generation is not proof of carrier acceptance: termination-specific status coding
+and blank-field validity remain unverified where reference evidence is absent.
+Confirm external acceptance before sending; this uncertainty does not block generation.
 
 ## Saved output and operation
 
 The Configuration step still snapshots benefit/file/destination settings. Its
 termination fields are no longer editable configuration controls. Reselecting a
-configuration preserves the run's termination choices and rechecks carrier
-support. Change termination choices directly in Parameters and Save, without
+configuration preserves the run's termination choices and revalidates carrier
+parameters. Change termination choices directly in Parameters and Save, without
 editing or reselecting the carrier configuration. Unsaved edits never affect
 generation. Saving invalidates prior report metadata, delivery readiness and
 current generation status; any prior failure is labeled historical, not a
 validation of the new settings. Generate again after saving.
 
-Unsupported choices remain visible in Parameters with the exact contract
-blocker. They can be saved for review, but cannot start generation. Both flags
-off permits omission mode subject to unrelated prerequisites. Direct requests
-and legacy runs receive the same server guard; Carelon MSTACD is not bypassed.
+All valid termination combinations can be saved and generated in Parameters,
+including Carelon. Both flags off selects omission mode, not a workaround for
+status-contract restrictions. Direct requests and legacy runs retain parameter
+validation and the same evidence and output-readiness safeguards.
 
 Atomic admission and save checks prevent edits racing an active generation.
 Completed generations retain the effective policy and encoding context alongside

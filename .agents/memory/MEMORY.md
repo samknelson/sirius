@@ -196,3 +196,4 @@
 - [Carrier termination authority](carrier-termination-authority.md) — new wizard defaults differ from legacy omission; ended-person inclusion never filters active members or authorizes status codes.
 - [Shared email footer activation](shared-email-footer-boundary.md) — confirm Fund link destinations before activation; software verification uses fictional content and does not authorize live defaults.
 - [Fund authoring boundary](fund-authoring-boundary.md) — Fund presets are authoring conveniences, not exclusive colors, bulk document restyling, or seeded Benefit Color options.
+- [JSON null progress](jsonb-progress-null.md) — SQL COALESCE preserves JSON null; object merges can become arrays and silently lose run ownership.

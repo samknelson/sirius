@@ -16,8 +16,12 @@ population filtering and prohibited silently activating live carrier delivery.
 Analyst examples (Carelon October 31; Delta/Dyntl September 30) establish
 YYYYMMDD formatting only, never a status code or blank-status validity.
 
-**How to apply:** Dyntl means Dentwell/LADC. Use carrier reference evidence for
-required action/status fields; visibly block unresolved contracts rather than
-inventing codes. Retained inferred history may be usable as stored-coverage
+**How to apply:** Dyntl means Dentwell/LADC. All nine membership carriers must
+generate every subscriber/dependent termination combination using existing status
+mappings and native end-date fields. Do not block on unconfirmed status codes or
+blank-field validity, invent codes, or claim carrier acceptance.
+**Why:** The user explicitly superseded the earlier contract-blocking requirement;
+generation support and external acceptance are separate.
+Retained inferred history may be usable as stored-coverage
 evidence, but missing/unprocessed coverage alone is not a termination decision.
 Keep eligibility, inference/backfill policy and delivery activation outside this work.

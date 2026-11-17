@@ -23,10 +23,12 @@ and the template for correcting the remaining carriers.
 
 ## How each reference is structured (the template)
 
-Shared opt-in subscriber/dependent termination settings, evidence rules,
-calendar windows and carrier-specific blockers are documented in
-[termination-policy.md](termination-policy.md). Existing configurations remain
-termination-by-omission; Local 11 hours is not a membership file.
+Wizard-only subscriber/dependent termination settings, evidence rules,
+calendar windows and generation support for all nine membership carriers are
+documented in [termination-policy.md](termination-policy.md). New runs default
+to subscriber on, dependent off; legacy runs retain saved choices or omission
+when absent. Generation support is not carrier acceptance. Local 11 hours is
+not a membership file.
 
 Every carrier document records, in this order:
 

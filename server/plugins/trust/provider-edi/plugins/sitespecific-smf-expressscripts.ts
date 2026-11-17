@@ -353,13 +353,18 @@ registerTrustProviderEdiPlugin({
           zip: zip5(subscriber.postal?.postalCode),
           phone: phoneDigits(subscriber.phoneNumber),
         });
+      } else {
+        ctx.excludedMemberKeys?.add(wmb.id);
       }
 
       // Dependent records, split by the QMSCO feed selector.
       for (const dep of unit.dependents) {
         // RP rides the QMSCO feed too (S1-taxonomy ruling 2026-08-05).
         const isQmsco = isQmscoRelation(dep.relationSiriusId);
-        if (isQmsco !== qmscoOnly) continue;
+        if (isQmsco !== qmscoOnly) {
+          ctx.excludedMemberKeys?.add(`${wmb.id}:${dep.relationId}`);
+          continue;
+        }
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,

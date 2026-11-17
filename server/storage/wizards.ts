@@ -252,7 +252,10 @@ export function createWizardStorage(): WizardStorage {
 
     async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid, expectedType, startPolicy = "initial", expectedData) {
       const current = sql`coalesce(${wizards.data}, '{}'::jsonb)`;
-      const entry = sql`coalesce(${current} #> ARRAY['progress', ${step}::text]::text[], '{}'::jsonb)`;
+      // A Parameters save deliberately writes JSON null. SQL COALESCE alone
+      // does not remove JSON null; null || object creates an array and loses
+      // the status/runId paths used by polling and the ownership fence.
+      const entry = sql`coalesce(nullif(${current} #> ARRAY['progress', ${step}::text]::text[], 'null'::jsonb), '{}'::jsonb)`;
       const startEntry = start && (startPolicy === "safe-retry" || startPolicy === "validation-lease")
         ? sql`CASE WHEN coalesce(${entry}->>'status', '') <> ''
             THEN jsonb_set(${entry}, '{attempts}',
@@ -261,7 +264,7 @@ export function createWizardStorage(): WizardStorage {
         : entry;
       const next = sql`jsonb_set(${current} || ${JSON.stringify(dataPatch)}::jsonb,
         '{progress}'::text[],
-        coalesce(${current}->'progress', '{}'::jsonb) ||
+        coalesce(nullif(${current}->'progress', 'null'::jsonb), '{}'::jsonb) ||
           jsonb_build_object(${step}::text, ${startEntry} || ${JSON.stringify({ ...patch, runId })}::jsonb), true)`;
       const [wizard] = await getClient().update(wizards).set({
         data: next,
