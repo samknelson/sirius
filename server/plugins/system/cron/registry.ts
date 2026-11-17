@@ -43,6 +43,7 @@ export function getCronPlugin(id: string): CronPlugin | undefined {
 export async function executeCronPlugin(
   id: string,
   context: CronJobContext,
+  assertExecutionOwned: () => void = () => {},
 ): Promise<CronJobResult> {
   const plugin = cronPluginRegistry.get(id);
   if (!plugin) {
@@ -53,7 +54,10 @@ export async function executeCronPlugin(
   const serviceName = `cron-${id}`;
 
   try {
+    assertExecutionOwned();
     const result = await plugin.execute(context);
+    // A plugin finishing after its lock connection died must not emit success.
+    assertExecutionOwned();
     logger.info(`${modePrefix}${result.message}`, {
       service: serviceName,
       jobId: context.jobId,

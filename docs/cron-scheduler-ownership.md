@@ -34,13 +34,30 @@ termination semantics after scheduler cleanup.
 ## Guarantees and limits
 
 This is single-owner **scheduling**, not exactly-once execution. Jobs already in
-flight are not cancelled or replayed when ownership is lost; another owner's
-later tick can overlap that work. Scheduled runs can also overlap when a job
-takes longer than its interval, or with a manual run. Existing job-level locks,
-including T631 sync ownership and mutation fencing, remain necessary.
+flight are not cancelled or replayed when scheduler ownership is lost.
+
+Every cron execution also takes a mandatory session advisory lock keyed by
+plugin ID (two-int namespace `0x43524a42` plus the first signed 32 bits of SHA-256
+of the ID). Scheduled/manual, test/live, and different configurations share the
+same lock. Contenders are recorded as skipped, not queued or retried. Different
+plugin IDs run concurrently; an unlikely hash collision conservatively serializes
+two jobs rather than permitting overlap.
+
+Each running job requires an extra checked-out database connection. Provision
+pool capacity for these locks **and** the jobs' normal queries; checkout is
+bounded to 15 seconds and queries to 5 seconds. Connections are probed every
+5 seconds. Connection failure marks the run interrupted/uncertain and destroys
+the session, without reacquisition. Process death releases locks when PostgreSQL
+detects session closure; network partitions can delay this detection.
+
+These locks prevent overlapping starts while ownership is healthy, not arbitrary
+side effects after connection loss. Already-running JavaScript cannot be
+generically cancelled; its eventual result must not be reported as success.
+Existing job-level fencing, including T631 mutation fencing, remains necessary.
+Scheduler stop/reload does not release execution locks for jobs still running.
 
 All replicas must use the same database and advisory-lock key, and the database
 connection path must preserve session affinity. Transaction-pooling proxies
 that move queries between database sessions are not compatible with
 session-advisory-lock ownership. During the first rollout, old application
-versions without election can still schedule independently until retired.
+versions without election/execution locking can still run independently until retired.

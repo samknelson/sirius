@@ -65,6 +65,65 @@ afterEach(async () => {
 });
 
 describe("automatic cron execution authority", () => {
+  it("uses the same execution key across scheduled/manual, configurations and test/live runs", async () => {
+    const { scheduler } = setup();
+    let held = false;
+    const keys: unknown[] = [];
+    mocks.connect.mockImplementation(async () => Object.assign(new EventEmitter(), {
+      query: async (_text: string, key: unknown) => {
+        keys.push(key);
+        const acquired = !held;
+        if (acquired) held = true;
+        return { rows: [{ acquired }] };
+      },
+      release: () => {},
+    }));
+    let finish!: (value: object) => void;
+    mocks.execute.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const first = scheduler.executeJob({ configurationId: "a", name: "job", enabled: true, schedule: "* * * * *", settings: {} }, false);
+    await settle();
+    mocks.get.mockResolvedValue({ ...envelope, config: { ...envelope.config, id: "b" } });
+    await scheduler.manualRun("b", "user", "test");
+    expect(mocks.execute).toHaveBeenCalledOnce();
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toEqual(keys[1]);
+    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "skipped" }));
+    finish({});
+    await first;
+  });
+
+  it("records lock contention as skipped without invoking the plugin", async () => {
+    const { scheduler, client } = setup();
+    client.query.mockResolvedValue({ rows: [{ acquired: false }] });
+    await scheduler.manualRun("config", "user", "test");
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({
+      status: "skipped", output: JSON.stringify({ message: "Skipped: job already running." }),
+    }));
+  });
+
+  it("marks lock loss interrupted even when the plugin has not returned", async () => {
+    const { scheduler, client } = setup();
+    let finish!: (result: object) => void;
+    mocks.execute.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const run = scheduler.manualRun("config", "user");
+    const result = expect(run).rejects.toThrow("lock lost");
+    await settle();
+    client.emit("end");
+    await result;
+    finish({});
+    await settle();
+    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "interrupted" }));
+    expect(mocks.update.mock.calls.some(([, update]) => update.status === "success")).toBe(false);
+  });
+
+  it("cleans up execution locks on plugin failure", async () => {
+    const { scheduler, client } = setup();
+    mocks.execute.mockRejectedValue(new Error("plugin failure"));
+    await expect(scheduler.manualRun("config")).rejects.toThrow("plugin failure");
+    expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
   it("never competes or starts timers in a non-owning role, including reload", async () => {
     const { scheduler } = setup();
     scheduler.setOwnership(false);
@@ -210,8 +269,8 @@ describe("automatic cron execution authority", () => {
     const { scheduler } = setup();
     scheduler.setOwnership(false);
     await scheduler.manualRun("config", "user");
-    expect(mocks.connect).not.toHaveBeenCalled();
-    expect(mocks.execute).toHaveBeenCalledWith("job", expect.objectContaining({ isManual: true, triggeredBy: "user" }));
+    expect(mocks.connect).toHaveBeenCalledOnce();
+    expect(mocks.execute).toHaveBeenCalledWith("job", expect.objectContaining({ isManual: true, triggeredBy: "user" }), expect.any(Function));
   });
 
   it("keeps reload and role revocation from restarting a stopped scheduler", async () => {

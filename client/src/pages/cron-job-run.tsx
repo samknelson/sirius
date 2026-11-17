@@ -13,8 +13,10 @@ import { useToast } from "@/hooks/use-toast";
 import { CronJobLayout, useCronJobLayout } from "@/components/layouts/CronJobLayout";
 import { format } from "@/lib/date-format";
 import { CronJobRun as CronJobRunType } from "@/lib/cron-types";
+import { cronRunOutcome } from "@/lib/cron-run-outcome";
 
 interface CronJobOutputData {
+  message?: string;
   executionTimeMs: number;
   executionTimeSec: string;
   summary: {
@@ -37,6 +39,14 @@ function CronJobRunContent() {
       });
     },
     onSuccess: (data: CronJobRunType) => {
+      const outcome = cronRunOutcome(data);
+      if (outcome) {
+        setPollingRunId(null);
+        setCompletedRun(data);
+        queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs", name] });
+        toast(outcome);
+        return;
+      }
       setCompletedRun(null);
       setPollingRunId(data.id);
       toast({
@@ -59,26 +69,20 @@ function CronJobRunContent() {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}`);
+        const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}/runs/${encodeURIComponent(pollingRunId)}`);
         if (!response.ok) return;
 
-        const jobData = await response.json();
-        const latestRun = jobData.latestRun;
+        const latestRun = await response.json();
 
         if (latestRun && latestRun.id === pollingRunId) {
-          if (latestRun.status === "success" || latestRun.status === "error") {
+          const outcome = cronRunOutcome(latestRun);
+          if (outcome) {
             setPollingRunId(null);
             setCompletedRun(latestRun);
             queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs", name] });
             queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs", name, "runs"] });
 
-            toast({
-              title: latestRun.status === "success" ? "Job Completed" : "Job Failed",
-              description: latestRun.status === "success"
-                ? "The job has completed successfully. See results below."
-                : "The job encountered an error. See details below.",
-              variant: latestRun.status === "error" ? "destructive" : "default",
-            });
+            toast(outcome);
           }
         }
       } catch (error) {
@@ -215,7 +219,8 @@ function CronJobRunContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {completedRun.status === "error" && completedRun.error && (
+            <Badge variant="outline">{completedRun.status}</Badge>
+            {completedRun.error && (
               <div className="rounded-md bg-destructive/10 p-3" data-testid="text-run-error">
                 <p className="text-sm font-medium text-destructive mb-1">Error</p>
                 <p className="text-sm text-destructive whitespace-pre-wrap">{completedRun.error}</p>
@@ -224,9 +229,12 @@ function CronJobRunContent() {
 
             {completedOutput && (
               <div className="space-y-3" data-testid="container-run-output">
+                {completedOutput.message && <p className="text-sm">{completedOutput.message}</p>}
+                {completedOutput.executionTimeSec != null && (
                 <div className="text-sm text-muted-foreground">
                   Execution time: {completedOutput.executionTimeSec}s
                 </div>
+                )}
                 {completedOutput.summary && Object.keys(completedOutput.summary).length > 0 && (
                   <div className="rounded-md border p-3 space-y-2">
                     <p className="text-sm font-medium">Summary</p>

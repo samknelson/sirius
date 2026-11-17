@@ -11,6 +11,7 @@ import { readConfigurationSnapshot } from "../storage/configuration-revisions";
 import { pool } from "../storage/db";
 import { isMaintenanceActive } from "../services/maintenance-flag";
 import { CronOwnership } from "./ownership";
+import { CronExecutionLock, CronExecutionLost } from "./execution-lock";
 
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
@@ -238,6 +239,7 @@ export class CronScheduler {
       mode,
     });
 
+    let executionLock: CronExecutionLock | null = null;
     try {
       const skipLostOwnership = async () => {
         if (isManual || authorized()) return false;
@@ -281,12 +283,24 @@ export class CronScheduler {
       const defaultSettings = plugin?.getDefaultSettings?.() ?? {};
       const mergedSettings = { ...defaultSettings, ...job.settings };
 
+      executionLock = await CronExecutionLock.acquire(job.name, () => pool.connect());
+      if (!executionLock) {
+        await storage.jobRuns.update(runId, {
+          status: "skipped", completedAt: new Date(),
+          output: JSON.stringify({ message: "Skipped: job already running." }),
+        });
+        logger.info(`Job skipped: ${job.name} already running`, { service: "cron-scheduler", jobName: job.name, runId });
+        return runId;
+      }
+      if (isMaintenanceActive()) throw new Error("Cron execution refused: maintenance mode is active.");
+      executionLock.assertOwned();
       // Execute the plugin
       if (!isManual && !authorized()) {
         await skipLostOwnership();
         return runId;
       }
-      const summary = await executeCronPlugin(job.name, {
+      const lock = executionLock;
+      const summary = await Promise.race([executeCronPlugin(job.name, {
         configurationId: job.configurationId,
         jobId: job.name,
         jobName: job.name,
@@ -294,7 +308,8 @@ export class CronScheduler {
         isManual,
         mode,
         settings: mergedSettings,
-      });
+      }, () => lock.assertOwned()), lock.lost]);
+      lock.assertOwned();
 
       // Calculate execution time
       const executionTimeMs = Date.now() - startedAt.getTime();
@@ -312,6 +327,7 @@ export class CronScheduler {
         completedAt: new Date(),
         output: JSON.stringify(outputData),
       });
+      lock.assertOwned();
 
       logger.info(`Job completed successfully: ${job.name}`, {
         service: 'cron-scheduler',
@@ -327,7 +343,7 @@ export class CronScheduler {
 
       // Update run as failed
       await storage.jobRuns.update(runId, {
-        status: 'error',
+        status: error instanceof CronExecutionLost ? "interrupted" : 'error',
         completedAt: new Date(),
         error: errorMessage,
       });
@@ -341,6 +357,8 @@ export class CronScheduler {
       });
 
       throw error;
+    } finally {
+      executionLock?.close();
     }
   }
 
