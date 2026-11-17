@@ -45,3 +45,11 @@ call, which runs inside the request's ALS scope. ALS propagates through
 await/microtask continuations, so `getStore()` in the dispatcher handler returns
 the same store. Default when there is NO context (crons/startup) is flag-absent,
 i.e. behave normally.
+
+**Nested actor scopes:** that propagation only preserves the context surrounding
+the outer transaction's flush. A callback registered inside a narrower
+`requestContext.run` scope must capture and restore that scope explicitly if its
+effective actor or flags matter. Restore request context independently of
+`runOutsideTransaction`; never restore a committed transaction with the actor.
+**Why:** per-worker work can finish its actor scope before the enclosing
+transaction commits.

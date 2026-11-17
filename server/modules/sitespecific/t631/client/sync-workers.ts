@@ -2,7 +2,8 @@ import { storage, createCommSmsOptinStorage } from "../../../../storage";
 import { schedulePhoneRevalidation } from "../../../../services/comm/validators/phone";
 import { logger, storageLogger } from "../../../../logger";
 import { getOptionsType } from "../../../options-registry";
-import { runInTransaction } from "../../../../storage/transaction-context";
+import { onAfterCommit, runInTransaction, runOutsideTransaction } from "../../../../storage/transaction-context";
+import { getRequestContext, requestContext } from "../../../../middleware/request-context";
 import { t631IdentityValues } from "@shared/t631-identity";
 import { getTodayYmd } from "@shared/utils/date";
 import { isMaintenanceModeError } from "../../../../services/maintenance-flag";
@@ -277,6 +278,8 @@ async function mirrorWorkerPhone(opts: {
   result: WorkerEinSyncResult;
 }): Promise<void> {
   const { contactId, remotePhoneRaw, workerId, remoteWorkerId, dryRun, result } = opts;
+  // The commit may be flushed outside this worker's effective-actor scope.
+  const followUpContext = { ...getRequestContext() };
   const detail = (action: string, error?: string) => {
     result.details.push({ workerId, remoteWorkerId, action, ...(error ? { error } : {}) });
   };
@@ -336,8 +339,10 @@ async function mirrorWorkerPhone(opts: {
       isPrimary: true,
       isActive: true,
     });
-    // Validate the new number once, off the sync's critical path.
-    schedulePhoneRevalidation(e164);
+    // Only enqueue validation for a committed number, on a fresh connection.
+    onAfterCommit(() => requestContext.run(followUpContext, () =>
+      runOutsideTransaction(() => schedulePhoneRevalidation(e164)),
+    ));
     result.phonesCreated++;
     detail("created_phone", `created ${e164}`);
   }
@@ -373,16 +378,18 @@ async function mirrorWorkerPhone(opts: {
   }
   result.optins++;
   detail("opted_in", `${e164} marked SMS opted-in`);
-  setImmediate(() => {
-    storageLogger.info(`Storage operation: comm.smsOptin.syncOptin`, {
-      module: "comm.smsOptin",
-      operation: "syncOptin",
-      entity_id: optinId,
-      host_entity_id: contactId,
-      description: `${e164}: ${OPTIN_SYNC_NOTE}`,
-      meta: { phoneNumber: e164, remoteWorkerId, workerId, previousOptin: existingOptin?.optin ?? null },
+  onAfterCommit(() => requestContext.run(followUpContext, () => runOutsideTransaction(() => {
+    setImmediate(() => {
+      storageLogger.info(`Storage operation: comm.smsOptin.syncOptin`, {
+        module: "comm.smsOptin",
+        operation: "syncOptin",
+        entity_id: optinId,
+        host_entity_id: contactId,
+        description: `${e164}: ${OPTIN_SYNC_NOTE}`,
+        meta: { phoneNumber: e164, remoteWorkerId, workerId, previousOptin: existingOptin?.optin ?? null },
+      });
     });
-  });
+  })));
 }
 
 export class SyncInterrupted extends Error {}
