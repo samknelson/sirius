@@ -40,6 +40,9 @@ vi.mock("../../server/storage", () => ({
       getTypeIdBySiriusId: async (id: string) => id,
       getWorkerIdByTypeAndValue: async (type: string, value: string) =>
         state.ids.find(row => row.typeId === type && row.value === value),
+      getByTypeAndValues: async (type: string, values: string[]) =>
+        state.ids.filter(row => row.typeId === type && values.includes(row.value)),
+      resolveT631Identity: (...args: Parameters<typeof target.resolveT631Identity>) => target.resolveT631Identity(...args),
       reconcileWorkerId: state.reconcile,
     },
     workers: { getWorker: async () => null },
@@ -56,6 +59,7 @@ const row = (id: string, value: string, typeId = "freeman_ein", workerId = "w") 
 const target = createWorkerIdStorage();
 target.getWorkerIdsByWorkerId = async id => state.ids.filter(row => row.workerId === id);
 target.getWorkerIdByTypeAndValue = async (type, value) => state.ids.find(row => row.typeId === type && row.value === value);
+target.getByTypeAndValues = async (type, values) => state.ids.filter(row => row.typeId === type && values.includes(row.value));
 const repair = (dry = false) => target.reconcileWorkerId("w", "freeman_ein", "correct", dry, { typeId: "t631", value: "123" });
 beforeEach(() => {
   state.ids = [row("source", "123", "t631")];
@@ -120,5 +124,83 @@ describe("T631 source checks", () => {
     const result = await sync([{ worker_id: "123", worker_ein: "correct" }], dry);
     expect(state.reconcile).toHaveBeenCalledWith("w", "freeman_ein", "correct", dry, { typeId: "t631", value: "123" });
     expect(result).toMatchObject({ deleted: 2, created: 1, updated: 1, errors: 0 });
+  });
+});
+
+describe("T631 EIN fallback", () => {
+  const resolve = (value = "I123", dry = false, ein = "correct") =>
+    target.resolveT631Identity("t631", value, "freeman_ein", ein, dry);
+  it("reuses numeric identity without changing its spelling", async () => {
+    expect(await resolve()).toEqual({ workerId: "w", value: "123", linked: false });
+    expect(state.ids).toHaveLength(1);
+  });
+  it("links an EIN owner and is idempotent", async () => {
+    state.ids = [row("ein", "correct")];
+    expect(await resolve()).toEqual({ workerId: "w", value: "I123", linked: true });
+    expect(await resolve()).toMatchObject({ linked: false });
+    expect(state.ids.filter(r => r.typeId === "t631")).toHaveLength(1);
+  });
+  it("previews attachment without writing", async () => {
+    state.ids = [row("ein", "correct")];
+    expect(await resolve("I123", true)).toMatchObject({ linked: true });
+    expect(state.ids).toHaveLength(1);
+  });
+  it("rejects an EIN owner with another T631 identity", async () => {
+    state.ids.push(row("ein", "correct"));
+    await expect(resolve("I456")).rejects.toThrow("t631_conflict");
+  });
+  it("rejects aliases belonging to different workers", async () => {
+    state.ids.push(row("alias", "I123", "t631", "other"));
+    await expect(resolve()).rejects.toThrow("ambiguous_t631_identity");
+  });
+  it("rejects a T631 match whose EIN belongs elsewhere", async () => {
+    state.ids.push(row("ein", "correct", "freeman_ein", "other"));
+    await expect(resolve()).rejects.toThrow("ein_conflict");
+  });
+  it("does not use blank EINs or unrelated prefixes as matches", async () => {
+    state.ids = [row("ein", "I456")];
+    expect(await resolve("I456", false, "")).toBeNull();
+    expect(await resolve("O456", false, "")).toBeNull();
+  });
+  it("rolls back an unsuccessful attachment", async () => {
+    state.ids = [row("ein", "correct")];
+    state.failInsert = true;
+    await expect(resolve()).rejects.toThrow("insert failed");
+    expect(state.ids).toEqual([row("ein", "correct")]);
+  });
+  it.each([true, false])("links without requiring a name (dry=%s)", async dry => {
+    state.ids = [row("ein", "correct")];
+    const result = await syncWorkerEins({ success: true, data: { workers: [
+      { worker_id: "I123", worker_ein: "correct" },
+    ] } }, dry);
+    expect(result.errors).toBe(0);
+    expect(result.workersCreated).toBe(0);
+    expect(result.details.some(d => d.action === (dry ? "would_link_t631" : "linked_t631"))).toBe(true);
+    if (dry) expect(state.reconcile).not.toHaveBeenCalled();
+    else expect(state.reconcile).toHaveBeenCalledWith("w", "freeman_ein", "correct", false, { typeId: "t631", value: "I123" });
+  });
+  it("prevalidates conflicting EINs across alternate source spellings", async () => {
+    const result = await syncWorkerEins({ success: true, data: { workers: [
+      { worker_id: "I123", worker_ein: "a" }, { worker_id: "123", worker_ein: "b" },
+    ] } }, false);
+    expect(result.skipped).toBe(2);
+    expect(state.reconcile).not.toHaveBeenCalled();
+  });
+  it.each([true, false])("rejects all competing EIN claimants before linking (dry=%s)", async dry => {
+    state.ids = [row("ein", "correct")];
+    const result = await syncWorkerEins({ success: true, data: { workers: [
+      { worker_id: "I123", worker_ein: "correct" }, { worker_id: "I456", worker_ein: "correct" },
+    ] } }, dry);
+    expect(result.details.filter(d => d.action === "would_link_t631" || d.action === "linked_t631")).toHaveLength(0);
+    expect(result.skipped).toBe(2);
+    expect(state.ids).toHaveLength(1);
+  });
+  it("treats numeric and I forms as one incoming EIN claimant", async () => {
+    state.ids = [row("ein", "correct")];
+    const result = await syncWorkerEins({ success: true, data: { workers: [
+      { worker_id: "I123", worker_ein: "correct" }, { worker_id: "123", worker_ein: "correct" },
+    ] } }, false);
+    expect(result.details.filter(d => d.action === "linked_t631")).toHaveLength(1);
+    expect(result.details.some(d => d.error?.startsWith("conflicting_source_t631_ids"))).toBe(false);
   });
 });

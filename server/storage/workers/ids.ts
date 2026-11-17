@@ -3,6 +3,7 @@ import { getClient, runInTransaction } from '../transaction-context';
 import { workers, workerIds, optionsWorkerIdType, type WorkerId, type InsertWorkerId } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
+import { t631IdentityValues } from "@shared/t631-identity";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -26,6 +27,7 @@ export interface WorkerIdForList {
 }
 
 export interface WorkerIdStorage {
+  resolveT631Identity(typeId: string, value: string, einTypeId: string, ein: string, dryRun: boolean): Promise<{ workerId: string; value: string; linked: boolean } | null>;
   reconcileWorkerId(workerId: string, typeId: string, value: string, dryRun: boolean, source: { typeId: string; value: string }): Promise<{ deleted: number; created: number }>;
   getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]>;
   getWorkerId(id: string): Promise<WorkerId | undefined>;
@@ -59,6 +61,37 @@ export interface WorkerIdStorage {
 
 export function createWorkerIdStorage(): WorkerIdStorage {
   return {
+    async resolveT631Identity(typeId, value, einTypeId, ein, dryRun) {
+      return runInTransaction(async () => {
+        // Serialize lookup + attachment with all ID writers, using the same
+        // table-before-worker lock order as reconciliation and the importer.
+        const client = getClient();
+        if (!dryRun) await client.execute(sql`LOCK TABLE ${workerIds} IN SHARE ROW EXCLUSIVE MODE`);
+        const matches = await this.getByTypeAndValues(typeId, t631IdentityValues(value));
+        if (new Set(matches.map(row => row.workerId)).size > 1) {
+          throw new Error("ambiguous_t631_identity: prefixed and numeric IDs belong to different workers");
+        }
+        const match = matches.find(row => row.value === value) ?? matches[0];
+        const holder = ein ? await this.getWorkerIdByTypeAndValue(einTypeId, ein) : undefined;
+        if (match) {
+          if (holder && holder.workerId !== match.workerId) throw new Error("ein_conflict: incoming EIN belongs to another worker");
+          return { workerId: match.workerId, value: match.value, linked: false };
+        }
+        if (!holder) return null;
+        const query = client.select({ id: workers.id }).from(workers).where(eq(workers.id, holder.workerId));
+        const [worker] = await (dryRun ? query : query.for("update"));
+        if (!worker) throw new Error("Worker no longer exists.");
+        const ids = await this.getWorkerIdsByWorkerId(holder.workerId);
+        if (ids.some(row => row.typeId === typeId)) {
+          throw new Error("t631_conflict: EIN-matched worker already has a different T631 ID");
+        }
+        if (!dryRun) {
+          const { storage } = await import("../database");
+          await storage.workerIds.createWorkerId({ workerId: holder.workerId, typeId, value });
+        }
+        return { workerId: holder.workerId, value, linked: true };
+      });
+    },
     async reconcileWorkerId(workerId, typeId, value, dryRun, source) {
       if (!value.trim()) throw new Error("Cannot reconcile a blank worker ID.");
       return runInTransaction(async () => {

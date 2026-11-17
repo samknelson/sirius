@@ -3,6 +3,7 @@ import { schedulePhoneRevalidation } from "../../../../services/comm/validators/
 import { logger, storageLogger } from "../../../../logger";
 import { getOptionsType } from "../../../options-registry";
 import { runInTransaction } from "../../../../storage/transaction-context";
+import { t631IdentityValues } from "@shared/t631-identity";
 
 interface T631WorkerRow {
   worker_id?: unknown;
@@ -424,11 +425,13 @@ export async function syncWorkerEins(
 
   // Track EINs seen this run so a duplicate remote EIN is reported, not double-written.
   const seenEins = new Map<string, string>(); // ein -> remoteWorkerId that claimed it
+  const plannedLinks = new Map<string, string>(); // worker -> proposed T631 ID (dry-run only)
 
   const msCtx = await buildMemberStatusSyncContext();
 
   // Validate the whole source before any writes; never let arrival order decide identity.
   const sourceEins = new Map<string, Set<string>>();
+  const einClaimants = new Map<string, Set<string>>();
   for (const row of rows) {
     if (!row || typeof row !== "object") {
       result.errors++;
@@ -437,9 +440,16 @@ export async function syncWorkerEins(
     }
     const id = String(row.worker_id ?? "").trim();
     if (!id) continue;
-    const values = sourceEins.get(id) ?? new Set<string>();
+    const key = t631IdentityValues(id).sort()[0];
+    const values = sourceEins.get(key) ?? new Set<string>();
     values.add(String(row.worker_ein ?? "").trim());
-    sourceEins.set(id, values);
+    sourceEins.set(key, values);
+    const incomingEin = String(row.worker_ein ?? "").trim();
+    if (incomingEin) {
+      const claimants = einClaimants.get(incomingEin) ?? new Set<string>();
+      claimants.add(key);
+      einClaimants.set(incomingEin, claimants);
+    }
   }
 
   for (const row of rows) {
@@ -458,22 +468,25 @@ export async function syncWorkerEins(
     const ein = rawEin || remoteWorkerId;
 
     try {
-      const t631Row = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId, remoteWorkerId);
+      const matches = await storage.workerIds.getByTypeAndValues(t631TypeId, t631IdentityValues(remoteWorkerId));
       // Present in the incoming list → never a deactivation candidate,
       // regardless of whether the remote code maps to a synced status
       // (non-synced/unmatched codes must leave EDLS untouched) and even
       // when the row is skipped below (duplicate EIN, conflicts, etc.).
-      if (t631Row) {
-        msCtx.seenWorkerIds.add(t631Row.workerId);
+      for (const match of matches) msCtx.seenWorkerIds.add(match.workerId);
+      if (rawEin && (einClaimants.get(rawEin)?.size ?? 0) > 1) {
+        result.skipped++;
+        result.details.push({ remoteWorkerId, action: "skipped", error: "conflicting_source_t631_ids: EIN claimed by multiple T631 identities; no identity changes made" });
+        continue;
       }
-      if (sourceEins.get(remoteWorkerId)!.size > 1) {
+      if (sourceEins.get(t631IdentityValues(remoteWorkerId).sort()[0])!.size > 1) {
         result.skipped++;
         result.details.push({ remoteWorkerId, action: "skipped", error: "conflicting_source_eins: repeated worker_id has different EINs" });
         continue;
       }
-      if (t631Row && !rawEin) {
+      if (matches.length && !rawEin) {
         result.skipped++;
-        result.details.push({ workerId: t631Row.workerId, remoteWorkerId, action: "skipped", error: "blank_ein: existing worker IDs left untouched" });
+        result.details.push({ remoteWorkerId, action: "skipped", error: "blank_ein: existing worker IDs left untouched" });
         continue;
       }
 
@@ -488,6 +501,28 @@ export async function syncWorkerEins(
         continue;
       }
 
+      let t631Row;
+      try {
+        t631Row = await storage.workerIds.resolveT631Identity(t631TypeId, remoteWorkerId, einTypeId, rawEin, dryRun);
+        if (t631Row && plannedLinks.has(t631Row.workerId) &&
+            !t631IdentityValues(remoteWorkerId).includes(plannedLinks.get(t631Row.workerId)!)) {
+          throw new Error("t631_conflict: EIN-matched worker already has a proposed T631 ID");
+        }
+      } catch (error) {
+        if (error instanceof Error && /^(ambiguous_t631_identity|ein_conflict|t631_conflict):/.test(error.message)) {
+          result.skipped++;
+          result.details.push({ remoteWorkerId, action: "skipped", error: error.message });
+          continue;
+        }
+        throw error;
+      }
+      if (t631Row) {
+        msCtx.seenWorkerIds.add(t631Row.workerId);
+        if (t631Row.linked) {
+          if (dryRun) plannedLinks.set(t631Row.workerId, remoteWorkerId);
+          result.details.push({ workerId: t631Row.workerId, remoteWorkerId, action: dryRun ? "would_link_t631" : "linked_t631" });
+        }
+      }
       if (!t631Row) {
         // No local worker with this t631 ID — create one from the remote name.
         const rawName = row.worker_name !== undefined && row.worker_name !== null ? String(row.worker_name) : "";
@@ -576,9 +611,12 @@ export async function syncWorkerEins(
 
       seenEins.set(ein, remoteWorkerId);
 
-      const repaired = await storage.workerIds.reconcileWorkerId(
-        localWorkerId, einTypeId, ein, dryRun, { typeId: t631TypeId, value: remoteWorkerId },
-      );
+      // A preview-only link has no persisted source ID yet. Its EIN already
+      // matched exactly; do not weaken reconciliation's source-identity guard.
+      const repaired = dryRun && t631Row.linked ? { deleted: 0, created: 0 } :
+        await storage.workerIds.reconcileWorkerId(
+          localWorkerId, einTypeId, ein, dryRun, { typeId: t631TypeId, value: t631Row.value },
+        );
       result.deleted += repaired.deleted;
       result.created += repaired.created;
       if (repaired.deleted) result.updated++;
