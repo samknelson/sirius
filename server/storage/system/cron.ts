@@ -59,7 +59,13 @@ export function createJobRunStorage(): JobRunStorage {
       const query = getClient()
         .select(filters?.summaryOnly ? {
           ...withUser,
-          output: sql<string | null>`null`,
+          // Scheduler output starts with timing fields before the potentially
+          // huge summary. Extract only that header; do not cast arbitrary
+          // legacy text to JSON or infer duration from naive timestamps.
+          output: sql<string | null>`json_build_object('executionTimeSec',
+            substring(${jobRuns.output} from
+              '^[[:space:]]*[{][[:space:]]*"executionTimeMs"[[:space:]]*:[[:space:]]*[0-9]+[[:space:]]*,[[:space:]]*"executionTimeSec"[[:space:]]*:[[:space:]]*"([0-9]+[.][0-9]+)"'
+            ))::text`,
           input: sql<null>`null`,
           progress: sql<null>`null`,
           checkpoint: sql<null>`null`,

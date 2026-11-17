@@ -156,7 +156,7 @@ function CronJobHistoryContent() {
                       {format(new Date(run.startedAt), "MMM d, HH:mm:ss")}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {run.completedAt ? `${Math.max(0, (new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000).toFixed(1)}s` : "—"}
+                      {outputData?.executionTimeSec ? `${outputData.executionTimeSec}s` : "—"}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={run.status} />
@@ -265,7 +265,7 @@ function CronJobHistoryContent() {
                 </div>
                 {(() => {
                   const outputData = parseOutputData(selectedRun.output);
-                  return outputData && (
+                  return outputData?.executionTimeSec && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
                       <p className="text-sm mt-1">{outputData.executionTimeSec} seconds</p>
