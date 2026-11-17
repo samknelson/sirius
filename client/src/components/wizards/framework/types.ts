@@ -5,6 +5,8 @@ export type WizardStepState =
   | "failed";
 
 export interface WizardStepManifest {
+  formData?: Record<string, unknown>;
+  runBlocker?: string;
   id: string;
   name: string;
   description?: string;

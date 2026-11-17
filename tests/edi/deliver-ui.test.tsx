@@ -21,7 +21,8 @@ describe("Deliver download choice", () => {
   let holdExport: (() => Promise<Response>) | undefined;
   const render = (wizardId = "saved") => root.render(
     <QueryClientProvider client={queryClient}>
-      <DeliverStep wizardId={wizardId} wizardType="trust_provider_edi" step={{ id: "deliver" } as any} />
+      <DeliverStep wizardId={wizardId} wizardType="trust_provider_edi" step={{ id: "deliver" } as any}
+        data={{ reportMeta: { generatedAt: "fixture-generation" } }} />
     </QueryClientProvider>,
   );
   const flush = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });

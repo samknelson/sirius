@@ -1,7 +1,7 @@
 import type { TrustProviderEdiPlugin, TrustProviderEdiContext } from "./registry";
 import { effectiveBenefitSiriusIds, resolveBenefitIds, ymdCompact } from "./base";
 import { loadTerminationCandidates, type TerminationCandidate } from "./termination-population";
-import { readTerminationPolicy, terminationContractBlocker, terminationProperties } from "./termination-policy";
+import { readTerminationPolicy, assertTerminationContract, terminationContractBlocker, terminationProperties } from "./termination-policy";
 
 /**
  * Compose once at registration. The carrier still owns its layout and all
@@ -16,10 +16,8 @@ export function withMembershipLifecycle(plugin: TrustProviderEdiPlugin): TrustPr
   const populations = new WeakMap<TrustProviderEdiContext, Map<string, TerminationCandidate>>();
   const blocker = terminationContractBlocker(plugin.id);
   function check(ctx: TrustProviderEdiContext) {
-    const policy = readTerminationPolicy(ctx.configData);
-    if ((policy.subscribers || policy.dependents) && blocker) {
-      throw new Error(`Explicit termination generation blocked: ${blocker} Disable both explicit termination settings to retain omission mode.`);
-    }
+    const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
+    assertTerminationContract(plugin.id, policy);
     return policy;
   }
   async function population(ctx: TrustProviderEdiContext) {
@@ -35,12 +33,13 @@ export function withMembershipLifecycle(plugin: TrustProviderEdiPlugin): TrustPr
   }
   return {
     ...plugin,
-    configSchema: {
-      ...plugin.configSchema, type: "object",
-      properties: { ...plugin.configSchema?.properties, ...terminationProperties },
-      description: [plugin.configSchema?.description,
+    inputSchema: {
+      ...plugin.inputSchema, type: "object",
+      properties: { ...plugin.inputSchema?.properties, ...terminationProperties },
+      description: [plugin.inputSchema?.description,
         blocker ? `Explicit termination generation is blocked pending carrier confirmation: ${blocker}` :
-          "Explicit terminations are opt-in; active membership is unchanged.",
+          "Explicit terminations include ended people; active membership is unchanged.",
+        "Save run parameters before generating. Turn both flags off for omission mode. Saving invalidates previous output; regeneration is required.",
       ].filter(Boolean).join(" "),
     },
     getColumns: () => [

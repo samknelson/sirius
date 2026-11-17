@@ -142,6 +142,8 @@ export class WizardPluginRegistry extends PluginRegistry<
         description: step.description,
         kind: step.kind,
         schema: step.getSchema ? step.getSchema(wizard) : step.schema,
+        formData: step.getFormData?.(wizard),
+        runBlocker: step.getRunBlocker?.(wizard),
         uiSchema: step.uiSchema,
         submitOnNext: step.submitOnNext,
         component: step.component

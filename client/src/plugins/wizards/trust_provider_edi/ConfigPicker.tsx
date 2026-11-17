@@ -35,7 +35,7 @@ interface ConfigStepData {
  * First step of the trust-provider EDI wizard: pick which enabled EDI
  * configuration (file type + provider + SFTP destination) to generate.
  */
-export function ConfigPicker({ wizardId, step }: WizardStepComponentProps) {
+export function ConfigPicker({ wizardId, step, data: wizardData }: WizardStepComponentProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const dataUrl = `/api/wizards/${wizardId}/dispatch/${step.id}/data`;
@@ -82,7 +82,8 @@ export function ConfigPicker({ wizardId, step }: WizardStepComponentProps) {
         <CardTitle>EDI Configuration</CardTitle>
         <CardDescription>
           Pick which EDI file configuration to generate. Changing the
-          selection resets any previously generated results.
+          selection resets any previously generated results. Saved termination choices
+          are retained; review Parameters for the selected carrier's support.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -124,7 +125,7 @@ export function ConfigPicker({ wizardId, step }: WizardStepComponentProps) {
         )}
         <Button
           onClick={() => selectedId && submitMutation.mutate(selectedId)}
-          disabled={!selectedId || submitMutation.isPending}
+          disabled={!selectedId || submitMutation.isPending || wizardData?.progress?.run?.status === "in_progress"}
           data-testid="button-select-config"
         >
           {submitMutation.isPending ? "Saving..." : "Use This Configuration"}

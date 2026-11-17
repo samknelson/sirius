@@ -7,6 +7,7 @@ import { wizardComponentRegistry } from "@/plugins/wizards/registry";
 import { SchemaFormStep } from "./SchemaFormStep";
 import type { WizardManifest, WizardStepManifest } from "./types";
 import { NextSubmissionContext, type NextSubmission } from "./NextSubmission";
+import { PolicySummary } from "@/plugins/wizards/trust_provider_edi/PolicySummary";
 
 interface FrameworkWizardBodyProps {
   wizardId: string;
@@ -112,6 +113,7 @@ function ActiveWizardBody({
       )}
 
       {error && <p role="alert" className="mb-4 text-destructive">{error}</p>}
+      {wizardType === "trust_provider_edi" && <PolicySummary data={data} manifest={manifest} />}
       {currentStep && (
         <StepBody
           wizardId={wizardId}

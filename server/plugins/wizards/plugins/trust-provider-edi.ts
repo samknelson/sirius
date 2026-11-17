@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext, WizardStepHandler } from "../types";
-import type { Wizard } from "@shared/schema";
+import type { Wizard, InsertWizard } from "@shared/schema";
 import {
   trustProviderEdiPluginRegistry,
   type TrustProviderEdiContext,
@@ -8,6 +8,11 @@ import {
 } from "../../trust/provider-edi/registry";
 import { assembleEdiFileLines } from "../../trust/provider-edi/base";
 import { carrierLayoutCsv } from "../../trust/provider-edi/carrier-csv";
+import {
+  effectiveRunTerminationPolicy, newRunTerminationPolicy, terminationPolicyFields,
+  readTerminationPolicy, assertTerminationContract,
+} from "../../trust/provider-edi/termination-policy";
+import { validateAgainstSchema } from "../../../lib/json-schema-validator";
 
 /**
  * The single trust-provider EDI wizard. Generation, preview, and SFTP
@@ -33,6 +38,17 @@ function hasGeneratedReport(wizard: Wizard): boolean {
   return !!data?.reportMeta && (status === undefined || status === "completed");
 }
 
+/** A regeneration may start while rows are read. Never pair those rows with old metadata. */
+async function completedRows(ctx: WizardStepContext) {
+  const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
+  const fresh = await ctx.storage.wizards.getById(ctx.wizardId);
+  if (!fresh || !hasGeneratedReport(fresh) ||
+      JSON.stringify((fresh.data as any)?.reportMeta) !== JSON.stringify((ctx.wizard.data as any)?.reportMeta)) {
+    throw new Error("Generation changed while reading output. Reload the completed generation.");
+  }
+  return rows;
+}
+
 interface SelectedConfig {
   configId: string;
   pluginId: string;
@@ -55,17 +71,69 @@ function resolvePlugin(pluginId: string): TrustProviderEdiPlugin {
   return plugin;
 }
 
+function savedParameters(wizard: Wizard): Record<string, unknown> {
+  const data = (wizard.data as any) ?? {};
+  const plugin = readSelectedConfig(wizard);
+  return {
+    ...data.input,
+    ...(plugin && resolvePlugin(plugin.pluginId).benefitSiriusIds?.length
+      ? terminationPolicyFields(effectiveRunTerminationPolicy(data)) : {}),
+  };
+}
+
+function parameterSchema(wizard: Wizard) {
+  const selected = readSelectedConfig(wizard);
+  const plugin = selected && resolvePlugin(selected.pluginId);
+  const schema = plugin?.inputSchema ?? { type: "object", properties: {} };
+  if (!plugin?.benefitSiriusIds?.length) return schema;
+  // AJV/RJSF defaults must reflect this record, not activate an old run.
+  const fields = terminationPolicyFields(effectiveRunTerminationPolicy((wizard.data as any) ?? {}));
+  return { ...schema, properties: {
+    ...schema.properties,
+    ...Object.fromEntries(Object.entries(fields).map(([key, value]) =>
+      [key, { ...schema.properties?.[key], default: value }])),
+  } };
+}
+
+function generationBlocker(wizard: Wizard): string | undefined {
+  try {
+    const selected = readSelectedConfig(wizard);
+    if (!selected) return "Pick an EDI configuration first.";
+    if (!(wizard.data as any)?.input) return "Save Parameters before generating.";
+    const validation = validateAgainstSchema(parameterSchema(wizard), savedParameters(wizard));
+    if (!validation.valid) return `Correct and save Parameters: ${validation.errors?.join("; ")}`;
+    if (resolvePlugin(selected.pluginId).benefitSiriusIds?.length) {
+      assertTerminationContract(selected.pluginId, effectiveRunTerminationPolicy(wizard.data as any));
+    }
+  } catch (error) {
+    return error instanceof Error ? error.message : "Invalid saved termination policy.";
+  }
+}
+
+function invalidatedData(wizard: Wizard) {
+  const data = (wizard.data as any) ?? {};
+  if (data.progress?.run?.status === "in_progress") throw new Error("Generation is active. Wait before changing settings.");
+  return {
+    reportMeta: null, recordCount: null, delivery: null,
+    previousGeneration: data.progress?.run ?? data.previousGeneration ?? null,
+    progress: { ...data.progress, run: null, results: null, deliver: null },
+  };
+}
+
 function buildEdiContext(
   ctx: WizardStepContext,
   selected: SelectedConfig,
+  completedOutput = false,
 ): TrustProviderEdiContext {
   const data = (ctx.wizard.data as any) || {};
+  const snapshot = completedOutput ? data.reportMeta?.generationContext : undefined;
   return {
     configId: selected.configId,
-    configData: selected.data ?? {},
+    configData: snapshot?.configData ?? selected.data ?? {},
     providerId: selected.providerId,
     sftpClientId: selected.sftpClientId,
-    input: (data.input ?? {}) as Record<string, unknown>,
+    input: (snapshot?.input ?? data.input ?? {}) as Record<string, unknown>,
+    terminationPolicy: snapshot?.terminationPolicy ?? effectiveRunTerminationPolicy(data),
     storage: ctx.storage,
   };
 }
@@ -119,12 +187,13 @@ const configStep: WizardStepHandler = {
     };
     // Changing the config invalidates any previously generated output.
     return {
+      status: "draft",
       data: {
+        ...invalidatedData(ctx.wizard),
         config: selected,
         input: null,
-        reportMeta: null,
-        recordCount: null,
-        delivery: null,
+        // Capture OLD effective choices before replacing the snapshot.
+        terminationPolicy: terminationPolicyFields(effectiveRunTerminationPolicy((ctx.wizard.data as any) ?? {})),
       },
     };
   },
@@ -136,21 +205,24 @@ const paramsStep: WizardStepHandler = {
   name: "Parameters",
   description: "Run parameters for the selected EDI file type",
   kind: "form",
-  getSchema: (wizard) => {
-    const selected = readSelectedConfig(wizard);
-    if (!selected) return { type: "object", properties: {} };
-    const plugin = trustProviderEdiPluginRegistry.get(selected.pluginId);
-    return plugin?.inputSchema ?? { type: "object", properties: {} };
-  },
+  getSchema: parameterSchema,
+  getFormData: savedParameters,
   getState: (wizard) => {
     const data = (wizard.data as any) || {};
     return data.input ? "completed" : "pending";
   },
-  submit: (ctx) => ({
-    data: {
-      input: ctx.input ?? {}, reportMeta: null, recordCount: null, delivery: null,
-    },
-  }),
+  submit: (ctx) => {
+    const selected = readSelectedConfig(ctx.wizard);
+    if (!selected) throw new Error("Pick an EDI configuration first");
+    const input = { ...ctx.input };
+    const validation = validateAgainstSchema(parameterSchema(ctx.wizard), input);
+    if (!validation.valid) throw new Error(`Invalid parameters: ${validation.errors?.join("; ")}`);
+    return { status: "draft", data: {
+      ...invalidatedData(ctx.wizard), input,
+      ...(resolvePlugin(selected.pluginId).benefitSiriusIds?.length
+        ? { terminationPolicy: terminationPolicyFields(readTerminationPolicy(input)) } : {}),
+    } };
+  },
 };
 
 /** Step 3 — generate: defer keys + batches to the EDI plugin. */
@@ -161,6 +233,7 @@ const runStep: WizardStepHandler = {
   kind: "run",
   retrySafe: true,
   component: "RunView",
+  getRunBlocker: generationBlocker,
   getState: (wizard) => {
     const data = (wizard.data as any) || {};
     const status = data.progress?.run?.status;
@@ -170,6 +243,8 @@ const runStep: WizardStepHandler = {
     return "pending";
   },
   run: async (ctx) => {
+    const blocker = generationBlocker(ctx.wizard);
+    if (blocker) throw new Error(blocker);
     const selected = readSelectedConfig(ctx.wizard);
     if (!selected) throw new Error("Pick an EDI configuration first");
     const plugin = resolvePlugin(selected.pluginId);
@@ -221,6 +296,11 @@ const runStep: WizardStepHandler = {
           columns,
           primaryKeyField: "pk",
           terminationCounts,
+          terminationPolicy: plugin.benefitSiriusIds?.length ? ediCtx.terminationPolicy : null,
+          generationContext: {
+            input: ediCtx.input, configData: ediCtx.configData,
+            terminationPolicy: ediCtx.terminationPolicy,
+          },
         },
         recordCount: saved,
         delivery: null,
@@ -243,7 +323,7 @@ const resultsStep: WizardStepHandler = {
       throw new Error("Complete EDI generation before viewing or exporting Results");
     }
     const reportMeta = (ctx.wizard.data as any).reportMeta;
-    const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
+    const rows = await completedRows(ctx);
     return {
       reportMeta, columns: reportMeta.columns ?? [],
       records: rows.map(row => row.data),
@@ -260,7 +340,7 @@ async function encodeAllRows(
   plugin: TrustProviderEdiPlugin,
   ediCtx: TrustProviderEdiContext,
 ): Promise<{ content: string; rowCount: number }> {
-  const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
+  const rows = await completedRows(ctx);
   const lines = assembleEdiFileLines(
     plugin,
     rows.map((r) => (r.data ?? {}) as Record<string, unknown>),
@@ -286,13 +366,13 @@ const deliverStep: WizardStepHandler = {
       throw new Error("Generate the file before downloading it");
     }
     const plugin = resolvePlugin(selected.pluginId);
-    const ediCtx = buildEdiContext(ctx, selected);
+    const ediCtx = buildEdiContext(ctx, selected, true);
     const filename = plugin.buildFilename(ediCtx);
     if (format === "provider") {
       const { content } = await encodeAllRows(ctx, plugin, ediCtx);
       return { content, filename, mimeType: "text/plain; charset=utf-8" };
     }
-    const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
+    const rows = await completedRows(ctx);
     return {
       content: carrierLayoutCsv(plugin, rows.map(r => (r.data ?? {}) as Record<string, unknown>), ediCtx),
       filename: `${filename.replace(/\.[^.]+$/, "")}-carrier-layout-qa.csv`,
@@ -311,7 +391,7 @@ const deliverStep: WizardStepHandler = {
       return { ready: false, delivery: data.delivery ?? null };
     }
     const plugin = resolvePlugin(selected.pluginId);
-    const ediCtx = buildEdiContext(ctx, selected);
+    const ediCtx = buildEdiContext(ctx, selected, true);
     let destinationName: string | null = null;
     if (selected.sftpClientId) {
       const dest = await ctx.storage.sftpClientDestinations.getById(selected.sftpClientId);
@@ -339,7 +419,7 @@ const deliverStep: WizardStepHandler = {
       );
     }
     const plugin = resolvePlugin(selected.pluginId);
-    const ediCtx = buildEdiContext(ctx, selected);
+    const ediCtx = buildEdiContext(ctx, selected, true);
     const { content, rowCount } = await encodeAllRows(ctx, plugin, ediCtx);
     if (!rowCount) throw new Error("There are no records to deliver");
 
@@ -399,6 +479,16 @@ export const trustProviderEdiWizardPlugin: WizardPlugin = {
   category: "Trust",
   isReport: true,
   needsReadOnlyDb: true,
+  create: async ({ input, storage }) => ({
+    wizard: await storage.wizards.create({
+      ...input,
+      status: String(input.status ?? "draft"),
+      data: { ...input.data, terminationPolicy: { ...newRunTerminationPolicy } },
+    } as InsertWizard),
+  }),
+  prepareUpdate: ({ incoming, merged }) => Object.keys(incoming).every(key => key === "retention")
+    ? { data: merged }
+    : { error: "Use the EDI wizard steps to change saved settings.", status: 400 },
   steps: [configStep, paramsStep, runStep, resultsStep, deliverStep],
 };
 

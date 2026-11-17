@@ -57,7 +57,7 @@ export interface WizardStorage {
   findMonthlyWizardsForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard[]>;
   /** The completed wizard of `type` for a given employer + reporting period, if any. */
   findCompletedMonthlyWizardForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard | undefined>;
-  update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string): Promise<Wizard | undefined>;
+  update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string, expectedData?: unknown): Promise<Wizard | undefined>;
   /** Merge top-level wizard data keys without replacing concurrent progress writes. */
   mergeData(id: string, patch: Record<string, unknown>, activeStep?: string, runId?: string): Promise<Wizard | undefined>;
   /** Atomic, run-scoped progress write; late writes cannot revive a terminal run. */
@@ -72,6 +72,7 @@ export interface WizardStorage {
     leasePid?: number,
     expectedType?: string,
     startPolicy?: "initial" | "safe-retry" | "validation-lease" | "process-once",
+    expectedData?: unknown,
   ): Promise<Wizard | undefined>;
   delete(id: string): Promise<boolean>;
   saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData>;
@@ -193,7 +194,7 @@ export function createWizardStorage(): WizardStorage {
       return row?.wizard;
     },
 
-    async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string): Promise<Wizard | undefined> {
+    async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string, expectedData?: unknown): Promise<Wizard | undefined> {
       validate.validateOrThrow(updates);
       if (updates.type !== undefined && expectedType !== undefined &&
           updates.type !== expectedType &&
@@ -207,6 +208,9 @@ export function createWizardStorage(): WizardStorage {
         .update(wizards)
         .set(updates)
         .where(and(
+          expectedData !== undefined ? sql`${wizards.data} IS NOT DISTINCT FROM ${JSON.stringify(expectedData)}::jsonb` : undefined,
+          updates.data !== undefined ? sql`NOT (${wizards.type} = 'trust_provider_edi'
+            AND coalesce(${wizards.data} #>> '{progress,run,status}', '') = 'in_progress')` : undefined,
           // A type-only PATCH must not turn admitted BAO evidence into an
           // unprotected wizard. This is checked against the stored row.
           updates.type !== undefined
@@ -246,7 +250,7 @@ export function createWizardStorage(): WizardStorage {
       return wizard;
     },
 
-    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid, expectedType, startPolicy = "initial") {
+    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid, expectedType, startPolicy = "initial", expectedData) {
       const current = sql`coalesce(${wizards.data}, '{}'::jsonb)`;
       const entry = sql`coalesce(${current} #> ARRAY['progress', ${step}::text]::text[], '{}'::jsonb)`;
       const startEntry = start && (startPolicy === "safe-retry" || startPolicy === "validation-lease")
@@ -264,6 +268,8 @@ export function createWizardStorage(): WizardStorage {
         ...(wizardStatus ? { status: wizardStatus } : {}),
       })
         .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+          start && expectedData !== undefined
+            ? sql`${wizards.data} IS NOT DISTINCT FROM ${JSON.stringify(expectedData)}::jsonb` : undefined,
           start && expectedType ? eq(wizards.type, expectedType) : undefined,
           leasePid !== undefined ? sql`exists (select 1 from pg_locks where locktype = 'advisory'
             and pid = ${leasePid} and granted and classid = 1350

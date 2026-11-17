@@ -33,11 +33,16 @@ interface DeliverStepData {
  * Final step of the trust-provider EDI wizard: download the encoded file
  * and/or deliver it to the configuration's SFTP destination.
  */
-export function DeliverStep({ wizardId, step }: WizardStepComponentProps) {
-  return <DeliverStepContent key={`${wizardId}:${step.id}`} wizardId={wizardId} step={step} />;
+export function DeliverStep({ wizardId, step, data }: WizardStepComponentProps) {
+  const generation = data?.reportMeta?.generatedAt ?? data?.progress?.run?.runId ?? "legacy";
+  const ready = !!data?.reportMeta && (!data?.progress?.run?.status || data.progress.run.status === "completed");
+  if (!ready) return <Card><CardContent className="pt-6">
+    <p data-testid="text-not-ready">Generate the file before delivering it.</p>
+  </CardContent></Card>;
+  return <DeliverStepContent key={`${wizardId}:${step.id}:${generation}`} wizardId={wizardId} step={step} generation={generation} />;
 }
 
-function DeliverStepContent({ wizardId, step }: Pick<WizardStepComponentProps, "wizardId" | "step">) {
+function DeliverStepContent({ wizardId, step, generation }: Pick<WizardStepComponentProps, "wizardId" | "step"> & { generation: string }) {
   const { toast } = useToast();
   const [format, setFormat] = useState("provider");
   const active = useRef(true);
@@ -47,7 +52,7 @@ function DeliverStepContent({ wizardId, step }: Pick<WizardStepComponentProps, "
   }, []);
   const queryClient = useQueryClient();
   const dataUrl = `/api/wizards/${wizardId}/dispatch/${step.id}/data`;
-  const { data, isLoading, isError, refetch } = useQuery<DeliverStepData>({ queryKey: [dataUrl] });
+  const { data, isLoading, isError, refetch } = useQuery<DeliverStepData>({ queryKey: [dataUrl, { generation }] });
 
   const downloadMutation = useMutation({
     mutationFn: async (selectedFormat: string) => {

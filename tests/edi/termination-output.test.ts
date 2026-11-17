@@ -15,7 +15,8 @@ vi.mock("../../server/plugins/trust/provider-edi/base", async importOriginal => 
 });
 vi.mock("../../server/plugins/trust/provider-edi/termination-population", () => ({
   loadTerminationCandidates: async (ctx: any) => fixture.candidates.filter(c =>
-    c.role === "subscriber" ? ctx.configData.explicitSubscriberTerminations : ctx.configData.explicitDependentTerminations),
+    c.role === "subscriber" ? (ctx.terminationPolicy?.subscribers ?? ctx.configData.explicitSubscriberTerminations)
+      : (ctx.terminationPolicy?.dependents ?? ctx.configData.explicitDependentTerminations)),
 }));
 import { registeredEdiPlugins, requireEdiPlugin } from "./fixtures/harness";
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
@@ -58,12 +59,14 @@ describe("registered carrier lifecycle composition", () => {
     const membership = registeredEdiPlugins().filter(p => p.benefitSiriusIds?.length);
     expect(membership).toHaveLength(9);
     for (const plugin of membership) {
-      expect(plugin.configSchema?.properties?.explicitSubscriberTerminations).toBeDefined();
-      expect(validateAgainstSchema(plugin.configSchema!, { terminationLookbackMonths: 0 }).valid).toBe(false);
-      expect(validateAgainstSchema(plugin.configSchema!, { explicitDependentTerminations: "true" }).valid).toBe(false);
-      expect(validateAgainstSchema(plugin.configSchema!, {}).valid).toBe(true);
+      expect(plugin.configSchema?.properties?.explicitSubscriberTerminations).toBeUndefined();
+      expect(plugin.inputSchema?.properties?.explicitSubscriberTerminations).toBeDefined();
+      expect(validateAgainstSchema(plugin.inputSchema!, { terminationLookbackMonths: 0 }).valid).toBe(false);
+      expect(validateAgainstSchema(plugin.inputSchema!, { explicitDependentTerminations: "true" }).valid).toBe(false);
+      expect(validateAgainstSchema(plugin.inputSchema!, {}).valid).toBe(true);
     }
     expect(requireEdiPlugin("sitespecific-smf-local11").configSchema?.properties?.terminationLookbackMonths).toBeUndefined();
+    expect(requireEdiPlugin("sitespecific-smf-local11").inputSchema?.properties?.terminationLookbackMonths).toBeUndefined();
   });
   for (const id of ["delta", "hinge", "mlk"]) {
     it.each([[false, false], [true, false], [false, true], [true, true]])(
@@ -147,5 +150,94 @@ describe("registered carrier lifecycle composition", () => {
     });
     const params = trustProviderEdiWizardPlugin.steps.find(s => s.id === "params")!;
     expect(await params.submit!(runContext)).toMatchObject({ data: { reportMeta: null, delivery: null } });
+  });
+});
+
+describe("wizard-owned settings and legacy editing", () => {
+  const params = trustProviderEdiWizardPlugin.steps.find(s => s.id === "params")!;
+  const config = trustProviderEdiWizardPlugin.steps.find(s => s.id === "config")!;
+  const run = trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!;
+  function wizard(data: any = {}) {
+    return { id: "fixture", type: "trust_provider_edi", data: {
+      config: { configId: "old", pluginId: "sitespecific-smf-delta", data: {} },
+      input: { asOfDate: "2026-11-01", mode: "T" }, ...data,
+    } } as any;
+  }
+  const policy = (sub = false, dep = true, months = 3) => ({
+    explicitSubscriberTerminations: sub, explicitDependentTerminations: dep, terminationLookbackMonths: months,
+  });
+  it("creates durable defaults, never using live carrier settings", async () => {
+    const result = await trustProviderEdiWizardPlugin.create!({
+      input: { type: "trust_provider_edi", data: { terminationPolicy: policy(false, true, 9) } },
+      storage: { wizards: { create: async (value: any) => value } }, req: {},
+    } as any);
+    const created = result.wizard!;
+    expect((created.data as any).terminationPolicy).toEqual(policy(true, false, 1));
+    const selected = await config.submit!({
+      wizard: created, input: { configId: "new" },
+      storage: { pluginConfigs: { getWithSubsidiary: async () => ({
+        config: { id: "new", pluginKind: "trust-provider-edi", enabled: true,
+          pluginId: "sitespecific-smf-delta", data: policy(false, true, 9) },
+      }) } },
+    } as any);
+    expect(selected.data?.terminationPolicy).toEqual(policy(true, false, 1));
+  });
+  it.each([policy(false, false, 1), policy(true, false, 2), policy(false, true, 3), policy(true, true, 12)])(
+    "restores saved choices %j across JSON reload, retry and schema defaults", async choices => {
+      const w = wizard({ terminationPolicy: choices,
+        config: { configId: "old", pluginId: "sitespecific-smf-delta", data: policy(true, true, 9) },
+        progress: { run: { status: "failed", error: "Old failure" } },
+        reportMeta: { recordCount: 7 }, delivery: { deliveredAt: "old" },
+      });
+      const seed = params.getFormData!(JSON.parse(JSON.stringify(w)));
+      expect(seed).toEqual({ asOfDate: "2026-11-01", mode: "T", ...choices });
+      expect(run.getRunBlocker!(w)).toBeUndefined();
+      const saved = await params.submit!({ wizard: w, input: seed } as any);
+      Object.assign(w.data, saved.data);
+      expect(w.data).toMatchObject({
+        terminationPolicy: choices, reportMeta: null, delivery: null,
+        previousGeneration: { error: "Old failure" }, progress: { run: null },
+      });
+      expect(run.getState!(w)).toBe("pending");
+      expect(params.getFormData!(JSON.parse(JSON.stringify(w)))).toEqual(seed);
+      const empty: any = {};
+      expect(validateAgainstSchema(params.getSchema!(w)!, empty).valid).toBe(true);
+      expect(empty).toMatchObject(choices);
+    },
+  );
+  it("shows and adopts legacy snapshot choices, not new defaults", async () => {
+    for (const legacy of [{}, policy(false, true, 4)]) {
+      const w = wizard({ config: { configId: "old", pluginId: "sitespecific-smf-delta", data: legacy } });
+      const expected = Object.keys(legacy).length ? legacy : policy(false, false, 1);
+      const seed = params.getFormData!(w);
+      expect(seed).toMatchObject(expected);
+      expect((await params.submit!({ wizard: w, input: seed } as any)).data?.terminationPolicy).toEqual(expected);
+      expect(w.data.terminationPolicy).toBeUndefined(); // reads/unsaved edits cannot mutate old runs
+    }
+  });
+  it("retains legacy policy on carrier reselection and rechecks Carelon before run", async () => {
+    const w = wizard({ config: { configId: "old", pluginId: "sitespecific-smf-delta", data: policy(false, true, 4) } });
+    const selected = await config.submit!({
+      wizard: w, input: { configId: "carelon" }, storage: { pluginConfigs: {
+        getWithSubsidiary: async () => ({ config: { id: "carelon", enabled: true,
+          pluginKind: "trust-provider-edi", pluginId: "sitespecific-smf-carelon", data: policy(true, false, 1) } }),
+      } },
+    } as any);
+    Object.assign(w.data, selected.data);
+    expect(w.data.terminationPolicy).toEqual(policy(false, true, 4));
+    expect(run.getRunBlocker!(w)).toMatch(/Save Parameters/);
+    const saved = await params.submit!({ wizard: w, input: params.getFormData!(w) } as any);
+    Object.assign(w.data, saved.data);
+    expect(params.getSchema!(w)?.description).toMatch(/Carelon MSTACD/);
+    expect(run.getRunBlocker!(w)).toMatch(/Carelon MSTACD/);
+    await expect(run.run!({ wizard: w } as any)).rejects.toThrow(/Carelon MSTACD/);
+    Object.assign(w.data, (await params.submit!({ wizard: w, input: policy(false, false, 1) } as any)).data);
+    expect(run.getRunBlocker!(w)).toBeUndefined();
+  });
+  it("rejects parameter changes while generating and rejects invalid lookbacks", () => {
+    expect(() => params.submit!({ wizard: wizard({ progress: { run: { status: "in_progress" } } }), input: policy() } as any)).toThrow(/Generation is active/);
+    for (const months of [0, 13, 1.5, "2", null]) {
+      expect(() => params.submit!({ wizard: wizard(), input: { ...policy(), terminationLookbackMonths: months } } as any)).toThrow();
+    }
   });
 });

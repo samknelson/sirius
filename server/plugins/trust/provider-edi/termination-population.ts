@@ -139,7 +139,7 @@ export function selectTerminationCandidates(
 
 /** Batched population reads; only candidate workers and their historical parents. */
 export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, benefitIds: string[]) {
-  const policy = readTerminationPolicy(ctx.configData);
+  const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
   if (!policy.subscribers && !policy.dependents) return [];
   const asOf = readAsOfYmd(ctx);
   const window = terminationWindow(asOf, policy.months);

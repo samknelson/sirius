@@ -4,8 +4,10 @@ description: Product and evidence boundaries for explicit membership termination
 ---
 
 Termination settings include ended subscribers/dependents independently; they
-must never become general filters excluding active roles. Existing configurations
-and saved snapshots remain omission mode unless explicitly opted in. The default
+must never become general filters excluding active roles. Legacy snapshots
+remain omission mode unless explicitly opted in. The user subsequently chose
+wizard-only settings: NEW runs start subscriber on, dependent off, lookback 1.
+Existing runs must never silently inherit these new defaults. The default
 window is the previous completed calendar month's coverage ends, not event dates:
 a November event means October 31 was last covered.
 

@@ -111,4 +111,35 @@ describe("wizard run progress (database)", () => {
     saved = await storage.wizards.getById(wizardId);
     expect((saved?.data as any).progress.validate.status).toBe("failed");
   });
+
+  it("fences EDI parameter saves against admission, active generation and terminal races", async () => {
+    const wizard = await storage.wizards.create({
+      type: "trust_provider_edi", status: "draft", data: { input: { mode: "T" } },
+    });
+    try {
+      const [saved, started] = await Promise.all([
+        storage.wizards.update(wizard.id, { data: { input: { mode: "P" } } }, wizard.type, wizard.data),
+        storage.wizards.writeStepProgress(wizard.id, "run", "generation", { status: "in_progress" },
+          true, {}, undefined, undefined, wizard.type, "safe-retry", wizard.data),
+      ]);
+      expect(Boolean(saved) !== Boolean(started)).toBe(true);
+      if (!started) {
+        const fresh = (await storage.wizards.getById(wizard.id))!;
+        await storage.wizards.writeStepProgress(wizard.id, "run", "generation", { status: "in_progress" },
+          true, {}, undefined, undefined, wizard.type, "safe-retry", fresh.data);
+      }
+      const active = (await storage.wizards.getById(wizard.id))!;
+      expect(await storage.wizards.update(wizard.id, { data: {} }, wizard.type, active.data)).toBeUndefined();
+      // Navigation must remain usable without replacing run data.
+      expect(await storage.wizards.update(wizard.id, { currentStep: "params" }, wizard.type)).toBeDefined();
+      await storage.wizards.writeStepProgress(wizard.id, "run", "generation", { status: "completed" },
+        false, { reportMeta: { generatedAt: "fixture", recordCount: 1 } });
+      expect(await storage.wizards.update(wizard.id, { data: {} }, wizard.type, active.data)).toBeUndefined();
+      const completed = (await storage.wizards.getById(wizard.id))!;
+      expect(await storage.wizards.update(wizard.id, { data: { input: { mode: "T" }, reportMeta: null } },
+        wizard.type, completed.data)).toBeDefined();
+    } finally {
+      await storage.wizards.delete(wizard.id);
+    }
+  });
 });

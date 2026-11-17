@@ -12,12 +12,14 @@ const state = vi.hoisted(() => ({
   upload: vi.fn(async () => ({ success: true })),
   getRows: vi.fn(),
   update: vi.fn(),
+  writeProgress: vi.fn(),
 }));
 vi.mock("../../server/storage", () => ({ storage: {
   wizards: {
     getById: async () => state.wizard,
     getReportData: (...args: unknown[]) => state.getRows(...args),
     update: (...args: unknown[]) => state.update(...args),
+    writeStepProgress: (...args: unknown[]) => state.writeProgress(...args),
     mergeData: async (_id: string, patch: Record<string, unknown>) => {
       state.wizard.data = { ...state.wizard.data, ...patch };
       return state.wizard;
@@ -90,6 +92,37 @@ describe("authorized, read-only Deliver exports", () => {
     expect(state.wizard).toEqual(snapshot);
     expect(state.update).not.toHaveBeenCalled();
     expect(state.upload).not.toHaveBeenCalled();
+  });
+  it("blocks unsupported saved choices before admitting generation, ignoring unsaved request input", async () => {
+    state.wizard.data.terminationPolicy = { explicitSubscriberTerminations: true, explicitDependentTerminations: false, terminationLookbackMonths: 1 };
+    const response = await fetch(`${base}/run/run`, {
+      method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" },
+      body: JSON.stringify({ input: { explicitSubscriberTerminations: false } }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Kaiser");
+    expect(state.writeProgress).not.toHaveBeenCalled();
+  });
+  it("refuses rows replaced during a concurrent generation", async () => {
+    const oldWizard = structuredClone(state.wizard);
+    state.getRows.mockImplementation(async () => {
+      state.wizard.data.progress = { run: { status: "in_progress" } };
+      return [{ data: { pk: "partial" } }];
+    });
+    const { storage } = await import("../../server/storage");
+    const ctx = { wizard: oldWizard, wizardId: "saved", storage } as any;
+    const handler = trustProviderEdiWizardPlugin.steps.find(step => step.id === "deliver")!;
+    await expect(handler.exportFile!(ctx, "provider")).rejects.toThrow(/Generation changed/);
+    expect(state.upload).not.toHaveBeenCalled();
+  });
+  it("downloads with the completed generation's encoding inputs", async () => {
+    state.wizard.data.reportMeta.generationContext = {
+      configData: {}, input: { asOfDate: "2026-09-01" },
+      terminationPolicy: { subscribers: false, dependents: true, months: 2 },
+    };
+    const plugin = registeredEdiPlugins().find(p => p.id === state.wizard.data.config.pluginId)!;
+    const filename = plugin.buildFilename({ input: { asOfDate: "2026-09-01" }, configData: {} } as any);
+    expect((await get("/deliver/export")).headers.get("content-disposition")).toContain(filename);
   });
   it("retains native content and filename for every provider before and after QA", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

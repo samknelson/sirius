@@ -160,6 +160,7 @@ async function persistStepResult(
   expectedType: string,
   stepId: string,
   result: WizardStepResult | void,
+  expectedData?: unknown,
 ): Promise<Wizard | undefined> {
   const fresh = await storage.wizards.getById(wizardId);
   const data: any = fresh?.data || {};
@@ -172,7 +173,7 @@ async function persistStepResult(
   };
   const updates: Record<string, unknown> = { data };
   if (result && result.status) updates.status = result.status;
-  return storage.wizards.update(wizardId, updates, expectedType);
+  return storage.wizards.update(wizardId, updates, expectedType, expectedData);
 }
 
 function csvEscape(value: unknown): string {
@@ -224,7 +225,9 @@ export function registerWizardDispatcherRoutes(
         }
         const ctx = buildStepContext(loaded.wizard, step.id, input, req);
         const out = await step.submit(ctx);
-        const updated = await persistStepResult(loaded.wizard.id, loaded.plugin.id, step.id, out);
+        const updated = await persistStepResult(loaded.wizard.id, loaded.plugin.id, step.id, out,
+          loaded.plugin.id === "trust_provider_edi" ? loaded.wizard.data : undefined);
+        if (!updated) return res.status(409).json({ message: "The wizard changed or generation is active. Reload before saving." });
         res.json(updated);
       } catch (error) {
         // Storage-level election validation failures (e.g. the cross-
@@ -362,13 +365,16 @@ export function registerWizardDispatcherRoutes(
         return res.status(409).json({ message: "The run status is not recognized as a safe starting point. Refresh status before taking action." });
       }
       const runId = randomUUID();
+      const blocker = step.getRunBlocker?.(loaded.wizard);
+      if (blocker) return res.status(400).json({ message: blocker });
       const started = await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
         status: "in_progress",
         percentComplete: 0,
         error: null,
         startedAt: new Date().toISOString(),
         heartbeatAt: new Date().toISOString(),
-      }, true, {}, undefined, undefined, loaded.plugin.id, step.retrySafe ? "safe-retry" : "initial");
+      }, true, {}, undefined, undefined, loaded.plugin.id, step.retrySafe ? "safe-retry" : "initial",
+      loaded.plugin.id === "trust_provider_edi" ? loaded.wizard.data : undefined);
       if (!started) return res.status(409).json({ message: "This run changed before it could start. Refresh status; only explicitly safe steps can be retried after a confirmed terminal result." });
       // Kick off the work and respond immediately.
       res.status(202).json({ started: true });
@@ -607,7 +613,7 @@ export function registerWizardDispatcherRoutes(
           }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: next.id,
-            ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL ? {} : { data }),
+            ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL || plugin.id === "trust_provider_edi" ? {} : { data }),
           }, plugin.id);
           return res.json(updated);
         }
@@ -630,7 +636,7 @@ export function registerWizardDispatcherRoutes(
           }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: prev.id,
-            ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL ? {} : { data }),
+            ...((wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL || plugin.id === "trust_provider_edi" ? {} : { data }),
           }, plugin.id);
           return res.json(updated);
         }

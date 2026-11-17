@@ -67,7 +67,7 @@ export const additionalPluginKindHelp: SystemHelpEntry[] = [
     paths: ["/admin/plugin-configs/trust-provider-edi"],
     summary: "Configure provider EDI benefit scope and delivery settings before generation or transfer, checking the actual selected population rather than provider-name assumptions.",
     details: `
-      <h3>Purpose</h3><p>Maintain the EDI configurations consumed by generation and delivery wizards.</p>
+      <h3>Purpose</h3><p>Maintain benefit scope, carrier identity, file settings and destination for EDI wizards. Termination choices are saved only in each wizard's Parameters.</p>
       ${ediTerminationGuidance}
       <h3>Before you start</h3><p>Administrator access and Providers EDI are required. Required file and destination settings depend on the selected EDI implementation.</p>
       <h3>How to use this page</h3><ol><li>Review the selected plugin and existing configurations.</li><li>Check benefit identifiers, period behavior, file settings, and destination.</li><li>Before enabling, verify the intended people and coverage scope.</li><li>Use the EDI dashboard to inspect saved generation or delivery runs.</li></ol>

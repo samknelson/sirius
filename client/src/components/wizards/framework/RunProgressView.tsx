@@ -54,7 +54,7 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
   const attempted = bao && (!!status || !!(data as any)?.processResults);
   const safeTerminalRetry = step.retrySafe === true && (failed || completed);
   const canStart = !tracked.isError && !!tracked.data && !running &&
-    (!status || safeTerminalRetry) && !attempted;
+    (!status || safeTerminalRetry) && !attempted && !step.runBlocker;
 
   const runMutation = useMutation({
     mutationFn: async () =>
@@ -88,6 +88,7 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {step.runBlocker && <Alert variant="destructive"><AlertDescription>{step.runBlocker}</AlertDescription></Alert>}
         {tracked.isError && (
           <Alert variant="destructive"><AlertDescription>
             Cannot read this run's current status. The work may still be running; refresh status before taking action. This is not proof that the run failed.

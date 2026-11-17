@@ -106,6 +106,10 @@ export interface WizardStepHandler {
    * of a feed wizard whose fields are the just-uploaded file's columns).
    */
   getSchema?: (wizard: Wizard) => JsonSchema | undefined;
+  /** Opt-in saved form seed; unrelated forms retain their existing behavior. */
+  getFormData?: (wizard: Wizard) => Record<string, unknown>;
+  /** Admission check, also surfaced before starting the run. */
+  getRunBlocker?: (wizard: Wizard) => string | undefined;
   /** Optional RJSF uiSchema companion to `schema`. */
   uiSchema?: Record<string, unknown>;
   /**
@@ -266,6 +270,8 @@ export interface WizardPlugin extends BasePluginMetadata {
 
 /** A single step as surfaced in the computed manifest. */
 export interface WizardStepManifestEntry {
+  formData?: Record<string, unknown>;
+  runBlocker?: string;
   id: string;
   name: string;
   description?: string;

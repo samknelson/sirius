@@ -31,11 +31,12 @@ export function SchemaFormStep({ wizardId, wizardType, step, data }: SchemaFormS
   return <SavedSchemaFormStep wizardId={wizardId} wizardType={wizardType} step={step} data={data} />;
 }
 
-function SavedSchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {
+function SavedSchemaFormStep({ wizardId, wizardType, step, data }: SchemaFormStepProps) {
   const { toast } = useToast();
   const [formData, setFormData] = useState<Record<string, unknown>>(
-    (data?.config as Record<string, unknown>) ?? {},
+    step.formData ?? (data?.config as Record<string, unknown>) ?? {},
   );
+  const generationActive = wizardType === "trust_provider_edi" && data?.progress?.run?.status === "in_progress";
 
   const submitMutation = useMutation({
     mutationFn: async (input: Record<string, unknown>) =>
@@ -68,6 +69,8 @@ function SavedSchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {
             {step.description}
           </p>
         )}
+        <fieldset disabled={submitMutation.isPending || generationActive}>
+        {generationActive && <p role="status">Generation is active. Wait until it finishes before saving changes.</p>}
         <SchemaForm
           schema={step.schema}
           uiSchema={step.uiSchema}
@@ -85,6 +88,7 @@ function SavedSchemaFormStep({ wizardId, step, data }: SchemaFormStepProps) {
             </Button>
           </div>
         </SchemaForm>
+        </fieldset>
       </CardContent>
     </Card>
   );

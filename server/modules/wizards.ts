@@ -485,7 +485,8 @@ export function registerWizardRoutes(
         }
       }
       
-      const wizard = await storage.wizards.update(id, validatedData, existing.type);
+      const wizard = await storage.wizards.update(id, validatedData, existing.type,
+        existing.type === "trust_provider_edi" && validatedData.data !== undefined ? existing.data : undefined);
       if (!wizard) {
         return res.status(409).json({ message: validatedData.type && validatedData.type !== existing.type
           ? "Wizard type is fixed after setup or work begins. Create a new wizard with the correct type instead."

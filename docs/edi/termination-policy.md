@@ -1,11 +1,16 @@
 # Membership carrier terminations
 
-All nine membership plugins compose the same opt-in policy. Local 11 hours
-is excluded. `explicitSubscriberTerminations` and
-`explicitDependentTerminations` default to false independently.
-`terminationLookbackMonths` is an integer 1–12 (default 1); JSON schema
-validation applies on config writes and runtime validation applies to saved runs.
-Absent settings in old configs/snapshots mean omission, not activation.
+All nine membership plugins compose the same **wizard-only** policy. Local 11
+hours is excluded. New wizards persist `explicitSubscriberTerminations: true`,
+`explicitDependentTerminations: false`, and `terminationLookbackMonths: 1`.
+Lookback must be an integer 1–12. These are creation defaults, not runtime
+fallbacks. Live carrier configuration values never seed new-run policy.
+
+Saved run-owned policy wins. For legacy runs only, the selected configuration
+snapshot supplies compatibility values; missing flags mean both off. Opening an
+old run never changes its policy or output. Parameters seeds the actual saved
+values (including false), and saving records run-owned choices. Input schema
+validation and generation guards enforce the policy on the server.
 
 ## Calendar and evidence
 
@@ -58,9 +63,23 @@ to qualify; do not treat a quiet month as contract approval.
 
 ## Saved output and operation
 
-The Configuration step saves the full config data; generation uses that snapshot.
-To adopt edits, reselect Configuration, resubmit Parameters and Generate.
-Parameters invalidate prior report metadata. Running/failed generation cannot
+The Configuration step still snapshots benefit/file/destination settings. Its
+termination fields are no longer editable configuration controls. Reselecting a
+configuration preserves the run's termination choices and rechecks carrier
+support. Change termination choices directly in Parameters and Save, without
+editing or reselecting the carrier configuration. Unsaved edits never affect
+generation. Saving invalidates prior report metadata, delivery readiness and
+current generation status; any prior failure is labeled historical, not a
+validation of the new settings. Generate again after saving.
+
+Unsupported choices remain visible in Parameters with the exact contract
+blocker. They can be saved for review, but cannot start generation. Both flags
+off permits omission mode subject to unrelated prerequisites. Direct requests
+and legacy runs receive the same server guard; Carelon MSTACD is not bypassed.
+
+Atomic admission and save checks prevent edits racing an active generation.
+Completed generations retain the effective policy and encoding context alongside
+their rows. Running/failed generation cannot
 download or deliver an older or partial report. Preview columns identify role,
 last covered date and inference; Deliver displays counts from persisted generation.
 Downloads and SFTP serialize the same persisted rows and aggregate actual rows

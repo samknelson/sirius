@@ -78,12 +78,18 @@ interface StepData {
  * a CSV export via GET .../dispatch/:stepId/export. Columns-driven, so
  * any report wizard reuses it unchanged.
  */
-export function ResultsTable({ wizardId, step, renderCell }: ResultsTableProps) {
-  const { data, isLoading } = useQuery<StepData>({
-    queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`],
-    enabled: !!wizardId,
+export function ResultsTable({ wizardId, wizardType, step, data: wizardData, renderCell }: ResultsTableProps) {
+  const edi = wizardType === "trust_provider_edi";
+  const ready = !edi || (!!wizardData?.reportMeta && (!wizardData?.progress?.run?.status || wizardData.progress.run.status === "completed"));
+  const { data, isLoading, isError } = useQuery<StepData>({
+    queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`,
+      ...(edi ? [{ generation: wizardData?.reportMeta?.generatedAt ?? wizardData?.progress?.run?.runId ?? "legacy" }] : [])],
+    enabled: !!wizardId && ready,
   });
 
+  if (edi && (!ready || isError)) return <Card><CardContent className="pt-6">
+    <p role="alert">{isError ? "Could not read completed Results. Reload the wizard before exporting." : "Save Parameters and complete generation before viewing Results."}</p>
+  </CardContent></Card>;
   const columns = data?.columns ?? [];
   const records = data?.records ?? [];
   const recordCount = data?.recordCount ?? records.length;

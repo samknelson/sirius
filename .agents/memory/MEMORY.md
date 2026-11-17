@@ -193,6 +193,6 @@
 - [Quicksearch role-as-access](quicksearch-role-as-access.md) — role lists are the access decision; framework-gated sensitive clauses, pure clause planners, and cmdk `shouldFilter={false}`.
 - [Postgres verification targets](postgres-verification-target.md) — connectionString overrides a separate database option; assert current_database before disposable fixture writes.
 - [Scheduled sync failures](scheduled-sync-failure-policy.md) — continue daily loaders but retain FAIL; never interpret continuation as permission to relax reject rules.
-- [Carrier termination authority](carrier-termination-authority.md) — opt-in ended-person inclusion, not active-member filtering; date examples never establish status codes.
+- [Carrier termination authority](carrier-termination-authority.md) — new wizard defaults differ from legacy omission; ended-person inclusion never filters active members or authorizes status codes.
 - [Shared email footer activation](shared-email-footer-boundary.md) — confirm Fund link destinations before activation; software verification uses fictional content and does not authorize live defaults.
 - [Fund authoring boundary](fund-authoring-boundary.md) — Fund presets are authoring conveniences, not exclusive colors, bulk document restyling, or seeded Benefit Color options.

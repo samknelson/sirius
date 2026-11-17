@@ -32,6 +32,8 @@ export interface TrustProviderEdiContext {
   sftpClientId: string | null;
   /** Wizard parameter-step input (validated against `inputSchema`). */
   input: Record<string, unknown>;
+  /** Resolved once from saved run choices (or an old run's config snapshot). */
+  terminationPolicy?: ReturnType<typeof import("./termination-policy").readTerminationPolicy>;
   storage: typeof storageType;
 }
 

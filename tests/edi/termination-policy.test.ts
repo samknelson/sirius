@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  monthEnd, monthIndex, readTerminationPolicy, terminationWindow,
+  monthEnd, monthIndex, readTerminationPolicy, terminationWindow, effectiveRunTerminationPolicy,
 } from "../../server/plugins/trust/provider-edi/termination-policy";
 import {
   confirmedTerminationIds, selectTerminationCandidates,
@@ -27,6 +27,13 @@ function select(events = [event("parent"), event("child")], rows = [
 }
 
 describe("calendar policy and omission compatibility", () => {
+  it("uses run-owned false values ahead of legacy true flags", () => {
+    expect(effectiveRunTerminationPolicy({
+      terminationPolicy: { explicitSubscriberTerminations: false, explicitDependentTerminations: true, terminationLookbackMonths: 2 },
+      config: { data: { explicitSubscriberTerminations: true, explicitDependentTerminations: false, terminationLookbackMonths: 8 } },
+    })).toEqual({ subscribers: false, dependents: true, months: 2 });
+    expect(effectiveRunTerminationPolicy({})).toEqual({ subscribers: false, dependents: false, months: 1 });
+  });
   it("preserves absent settings", () => {
     expect(readTerminationPolicy()).toEqual({ subscribers: false, dependents: false, months: 1 });
   });

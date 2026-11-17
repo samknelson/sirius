@@ -4,7 +4,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 export const MAX_TERMINATION_LOOKBACK_MONTHS = 12;
 export const terminationProperties: Record<string, JsonSchema> = {
   explicitSubscriberTerminations: {
-    type: "boolean", title: "Explicit subscriber terminations", default: false,
+    type: "boolean", title: "Explicit subscriber terminations", default: true,
     description: "Include evidenced ended subscribers. Does not remove active members. Off means termination by omission.",
   },
   explicitDependentTerminations: {
@@ -17,6 +17,33 @@ export const terminationProperties: Record<string, JsonSchema> = {
     description: "Completed calendar months before the reporting month (1–12). November with 1 includes October coverage ends; with 2 includes September and October.",
   },
 };
+
+/** Written at creation only. Never use these defaults when reading old runs. */
+export const newRunTerminationPolicy = {
+  explicitSubscriberTerminations: true,
+  explicitDependentTerminations: false,
+  terminationLookbackMonths: 1,
+};
+
+export function terminationPolicyFields(policy: ReturnType<typeof readTerminationPolicy>) {
+  return {
+    explicitSubscriberTerminations: policy.subscribers,
+    explicitDependentTerminations: policy.dependents,
+    terminationLookbackMonths: policy.months,
+  };
+}
+
+/** Only the saved run or its historical snapshot is authoritative, never live config. */
+export function effectiveRunTerminationPolicy(data: Record<string, any>) {
+  return readTerminationPolicy(data.terminationPolicy ?? data.config?.data ?? {});
+}
+
+export function assertTerminationContract(pluginId: string, policy: ReturnType<typeof readTerminationPolicy>) {
+  const blocker = terminationContractBlocker(pluginId);
+  if ((policy.subscribers || policy.dependents) && blocker) {
+    throw new Error(`Explicit termination generation blocked: ${blocker} Turn both settings off in Parameters and Save to retain omission mode.`);
+  }
+}
 
 export function readTerminationPolicy(data: Record<string, unknown> = {}) {
   for (const name of ["explicitSubscriberTerminations", "explicitDependentTerminations"]) {
