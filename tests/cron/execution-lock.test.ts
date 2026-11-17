@@ -78,3 +78,16 @@ it("reports a probe timeout as lost ownership", async () => {
   await loss;
   expect(c.release).toHaveBeenCalledOnce();
 });
+
+it("never runs recovery after closing and rejects a session lost during recovery", async () => {
+  const { c, connect } = setup();
+  const lock = (await CronExecutionLock.acquire("job", connect))!;
+  const work = vi.fn(async (owner) => {
+    expect(owner).toBe(c);
+    c.emit("end");
+  });
+  await expect(lock.whileOwned(work)).rejects.toThrow("lock lost");
+  const laterWork = vi.fn();
+  await expect(lock.whileOwned(laterWork)).rejects.toThrow("lock lost");
+  expect(laterWork).not.toHaveBeenCalled();
+});

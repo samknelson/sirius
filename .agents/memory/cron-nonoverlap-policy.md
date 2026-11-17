@@ -8,3 +8,9 @@ All cron jobs must have non-overlap locking, not an opt-in per-plugin capability
 **Why:** The user explicitly stated there is no situation where two processes should both run the same cron job, rejecting the proposed optional-locking approach.
 
 **How to apply:** Preserve job-specific fencing alongside generic execution locks. Periodic connection checks must not turn into heartbeat-expiry lock stealing: a stalled heartbeat does not prove the old executor stopped. Distinguish coordinated starts from guaranteed exclusion of side effects after connection loss.
+
+Abandoned-history recovery requires running-history admission to share the execution lock, not just the plugin invocation.
+
+**Why:** A contender can wait before lock acquisition and execute later. If it already has a running row, another owner cannot distinguish that contender from an abandoned executor. Clock ordering does not fix this.
+
+**How to apply:** Keep running admissions and recovery on the owning session; contenders that lose never publish running history. Recovery reports uncertain partial work, never proves JavaScript stopped or replays it.

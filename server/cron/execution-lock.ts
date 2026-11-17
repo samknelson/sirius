@@ -75,6 +75,17 @@ export class CronExecutionLock {
     if (this.closed) throw new CronExecutionLost();
   }
 
+  /** Recovery must write on the owning session, never an unrelated checkout. */
+  async whileOwned<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    this.assertOwned();
+    const result = await Promise.race([
+      deadline(work(this.client), EXECUTION_QUERY_TIMEOUT_MS),
+      this.lost,
+    ]);
+    this.assertOwned();
+    return result;
+  }
+
   private lose(): void {
     if (this.closed) return;
     this.failure = new CronExecutionLost();

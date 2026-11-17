@@ -59,3 +59,23 @@ describe("cron history timestamp boundary", () => {
     expect(row?.completedAt).toBeNull();
   });
 });
+
+it("recovers only other running executions of the same cron plugin on its owning session", async () => {
+  const ownerQuery = vi.fn(async () => ({ rows: [["abandoned"]] }));
+  const count = await storage.interruptAbandonedCronRuns("plugin", "current", { query: ownerQuery } as any);
+  expect(count).toBe(1);
+  expect(f.query).not.toHaveBeenCalled(); // never uses the ambient checkout
+  const [query, values] = ownerQuery.mock.calls[0] as unknown as [{ text: string }, unknown[]];
+  expect(query.text).toContain('update "job_runs" set');
+  expect(query.text).toContain('"job_runs"."plugin_kind" =');
+  expect(query.text).toContain('"job_runs"."plugin_id" =');
+  expect(query.text).toContain('"job_runs"."operation" =');
+  expect(query.text).toContain('"job_runs"."status" =');
+  expect(query.text).toContain('"job_runs"."id" <>');
+  expect(query.text).not.toContain("heartbeat_at");
+  expect(query.text).not.toContain("started_at");
+  expect(values).toEqual([
+    "interrupted", expect.stringContaining("nothing was automatically replayed"), expect.any(String),
+    "cron", "plugin", "execute", "running", "current",
+  ]);
+});

@@ -2,14 +2,14 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  connect: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(),
+  connect: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), recover: vi.fn(),
   execute: vi.fn(), tasks: [] as { callback: () => Promise<void>; start: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[],
   maintenance: false,
 }));
 vi.mock("../../server/storage", () => ({
   storage: {
     pluginConfigs: { search: mocks.search, getWithSubsidiary: mocks.get },
-    jobRuns: { create: mocks.create, update: mocks.update },
+    jobRuns: { create: mocks.create, update: mocks.update, interruptAbandonedCronRuns: mocks.recover },
   },
 }));
 vi.mock("../../server/storage/db", () => ({ pool: { connect: mocks.connect } }));
@@ -57,6 +57,7 @@ beforeEach(() => {
   mocks.get.mockResolvedValue(envelope);
   mocks.create.mockResolvedValue({ id: "run" });
   mocks.update.mockResolvedValue({});
+  mocks.recover.mockResolvedValue(0);
   mocks.execute.mockResolvedValue({});
 });
 afterEach(async () => {
@@ -87,7 +88,7 @@ describe("automatic cron execution authority", () => {
     expect(mocks.execute).toHaveBeenCalledOnce();
     expect(keys).toHaveLength(2);
     expect(keys[0]).toEqual(keys[1]);
-    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "skipped" }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ status: "skipped" }));
     finish({});
     await first;
   });
@@ -97,9 +98,60 @@ describe("automatic cron execution authority", () => {
     client.query.mockResolvedValue({ rows: [{ acquired: false }] });
     await scheduler.manualRun("config", "user", "test");
     expect(mocks.execute).not.toHaveBeenCalled();
-    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
       status: "skipped", output: JSON.stringify({ message: "Skipped: job already running." }),
     }));
+    expect(mocks.recover).not.toHaveBeenCalled();
+  });
+
+  it("recovers older history on the lock-owning session before invoking the plugin", async () => {
+    const { scheduler, client } = setup();
+    mocks.recover.mockImplementation(async (pluginId, currentId, owner) => {
+      expect(pluginId).toBe("job");
+      expect(currentId).toBe("run");
+      expect(owner).toBe(client);
+      expect(client.release).not.toHaveBeenCalled();
+      expect(mocks.execute).not.toHaveBeenCalled();
+      return 2;
+    });
+    await scheduler.manualRun("config", "user", "test");
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ status: "running" }), client);
+    expect(mocks.recover).toHaveBeenCalledOnce();
+    expect(mocks.execute).toHaveBeenCalledOnce(); // recovery never replays
+    expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it("never publishes running history while a contender is waiting to acquire", async () => {
+    const { scheduler, client } = setup();
+    let checkout!: (value: typeof client) => void;
+    mocks.connect.mockImplementationOnce(() => new Promise(resolve => { checkout = resolve; }));
+    const delayed = scheduler.manualRun("config");
+    await settle();
+    expect(mocks.create).not.toHaveBeenCalled();
+    // A later caller can execute first; the earlier contender has no history
+    // to be mistaken for an abandoned run during that caller's recovery.
+    await scheduler.manualRun("config");
+    expect(mocks.create).toHaveBeenCalledOnce();
+    checkout(client);
+    await delayed;
+    expect(mocks.execute).toHaveBeenCalledTimes(2);
+    expect(mocks.recover).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not execute when recovery fails or loses the execution session", async () => {
+    const { scheduler, client } = setup();
+    mocks.recover.mockImplementation(async () => { client.emit("end"); });
+    await expect(scheduler.manualRun("config")).rejects.toThrow("lock lost");
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "interrupted" }));
+  });
+
+  it("keeps a failed recovery from starting work and releases the lock", async () => {
+    const { scheduler, client } = setup();
+    mocks.recover.mockRejectedValue(new Error("recovery failed"));
+    await expect(scheduler.manualRun("config")).rejects.toThrow("recovery failed");
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
   });
 
   it("marks lock loss interrupted even when the plugin has not returned", async () => {
@@ -196,7 +248,7 @@ describe("automatic cron execution authority", () => {
     await settle();
     expect(mocks.tasks).toHaveLength(1);
     await mocks.tasks[0].callback();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }), expect.anything());
   });
 
   it("can regain ownership while an old configuration read is still stalled", async () => {
@@ -218,7 +270,7 @@ describe("automatic cron execution authority", () => {
     await settle();
     expect(mocks.tasks).toHaveLength(1);
     await mocks.tasks[0].callback();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }), expect.anything());
   });
 
   it("reads current configuration at takeover and never revives the former owner's callbacks", async () => {
@@ -233,7 +285,7 @@ describe("automatic cron execution authority", () => {
     await vi.advanceTimersByTimeAsync(CRON_RETRY_MAX_MS);
     expect(mocks.search).toHaveBeenCalledOnce();
     await mocks.tasks[0].callback();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "new" }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "new" }), expect.anything());
   });
 
   it("invalidates replaced timers on reload and suppresses automatic starts during maintenance", async () => {
@@ -256,6 +308,11 @@ describe("automatic cron execution authority", () => {
     const { scheduler, client } = setup();
     await scheduler.start();
     await settle();
+    // Election and execution use distinct sessions in production.
+    mocks.connect.mockResolvedValue(Object.assign(new EventEmitter(), {
+      query: vi.fn(async () => ({ rows: [{ acquired: true }] })),
+      release: vi.fn(),
+    }));
     mocks.create.mockImplementationOnce(async () => {
       client.emit("end");
       return { id: "run" };

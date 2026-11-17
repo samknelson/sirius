@@ -2,6 +2,8 @@ import { createNoopValidator } from "../utils/validation";
 import { getClient } from "../transaction-context";
 import { jobRuns, users, type JobRun, type InsertJobRun } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { PoolClient } from "pg";
 
 export const validate = createNoopValidator<InsertJobRun, JobRun>();
 
@@ -17,8 +19,9 @@ export interface JobRunStorage {
   getLatestByConfigurationId(configurationId: string): Promise<JobRunWithUser | undefined>;
   getLatestByPlugin(pluginKind: string, pluginId: string): Promise<JobRunWithUser | undefined>;
   getLastSuccessfulLiveRun(configurationId: string): Promise<JobRun | undefined>;
-  create(run: InsertJobRun): Promise<JobRun>;
+  create(run: InsertJobRun, owner?: PoolClient): Promise<JobRun>;
   update(id: string, updates: Partial<InsertJobRun>): Promise<JobRun | undefined>;
+  interruptAbandonedCronRuns(pluginId: string, currentRunId: string, owner: PoolClient): Promise<number>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -144,9 +147,11 @@ export function createJobRunStorage(): JobRunStorage {
       return run;
     },
 
-    async create(insertRun): Promise<JobRun> {
+    async create(insertRun, owner): Promise<JobRun> {
       validate.validateOrThrow(insertRun);
-      const [run] = await getClient().insert(jobRuns).values(insertRun).returning();
+      // Cron admissions share the lock session too: a checkout delayed past
+      // ownership loss must not publish running history behind recovery.
+      const [run] = await (owner ? drizzle(owner) : getClient()).insert(jobRuns).values(insertRun).returning();
       return run;
     },
 
@@ -157,6 +162,27 @@ export function createJobRunStorage(): JobRunStorage {
         .where(eq(jobRuns.id, id))
         .returning();
       return run;
+    },
+
+    // Caller holds the plugin execution lock on owner. Running history is
+    // created only AFTER acquiring that lock, so every other running execute
+    // row is from an older ownership, regardless of clocks/configuration/mode.
+    // Do not use heartbeat age: a delayed executor can still own its lock.
+    // Use the same session so losing ownership cannot leave a recovery write
+    // queued on a different connection. T631's separate run kind is untouched.
+    async interruptAbandonedCronRuns(pluginId, currentRunId, owner): Promise<number> {
+      const rows = await drizzle(owner).update(jobRuns).set({
+        status: "interrupted",
+        completedAt: new Date(),
+        error: "Previous cron execution lost ownership without a recorded result. Partial work may still be finishing; nothing was automatically replayed.",
+      }).where(and(
+        eq(jobRuns.pluginKind, "cron"),
+        eq(jobRuns.pluginId, pluginId),
+        eq(jobRuns.operation, "execute"),
+        eq(jobRuns.status, "running"),
+        sql`${jobRuns.id} <> ${currentRunId}`,
+      )).returning({ id: jobRuns.id });
+      return rows.length;
     },
 
     async delete(id): Promise<boolean> {

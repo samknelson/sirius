@@ -216,34 +216,44 @@ export class CronScheduler {
 
   async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live", authorized: () => boolean = () => true): Promise<string> {
     const startedAt = new Date();
-
-    // Create run record - id and startedAt are auto-generated
-    const run = await storage.jobRuns.create({
+    const runDetails = {
       configurationId: job.configurationId,
-      pluginKind: "cron",
+      pluginKind: "cron" as const,
       pluginId: job.name,
       operation: "execute",
-      status: 'running',
       mode,
       triggeredBy: triggeredBy || null,
-    });
-
-    const runId = run.id;
-
-    logger.info(`Starting job execution: ${job.name}`, {
-      service: 'cron-scheduler',
-      jobName: job.name,
-      runId,
-      isManual,
-      triggeredBy,
-      mode,
-    });
+    };
 
     let executionLock: CronExecutionLock | null = null;
+    let runId: string | undefined;
     try {
+      // No contender may publish running history before owning the lock:
+      // otherwise recovery could interrupt a delayed contender which then
+      // acquires the lock and executes that very same run.
+      executionLock = await CronExecutionLock.acquire(job.name, () => pool.connect());
+      const run = executionLock
+        ? await executionLock.whileOwned(async owner => {
+          const admitted = await storage.jobRuns.create({ ...runDetails, status: "running" }, owner);
+          runId = admitted.id;
+          return admitted;
+        })
+        : await storage.jobRuns.create({
+          ...runDetails, status: "skipped", completedAt: new Date(),
+          output: JSON.stringify({ message: "Skipped: job already running." }),
+        });
+      runId = run.id;
+      if (!executionLock) {
+        logger.info(`Job skipped: ${job.name} already running`, { service: "cron-scheduler", jobName: job.name, runId });
+        return runId;
+      }
+      logger.info(`Starting job execution: ${job.name}`, {
+        service: "cron-scheduler", jobName: job.name, runId, isManual, triggeredBy, mode,
+      });
+
       const skipLostOwnership = async () => {
         if (isManual || authorized()) return false;
-        await storage.jobRuns.update(runId, {
+        await storage.jobRuns.update(run.id, {
           status: "skipped", completedAt: new Date(),
           output: JSON.stringify({ message: "Skipped: automatic scheduling authority changed before execution." }),
         });
@@ -283,15 +293,6 @@ export class CronScheduler {
       const defaultSettings = plugin?.getDefaultSettings?.() ?? {};
       const mergedSettings = { ...defaultSettings, ...job.settings };
 
-      executionLock = await CronExecutionLock.acquire(job.name, () => pool.connect());
-      if (!executionLock) {
-        await storage.jobRuns.update(runId, {
-          status: "skipped", completedAt: new Date(),
-          output: JSON.stringify({ message: "Skipped: job already running." }),
-        });
-        logger.info(`Job skipped: ${job.name} already running`, { service: "cron-scheduler", jobName: job.name, runId });
-        return runId;
-      }
       if (isMaintenanceActive()) throw new Error("Cron execution refused: maintenance mode is active.");
       executionLock.assertOwned();
       // Execute the plugin
@@ -300,6 +301,12 @@ export class CronScheduler {
         return runId;
       }
       const lock = executionLock;
+      await lock.whileOwned(owner => storage.jobRuns.interruptAbandonedCronRuns(job.name, run.id, owner));
+      lock.assertOwned();
+      if (!isManual && !authorized()) {
+        await skipLostOwnership();
+        return runId;
+      }
       const summary = await Promise.race([executeCronPlugin(job.name, {
         configurationId: job.configurationId,
         jobId: job.name,
@@ -341,12 +348,17 @@ export class CronScheduler {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Update run as failed
-      await storage.jobRuns.update(runId, {
+      const failure = {
         status: error instanceof CronExecutionLost ? "interrupted" : 'error',
         completedAt: new Date(),
         error: errorMessage,
-      });
+      };
+      if (runId) await storage.jobRuns.update(runId, failure);
+      else {
+        // Lock acquisition can fail before history exists.
+        const run = await storage.jobRuns.create({ ...runDetails, ...failure });
+        runId = run.id;
+      }
 
       logger.error(`Job failed: ${job.name}`, {
         service: 'cron-scheduler',
