@@ -1,119 +1,90 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import { getBootIdentity } from "../services/boot-identity";
+import { semaphoreStorage, SemaphoreLost, SEMAPHORE_LEASE_MS, type SemaphoreIdentity } from "../storage/system/semaphores";
 
+export { SemaphoreLost as CronExecutionLost };
 export const EXECUTION_PROBE_MS = 5_000;
-export const EXECUTION_QUERY_TIMEOUT_MS = 5_000;
-const CHECKOUT_TIMEOUT_MS = 15_000;
-// Two-int advisory keys are separate from the scheduler's single-bigint key.
-const NAMESPACE = 0x43524a42; // CRJB
-export const cronExecutionKey = (pluginId: string): [number, number] =>
-  [NAMESPACE, createHash("sha256").update(pluginId).digest().readInt32BE(0)];
+export const cronExecutionKey = (pluginId: string) => `cron:execution:${pluginId}`;
+export type SemaphoreStore = typeof semaphoreStorage;
 
-export class CronExecutionLost extends Error {
-  constructor() {
-    super("Cron execution lock lost. Work may still be finishing; results are uncertain. Nothing was automatically retried.");
-  }
-}
-
-async function deadline<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([work, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Cron execution lock database operation timed out")), ms);
-      timer.unref();
-    })]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-/** A single execution owns a session; no retries, lease expiry, or reacquisition. */
+/** A token owns a lease, never a connection. An execution never reacquires. */
 export class CronExecutionLock {
   private closed = false;
-  private failure?: CronExecutionLost;
   private timer?: ReturnType<typeof setTimeout>;
+  private validUntil: number;
   private rejectLoss!: (error: Error) => void;
   readonly lost = new Promise<never>((_, reject) => { this.rejectLoss = reject; });
 
-  private constructor(private readonly client: PoolClient) {
-    // Loss may occur before the caller attaches its race.
+  private constructor(
+    private readonly identity: SemaphoreIdentity,
+    private readonly store: SemaphoreStore,
+    requestStarted: number,
+  ) {
+    this.validUntil = requestStarted + SEMAPHORE_LEASE_MS;
     void this.lost.catch(() => {});
-    client.on("error", () => this.lose());
-    client.on("end", () => this.lose());
+    this.schedule();
   }
 
-  static async acquire(pluginId: string, connect: () => Promise<PoolClient>): Promise<CronExecutionLock | null> {
-    let abandoned = false;
-    const checkout = connect().then(client => {
-      if (abandoned) client.release(true);
-      return client;
-    });
-    let client: PoolClient;
-    try { client = await deadline(checkout, CHECKOUT_TIMEOUT_MS); }
-    catch (error) { abandoned = true; throw error; }
-    const lock = new CronExecutionLock(client);
+  static async acquire(pluginId: string, store = semaphoreStorage): Promise<CronExecutionLock | null> {
+    return this.acquireKey(cronExecutionKey(pluginId), store);
+  }
+  static async acquireKey(key: string, store = semaphoreStorage): Promise<CronExecutionLock | null> {
+    const identity = { key, owner: getBootIdentity().bootId, token: randomUUID() };
+    const started = performance.now();
+    if (!await store.claim(identity)) return null;
+    const lock = new CronExecutionLock(identity, store, started);
+    lock.assertOwned();
+    return lock;
+  }
+  assertOwned(): void {
+    if (this.closed || performance.now() >= this.validUntil) {
+      this.lose();
+      throw new SemaphoreLost();
+    }
+  }
+  async whileOwned<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    this.assertOwned();
     try {
-      const result = await deadline(
-        client.query("SELECT pg_try_advisory_lock($1::integer, $2::integer) AS acquired", cronExecutionKey(pluginId)),
-        EXECUTION_QUERY_TIMEOUT_MS,
-      );
-      lock.assertOwned();
-      if (!result.rows[0]?.acquired) {
-        lock.close();
-        return null;
-      }
-      lock.scheduleProbe();
-      return lock;
+      const result = await this.store.guarded(this.identity, async client => {
+        this.assertOwned();
+        return work(client);
+      });
+      this.assertOwned();
+      return result;
     } catch (error) {
-      lock.close();
+      this.lose();
       throw error;
     }
   }
-
-  assertOwned(): void {
-    if (this.failure) throw this.failure;
-    if (this.closed) throw new CronExecutionLost();
-  }
-
-  /** Recovery must write on the owning session, never an unrelated checkout. */
-  async whileOwned<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-    this.assertOwned();
-    const result = await Promise.race([
-      deadline(work(this.client), EXECUTION_QUERY_TIMEOUT_MS),
-      this.lost,
-    ]);
-    this.assertOwned();
-    return result;
-  }
-
   private lose(): void {
-    if (this.closed) return;
-    this.failure = new CronExecutionLost();
-    this.rejectLoss(this.failure);
-    this.close();
-  }
-
-  private scheduleProbe(): void {
-    if (this.closed) return;
-    this.timer = setTimeout(() => { void this.probe(); }, EXECUTION_PROBE_MS);
-    this.timer.unref();
-  }
-
-  private async probe(): Promise<void> {
-    try {
-      await deadline(this.client.query("SELECT 1"), EXECUTION_QUERY_TIMEOUT_MS);
-    } catch {
-      this.lose();
-    } finally {
-      this.scheduleProbe();
-    }
-  }
-
-  close(): void {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
-    // Destroy rather than pool a session with a potentially retained lock.
-    this.client.release(true);
+    this.rejectLoss(new SemaphoreLost());
+    // Do not release uncertain live work early. Let its lease expire.
+  }
+  private schedule(): void {
+    this.timer = setTimeout(() => { void this.renew(); }, EXECUTION_PROBE_MS);
+    this.timer.unref();
+  }
+  private async renew(): Promise<void> {
+    try {
+      this.assertOwned();
+      const started = performance.now();
+      const previousDeadline = this.validUntil;
+      const renewed = await this.store.renew(this.identity);
+      if (this.closed) return;
+      if (!renewed || performance.now() >= previousDeadline) throw new SemaphoreLost();
+      this.validUntil = started + SEMAPHORE_LEASE_MS;
+      this.assertOwned();
+      this.schedule();
+    } catch { this.lose(); }
+  }
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.timer) clearTimeout(this.timer);
+    await this.store.release(this.identity).catch(() => {});
   }
 }

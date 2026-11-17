@@ -20,7 +20,8 @@ export interface JobRunStorage {
   getLatestByPlugin(pluginKind: string, pluginId: string): Promise<JobRunWithUser | undefined>;
   getLastSuccessfulLiveRun(configurationId: string): Promise<JobRun | undefined>;
   create(run: InsertJobRun, owner?: PoolClient): Promise<JobRun>;
-  update(id: string, updates: Partial<InsertJobRun>): Promise<JobRun | undefined>;
+  update(id: string, updates: Partial<InsertJobRun>, owner?: PoolClient): Promise<JobRun | undefined>;
+  interruptIfRunning(id: string, error: string): Promise<void>;
   interruptAbandonedCronRuns(pluginId: string, currentRunId: string, owner: PoolClient): Promise<number>;
   delete(id: string): Promise<boolean>;
 }
@@ -149,27 +150,36 @@ export function createJobRunStorage(): JobRunStorage {
 
     async create(insertRun, owner): Promise<JobRun> {
       validate.validateOrThrow(insertRun);
-      // Cron admissions share the lock session too: a checkout delayed past
-      // ownership loss must not publish running history behind recovery.
+      // Cron admissions use the short semaphore-guarded transaction:
+      // a delayed contender must not publish history behind recovery.
       const [run] = await (owner ? drizzle(owner) : getClient()).insert(jobRuns).values(insertRun).returning();
       return run;
     },
 
-    async update(id, updates): Promise<JobRun | undefined> {
-      const [run] = await getClient()
+    async update(id, updates, owner): Promise<JobRun | undefined> {
+      const [run] = await (owner ? drizzle(owner) : getClient())
         .update(jobRuns)
         .set(updates)
-        .where(eq(jobRuns.id, id))
+        .where(owner ? and(eq(jobRuns.id, id), eq(jobRuns.status, "running")) : eq(jobRuns.id, id))
         .returning();
       return run;
     },
 
-    // Caller holds the plugin execution lock on owner. Running history is
+    async interruptIfRunning(id, error) {
+      // Independent, bounded coordination write, never overwrite recovery/success.
+      const { semaphoreHistoryTransaction } = await import("./semaphores");
+      await semaphoreHistoryTransaction(async client => {
+        await drizzle(client).update(jobRuns).set({
+          status: "interrupted", completedAt: new Date(), error,
+        }).where(and(eq(jobRuns.id, id), eq(jobRuns.pluginKind, "cron"), eq(jobRuns.status, "running")));
+      });
+    },
+
+    // Caller has validated and row-locked the semaphore in this transaction. History is
     // created only AFTER acquiring that lock, so every other running execute
     // row is from an older ownership, regardless of clocks/configuration/mode.
-    // Do not use heartbeat age: a delayed executor can still own its lock.
-    // Use the same session so losing ownership cannot leave a recovery write
-    // queued on a different connection. T631's separate run kind is untouched.
+    // The lease guard checks database expiry again before commit. T631's
+    // separate run kind is untouched; partial old work may still be finishing.
     async interruptAbandonedCronRuns(pluginId, currentRunId, owner): Promise<number> {
       const rows = await drizzle(owner).update(jobRuns).set({
         status: "interrupted",

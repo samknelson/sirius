@@ -2,7 +2,8 @@ import type { Server } from "http";
 
 /**
  * Preserve normal signal exit semantics, but first revoke cron callbacks and
- * close its lock session. Does not attempt to drain/cancel running jobs.
+ * release its scheduler semaphore. Does not drain/cancel running jobs;
+ * their execution leases expire after exit rather than permitting early takeover.
  */
 export function installCronShutdownHooks(server: Server, stop: () => Promise<void>): void {
   const onTerm = () => shutdown("SIGTERM");

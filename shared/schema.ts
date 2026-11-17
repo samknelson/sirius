@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { isValidYmd, type Ymd } from "./utils/date";
 export { processes, type ProcessRecord } from "./schema/system/processes-schema";
+export { semaphores } from "./schema/system/semaphores-schema";
 
 export {
   optionsDispatchJobType,

@@ -56,7 +56,7 @@ export async function executeCronPlugin(
   try {
     assertExecutionOwned();
     const result = await plugin.execute(context);
-    // A plugin finishing after its lock connection died must not emit success.
+    // A plugin finishing after local lease authority expired must not emit success.
     assertExecutionOwned();
     logger.info(`${modePrefix}${result.message}`, {
       service: serviceName,

@@ -9,6 +9,8 @@
  * to that one transaction; the connection returns to read-only afterwards.
  *
  * Sanctioned call sites (keep this list current):
+ *   - semaphore coordination and guarded cron run-history only
+ *     (system/semaphores.ts uses a bounded raw transaction, never job work).
  *   - process registration/heartbeat/end only (system/processes.ts).
  *     Retention deletes deliberately do not use the exception.
  *   - session persistence writes (server/storage/system/sessions.ts):

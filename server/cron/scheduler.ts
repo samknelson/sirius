@@ -8,7 +8,6 @@ import {
 } from "../plugins/system/cron";
 import { getEnabledComponentIds } from "../modules/components";
 import { readConfigurationSnapshot } from "../storage/configuration-revisions";
-import { pool } from "../storage/db";
 import { isMaintenanceActive } from "../services/maintenance-flag";
 import { CronOwnership } from "./ownership";
 import { CronExecutionLock, CronExecutionLost } from "./execution-lock";
@@ -40,7 +39,6 @@ export class CronScheduler {
   private reloadFlight?: { token: number; promise: Promise<void> };
   private scheduleWarnings: string[] = [];
   private readonly ownership = new CronOwnership({
-    connect: () => pool.connect(),
     acquired: async token => {
       if (this.ownership.owns(token)) await this.loadAndScheduleJobs(token);
     },
@@ -90,7 +88,7 @@ export class CronScheduler {
 
   async stop(): Promise<void> {
     this.isRunning = false;
-    this.ownership.stop();
+    await this.ownership.stop();
   }
 
   private clearSchedules(): void {
@@ -231,7 +229,7 @@ export class CronScheduler {
       // No contender may publish running history before owning the lock:
       // otherwise recovery could interrupt a delayed contender which then
       // acquires the lock and executes that very same run.
-      executionLock = await CronExecutionLock.acquire(job.name, () => pool.connect());
+      executionLock = await CronExecutionLock.acquire(job.name);
       const run = executionLock
         ? await executionLock.whileOwned(async owner => {
           const admitted = await storage.jobRuns.create({ ...runDetails, status: "running" }, owner);
@@ -253,10 +251,10 @@ export class CronScheduler {
 
       const skipLostOwnership = async () => {
         if (isManual || authorized()) return false;
-        await storage.jobRuns.update(run.id, {
+        await executionLock!.whileOwned(owner => storage.jobRuns.update(run.id, {
           status: "skipped", completedAt: new Date(),
           output: JSON.stringify({ message: "Skipped: automatic scheduling authority changed before execution." }),
-        });
+        }, owner));
         return true;
       };
       if (!isManual && !authorized()) {
@@ -280,11 +278,11 @@ export class CronScheduler {
           });
 
           // Update run as skipped
-          await storage.jobRuns.update(runId, {
+          await executionLock.whileOwned(owner => storage.jobRuns.update(run.id, {
             status: 'skipped',
             completedAt: new Date(),
             output: JSON.stringify({ message: skipMessage, requiredComponent }),
-          });
+          }, owner));
 
           return runId;
         }
@@ -329,11 +327,11 @@ export class CronScheduler {
       };
 
       // Update run as successful
-      await storage.jobRuns.update(runId, {
+      await lock.whileOwned(owner => storage.jobRuns.update(run.id, {
         status: 'success',
         completedAt: new Date(),
         output: JSON.stringify(outputData),
-      });
+      }, owner));
       lock.assertOwned();
 
       logger.info(`Job completed successfully: ${job.name}`, {
@@ -353,7 +351,16 @@ export class CronScheduler {
         completedAt: new Date(),
         error: errorMessage,
       };
-      if (runId) await storage.jobRuns.update(runId, failure);
+      let interrupted = error instanceof CronExecutionLost;
+      if (runId) {
+        const id = runId;
+        if (!interrupted && executionLock) {
+          try {
+            await executionLock.whileOwned(owner => storage.jobRuns.update(id, failure, owner));
+          } catch { interrupted = true; }
+        }
+        if (interrupted) await storage.jobRuns.interruptIfRunning(id, new CronExecutionLost().message);
+      }
       else {
         // Lock acquisition can fail before history exists.
         const run = await storage.jobRuns.create({ ...runDetails, ...failure });
@@ -368,9 +375,10 @@ export class CronScheduler {
         duration: Date.now() - startedAt.getTime(),
       });
 
+      if (isManual && interrupted) return runId;
       throw error;
     } finally {
-      executionLock?.close();
+      await executionLock?.close();
     }
   }
 

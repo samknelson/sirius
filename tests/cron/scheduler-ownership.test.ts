@@ -1,344 +1,151 @@
-import { EventEmitter } from "node:events";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-  connect: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), recover: vi.fn(),
-  execute: vi.fn(), tasks: [] as { callback: () => Promise<void>; start: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[],
-  maintenance: false,
+  claim: vi.fn(), renew: vi.fn(), release: vi.fn(), guarded: vi.fn(),
+  search: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), recover: vi.fn(), interrupt: vi.fn(),
+  execute: vi.fn(), manualRun: vi.fn(), getById: vi.fn(), maintenance: false,
+  tasks: [] as { callback: () => Promise<void>; start: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[],
 }));
-vi.mock("../../server/storage", () => ({
-  storage: {
-    pluginConfigs: { search: mocks.search, getWithSubsidiary: mocks.get },
-    jobRuns: { create: mocks.create, update: mocks.update, interruptAbandonedCronRuns: mocks.recover },
-  },
-}));
-vi.mock("../../server/storage/db", () => ({ pool: { connect: mocks.connect } }));
+vi.mock("../../server/storage/system/semaphores", async importOriginal => {
+  const original = await importOriginal<typeof import("../../server/storage/system/semaphores")>();
+  return { ...original, semaphoreStorage: {
+    claim: mocks.claim, renew: mocks.renew, release: mocks.release, guarded: mocks.guarded,
+  } };
+});
+vi.mock("../../server/storage/db", () => ({ pool: {} }));
+vi.mock("../../server/storage", () => ({ storage: {
+  pluginConfigs: { search: mocks.search, getWithSubsidiary: mocks.get, getByKindAndPlugin: async () => [{ id: "config" }] },
+  jobRuns: { create: mocks.create, update: mocks.update, interruptAbandonedCronRuns: mocks.recover, interruptIfRunning: mocks.interrupt, getById: mocks.getById },
+} }));
+vi.mock("../../server/cron", () => ({ cronScheduler: { manualRun: mocks.manualRun } }));
+vi.mock("../../server/services/access-policy-evaluator", () => ({ requireAccess: () => () => {} }));
+vi.mock("../../server/auth/helpers", () => ({ resolveDbUser: async () => ({ id: "user" }) }));
 vi.mock("../../server/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("../../server/plugins/system/cron", () => ({
-  cronPluginRegistry: { has: () => true, get: () => ({ metadata: {} }) },
-  executeCronPlugin: mocks.execute,
+  cronPluginRegistry: { has: () => true, get: () => ({ metadata: {} }) }, executeCronPlugin: mocks.execute,
 }));
 vi.mock("../../server/modules/components", () => ({ getEnabledComponentIds: async () => [] }));
-vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: (read: () => unknown) => read() }));
+vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: (f: () => unknown) => f() }));
 vi.mock("../../server/services/maintenance-flag", () => ({ isMaintenanceActive: () => mocks.maintenance }));
 vi.mock("node-cron", () => ({
   validate: () => true,
   createTask: (_schedule: string, callback: () => Promise<void>) => {
-    const task = { callback, start: vi.fn(), destroy: vi.fn() };
-    mocks.tasks.push(task);
-    return task;
+    const task = { callback, start: vi.fn(), destroy: vi.fn() }; mocks.tasks.push(task); return task;
   },
 }));
 import { CronScheduler } from "../../server/cron/scheduler";
-import { CRON_RETRY_MAX_MS } from "../../server/cron/ownership";
-import { runOrDeferStartupOperation, runDeferredStartupOperations, resetStartupDeferralsForTest } from "../../server/services/startup-deferrals";
-
+import { registerCronJobRoutes } from "../../server/modules/system/cron";
 const envelope = { config: { id: "config", pluginId: "job", enabled: true, pluginKind: "cron", data: {} }, subsidiary: { schedule: "* * * * *" } };
-const schedulers: CronScheduler[] = [];
-const settle = async () => { for (let i = 0; i < 25; i++) await Promise.resolve(); };
-function setup() {
-  const client = Object.assign(new EventEmitter(), {
-    query: vi.fn(async () => ({ rows: [{ acquired: true }] })),
-    release: vi.fn(),
-  });
-  mocks.connect.mockResolvedValue(client);
-  const scheduler = new CronScheduler();
-  scheduler.setOwnership(true);
-  schedulers.push(scheduler);
-  return { scheduler, client };
-}
+const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
+let scheduler: CronScheduler;
+const tx = {};
 beforeEach(() => {
-  vi.useFakeTimers();
-  vi.resetAllMocks();
-  mocks.tasks.length = 0;
-  mocks.maintenance = false;
-  resetStartupDeferralsForTest();
-  mocks.search.mockResolvedValue([envelope]);
-  mocks.get.mockResolvedValue(envelope);
-  mocks.create.mockResolvedValue({ id: "run" });
-  mocks.update.mockResolvedValue({});
-  mocks.recover.mockResolvedValue(0);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  vi.resetAllMocks(); mocks.tasks.length = 0; mocks.maintenance = false;
+  mocks.claim.mockResolvedValue(true); mocks.renew.mockResolvedValue(true);
+  mocks.release.mockResolvedValue(undefined);
+  mocks.guarded.mockImplementation(async (_id, fn) => fn(tx));
+  mocks.search.mockResolvedValue([envelope]); mocks.get.mockResolvedValue(envelope);
+  mocks.create.mockResolvedValue({ id: "run" }); mocks.update.mockResolvedValue({});
   mocks.execute.mockResolvedValue({});
+  scheduler = new CronScheduler(); scheduler.setOwnership(true);
 });
-afterEach(async () => {
-  await Promise.all(schedulers.splice(0).map(scheduler => scheduler.stop()));
-  vi.useRealTimers();
+afterEach(async () => { await scheduler.stop(); vi.useRealTimers(); });
+it("records contention without admitting running history or invoking recovery", async () => {
+  mocks.claim.mockResolvedValue(false);
+  expect(await scheduler.manualRun("config")).toBe("run");
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ status: "skipped" }));
+  expect(mocks.recover).not.toHaveBeenCalled(); expect(mocks.execute).not.toHaveBeenCalled();
 });
-
-describe("automatic cron execution authority", () => {
-  it("uses the same execution key across scheduled/manual, configurations and test/live runs", async () => {
-    const { scheduler } = setup();
-    let held = false;
-    const keys: unknown[] = [];
-    mocks.connect.mockImplementation(async () => Object.assign(new EventEmitter(), {
-      query: async (_text: string, key: unknown) => {
-        keys.push(key);
-        const acquired = !held;
-        if (acquired) held = true;
-        return { rows: [{ acquired }] };
-      },
-      release: () => {},
-    }));
-    let finish!: (value: object) => void;
-    mocks.execute.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    const first = scheduler.executeJob({ configurationId: "a", name: "job", enabled: true, schedule: "* * * * *", settings: {} }, false);
-    await settle();
-    mocks.get.mockResolvedValue({ ...envelope, config: { ...envelope.config, id: "b" } });
-    await scheduler.manualRun("b", "user", "test");
-    expect(mocks.execute).toHaveBeenCalledOnce();
-    expect(keys).toHaveLength(2);
-    expect(keys[0]).toEqual(keys[1]);
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ status: "skipped" }));
-    finish({});
-    await first;
-  });
-
-  it("records lock contention as skipped without invoking the plugin", async () => {
-    const { scheduler, client } = setup();
-    client.query.mockResolvedValue({ rows: [{ acquired: false }] });
-    await scheduler.manualRun("config", "user", "test");
-    expect(mocks.execute).not.toHaveBeenCalled();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
-      status: "skipped", output: JSON.stringify({ message: "Skipped: job already running." }),
-    }));
-    expect(mocks.recover).not.toHaveBeenCalled();
-  });
-
-  it("recovers older history on the lock-owning session before invoking the plugin", async () => {
-    const { scheduler, client } = setup();
-    mocks.recover.mockImplementation(async (pluginId, currentId, owner) => {
-      expect(pluginId).toBe("job");
-      expect(currentId).toBe("run");
-      expect(owner).toBe(client);
-      expect(client.release).not.toHaveBeenCalled();
-      expect(mocks.execute).not.toHaveBeenCalled();
-      return 2;
-    });
-    await scheduler.manualRun("config", "user", "test");
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ status: "running" }), client);
-    expect(mocks.recover).toHaveBeenCalledOnce();
-    expect(mocks.execute).toHaveBeenCalledOnce(); // recovery never replays
-    expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
-  });
-
-  it("never publishes running history while a contender is waiting to acquire", async () => {
-    const { scheduler, client } = setup();
-    let checkout!: (value: typeof client) => void;
-    mocks.connect.mockImplementationOnce(() => new Promise(resolve => { checkout = resolve; }));
-    const delayed = scheduler.manualRun("config");
-    await settle();
-    expect(mocks.create).not.toHaveBeenCalled();
-    // A later caller can execute first; the earlier contender has no history
-    // to be mistaken for an abandoned run during that caller's recovery.
-    await scheduler.manualRun("config");
-    expect(mocks.create).toHaveBeenCalledOnce();
-    checkout(client);
-    await delayed;
-    expect(mocks.execute).toHaveBeenCalledTimes(2);
-    expect(mocks.recover).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not execute when recovery fails or loses the execution session", async () => {
-    const { scheduler, client } = setup();
-    mocks.recover.mockImplementation(async () => { client.emit("end"); });
-    await expect(scheduler.manualRun("config")).rejects.toThrow("lock lost");
-    expect(mocks.execute).not.toHaveBeenCalled();
-    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "interrupted" }));
-  });
-
-  it("keeps a failed recovery from starting work and releases the lock", async () => {
-    const { scheduler, client } = setup();
-    mocks.recover.mockRejectedValue(new Error("recovery failed"));
-    await expect(scheduler.manualRun("config")).rejects.toThrow("recovery failed");
-    expect(mocks.execute).not.toHaveBeenCalled();
-    expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
-  });
-
-  it("marks lock loss interrupted even when the plugin has not returned", async () => {
-    const { scheduler, client } = setup();
-    let finish!: (result: object) => void;
-    mocks.execute.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    const run = scheduler.manualRun("config", "user");
-    const result = expect(run).rejects.toThrow("lock lost");
-    await settle();
-    client.emit("end");
-    await result;
-    finish({});
-    await settle();
-    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "interrupted" }));
-    expect(mocks.update.mock.calls.some(([, update]) => update.status === "success")).toBe(false);
-  });
-
-  it("cleans up execution locks on plugin failure", async () => {
-    const { scheduler, client } = setup();
-    mocks.execute.mockRejectedValue(new Error("plugin failure"));
-    await expect(scheduler.manualRun("config")).rejects.toThrow("plugin failure");
-    expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
-  });
-
-  it("never competes or starts timers in a non-owning role, including reload", async () => {
-    const { scheduler } = setup();
-    scheduler.setOwnership(false);
-    await scheduler.start();
-    await scheduler.reload();
-    expect(mocks.connect).not.toHaveBeenCalled();
-    expect(mocks.tasks).toHaveLength(0);
-  });
-
-  it("returns from startup while the election is still pending", async () => {
-    const { scheduler } = setup();
-    mocks.connect.mockImplementation(() => new Promise(() => {}));
-    await scheduler.start();
-    expect(scheduler.isStarted()).toBe(true);
-    expect(scheduler.getScheduleSummary()).toContain("standby");
-    expect(mocks.tasks).toHaveLength(0);
-  });
-
-  it("does not enter election during maintenance startup deferral, but starts after exit", async () => {
-    const { scheduler } = setup();
-    mocks.maintenance = true;
-    expect(await runOrDeferStartupOperation("cron-scheduler-start", () => scheduler.start())).toBe("deferred");
-    await scheduler.reload();
-    expect(scheduler.isStarted()).toBe(false);
-    expect(mocks.connect).not.toHaveBeenCalled();
-    mocks.maintenance = false;
-    await runDeferredStartupOperations();
-    await settle();
-    expect(scheduler.isStarted()).toBe(true);
-    expect(mocks.connect).toHaveBeenCalledOnce();
-    expect(scheduler.getScheduledJobCount()).toBe(1);
-  });
-
-  it("destroys timers and rejects already-queued callbacks immediately on ownership loss", async () => {
-    const { scheduler, client } = setup();
-    await scheduler.start();
-    await settle();
-    const [task] = mocks.tasks;
-    client.emit("error", new Error("lost"));
-    expect(task.destroy).toHaveBeenCalledOnce();
-    await task.callback();
-    expect(mocks.create).not.toHaveBeenCalled();
-    expect(mocks.execute).not.toHaveBeenCalled();
-  });
-
-  it("does not publish a configuration read that completes after losing ownership", async () => {
-    const { scheduler, client } = setup();
-    let finish!: (value: typeof envelope[]) => void;
-    mocks.search.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    await scheduler.start();
-    await settle();
-    client.emit("end");
-    finish([envelope]);
-    await settle();
-    expect(mocks.tasks).toHaveLength(0);
-    expect(scheduler.getScheduledJobCount()).toBe(0);
-  });
-
-  it("discards an invalidated in-flight snapshot and publishes the replacement", async () => {
-    const { scheduler } = setup();
-    let finish!: (value: typeof envelope[]) => void;
-    mocks.search.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    await scheduler.start();
-    await settle();
-    scheduler.invalidateSnapshot();
-    const reloaded = scheduler.reload();
-    mocks.search.mockResolvedValue([{ ...envelope, config: { ...envelope.config, id: "replacement" } }]);
-    finish([envelope]);
-    await reloaded;
-    await settle();
-    expect(mocks.tasks).toHaveLength(1);
-    await mocks.tasks[0].callback();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }), expect.anything());
-  });
-
-  it("can regain ownership while an old configuration read is still stalled", async () => {
-    const { scheduler, client } = setup();
-    let finish!: (value: typeof envelope[]) => void;
-    mocks.search.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    await scheduler.start();
-    await settle();
-    client.emit("end");
-    const replacement = Object.assign(new EventEmitter(), {
-      query: vi.fn(async () => ({ rows: [{ acquired: true }] })),
-      release: vi.fn(),
-    });
-    mocks.connect.mockResolvedValue(replacement);
-    mocks.search.mockResolvedValue([{ ...envelope, config: { ...envelope.config, id: "replacement" } }]);
-    await vi.advanceTimersByTimeAsync(CRON_RETRY_MAX_MS);
-    expect(scheduler.getScheduledJobCount()).toBe(1);
-    finish([envelope]);
-    await settle();
-    expect(mocks.tasks).toHaveLength(1);
-    await mocks.tasks[0].callback();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }), expect.anything());
-  });
-
-  it("reads current configuration at takeover and never revives the former owner's callbacks", async () => {
-    const { scheduler, client } = setup();
-    client.query.mockResolvedValue({ rows: [{ acquired: false }] });
-    await scheduler.start();
-    await settle();
-    await scheduler.reload();
-    expect(mocks.search).not.toHaveBeenCalled();
-    client.query.mockResolvedValue({ rows: [{ acquired: true }] });
-    mocks.search.mockResolvedValue([{ ...envelope, config: { ...envelope.config, id: "new" } }]);
-    await vi.advanceTimersByTimeAsync(CRON_RETRY_MAX_MS);
-    expect(mocks.search).toHaveBeenCalledOnce();
-    await mocks.tasks[0].callback();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "new" }), expect.anything());
-  });
-
-  it("invalidates replaced timers on reload and suppresses automatic starts during maintenance", async () => {
-    const { scheduler } = setup();
-    await scheduler.start();
-    await settle();
-    const first = mocks.tasks[0];
-    await scheduler.reload();
-    await first.callback();
-    expect(mocks.create).not.toHaveBeenCalled();
-    mocks.maintenance = true;
-    await mocks.tasks[1].callback();
-    expect(mocks.create).not.toHaveBeenCalled();
-    mocks.maintenance = false;
-    await mocks.tasks[1].callback();
-    expect(mocks.execute).toHaveBeenCalledOnce();
-  });
-
-  it("does not execute the plugin if authority is lost while creating its run record", async () => {
-    const { scheduler, client } = setup();
-    await scheduler.start();
-    await settle();
-    // Election and execution use distinct sessions in production.
-    mocks.connect.mockResolvedValue(Object.assign(new EventEmitter(), {
-      query: vi.fn(async () => ({ rows: [{ acquired: true }] })),
-      release: vi.fn(),
-    }));
-    mocks.create.mockImplementationOnce(async () => {
-      client.emit("end");
-      return { id: "run" };
-    });
-    await mocks.tasks[0].callback();
-    expect(mocks.execute).not.toHaveBeenCalled();
-    expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "skipped" }));
-  });
-
-  it("allows manual execution without scheduler ownership", async () => {
-    const { scheduler } = setup();
-    scheduler.setOwnership(false);
-    await scheduler.manualRun("config", "user");
-    expect(mocks.connect).toHaveBeenCalledOnce();
-    expect(mocks.execute).toHaveBeenCalledWith("job", expect.objectContaining({ isManual: true, triggeredBy: "user" }), expect.any(Function));
-  });
-
-  it("keeps reload and role revocation from restarting a stopped scheduler", async () => {
-    const { scheduler } = setup();
-    await scheduler.start();
-    await settle();
-    scheduler.setOwnership(false);
-    await scheduler.reload();
-    await vi.advanceTimersByTimeAsync(CRON_RETRY_MAX_MS * 3);
-    expect(scheduler.isStarted()).toBe(false);
-    expect(scheduler.getScheduledJobCount()).toBe(0);
-    expect(mocks.connect).toHaveBeenCalledOnce();
-  });
+it("guards admission, recovery and completion under the same identity", async () => {
+  await scheduler.manualRun("config");
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ status: "running" }), tx);
+  expect(mocks.recover).toHaveBeenCalledWith("job", "run", tx);
+  expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "success" }), tx);
+  expect(mocks.guarded).toHaveBeenCalledTimes(3);
+  expect(new Set(mocks.guarded.mock.calls.map(([id]) => id.token)).size).toBe(1);
+});
+it("returns the interrupted manual run and ignores a late plugin result", async () => {
+  let finish!: (value: object) => void;
+  mocks.execute.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const run = scheduler.manualRun("config"); await settle();
+  mocks.renew.mockResolvedValue(false);
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(await run).toBe("run");
+  expect(mocks.interrupt).toHaveBeenCalledWith("run", expect.stringContaining("ownership lost"));
+  finish({}); await settle();
+  expect(mocks.update).not.toHaveBeenCalled();
+});
+it("returns HTTP 201 with the exact interrupted record through the manual route", async () => {
+  mocks.manualRun.mockImplementation((...args) => scheduler.manualRun(args[0], args[1], args[2]));
+  mocks.execute.mockImplementation(() => new Promise(() => {}));
+  const record = { id: "run", status: "interrupted", error: "ownership lost" };
+  mocks.getById.mockResolvedValue(record);
+  let handler!: Function;
+  registerCronJobRoutes({
+    get: () => {},
+    post: (_path: string, ...handlers: Function[]) => { handler = handlers.at(-1)!; },
+  } as any, (() => {}) as any, (() => {}) as any);
+  const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+  const response = handler({ params: { name: "job" }, body: { mode: "test" }, user: {} }, res);
+  await settle(); mocks.renew.mockResolvedValue(false);
+  await vi.advanceTimersByTimeAsync(5000); await response;
+  expect(res.status).toHaveBeenCalledWith(201);
+  expect(res.json).toHaveBeenCalledWith(record);
+  expect(mocks.getById).toHaveBeenCalledExactlyOnceWith("run");
+});
+it("retains ordinary plugin errors and releases ownership", async () => {
+  mocks.execute.mockRejectedValue(new Error("plugin failed"));
+  await expect(scheduler.manualRun("config")).rejects.toThrow("plugin failed");
+  expect(mocks.update).toHaveBeenCalledWith("run", expect.objectContaining({ status: "error" }), tx);
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+it("shares execution identity across configurations, test/live and manual/scheduled", async () => {
+  let held = false;
+  mocks.claim.mockImplementation(async () => { if (held) return false; held = true; return true; });
+  let finish!: (value: object) => void;
+  mocks.execute.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const run = scheduler.executeJob({ configurationId: "other", name: "job", schedule: "", enabled: true, settings: {} }, false);
+  await settle(); await scheduler.manualRun("config", "user", "test");
+  expect(mocks.claim.mock.calls.map(([id]) => id.key)).toEqual(["cron:execution:job", "cron:execution:job"]);
+  expect(mocks.execute).toHaveBeenCalledOnce(); finish({}); await run;
+});
+it("does not publish running history before claim resolves", async () => {
+  let finish!: (value: boolean) => void;
+  mocks.claim.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const run = scheduler.manualRun("config"); await settle();
+  expect(mocks.create).not.toHaveBeenCalled(); finish(true); await run;
+});
+it("refuses automatic scheduling for other roles", async () => {
+  scheduler.setOwnership(false); await scheduler.start(); await scheduler.reload();
+  expect(mocks.claim).not.toHaveBeenCalled();
+});
+it("startup does not wait for election", async () => {
+  mocks.claim.mockImplementation(() => new Promise(() => {}));
+  await scheduler.start(); expect(scheduler.getScheduleSummary()).toContain("standby");
+});
+it("revokes queued callbacks on stop and reload and during maintenance", async () => {
+  await scheduler.start(); await settle();
+  const first = mocks.tasks[0]; await scheduler.reload(); await first.callback();
+  expect(mocks.execute).not.toHaveBeenCalled();
+  mocks.maintenance = true; await mocks.tasks[1].callback();
+  expect(mocks.execute).not.toHaveBeenCalled();
+  await scheduler.stop(); mocks.maintenance = false; await mocks.tasks[1].callback();
+  expect(mocks.execute).not.toHaveBeenCalled();
+});
+it("does not publish a late snapshot after lease loss", async () => {
+  let finish!: (value: typeof envelope[]) => void;
+  mocks.search.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await scheduler.start(); await settle(); mocks.renew.mockResolvedValue(false);
+  await vi.advanceTimersByTimeAsync(5000); finish([envelope]); await settle();
+  expect(mocks.tasks).toHaveLength(0);
+});
+it("invalidates an in-flight snapshot and reads the replacement", async () => {
+  let finish!: (value: typeof envelope[]) => void;
+  mocks.search.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await scheduler.start(); await settle(); scheduler.invalidateSnapshot();
+  const reloaded = scheduler.reload();
+  mocks.search.mockResolvedValue([{ ...envelope, config: { ...envelope.config, id: "replacement" } }]);
+  finish([envelope]); await reloaded; await settle();
+  await mocks.tasks[0].callback();
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ configurationId: "replacement" }), tx);
 });

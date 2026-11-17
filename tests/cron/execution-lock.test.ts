@@ -1,93 +1,65 @@
-import { EventEmitter } from "node:events";
-import type { PoolClient } from "pg";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { CronExecutionLock, cronExecutionKey } from "../../server/cron/execution-lock";
-
-const clients: Array<ReturnType<typeof client>> = [];
-function client() {
-  return Object.assign(new EventEmitter(), {
-    query: vi.fn(async () => ({ rows: [{ acquired: true }] })),
-    release: vi.fn(),
-  });
+import type { PoolClient } from "pg";
+vi.mock("../../server/storage/db", () => ({ pool: {} }));
+import { CronExecutionLock, type SemaphoreStore } from "../../server/cron/execution-lock";
+const locks: CronExecutionLock[] = [];
+function store() {
+  return {
+    claim: vi.fn(async () => true), renew: vi.fn(async () => true),
+    release: vi.fn(async () => {}),
+    guarded: async <T>(_id: unknown, work: (client: PoolClient) => Promise<T>) => work({} as PoolClient),
+  } satisfies SemaphoreStore;
 }
-function setup() {
-  const c = client(); clients.push(c);
-  return { c, connect: vi.fn(async () => c as unknown as PoolClient) };
+beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] }));
+afterEach(async () => { await Promise.all(locks.splice(0).map(l => l.close())); vi.useRealTimers(); });
+async function acquire(s = store()) {
+  const lock = (await CronExecutionLock.acquire("test", s))!;
+  locks.push(lock);
+  return lock;
 }
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => { clients.splice(0).forEach(c => c.emit("end")); vi.useRealTimers(); });
-
-it("keys only by plugin identity, not configuration, mode or process", () => {
-  expect(cronExecutionKey("one")).toEqual(cronExecutionKey("one"));
-  expect(cronExecutionKey("one")).not.toEqual(cronExecutionKey("two"));
+it("uses full resource names, boot ownership and new tokens for each acquisition", async () => {
+  const s = store();
+  await acquire(s); await acquire(s);
+  const calls = s.claim.mock.calls as unknown as [{ key: string; owner: string; token: string }][];
+  expect(calls[0][0].key).toBe("cron:execution:test");
+  expect(calls[0][0].owner).toBe(calls[1][0].owner);
+  expect(calls[0][0].token).not.toBe(calls[1][0].token);
 });
-it("returns contention without a retry and closes the connection", async () => {
-  const { c, connect } = setup();
-  c.query.mockResolvedValue({ rows: [{ acquired: false }] });
-  expect(await CronExecutionLock.acquire("job", connect)).toBeNull();
-  await vi.advanceTimersByTimeAsync(60_000);
-  expect(connect).toHaveBeenCalledOnce();
-  expect(c.release).toHaveBeenCalledExactlyOnceWith(true);
+it("does not retry a contested execution", async () => {
+  const s = store(); s.claim.mockResolvedValue(false);
+  expect(await CronExecutionLock.acquire("test", s)).toBeNull();
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(s.claim).toHaveBeenCalledOnce();
 });
-it("probes and closes exactly once on success", async () => {
-  const { c, connect } = setup();
-  const lock = (await CronExecutionLock.acquire("job", connect))!;
-  await vi.advanceTimersByTimeAsync(5_000);
-  expect(c.query).toHaveBeenLastCalledWith("SELECT 1");
-  lock.close(); lock.close();
-  await vi.advanceTimersByTimeAsync(20_000);
-  expect(c.query).toHaveBeenCalledTimes(2);
-  expect(c.release).toHaveBeenCalledExactlyOnceWith(true);
+it("renews and releases with the same identity", async () => {
+  const s = store(); const lock = await acquire(s);
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(s.renew).toHaveBeenCalledTimes(2);
+  await lock.close();
+  expect(s.release.mock.calls[0]).toEqual(s.claim.mock.calls[0]);
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(s.renew).toHaveBeenCalledTimes(2);
 });
-it("withdraws ownership immediately without reacquiring on connection error", async () => {
-  const { c, connect } = setup();
-  const lock = (await CronExecutionLock.acquire("job", connect))!;
-  const loss = expect(lock.lost).rejects.toThrow("results are uncertain");
-  c.emit("error", new Error("disconnected"));
-  await loss;
-  expect(() => lock.assertOwned()).toThrow("lock lost");
-  await vi.advanceTimersByTimeAsync(60_000);
-  expect(connect).toHaveBeenCalledOnce();
-  expect(c.release).toHaveBeenCalledOnce();
+it("loses authority on renewal rejection without reacquiring or releasing early", async () => {
+  const s = store(); const lock = await acquire(s);
+  s.renew.mockRejectedValue(new Error("network"));
+  const lost = expect(lock.lost).rejects.toThrow("ownership lost");
+  await vi.advanceTimersByTimeAsync(5000); await lost;
+  expect(() => lock.assertOwned()).toThrow();
+  expect(s.claim).toHaveBeenCalledOnce(); expect(s.release).not.toHaveBeenCalled();
 });
-it("fails closed when acquisition times out", async () => {
-  const { c, connect } = setup();
-  c.query.mockImplementation(() => new Promise(() => {}));
-  const attempt = expect(CronExecutionLock.acquire("job", connect)).rejects.toThrow("timed out");
-  await vi.advanceTimersByTimeAsync(5_000);
-  await attempt;
-  expect(c.release).toHaveBeenCalledExactlyOnceWith(true);
+it("cannot revive local ownership after the previous deadline passes", async () => {
+  const s = store(); const lock = await acquire(s);
+  let finish!: (value: boolean) => void;
+  s.renew.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  await vi.advanceTimersByTimeAsync(30001);
+  finish(true);
+  await Promise.resolve(); await Promise.resolve();
+  expect(() => lock.assertOwned()).toThrow();
 });
-it("destroys a late checkout after its deadline", async () => {
-  const { c } = setup();
-  let finish!: (c: PoolClient) => void;
-  const attempt = expect(CronExecutionLock.acquire("job", () => new Promise(resolve => { finish = resolve; }))).rejects.toThrow("timed out");
-  await vi.advanceTimersByTimeAsync(15_000);
-  await attempt;
-  finish(c as unknown as PoolClient);
-  await Promise.resolve();
-  expect(c.release).toHaveBeenCalledExactlyOnceWith(true);
-  expect(c.query).not.toHaveBeenCalled();
-});
-it("reports a probe timeout as lost ownership", async () => {
-  const { c, connect } = setup();
-  const lock = (await CronExecutionLock.acquire("job", connect))!;
-  c.query.mockImplementation(() => new Promise(() => {}));
-  const loss = expect(lock.lost).rejects.toThrow("lock lost");
-  await vi.advanceTimersByTimeAsync(10_000);
-  await loss;
-  expect(c.release).toHaveBeenCalledOnce();
-});
-
-it("never runs recovery after closing and rejects a session lost during recovery", async () => {
-  const { c, connect } = setup();
-  const lock = (await CronExecutionLock.acquire("job", connect))!;
-  const work = vi.fn(async (owner) => {
-    expect(owner).toBe(c);
-    c.emit("end");
-  });
-  await expect(lock.whileOwned(work)).rejects.toThrow("lock lost");
-  const laterWork = vi.fn();
-  await expect(lock.whileOwned(laterWork)).rejects.toThrow("lock lost");
-  expect(laterWork).not.toHaveBeenCalled();
+it("checks the local deadline even before the event-loop heartbeat executes", async () => {
+  const s = store(); const lock = await acquire(s);
+  vi.spyOn(performance, "now").mockReturnValue(31000);
+  expect(() => lock.assertOwned()).toThrow();
+  vi.restoreAllMocks();
 });
