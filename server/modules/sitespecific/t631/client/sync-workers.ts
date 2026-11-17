@@ -2,6 +2,7 @@ import { storage, createCommSmsOptinStorage } from "../../../../storage";
 import { schedulePhoneRevalidation } from "../../../../services/comm/validators/phone";
 import { logger, storageLogger } from "../../../../logger";
 import { getOptionsType } from "../../../options-registry";
+import { runInTransaction } from "../../../../storage/transaction-context";
 
 interface T631WorkerRow {
   worker_id?: unknown;
@@ -56,6 +57,7 @@ interface T631WorkerListResponse {
 export interface WorkerEinSyncResult {
   created: number;
   updated: number;
+  deleted: number;
   unchanged: number;
   skipped: number;
   errors: number;
@@ -375,7 +377,7 @@ export async function syncWorkerEins(
   dryRun: boolean,
 ): Promise<WorkerEinSyncResult> {
   const result: WorkerEinSyncResult = {
-    created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0,
+    created: 0, updated: 0, deleted: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0,
     phonesCreated: 0, phonesDeleted: 0, phonesUnchanged: 0, optins: 0,
     statusesSet: 0, edlsActivated: 0, edlsDeactivated: 0, details: [],
   };
@@ -425,6 +427,21 @@ export async function syncWorkerEins(
 
   const msCtx = await buildMemberStatusSyncContext();
 
+  // Validate the whole source before any writes; never let arrival order decide identity.
+  const sourceEins = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") {
+      result.errors++;
+      result.details.push({ remoteWorkerId: "(payload)", action: "error", error: "Invalid worker row; sync refused" });
+      return result;
+    }
+    const id = String(row.worker_id ?? "").trim();
+    if (!id) continue;
+    const values = sourceEins.get(id) ?? new Set<string>();
+    values.add(String(row.worker_ein ?? "").trim());
+    sourceEins.set(id, values);
+  }
+
   for (const row of rows) {
     const remoteWorkerId = row.worker_id !== undefined && row.worker_id !== null ? String(row.worker_id).trim() : "";
     const rawEin = row.worker_ein !== undefined && row.worker_ein !== null ? String(row.worker_ein).trim() : "";
@@ -448,6 +465,16 @@ export async function syncWorkerEins(
       // when the row is skipped below (duplicate EIN, conflicts, etc.).
       if (t631Row) {
         msCtx.seenWorkerIds.add(t631Row.workerId);
+      }
+      if (sourceEins.get(remoteWorkerId)!.size > 1) {
+        result.skipped++;
+        result.details.push({ remoteWorkerId, action: "skipped", error: "conflicting_source_eins: repeated worker_id has different EINs" });
+        continue;
+      }
+      if (t631Row && !rawEin) {
+        result.skipped++;
+        result.details.push({ workerId: t631Row.workerId, remoteWorkerId, action: "skipped", error: "blank_ein: existing worker IDs left untouched" });
+        continue;
       }
 
       const firstClaimant = seenEins.get(ein);
@@ -511,9 +538,12 @@ export async function syncWorkerEins(
           continue;
         }
 
-        const newWorker = await storage.workers.createWorkerWithNameParts(nameParts);
-        await storage.workerIds.createWorkerId({ workerId: newWorker.id, typeId: t631TypeId, value: remoteWorkerId });
-        await storage.workerIds.createWorkerId({ workerId: newWorker.id, typeId: einTypeId, value: ein });
+        const newWorker = await runInTransaction(async () => {
+          const worker = await storage.workers.createWorkerWithNameParts(nameParts);
+          await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: t631TypeId, value: remoteWorkerId });
+          await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: einTypeId, value: ein });
+          return worker;
+        });
         result.workersCreated++;
         result.created++;
         result.details.push({ workerId: newWorker.id, remoteWorkerId, action: "created_worker" });
@@ -546,41 +576,15 @@ export async function syncWorkerEins(
 
       seenEins.set(ein, remoteWorkerId);
 
-      // Does this worker already have a freeman_ein row?
-      const allIds = await storage.workerIds.getWorkerIdsByWorkerId(localWorkerId);
-      const einRows = allIds.filter((w) => w.typeId === einTypeId);
-
-      if (einRows.length > 1) {
-        result.skipped++;
-        result.details.push(wd("skipped", `multiple_ein_rows: worker has ${einRows.length} freeman_ein rows; resolve manually`));
-        continue;
-      }
-
-      const existing = einRows[0];
-      if (existing) {
-        if (existing.value === ein) {
-          result.unchanged++;
-          result.details.push(wd(dryRun ? "would_be_unchanged" : "unchanged"));
-        } else if (dryRun) {
-          result.updated++;
-          result.details.push(wd("would_update", `value ${existing.value} -> ${ein}`));
-        } else {
-          await storage.workerIds.updateWorkerId(existing.id, { value: ein });
-          result.updated++;
-          result.details.push(wd("updated", `value ${existing.value} -> ${ein}`));
-        }
-      } else if (dryRun) {
-        result.created++;
-        result.details.push(wd("would_create"));
-      } else {
-        await storage.workerIds.createWorkerId({
-          workerId: localWorkerId,
-          typeId: einTypeId,
-          value: ein,
-        });
-        result.created++;
-        result.details.push(wd("created"));
-      }
+      const repaired = await storage.workerIds.reconcileWorkerId(
+        localWorkerId, einTypeId, ein, dryRun, { typeId: t631TypeId, value: remoteWorkerId },
+      );
+      result.deleted += repaired.deleted;
+      result.created += repaired.created;
+      if (repaired.deleted) result.updated++;
+      if (!repaired.deleted && !repaired.created) result.unchanged++;
+      result.details.push(wd(dryRun ? "would_reconcile_ein" : "reconciled_ein",
+        `${repaired.deleted} deleted, ${repaired.created} created; exactly one matching EIN retained`));
 
       // Mirror the remote phone onto the (existing) worker's contact.
       const localWorker = await storage.workers.getWorker(localWorkerId);

@@ -47,13 +47,14 @@ registerCronPlugin({
     const prefix = isDryRun ? "[TEST] " : "";
     const message =
       `${prefix}Synced T631 worker EINs: ${syncResult.created} created, ${syncResult.updated} updated, ` +
-      `${syncResult.unchanged} unchanged, ${syncResult.skipped} skipped, ${syncResult.errors} errors`;
+      `${syncResult.deleted} deleted, ${syncResult.unchanged} unchanged, ${syncResult.skipped} skipped, ${syncResult.errors} errors`;
 
     return {
       message,
       metadata: {
         created: syncResult.created,
         updated: syncResult.updated,
+        deleted: syncResult.deleted,
         unchanged: syncResult.unchanged,
         skipped: syncResult.skipped,
         errors: syncResult.errors,
