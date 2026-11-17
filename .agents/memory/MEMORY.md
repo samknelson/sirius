@@ -152,3 +152,5 @@
 - [Vendor destination policy](webclient-destination-policy-direction.md) — manifest defaults and deployment overrides; enforce within existing webclient, not a parallel framework.
 - [Shared Vite upgrade ownership](vite-shared-upgrade-ownership.md) — ws path filtering rejects other listeners' sockets; verify HMR through the proxy, not a localhost screenshot.
 - [Native ESM vendor verification](native-esm-vendor-verification.md) — development/test interop can hide CommonJS export shapes; verify production-format adapters with fake HTTP and the installed SDK.
+- [Background sync fencing](background-sync-fencing.md) — session ownership alone cannot stop writes on other connections; fence mutation units, recovery, and terminal writes.
+- [Database test isolation](database-test-isolation.md) — scratch tables belong in dedicated schemas; abandoned public fixtures block the startup drift gate.

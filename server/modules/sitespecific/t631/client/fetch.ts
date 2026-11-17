@@ -76,6 +76,27 @@ export function registerT631ClientFetchRoutes(
 ) {
   const edlsComponent = requireComponent("edls");
   const t631Component = requireComponent("sitespecific.t631.client");
+  const noStore: AuthMiddleware = (_req, res, next) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    next();
+  };
+  for (const path of [
+    "/api/sitespecific/t631/client/sync-workers/runs",
+    "/api/sitespecific/t631/client/sync-workers/runs/:runId",
+  ]) {
+    app.get(path, noStore, requireAuth, requirePermission("admin"), edlsComponent, t631Component,
+      async (req, res) => {
+        try {
+          const { readT631Run, publicT631Run } = await import("../../../../services/t631-sync-runs");
+          const run = await readT631Run(req.params.runId);
+          if (req.params.runId && !run) return res.status(404).json({ message: "T631 run not found" });
+          res.json(run ? publicT631Run(run) : null);
+        } catch {
+          res.status(503).json({ message: "Sync status is temporarily unavailable. This does not mean the sync failed." });
+        }
+      });
+  }
 
   app.post(
     "/api/sitespecific/t631/client/fetch",
@@ -112,6 +133,7 @@ export function registerT631ClientFetchRoutes(
 
   app.post(
     "/api/sitespecific/t631/client/sync-workers",
+    noStore,
     requireAuth,
     requirePermission("admin"),
     edlsComponent,
@@ -126,38 +148,20 @@ export function registerT631ClientFetchRoutes(
         }
         const { dryRun } = parsed.data;
 
-        const fetchResult = await t631Fetch("sitespecific.t631.worker.list");
-        if (!fetchResult.success) {
-          return res.status(502).json({
-            message: `T631 fetch failed: ${fetchResult.error || "Unknown error"}`,
-          });
-        }
-        const responseBody = fetchResult.data;
-        if (!responseBody || typeof responseBody !== "object") {
-          return res.status(502).json({ message: "T631 fetch returned empty or non-object response body" });
-        }
-        const typed = responseBody as { success?: boolean; data?: unknown };
-        if (typed.success !== true) {
-          return res.status(502).json({ message: "T631 response indicates failure (success !== true)" });
-        }
-        if (!typed.data || typeof typed.data !== "object") {
-          return res.status(502).json({ message: "T631 response missing 'data' field or data is not an object" });
-        }
-
-        const { syncWorkerEins } = await import("./sync-workers");
-        const syncResult = await syncWorkerEins(
-          responseBody as Parameters<typeof syncWorkerEins>[0],
-          dryRun,
-        );
-
-        res.json({ dryRun, ...syncResult });
+        const { getEffectiveUser } = await import("../../../masquerade");
+        const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
+        if (!dbUser) return res.status(401).json({ message: "User not found" });
+        const { startT631Run } = await import("../../../../services/t631-sync-runs");
+        const { run, duplicate } = await startT631Run(dryRun, dbUser.id);
+        res.status(duplicate ? 409 : 202).json({ runId: run.id, duplicate });
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         if (isT631ConfigurationError(error)) {
           return res.status(error.status).json({ message: error.message });
         }
-        const message = error instanceof Error ? error.message : "Failed to sync T631 worker EINs";
-        res.status(500).json({ message });
+        const { T631RunRefusal } = await import("../../../../services/t631-sync-runs");
+        if (error instanceof T631RunRefusal) return res.status(error.status).json({ message: error.message });
+        res.status(500).json({ message: "Could not confirm the sync start. Check status before trying again." });
       }
     }
   );

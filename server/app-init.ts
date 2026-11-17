@@ -143,7 +143,8 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
           /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
         // Oneoff preflight responses carry a single-use confirmation credential.
         // Neither that credential nor plugin-produced run data belongs in logs.
-        if (capturedJsonResponse && !isWcManualRun && !path.startsWith("/api/oneoff/")) {
+        if (capturedJsonResponse && !isWcManualRun && !path.startsWith("/api/oneoff/") &&
+            !path.startsWith("/api/sitespecific/t631/client/sync-workers")) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {

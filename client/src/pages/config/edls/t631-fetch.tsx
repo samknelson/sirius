@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { getApiErrorMessage } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Loader2, RefreshCw, Eye, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,9 +33,38 @@ interface WorkerEinSyncResult {
 export default function T631FetchPage() {
   usePageTitle("Teamsters 631 Sync");
   const { toast } = useToast();
-  const [syncResult, setSyncResult] = useState<WorkerEinSyncResult | null>(null);
+  const { user } = useAuth();
+  const [runId, setRunId] = useState<string | null>(null);
+  type Run = { id: string; status: string; dryRun: boolean; error: string | null; result: WorkerEinSyncResult | null };
+  const readRun = async (id?: string): Promise<Run | null> => {
+    const res = await fetch(`/api/sitespecific/t631/client/sync-workers/runs${id ? `/${encodeURIComponent(id)}` : ""}`, {
+      credentials: "include", cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Could not read sync status");
+    return res.json();
+  };
+  const discovery = useQuery({
+    queryKey: ["t631-sync-discovery", user?.id],
+    queryFn: () => readRun(),
+    refetchInterval: 2000,
+    staleTime: 0,
+  });
+  useEffect(() => {
+    if (discovery.data && (!runId || discovery.data.status === "running")) setRunId(discovery.data.id);
+  }, [discovery.data, runId]);
+  const status = useQuery({
+    queryKey: ["t631-sync-run", user?.id, runId],
+    queryFn: () => readRun(runId!),
+    enabled: !!runId,
+    refetchInterval: query => !query.state.data || query.state.data.status === "running" ? 2000 : false,
+  });
+  const run = status.data;
+  const syncResult = run?.status === "success" ? run.result : null;
+  const active = run?.status === "running" || discovery.data?.status === "running";
+  const statusUnknown = discovery.isPending || discovery.isError || (!!runId && (status.isPending || status.isError));
 
   const syncMutation = useMutation({
+    retry: false,
     mutationFn: async (dryRun: boolean) => {
       const res = await fetch("/api/sitespecific/t631/client/sync-workers", {
         method: "POST",
@@ -42,22 +72,20 @@ export default function T631FetchPage() {
         body: JSON.stringify({ dryRun }),
         credentials: "include",
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ message: "Request failed" }));
+      const body = await res.json().catch(() => ({ message: "Request failed" }));
+      if (!res.ok && !(res.status === 409 && body.runId)) {
         throw new Error(body.message || `HTTP ${res.status}`);
       }
-      return res.json() as Promise<WorkerEinSyncResult>;
+      return body as { runId: string; duplicate?: boolean };
     },
     onSuccess: (data) => {
-      setSyncResult(data);
-      toast({
-        title: data.dryRun ? "Dry run complete" : "Fetch Workers complete",
-        description: `${data.workersCreated} workers created, ${data.created} IDs created, ${data.deleted} IDs deleted, ${data.updated} workers reconciled, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors; phones: ${data.phonesCreated} created, ${data.phonesDeleted} deleted, ${data.phonesUnchanged} kept, ${data.optins} opt-ins; statuses: ${data.statusesSet} set, EDLS: ${data.edlsActivated} activated, ${data.edlsDeactivated} deactivated`,
-        variant: data.errors > 0 ? "destructive" : "default",
-      });
+      setRunId(data.runId);
+      void discovery.refetch();
+      toast({ title: data.duplicate ? "Monitoring the active sync" : "Sync accepted" });
     },
     onError: (error: Error) => {
-      toast({ title: "Fetch Workers failed", description: getApiErrorMessage(error, "The operation failed."), variant: "destructive" });
+      void discovery.refetch();
+      toast({ title: "Start was not confirmed", description: `${getApiErrorMessage(error, "The request could not be confirmed.")} Checking existing runs; the start request will not be retried automatically.`, variant: "destructive" });
     },
   });
 
@@ -104,8 +132,8 @@ export default function T631FetchPage() {
             <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={() => { setSyncResult(null); syncMutation.mutate(true); }}
-                disabled={syncMutation.isPending}
+                onClick={() => syncMutation.mutate(true)}
+                disabled={syncMutation.isPending || active || statusUnknown}
                 data-testid="button-sync-workers-dry-run"
               >
                 {syncMutation.isPending ? (
@@ -116,8 +144,8 @@ export default function T631FetchPage() {
                 Dry Run
               </Button>
               <Button
-                onClick={() => { setSyncResult(null); syncMutation.mutate(false); }}
-                disabled={syncMutation.isPending}
+                onClick={() => syncMutation.mutate(false)}
+                disabled={syncMutation.isPending || active || statusUnknown}
                 data-testid="button-sync-workers"
               >
                 {syncMutation.isPending ? (
@@ -128,6 +156,22 @@ export default function T631FetchPage() {
                 Fetch Workers
               </Button>
             </div>
+            {statusUnknown && <p role="status" className="text-sm text-muted-foreground">
+              {discovery.isError || status.isError
+                ? "Status is temporarily unavailable. This does not mean the sync failed. Reconnecting automatically; no new sync will be started."
+                : "Checking sync status…"}
+            </p>}
+            {run && <div role="status" className="space-y-2 text-sm">
+              <p><Badge variant="outline">{run.dryRun ? "Dry Run" : "Live Run"}</Badge>{" "}
+                {run.status === "running" ? "Running — you can leave this page and return." :
+                  run.status === "success" ? "Complete" : run.status === "interrupted" ? "Interrupted" : "Failed"}
+              </p>
+              <p className="text-xs text-muted-foreground">Run: {run.id}</p>
+              {run.error && <p role="alert" className="text-destructive">{run.error}</p>}
+            </div>}
+            <p className="text-xs text-muted-foreground">
+              Active status refreshes every two seconds. The remote service still has its own timeout.
+            </p>
 
             {syncResult && (
               <div className="space-y-3">

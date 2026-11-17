@@ -1,7 +1,7 @@
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
-import { t631Fetch } from "../../../../modules/sitespecific/t631/client/fetch";
-import { syncWorkerEins } from "../../../../modules/sitespecific/t631/client/sync-workers";
+import { startT631Run } from "../../../../services/t631-sync-runs";
+import type { WorkerEinSyncResult } from "../../../../modules/sitespecific/t631/client/sync-workers";
 
 registerCronPlugin({
   metadata: {
@@ -17,32 +17,10 @@ registerCronPlugin({
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
 
-    const fetchResult = await t631Fetch("sitespecific.t631.worker.list");
-
-    if (!fetchResult.success) {
-      throw new Error(`T631 fetch failed: ${fetchResult.error || "Unknown error"}`);
-    }
-
-    const responseBody = fetchResult.data;
-    if (!responseBody || typeof responseBody !== "object") {
-      throw new Error("T631 fetch returned empty or non-object response body");
-    }
-
-    const typed = responseBody as { success?: boolean; data?: { workers?: unknown } };
-    if (!typed.success) {
-      throw new Error("T631 response indicates failure (success !== true)");
-    }
-    if (!typed.data || typeof typed.data !== "object") {
-      throw new Error("T631 response missing 'data' field or data is not an object");
-    }
-    if (typed.data.workers === undefined || typed.data.workers === null || typeof typed.data.workers !== "object") {
-      throw new Error("T631 response missing 'data.workers' field or it is not an array/object");
-    }
-
-    const syncResult = await syncWorkerEins(
-      responseBody as Parameters<typeof syncWorkerEins>[0],
-      isDryRun,
-    );
+    const { run, duplicate } = await startT631Run(isDryRun, context.triggeredBy ?? "scheduler", true);
+    if (duplicate) return { message: "Skipped: a T631 worker sync is already active.", metadata: { runId: run.id } };
+    if (run.status !== "success") throw new Error(run.error ?? "T631 sync did not complete.");
+    const syncResult = JSON.parse(run.output!) as WorkerEinSyncResult;
 
     const prefix = isDryRun ? "[TEST] " : "";
     const message =

@@ -4,6 +4,7 @@ import { logger, storageLogger } from "../../../../logger";
 import { getOptionsType } from "../../../options-registry";
 import { runInTransaction } from "../../../../storage/transaction-context";
 import { t631IdentityValues } from "@shared/t631-identity";
+import { isMaintenanceModeError } from "../../../../services/maintenance-flag";
 
 interface T631WorkerRow {
   worker_id?: unknown;
@@ -217,6 +218,7 @@ async function deactivateMissingWorkers(
   ctx: MemberStatusSyncContext,
   dryRun: boolean,
   result: WorkerEinSyncResult,
+  runUnit: SyncUnit,
 ): Promise<void> {
   if (ctx.syncedMsIds.length === 0) return;
   const holders = await storage.workerMsh.getWorkerIdsWithCurrentMs(ctx.syncedMsIds);
@@ -224,18 +226,24 @@ async function deactivateMissingWorkers(
     holders.map((h) => h.workerId).filter((id) => !ctx.seenWorkerIds.has(id)),
   );
   for (const workerId of candidateIds) {
+    const before = { ...result };
+    const detailCount = result.details.length;
     try {
-      const edls = await storage.workerEdls.getByWorker(workerId);
-      if (!edls?.active) continue; // already inactive
-      if (dryRun) {
-        result.edlsDeactivated++;
-        result.details.push({ workerId, remoteWorkerId: "(absent)", action: "would_edls_deactivate", error: "holds a synced status but is not in the incoming remote list" });
-      } else {
-        await storage.workerEdls.setActive(workerId, false);
-        result.edlsDeactivated++;
-        result.details.push({ workerId, remoteWorkerId: "(absent)", action: "edls_deactivated", error: "holds a synced status but is not in the incoming remote list" });
-      }
+      await runUnit(async () => {
+        const edls = await storage.workerEdls.getByWorker(workerId);
+        if (!edls?.active) return; // already inactive
+        if (dryRun) {
+          result.edlsDeactivated++;
+          result.details.push({ workerId, remoteWorkerId: "(absent)", action: "would_edls_deactivate", error: "holds a synced status but is not in the incoming remote list" });
+        } else {
+          await storage.workerEdls.setActive(workerId, false);
+          result.edlsDeactivated++;
+          result.details.push({ workerId, remoteWorkerId: "(absent)", action: "edls_deactivated", error: "holds a synced status but is not in the incoming remote list" });
+        }
+      });
     } catch (error) {
+      if (error instanceof SyncInterrupted || error instanceof SyncRunRefusal || isMaintenanceModeError(error)) throw error;
+      if (runUnit !== unguardedUnit) { Object.assign(result, before); result.details.length = detailCount; }
       result.errors++;
       const errMsg = error instanceof Error ? error.message : String(error);
       result.details.push({ workerId, remoteWorkerId: "(absent)", action: "error", error: errMsg });
@@ -373,9 +381,15 @@ async function mirrorWorkerPhone(opts: {
   });
 }
 
+export class SyncInterrupted extends Error {}
+export class SyncRunRefusal extends Error {}
+export type SyncUnit = (work: () => Promise<void>) => Promise<void>;
+const unguardedUnit: SyncUnit = (work) => work();
+
 export async function syncWorkerEins(
   responseData: T631WorkerListResponse,
   dryRun: boolean,
+  runUnit: SyncUnit = unguardedUnit,
 ): Promise<WorkerEinSyncResult> {
   const result: WorkerEinSyncResult = {
     created: 0, updated: 0, deleted: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0,
@@ -453,21 +467,24 @@ export async function syncWorkerEins(
   }
 
   for (const row of rows) {
+    const before = { ...result };
+    const detailCount = result.details.length;
     const remoteWorkerId = row.worker_id !== undefined && row.worker_id !== null ? String(row.worker_id).trim() : "";
     const rawEin = row.worker_ein !== undefined && row.worker_ein !== null ? String(row.worker_ein).trim() : "";
     const remotePhoneRaw = row.worker_phone !== undefined && row.worker_phone !== null ? String(row.worker_phone) : "";
     const remoteMsRaw = row.worker_ms !== undefined && row.worker_ms !== null ? String(row.worker_ms) : "";
 
-    if (!remoteWorkerId) {
-      result.skipped++;
-      result.details.push({ remoteWorkerId: "(empty)", action: "skipped", error: "Missing worker_id" });
-      continue;
-    }
-    // When the remote row has no EIN, fall back to using the remote worker ID
-    // as the EIN value rather than skipping the row.
-    const ein = rawEin || remoteWorkerId;
-
     try {
+      await runUnit(async () => {
+      if (!remoteWorkerId) {
+        result.skipped++;
+        result.details.push({ remoteWorkerId: "(empty)", action: "skipped", error: "Missing worker_id" });
+        return;
+      }
+      // When the remote row has no EIN, fall back to using the remote worker ID
+      // as the EIN value rather than skipping the row.
+      const ein = rawEin || remoteWorkerId;
+
       const matches = await storage.workerIds.getByTypeAndValues(t631TypeId, t631IdentityValues(remoteWorkerId));
       // Present in the incoming list → never a deactivation candidate,
       // regardless of whether the remote code maps to a synced status
@@ -477,17 +494,17 @@ export async function syncWorkerEins(
       if (rawEin && (einClaimants.get(rawEin)?.size ?? 0) > 1) {
         result.skipped++;
         result.details.push({ remoteWorkerId, action: "skipped", error: "conflicting_source_t631_ids: EIN claimed by multiple T631 identities; no identity changes made" });
-        continue;
+        return;
       }
       if (sourceEins.get(t631IdentityValues(remoteWorkerId).sort()[0])!.size > 1) {
         result.skipped++;
         result.details.push({ remoteWorkerId, action: "skipped", error: "conflicting_source_eins: repeated worker_id has different EINs" });
-        continue;
+        return;
       }
       if (matches.length && !rawEin) {
         result.skipped++;
         result.details.push({ remoteWorkerId, action: "skipped", error: "blank_ein: existing worker IDs left untouched" });
-        continue;
+        return;
       }
 
       const firstClaimant = seenEins.get(ein);
@@ -498,7 +515,7 @@ export async function syncWorkerEins(
           action: "skipped",
           error: `duplicate_ein: EIN ${ein} already appeared on remote worker_id=${firstClaimant}`,
         });
-        continue;
+        return;
       }
 
       let t631Row;
@@ -512,7 +529,7 @@ export async function syncWorkerEins(
         if (error instanceof Error && /^(ambiguous_t631_identity|ein_conflict|t631_conflict):/.test(error.message)) {
           result.skipped++;
           result.details.push({ remoteWorkerId, action: "skipped", error: error.message });
-          continue;
+          return;
         }
         throw error;
       }
@@ -530,7 +547,7 @@ export async function syncWorkerEins(
         if (!nameParts) {
           result.skipped++;
           result.details.push({ remoteWorkerId, action: "skipped", error: `worker_not_found_no_name: no local worker (t631=${remoteWorkerId}) and worker_name is blank; cannot create` });
-          continue;
+          return;
         }
 
         // Don't create a worker if the EIN is already held by an existing worker.
@@ -538,7 +555,7 @@ export async function syncWorkerEins(
         if (conflictHolder) {
           result.skipped++;
           result.details.push({ remoteWorkerId, action: "skipped", error: `ein_conflict: EIN ${ein} already held by another worker (workerId=${conflictHolder.workerId}); worker not created` });
-          continue;
+          return;
         }
 
         seenEins.set(ein, remoteWorkerId);
@@ -570,7 +587,7 @@ export async function syncWorkerEins(
           } else if (remoteMsRaw.trim() && !msCtx.knownSiriusIds.has(remoteMsRaw.trim())) {
             result.details.push({ remoteWorkerId, action: "ms_unmatched", error: `remote worker_ms "${remoteMsRaw.trim()}" does not match any local member status sirius_id; status and EDLS untouched` });
           }
-          continue;
+          return;
         }
 
         const newWorker = await runInTransaction(async () => {
@@ -591,7 +608,7 @@ export async function syncWorkerEins(
           result,
         });
         await syncMemberStatus({ ctx: msCtx, workerId: newWorker.id, remoteWorkerId, remoteMsRaw, dryRun, result });
-        continue;
+        return;
       }
       const localWorkerId = t631Row.workerId;
       const wd = (action: string, error?: string) => ({
@@ -606,7 +623,7 @@ export async function syncWorkerEins(
       if (existingHolder && existingHolder.workerId !== localWorkerId) {
         result.skipped++;
         result.details.push(wd("skipped", `ein_conflict: EIN ${ein} already held by another worker (workerId=${existingHolder.workerId})`));
-        continue;
+        return;
       }
 
       seenEins.set(ein, remoteWorkerId);
@@ -641,7 +658,10 @@ export async function syncWorkerEins(
 
       // Member status + EDLS-active from the remote worker_ms code.
       await syncMemberStatus({ ctx: msCtx, workerId: localWorkerId, remoteWorkerId, remoteMsRaw, dryRun, result });
+      });
     } catch (error) {
+      if (error instanceof SyncInterrupted || error instanceof SyncRunRefusal || isMaintenanceModeError(error)) throw error;
+      if (runUnit !== unguardedUnit) { Object.assign(result, before); result.details.length = detailCount; }
       result.errors++;
       const errMsg = error instanceof Error ? error.message : String(error);
       result.details.push({ remoteWorkerId, action: "error", error: errMsg });
@@ -653,7 +673,7 @@ export async function syncWorkerEins(
   }
 
   // Deactivation pass: synced-status holders absent from the incoming list.
-  await deactivateMissingWorkers(msCtx, dryRun, result);
+  await deactivateMissingWorkers(msCtx, dryRun, result, runUnit);
 
   return result;
 }
