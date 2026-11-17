@@ -2,11 +2,12 @@ import { createNoopValidator } from './utils/validation';
 import { getClient, onAfterCommit } from './transaction-context';
 import {
   workerMsh,
+  workerEdls,
   optionsWorkerMs,
   optionsIndustry,
   type WorkerMsh,
 } from "@shared/schema";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
@@ -28,7 +29,7 @@ export interface WorkerMshStorage {
    * given status option IDs. Authoritative (reads worker_msh directly, not
    * the denorm table). Returns one row per (worker, matching status).
    */
-  getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>>;
+  getWorkerIdsWithCurrentMs(msIds: string[], activeEdlsOnly?: boolean): Promise<Array<{ workerId: string; msId: string }>>;
   createWorkerMsh(data: { workerId: string; date: string; msId: string; industryId: string; data?: any }): Promise<WorkerMsh>;
   updateWorkerMsh(id: string, data: { date?: string; msId?: string; industryId?: string; data?: any }): Promise<WorkerMsh | undefined>;
   deleteWorkerMsh(id: string): Promise<boolean>;
@@ -88,11 +89,10 @@ export function createWorkerMshStorage(
           latestByIndustry.set(entry.industryId, entry.msId);
         }
       }
-
       return Array.from(latestByIndustry.values());
     },
 
-    async getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>> {
+    async getWorkerIdsWithCurrentMs(msIds: string[], activeEdlsOnly = false): Promise<Array<{ workerId: string; msId: string }>> {
       if (msIds.length === 0) return [];
       const client = getClient();
       const latest = client
@@ -111,6 +111,11 @@ export function createWorkerMshStorage(
           desc(workerMsh.id),
         )
         .as("latest");
+      if (activeEdlsOnly) return client
+        .select({ workerId: latest.workerId, msId: latest.msId })
+        .from(latest)
+        .innerJoin(workerEdls, and(eq(workerEdls.workerId, latest.workerId), eq(workerEdls.active, true)))
+        .where(inArray(latest.msId, msIds));
       return client
         .select({ workerId: latest.workerId, msId: latest.msId })
         .from(latest)

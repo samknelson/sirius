@@ -4,6 +4,7 @@ import { workers, workerIds, optionsWorkerIdType, type WorkerId, type InsertWork
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { t631IdentityValues } from "@shared/t631-identity";
+import { identityRead, invalidateIdentityReads, lockWorkerIdentities, withLockedIdentityReads } from "./identity-read-scope";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -27,6 +28,7 @@ export interface WorkerIdForList {
 }
 
 export interface WorkerIdStorage {
+  withLockedIdentityReads<T>(work: () => Promise<T>): Promise<T>;
   resolveT631Identity(typeId: string, value: string, einTypeId: string, ein: string, dryRun: boolean): Promise<{ workerId: string; value: string; linked: boolean } | null>;
   reconcileWorkerId(workerId: string, typeId: string, value: string, dryRun: boolean, source: { typeId: string; value: string }): Promise<{ deleted: number; created: number }>;
   getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]>;
@@ -61,12 +63,13 @@ export interface WorkerIdStorage {
 
 export function createWorkerIdStorage(): WorkerIdStorage {
   return {
+    withLockedIdentityReads,
     async resolveT631Identity(typeId, value, einTypeId, ein, dryRun) {
       return runInTransaction(async () => {
         // Serialize lookup + attachment with all ID writers, using the same
         // table-before-worker lock order as reconciliation and the importer.
         const client = getClient();
-        if (!dryRun) await client.execute(sql`LOCK TABLE ${workerIds} IN SHARE ROW EXCLUSIVE MODE`);
+        if (!dryRun) await lockWorkerIdentities();
         const matches = await this.getByTypeAndValues(typeId, t631IdentityValues(value));
         if (new Set(matches.map(row => row.workerId)).size > 1) {
           throw new Error("ambiguous_t631_identity: prefixed and numeric IDs belong to different workers");
@@ -97,7 +100,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       return runInTransaction(async () => {
         const client = getClient();
         // Same lock order as the Freeman importer; blocks even direct SQL writers.
-        if (!dryRun) await client.execute(sql`LOCK TABLE ${workerIds} IN SHARE ROW EXCLUSIVE MODE`);
+        if (!dryRun) await lockWorkerIdentities();
         const workerQuery = client.select({ id: workers.id }).from(workers)
           .where(eq(workers.id, workerId));
         const [worker] = await (dryRun ? workerQuery : workerQuery.for("update"));
@@ -134,6 +137,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
 
     async createWorkerId(insertWorkerId: InsertWorkerId): Promise<WorkerId> {
       validate.validateOrThrow(insertWorkerId);
+      invalidateIdentityReads();
       const client = getClient();
       const [workerId] = await client
         .insert(workerIds)
@@ -144,6 +148,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
 
     async updateWorkerId(id: string, workerIdUpdate: Partial<InsertWorkerId>): Promise<WorkerId | undefined> {
       validate.validateOrThrow(id);
+      invalidateIdentityReads();
       const client = getClient();
       const [workerId] = await client
         .update(workerIds)
@@ -154,6 +159,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async deleteWorkerId(id: string): Promise<boolean> {
+      invalidateIdentityReads();
       const client = getClient();
       const result = await client.delete(workerIds).where(eq(workerIds.id, id)).returning();
       return result.length > 0;
@@ -162,10 +168,10 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     async getByTypeAndValues(typeId: string, values: string[]): Promise<Array<{ value: string; workerId: string }>> {
       if (values.length === 0) return [];
       const client = getClient();
-      const results = await client
+      const results = await identityRead(["values", typeId, ...[...values].sort()], async () => client
         .select({ value: workerIds.value, workerId: workerIds.workerId })
         .from(workerIds)
-        .where(and(eq(workerIds.typeId, typeId), inArray(workerIds.value, values)));
+        .where(and(eq(workerIds.typeId, typeId), inArray(workerIds.value, values))));
       return results;
     },
 
@@ -181,11 +187,11 @@ export function createWorkerIdStorage(): WorkerIdStorage {
 
     async getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined> {
       const client = getClient();
-      const [row] = await client
+      const [row] = await identityRead(["holder", typeId, value], async () => client
         .select()
         .from(workerIds)
         .where(and(eq(workerIds.typeId, typeId), eq(workerIds.value, value)))
-        .limit(1);
+        .limit(1));
       return row || undefined;
     },
 

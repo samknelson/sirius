@@ -9,6 +9,7 @@ import { isComponentEnabled } from "../modules/components";
 import { isT631ConfigurationError, t631Fetch } from "../modules/sitespecific/t631/client/fetch";
 import { SyncInterrupted, SyncRunRefusal, syncWorkerEins, type SyncUnit } from "../modules/sitespecific/t631/client/sync-workers";
 import type { PoolClient } from "pg";
+import { logger } from "../logger";
 
 const KIND = "t631-sync";
 const PLUGIN = "sitespecific-t631-worker-fetch";
@@ -133,10 +134,15 @@ async function execute(run: JobRun, owner: PoolClient, ownerAlive: () => boolean
   }, 2000);
   try {
     await checkEnabled();
+    const fetchStart = performance.now();
     const remote = await t631Fetch("sitespecific.t631.worker.list");
+    const fetchMs = performance.now() - fetchStart;
     if (!remote.success) throw new RemoteFailure();
     validateT631Workers(remote.data);
+    const reconcileStart = performance.now();
     const result = await syncWorkerEins(remote.data, run.mode === "test", unit);
+    const reconciliationMs = performance.now() - reconcileStart;
+    const finalizeStart = performance.now();
     await runOutsideTransaction(() => allowInMaintenanceMode(async () => {
       await fence();
       if (!ownerAlive()) throw new SyncInterrupted();
@@ -145,6 +151,13 @@ async function execute(run: JobRun, owner: PoolClient, ownerAlive: () => boolean
         output: JSON.stringify({ dryRun: run.mode === "test", ...result }),
       }).where(condition);
     }));
+    logger.info("T631 sync phase timings", {
+      service: "t631-sync-workers", dryRun: run.mode === "test",
+      fetchMs, remoteTimings: remote.timings, reconciliationMs,
+      finalizationMs: performance.now() - finalizeStart,
+      rowCounts: result.rowCounts, skipped: result.skipped, errors: result.errors,
+      edlsDeactivated: result.edlsDeactivated,
+    });
   } catch (error) {
     const message = error instanceof SyncInterrupted ? interruptedMessage
       : isMaintenanceModeError(error) ? "Maintenance refusal: sync stopped because the site is in maintenance mode."

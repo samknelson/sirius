@@ -7,6 +7,10 @@ const state = vi.hoisted(() => ({
   failInsert: false,
   deleted: [] as string[],
   reconcile: vi.fn(),
+  syncStatus: false,
+  currentStatus: false,
+  deactivate: vi.fn(),
+  candidates: vi.fn(),
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => ({
@@ -35,8 +39,17 @@ vi.mock("../../server/storage/database", () => ({
 vi.mock("../../server/storage", () => ({
   createCommSmsOptinStorage: () => ({}),
   storage: {
-    variables: { getByName: async () => null },
+    variables: { getByName: async () => state.syncStatus ? { value: ["ms"] } : null },
+    workerMsh: {
+      getWorkerIdsWithCurrentMs: (...args: unknown[]) => state.candidates(...args),
+      getCurrentMemberStatusIds: async () => state.currentStatus ? ["ms"] : [],
+    },
+    workerEdls: {
+      getByWorker: async () => ({ active: true }),
+      setActive: state.deactivate,
+    },
     workerIds: {
+      withLockedIdentityReads: async (work: () => Promise<unknown>) => work(),
       getTypeIdBySiriusId: async (id: string) => id,
       getWorkerIdByTypeAndValue: async (type: string, value: string) =>
         state.ids.find(row => row.typeId === type && row.value === value),
@@ -45,12 +58,14 @@ vi.mock("../../server/storage", () => ({
       resolveT631Identity: (...args: Parameters<typeof target.resolveT631Identity>) => target.resolveT631Identity(...args),
       reconcileWorkerId: state.reconcile,
     },
-    workers: { getWorker: async () => null },
+    workers: { getWorkerContactId: async () => undefined },
   },
 }));
 vi.mock("../../server/services/comm/validators/phone", () => ({ schedulePhoneRevalidation: vi.fn() }));
 vi.mock("../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() }, storageLogger: { info: vi.fn() } }));
-vi.mock("../../server/modules/options-registry", () => ({ getOptionsType: () => ({ getAll: async () => [] }) }));
+vi.mock("../../server/modules/options-registry", () => ({ getOptionsType: () => ({
+  getAll: async () => state.syncStatus ? [{ id: "ms", industryId: "industry", siriusId: "APP", name: "Apprentice" }] : [],
+}) }));
 
 import { createWorkerIdStorage } from "../../server/storage/workers/ids";
 import { syncWorkerEins } from "../../server/modules/sitespecific/t631/client/sync-workers";
@@ -65,6 +80,9 @@ beforeEach(() => {
   state.ids = [row("source", "123", "t631")];
   state.deleted = [];
   state.failInsert = false;
+  state.syncStatus = state.currentStatus = false;
+  state.deactivate.mockReset();
+  state.candidates.mockReset().mockResolvedValue([{ workerId: "w", msId: "ms" }]);
   state.reconcile.mockReset().mockResolvedValue({ deleted: 2, created: 1 });
 });
 
@@ -124,6 +142,29 @@ describe("T631 source checks", () => {
     const result = await sync([{ worker_id: "123", worker_ein: "correct" }], dry);
     expect(state.reconcile).toHaveBeenCalledWith("w", "freeman_ein", "correct", dry, { typeId: "t631", value: "123" });
     expect(result).toMatchObject({ deleted: 2, created: 1, updated: 1, errors: 0 });
+  });
+  it("revalidates missing-worker status inside its fenced unit", async () => {
+    state.syncStatus = true;
+    const result = await syncWorkerEins({ success: true, data: { workers: [] } }, false, async work => {
+      // Candidate held the selected status at enumeration, but no longer does.
+      state.currentStatus = false;
+      await work();
+    });
+    expect(state.candidates).toHaveBeenCalledWith(["ms"], true);
+    expect(state.deactivate).not.toHaveBeenCalled();
+    expect(result.edlsDeactivated).toBe(0);
+  });
+  it("keeps seen-worker protection for a rejected source row", async () => {
+    state.syncStatus = state.currentStatus = true;
+    const result = await sync([{ worker_id: "123", worker_ein: "" }], false);
+    expect(result.skipped).toBe(1);
+    expect(state.deactivate).not.toHaveBeenCalled();
+  });
+  it.each([true, false])("preserves missing-worker preview/live results (dry=%s)", async dry => {
+    state.syncStatus = state.currentStatus = true;
+    const result = await sync([], dry);
+    expect(result.edlsDeactivated).toBe(1);
+    expect(state.deactivate).toHaveBeenCalledTimes(dry ? 0 : 1);
   });
 });
 

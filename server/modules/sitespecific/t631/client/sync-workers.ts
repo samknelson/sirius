@@ -57,6 +57,7 @@ interface T631WorkerListResponse {
 }
 
 export interface WorkerEinSyncResult {
+  rowCounts: { received: number; changed: number; unchanged: number };
   created: number;
   updated: number;
   deleted: number;
@@ -221,7 +222,7 @@ async function deactivateMissingWorkers(
   runUnit: SyncUnit,
 ): Promise<void> {
   if (ctx.syncedMsIds.length === 0) return;
-  const holders = await storage.workerMsh.getWorkerIdsWithCurrentMs(ctx.syncedMsIds);
+  const holders = await storage.workerMsh.getWorkerIdsWithCurrentMs(ctx.syncedMsIds, true);
   const candidateIds = new Set(
     holders.map((h) => h.workerId).filter((id) => !ctx.seenWorkerIds.has(id)),
   );
@@ -232,6 +233,8 @@ async function deactivateMissingWorkers(
       await runUnit(async () => {
         const edls = await storage.workerEdls.getByWorker(workerId);
         if (!edls?.active) return; // already inactive
+        const currentIds = await storage.workerMsh.getCurrentMemberStatusIds(workerId);
+        if (!currentIds.some(id => ctx.syncedMsIds.includes(id))) return;
         if (dryRun) {
           result.edlsDeactivated++;
           result.details.push({ workerId, remoteWorkerId: "(absent)", action: "would_edls_deactivate", error: "holds a synced status but is not in the incoming remote list" });
@@ -277,8 +280,13 @@ async function mirrorWorkerPhone(opts: {
     result.details.push({ workerId, remoteWorkerId, action, ...(error ? { error } : {}) });
   };
 
-  const localNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
   const remoteTrimmed = remotePhoneRaw.trim();
+  const remoteDigits = normalizePhoneDigits(remoteTrimmed);
+  if (remoteTrimmed && !remoteDigits) {
+    detail("phone_invalid", `remote phone "${remoteTrimmed}" is not a valid 10-digit US number; phone left untouched`);
+    return;
+  }
+  const localNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
 
   // Blank remote phone → mirror by deleting everything local.
   if (!remoteTrimmed) {
@@ -295,11 +303,6 @@ async function mirrorWorkerPhone(opts: {
     return;
   }
 
-  const remoteDigits = normalizePhoneDigits(remoteTrimmed);
-  if (!remoteDigits) {
-    detail("phone_invalid", `remote phone "${remoteTrimmed}" is not a valid 10-digit US number; phone left untouched`);
-    return;
-  }
   const e164 = `+1${remoteDigits}`;
 
   // Keep the first ACTIVE local number whose digits match; purge all others.
@@ -392,6 +395,7 @@ export async function syncWorkerEins(
   runUnit: SyncUnit = unguardedUnit,
 ): Promise<WorkerEinSyncResult> {
   const result: WorkerEinSyncResult = {
+    rowCounts: { received: 0, changed: 0, unchanged: 0 },
     created: 0, updated: 0, deleted: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0,
     phonesCreated: 0, phonesDeleted: 0, phonesUnchanged: 0, optins: 0,
     statusesSet: 0, edlsActivated: 0, edlsDeactivated: 0, details: [],
@@ -419,6 +423,7 @@ export async function syncWorkerEins(
     return result;
   }
 
+  result.rowCounts.received = rows.length;
   const t631TypeId = await storage.workerIds.getTypeIdBySiriusId("t631");
   if (!t631TypeId) {
     const msg = "Cannot sync T631 worker EINs: no options_worker_id_type row with sirius_id='t631'";
@@ -474,13 +479,14 @@ export async function syncWorkerEins(
     const remotePhoneRaw = row.worker_phone !== undefined && row.worker_phone !== null ? String(row.worker_phone) : "";
     const remoteMsRaw = row.worker_ms !== undefined && row.worker_ms !== null ? String(row.worker_ms) : "";
 
+    if (!remoteWorkerId) {
+      result.skipped++;
+      result.details.push({ remoteWorkerId: "(empty)", action: "skipped", error: "Missing worker_id" });
+      continue;
+    }
     try {
       await runUnit(async () => {
-      if (!remoteWorkerId) {
-        result.skipped++;
-        result.details.push({ remoteWorkerId: "(empty)", action: "skipped", error: "Missing worker_id" });
-        return;
-      }
+      const reconcile = async () => {
       // When the remote row has no EIN, fall back to using the remote worker ID
       // as the EIN value rather than skipping the row.
       const ein = rawEin || remoteWorkerId;
@@ -642,10 +648,10 @@ export async function syncWorkerEins(
         `${repaired.deleted} deleted, ${repaired.created} created; exactly one matching EIN retained`));
 
       // Mirror the remote phone onto the (existing) worker's contact.
-      const localWorker = await storage.workers.getWorker(localWorkerId);
-      if (localWorker) {
+      const contactId = await storage.workers.getWorkerContactId(localWorkerId);
+      if (contactId) {
         await mirrorWorkerPhone({
-          contactId: localWorker.contactId,
+          contactId,
           remotePhoneRaw,
           workerId: localWorkerId,
           remoteWorkerId,
@@ -658,10 +664,22 @@ export async function syncWorkerEins(
 
       // Member status + EDLS-active from the remote worker_ms code.
       await syncMemberStatus({ ctx: msCtx, workerId: localWorkerId, remoteWorkerId, remoteMsRaw, dryRun, result });
+      };
+      // Preview reads remain fresh: without a write lock, memoizing them would
+      // hide concurrent edits. Live reads are reusable only inside this unit.
+      if (dryRun) await reconcile();
+      else await storage.workerIds.withLockedIdentityReads(reconcile);
       });
+      if (result.skipped === before.skipped) {
+        const changed = (["created", "deleted", "workersCreated", "phonesCreated", "phonesDeleted",
+          "optins", "statusesSet", "edlsActivated"] as const).some(key => result[key] !== before[key]) ||
+          result.details.slice(detailCount).some(d => d.action === "linked_t631" || d.action === "would_link_t631");
+        if (changed) result.rowCounts.changed++;
+        else result.rowCounts.unchanged++;
+      }
     } catch (error) {
       if (error instanceof SyncInterrupted || error instanceof SyncRunRefusal || isMaintenanceModeError(error)) throw error;
-      if (runUnit !== unguardedUnit) { Object.assign(result, before); result.details.length = detailCount; }
+      if (!dryRun || runUnit !== unguardedUnit) { Object.assign(result, before); result.details.length = detailCount; }
       result.errors++;
       const errMsg = error instanceof Error ? error.message : String(error);
       result.details.push({ remoteWorkerId, action: "error", error: errMsg });

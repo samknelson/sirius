@@ -214,6 +214,7 @@ export interface WorkerStorage {
   getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
+  getWorkerContactId(id: string): Promise<string | undefined>;
   // Generic, feature-agnostic accessors for the worker's `data` jsonb blob.
   // These know nothing about any particular feature's JSON path; the only
   // legitimate writer is a validated, feature-specific storage namespace that
@@ -898,6 +899,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         workerId: row.worker_id,
         benefits: Array.isArray(row.benefits) ? row.benefits : []
       }));
+    },
+
+    async getWorkerContactId(id: string): Promise<string | undefined> {
+      const [worker] = await getClient().select({ contactId: workers.contactId })
+        .from(workers).where(eq(workers.id, id));
+      return worker?.contactId;
     },
 
     async getWorker(id: string): Promise<Worker | undefined> {

@@ -221,6 +221,8 @@ export interface T631FetchResult {
   error?: string;
   timestamp: string;
   durationMs: number;
+  /** durationMs remains the legacy time-to-headers value. These include the body. */
+  timings?: { headersMs: number; bodyReadMs: number; bodyProcessingMs: number; totalMs: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -507,7 +509,11 @@ async function performT631Fetch(
 
     // Scrubbed as text first, which is what protects `rawBody` when the reply
     // is not JSON. T631 answers a rejected request by echoing it.
-    const rawBody = scrub.text(await response.text().catch(() => ""));
+    const bodyStart = performance.now();
+    const body = await response.text().catch(() => "");
+    const bodyReadMs = performance.now() - bodyStart;
+    const processingStart = performance.now();
+    const rawBody = scrub.text(body);
 
     let parsedData: unknown = undefined;
     try {
@@ -537,6 +543,12 @@ async function performT631Fetch(
         : undefined,
       timestamp,
       durationMs,
+      timings: {
+        headersMs: durationMs,
+        bodyReadMs,
+        bodyProcessingMs: performance.now() - processingStart,
+        totalMs: Date.now() - startTime,
+      },
     };
   } catch (error) {
     const durationMs = Date.now() - startTime;
