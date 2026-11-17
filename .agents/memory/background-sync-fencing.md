@@ -1,6 +1,6 @@
 ---
 name: Background sync execution fencing
-description: Session ownership alone does not fence mutations made through other database connections.
+description: Ownership alone does not fence mutations made through other database connections; lease renewal may be blocked by a protected unit.
 ---
 
 Keep background-run ownership for the whole operation, and fence each mutation unit and recovery against each other. Never infer that an executor stopped solely from a stale heartbeat.
@@ -18,3 +18,17 @@ them on local writes, never across the whole import.
 run-wide snapshots or early lock release permit another writer's changes to be
 hidden during reconciliation. Local synthetic timings do not establish vendor
 or production lock latency.
+
+Lease renewal blocked by a protected business unit must fail conservatively,
+even when the owner is the source of the blocking row lock. Do not bypass that
+lock or extend local validity based on pending work.
+
+**Why:** A lease alone cannot exclude an expired executor's in-flight
+transaction. Serializing takeover with that transaction deliberately trades
+possible interruption of slow units for mutation safety; a lost lease does
+not imply cancellation of pending external requests.
+
+**How to apply:** Keep ownership checks on the actual ambient business
+transaction, separate from short maintenance-exempt coordination writes.
+Lost owners stop at the next boundary, and uncertain history is recovered
+without automatically replaying partial commits.

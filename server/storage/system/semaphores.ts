@@ -1,15 +1,50 @@
 import type { PoolClient } from "pg";
+import { sql } from "drizzle-orm";
 import { pool } from "../db";
+import { getCurrentTransaction } from "../transaction-context";
 import type { SemaphoreStatusSnapshot } from "@shared/schema/system/semaphores-schema";
 
 export const SEMAPHORE_OPERATION_MS = 5_000;
 export const SEMAPHORE_LEASE_MS = 30_000;
 export class SemaphoreLost extends Error {
   constructor() {
-    super("Cron semaphore ownership lost. Partial work may still be finishing; results are uncertain. Nothing was automatically retried.");
+    super("Semaphore ownership lost. Partial work may still be finishing; results are uncertain. Nothing was automatically retried.");
   }
 }
 export interface SemaphoreIdentity { key: string; owner: string; token: string }
+
+/**
+ * Fence the ACTUAL ambient business transaction. No maintenance exception or
+ * whole-operation deadline: only coordination lock acquisition is bounded.
+ * The row stays locked through the caller's commit/rollback, excluding claim.
+ */
+export async function guardSemaphoreTransaction<T>(
+  id: SemaphoreIdentity, assertOwned: () => void, work: () => Promise<T>,
+): Promise<T> {
+  const tx = getCurrentTransaction();
+  if (!tx) throw new Error("Semaphore mutation fencing requires an ambient transaction");
+  assertOwned();
+  const previous = await tx.execute(sql`SELECT current_setting('lock_timeout') AS timeout`);
+  await tx.execute(sql`SELECT set_config('lock_timeout', '2s', true)`);
+  try {
+    await tx.execute(sql`SELECT key FROM semaphores WHERE key = ${id.key} FOR UPDATE`);
+  } catch {
+    throw new SemaphoreLost();
+  }
+  await tx.execute(sql`SELECT set_config('lock_timeout', ${String(previous.rows[0].timeout)}, true)`);
+  const check = async () => {
+    assertOwned();
+    const current = await tx.execute(sql`SELECT key FROM semaphores
+      WHERE key = ${id.key} AND owner_process_id = ${id.owner}
+      AND ownership_token = ${id.token} AND expires_at > clock_timestamp()`);
+    if (!current.rowCount) throw new SemaphoreLost();
+    assertOwned();
+  };
+  await check();
+  const result = await work();
+  await check();
+  return result;
+}
 
 /**
  * Coordination/history only. No ambient transaction, audit wrapper, or reserved
@@ -32,7 +67,7 @@ async function transaction<T>(work: (client: PoolClient) => Promise<T>, readOnly
     if (expired) { destroy(); throw timeoutError(); }
     try {
       await client.query("BEGIN");
-      // Narrow maintenance exception: semaphore and cron history writes only.
+      // Narrow maintenance exception: semaphore and guarded run-history only.
       await client.query(readOnly ? "SET LOCAL transaction_read_only = on" : "SET LOCAL transaction_read_only = off");
       await client.query("SET LOCAL statement_timeout = '4s'");
       await client.query("SET LOCAL lock_timeout = '2s'");

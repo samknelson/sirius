@@ -1,21 +1,23 @@
 import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { jobRuns, type JobRun } from "@shared/schema";
-import { db, pool } from "../storage/db";
+import { db } from "../storage/db";
 import { getClient, runInTransaction, runOutsideTransaction } from "../storage/transaction-context";
-import { allowInMaintenanceMode } from "../storage/maintenance";
 import { requestContext } from "../middleware/request-context";
 import { assertExternalServiceAllowed, isMaintenanceModeError } from "./maintenance-flag";
 import { isComponentEnabled } from "../modules/components";
 import { isT631ConfigurationError, t631Fetch } from "../modules/sitespecific/t631/client/fetch";
 import { SyncInterrupted, SyncRunRefusal, syncWorkerEins, type SyncUnit } from "../modules/sitespecific/t631/client/sync-workers";
-import type { PoolClient } from "pg";
+import { ResourceLease } from "./resource-lease";
+import { SemaphoreLost } from "../storage/system/semaphores";
 import { logger } from "../logger";
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { PoolClient } from "pg";
 
 const KIND = "t631-sync";
 const PLUGIN = "sitespecific-t631-worker-fetch";
-// Session ownership covers fetch + all reconciliation. The second, transaction
-// lock fences each worker against takeover if the owning connection is lost.
-const OWNER = 2032001;
+// Shared across every configuration, manual/cron caller, and test/live mode.
+export const T631_RESOURCE = "t631:sync-workers";
+// Retained transaction fence; no session-level ownership connection.
 const FENCE = 2032002;
 const scope = and(eq(jobRuns.pluginKind, KIND), eq(jobRuns.pluginId, PLUGIN));
 const running = and(scope, eq(jobRuns.status, "running"));
@@ -35,56 +37,54 @@ export function publicT631Run(run: JobRun) {
   };
 }
 
-async function acquireOwner(): Promise<PoolClient | null> {
-  const client = await pool.connect();
-  try {
-    const result = await client.query("SELECT pg_try_advisory_lock($1) AS acquired", [OWNER]);
-    if (result.rows[0].acquired) return client;
-    client.release();
-    return null;
-  } catch (error) { client.release(true); throw error; }
+async function fence(client: Pick<ReturnType<typeof getClient>, "execute"> = getClient()) {
+  const locked = await client.execute(sql`SELECT pg_try_advisory_xact_lock(${FENCE}) AS acquired`);
+  if (!locked.rows[0]?.acquired) {
+    throw new T631RunRefusal(409, "An interrupted sync is finishing its current worker. Check status before trying again.");
+  }
 }
 
-async function releaseOwner(client: PoolClient) {
-  // Destroy rather than return a potentially still-locked session to the pool.
-  try { await client.query("SELECT pg_advisory_unlock($1)", [OWNER]); }
-  finally { client.release(true); }
+// History only: the shared bounded coordination transaction, never worker work.
+function history<T>(owner: ResourceLease, work: (client: ReturnType<typeof drizzle>) => Promise<T>) {
+  return owner.whileOwned(async (client: PoolClient) => {
+    const tx = drizzle(client);
+    await fence(tx);
+    return work(tx);
+  });
 }
 
-async function fence() {
-  await getClient().execute(sql`SELECT pg_advisory_xact_lock(${FENCE})`);
-}
-
-async function recoverAbandoned(owner: PoolClient, create?: { dryRun: boolean; actorId: string }) {
-  // Caller owns OWNER. A slow heartbeat is NEVER grounds for takeover.
-  // Wait for any last in-flight worker transaction before fencing the old run.
-  return runOutsideTransaction(() => allowInMaintenanceMode(async () => {
-    const locked = await getClient().execute(sql`SELECT pg_try_advisory_xact_lock(${FENCE}) AS acquired`);
-    if (!locked.rows[0]?.acquired) return { acquired: false as const };
-    // Prove this session still exists while holding FENCE. If OWNER was lost
-    // before we got FENCE, we must not interrupt a replacement executor.
-    await owner.query("SELECT 1");
-    await getClient().update(jobRuns).set({
+async function recoverAbandoned(owner: ResourceLease, create?: { dryRun: boolean; actorId: string }) {
+  // Heartbeats are never takeover authority. Admission and recovery share the
+  // worker's transaction fence AND a current, row-locked database lease.
+  return history(owner, async client => {
+    await client.update(jobRuns).set({
       status: "interrupted", error: interruptedMessage, completedAt: new Date(),
     }).where(running);
     if (!create) return { acquired: true as const };
-    // Recovery and insertion are ONE fenced commit: there is no gap in which
-    // a lost owner can create an unfenced run after a replacement has started.
+    // Recovery and insertion are ONE fenced commit.
     await checkEnabled();
-    const [run] = await getClient().insert(jobRuns).values({
+    const [run] = await client.insert(jobRuns).values({
       pluginKind: KIND, pluginId: PLUGIN, operation: "sync-workers",
       status: "running", mode: create.dryRun ? "test" : "live",
       triggeredBy: create.actorId, heartbeatAt: new Date(),
     }).returning();
     return { acquired: true as const, run };
-  }));
+  });
 }
 
 export async function readT631Run(id?: string): Promise<JobRun | undefined> {
-  const owner = await acquireOwner();
+  let owner: ResourceLease | null = null;
+  try { owner = await ResourceLease.acquireKey(T631_RESOURCE); }
+  catch (error) {
+    // A protected unit can hold the row beyond a bounded claim wait. Reading
+    // history remains useful; this is not evidence that recovery is safe.
+    if (!coordinationBusy(error)) throw error;
+  }
   if (owner) {
-    owner.on("error", () => {});
-    try { await recoverAbandoned(owner); } finally { await releaseOwner(owner); }
+    try { await recoverAbandoned(owner); }
+    catch (error) {
+      if (!(error instanceof T631RunRefusal) && !(error instanceof SemaphoreLost)) throw error;
+    } finally { await owner.close(); }
   }
   // Latest also recovers a completed run when the accepted HTTP response was lost.
   const [run] = await db.select({
@@ -116,41 +116,56 @@ async function checkEnabled() {
   }
 }
 
-async function execute(run: JobRun, owner: PoolClient, ownerAlive: () => boolean) {
+async function execute(run: JobRun, owner: ResourceLease) {
   const condition = and(scope, eq(jobRuns.id, run.id), eq(jobRuns.status, "running"));
-  const unit: SyncUnit = work => runOutsideTransaction(() => runInTransaction(async () => {
-    await fence();
-    const [current] = await getClient().select({ id: jobRuns.id }).from(jobRuns).where(condition);
-    if (!ownerAlive() || !current) throw new SyncInterrupted();
-    await checkEnabled();
-    await work();
-  }));
+  const unit: SyncUnit = async work => {
+    try {
+      owner.assertOwned();
+      await runOutsideTransaction(() => runInTransaction(async () => {
+        await fence();
+        await owner.inTransaction(async () => {
+          const [current] = await getClient().select({ id: jobRuns.id }).from(jobRuns).where(condition);
+          if (!current) throw new SyncInterrupted();
+          await checkEnabled();
+          await work();
+        });
+      }));
+    } catch (error) {
+      // Reconciliation catches ordinary per-worker failures and continues.
+      // Ownership loss must instead stop the whole import, including its
+      // missing-worker pass, using its existing interruption contract.
+      if (error instanceof SemaphoreLost) throw new SyncInterrupted();
+      throw error;
+    }
+  };
   let beating = false;
   const heartbeat = setInterval(() => {
-    if (beating || !ownerAlive()) return;
+    if (beating) return;
+    try { owner.assertOwned(); } catch { return; }
     beating = true;
     void Promise.resolve(db.update(jobRuns).set({ heartbeatAt: new Date() }).where(condition))
       .catch(() => {}).finally(() => { beating = false; });
   }, 2000);
   try {
     await checkEnabled();
+    owner.assertOwned();
     const fetchStart = performance.now();
     const remote = await t631Fetch("sitespecific.t631.worker.list");
     const fetchMs = performance.now() - fetchStart;
+    owner.assertOwned();
     if (!remote.success) throw new RemoteFailure();
     validateT631Workers(remote.data);
     const reconcileStart = performance.now();
     const result = await syncWorkerEins(remote.data, run.mode === "test", unit);
     const reconciliationMs = performance.now() - reconcileStart;
     const finalizeStart = performance.now();
-    await runOutsideTransaction(() => allowInMaintenanceMode(async () => {
-      await fence();
-      if (!ownerAlive()) throw new SyncInterrupted();
-      await getClient().update(jobRuns).set({
+    await history(owner, async client => {
+      const updated = await client.update(jobRuns).set({
         status: "success", completedAt: new Date(), heartbeatAt: new Date(),
         output: JSON.stringify({ dryRun: run.mode === "test", ...result }),
-      }).where(condition);
-    }));
+      }).where(condition).returning({ id: jobRuns.id });
+      if (!updated.length) throw new SyncInterrupted();
+    });
     logger.info("T631 sync phase timings", {
       service: "t631-sync-workers", dryRun: run.mode === "test",
       fetchMs, remoteTimings: remote.timings, reconciliationMs,
@@ -159,49 +174,63 @@ async function execute(run: JobRun, owner: PoolClient, ownerAlive: () => boolean
       edlsDeactivated: result.edlsDeactivated,
     });
   } catch (error) {
+    // Lost ownership cannot authorize ANY terminal write. Leave uncertain
+    // history for a new lease holder; late external replies are discarded.
+    if (error instanceof SemaphoreLost) return;
+    try { owner.assertOwned(); } catch { return; }
     const message = error instanceof SyncInterrupted ? interruptedMessage
       : isMaintenanceModeError(error) ? "Maintenance refusal: sync stopped because the site is in maintenance mode."
       : isT631ConfigurationError(error) || error instanceof T631RunRefusal ? "Configuration refusal: check the T631 connection, credentials, and enabled components."
       : error instanceof RemoteFailure ? "Remote failure: T631 timed out, could not be reached, or returned an invalid/unsuccessful worker response. Polling does not extend the vendor timeout."
       : "Sync failed. Partial live changes may remain; review before starting another run.";
-    await runOutsideTransaction(() => allowInMaintenanceMode(async () => {
-      await fence();
-      await getClient().update(jobRuns).set({
+    await history(owner, async client => {
+      await client.update(jobRuns).set({
         status: error instanceof SyncInterrupted ? "interrupted" : "error",
         error: message, completedAt: new Date(),
       }).where(condition);
-    }));
+    });
   } finally {
     clearInterval(heartbeat);
-    await releaseOwner(owner);
+    await owner.close();
   }
+}
+
+function coordinationBusy(error: unknown): boolean {
+  return error instanceof SemaphoreLost || (error as { code?: string })?.code === "55P03";
 }
 
 export async function startT631Run(dryRun: boolean, actorId: string, wait = false) {
   return runOutsideTransaction(async () => {
     await checkEnabled();
-    const owner = await acquireOwner();
+    let owner;
+    try { owner = await ResourceLease.acquireKey(T631_RESOURCE); }
+    catch (error) {
+      if (!coordinationBusy(error)) throw error;
+      const [active] = await db.select().from(jobRuns).where(running).limit(1);
+      if (active) return { run: active, duplicate: true };
+      throw new T631RunRefusal(409, "An interrupted sync is finishing its current worker. Check status before trying again.");
+    }
     if (!owner) {
       const [active] = await db.select().from(jobRuns).where(running).limit(1);
       if (!active) throw new T631RunRefusal(409, "Another sync is starting. Refresh status before trying again.");
       return { run: active, duplicate: true };
     }
-    let alive = true;
-    owner.on("error", () => { alive = false; });
     let run: JobRun;
     try {
       const claim = await recoverAbandoned(owner, { dryRun, actorId });
       if (!claim.acquired || !claim.run) throw new T631RunRefusal(409, "An interrupted sync is finishing its current worker. Check status before trying again.");
       run = claim.run;
-    } catch (error) { await releaseOwner(owner); throw error; }
+    } catch (error) { await owner.close(); throw error; }
     const context = { ...requestContext.getStore(), userId: actorId === "scheduler" ? undefined : actorId };
-    const work = () => requestContext.run(context, () => execute(run, owner, () => alive));
+    const work = () => requestContext.run(context, () => execute(run, owner));
     if (wait) {
-      await work();
+      // Settle the cron waiter promptly, not the external call. The detached
+      // executor still guards its next unit/terminal write when it resumes.
+      await Promise.race([work(), owner.lost]);
       return { run: (await readT631Run(run.id))!, duplicate: false };
     }
     setImmediate(() => {
-      // Persistence failures leave a running row, recovered under OWNER on the
+      // Persistence failures leave a running row, recovered under a new lease on the
       // next status/start request. Never replay a batch after such a failure.
       void work().catch(() => {});
     });

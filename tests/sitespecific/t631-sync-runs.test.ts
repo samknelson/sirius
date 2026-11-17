@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 
 // Real Postgres exclusion/transaction tests, isolated from application run rows
@@ -8,6 +8,15 @@ const fixture = vi.hoisted(() => ({
   fetch: vi.fn(), sync: vi.fn(), enabled: true,
 }));
 vi.mock("../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// Both raw coordination and ambient Drizzle work use an isolated search_path.
+// No test ever claims, expires or releases the application's semaphore.
+vi.mock("../../server/storage/db", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../server/storage/db")>();
+  const { Pool } = await import("pg");
+  const { drizzle } = await import("drizzle-orm/node-postgres");
+  const pool = new Pool({ ...actual.pool.options, options: `-c search_path=${fixture.table}` });
+  return { ...actual, pool, db: drizzle(pool) };
+});
 vi.mock("@shared/schema", async () => {
   const { pgSchema, varchar, text, timestamp, boolean, jsonb } = await import("drizzle-orm/pg-core");
   const { sql } = await import("drizzle-orm");
@@ -33,10 +42,12 @@ vi.mock("../../server/modules/sitespecific/t631/client/sync-workers", () => ({
 }));
 
 import { db, pool } from "../../server/storage/db";
-import { getClient, runInTransaction } from "../../server/storage/transaction-context";
+import { getClient, onAfterCommit, runInTransaction } from "../../server/storage/transaction-context";
 import { requestContext } from "../../server/middleware/request-context";
 import { setMaintenanceActive } from "../../server/services/maintenance-flag";
-import { startT631Run, readT631Run, publicT631Run } from "../../server/services/t631-sync-runs";
+import { startT631Run, readT631Run, publicT631Run, T631_RESOURCE } from "../../server/services/t631-sync-runs";
+import { semaphoreStorage } from "../../server/storage/system/semaphores";
+import { SyncInterrupted } from "../../server/modules/sitespecific/t631/client/sync-workers";
 import { jobRuns } from "@shared/schema";
 
 function deferred() {
@@ -62,6 +73,9 @@ beforeAll(async () => {
     operation varchar, status varchar, mode varchar, output text, error text, triggered_by varchar,
     heartbeat_at timestamp, completed_at timestamp, started_at timestamp DEFAULT now(),
     checkpoint jsonb, cancel_requested boolean DEFAULT false)`));
+  await db.execute(sql.raw(`CREATE TABLE "${fixture.table}".semaphores (
+    key text PRIMARY KEY, owner_process_id uuid, ownership_token uuid, expires_at timestamptz);
+    CREATE TABLE "${fixture.table}".mutations (value text)`));
 });
 beforeEach(async () => {
   setMaintenanceActive(false);
@@ -69,7 +83,9 @@ beforeEach(async () => {
   fixture.fetch.mockReset().mockResolvedValue({ success: true, data: { success: true, data: { workers: [] } } });
   fixture.sync.mockReset().mockResolvedValue(result);
   await db.delete(jobRuns);
+  await db.execute(sql`TRUNCATE semaphores, mutations`);
 });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 afterAll(async () => {
   setMaintenanceActive(false);
   vi.restoreAllMocks();
@@ -88,6 +104,7 @@ describe("durable T631 execution", () => {
     expect((await readT631Run())?.id).toBe(accepted.run.id);
     const duplicate = await startT631Run(false, "scheduler", true);
     expect(duplicate).toMatchObject({ duplicate: true, run: { id: accepted.run.id } });
+    expect(pool.idleCount).toBe(pool.totalCount);
     slow.resolve();
     const finished = await terminal(accepted.run.id);
     expect(publicT631Run(finished)).toMatchObject({ dryRun: true, result });
@@ -114,32 +131,102 @@ describe("durable T631 execution", () => {
     await terminal(run.id);
   });
 
-  it("fences a lost owner after its in-flight worker and never replays or overwrites terminal status", async () => {
-    const inUnit = deferred(), finishUnit = deferred(), nextUnit = deferred();
+  it("rolls back an expired in-flight unit before takeover admission and rejects late completion", async () => {
+    const inUnit = deferred(), finishUnit = deferred(), oldFinished = deferred();
     let secondMutation = false;
+    let committed = false;
     fixture.sync.mockImplementation(async (_payload, _dry, unit) => {
-      await unit(async () => { inUnit.resolve(); await finishUnit.promise; });
-      await nextUnit.promise;
-      await unit(async () => { secondMutation = true; });
-      return result;
+      // Shorten this fixture's lease before acquiring its transaction row lock.
+      await db.execute(sql`UPDATE semaphores SET expires_at = clock_timestamp() + interval '150 milliseconds'`);
+      try {
+        await unit(async () => {
+          await getClient().execute(sql`INSERT INTO mutations VALUES ('old')`);
+          onAfterCommit(() => { committed = true; });
+          inUnit.resolve();
+          await finishUnit.promise;
+        });
+        await unit(async () => { secondMutation = true; });
+        return result;
+      } catch (error) {
+        expect(error).toBeInstanceOf(SyncInterrupted);
+        throw error;
+      } finally { oldFinished.resolve(); }
     });
     const { run } = await startT631Run(false, "actor");
     await inUnit.promise;
-    const pid = (await db.execute(sql`SELECT pid FROM pg_locks WHERE locktype = 'advisory'
-      AND classid = 0 AND objid = 2032001 AND granted`)).rows[0].pid;
-    await db.execute(sql`SELECT pg_terminate_backend(${pid})`);
-    await new Promise(r => setTimeout(r, 30));
-    // Recovery cannot infer that the unit stopped simply because OWNER vanished.
-    expect((await readT631Run(run.id))?.status).toBe("running");
-    await expect(startT631Run(false, "other")).rejects.toThrow("finishing its current worker");
+    await new Promise(r => setTimeout(r, 180));
+    fixture.sync.mockResolvedValue(result);
+    let admitted = false;
+    const replacement = startT631Run(true, "scheduler", true).then(value => { admitted = true; return value; });
+    await new Promise(r => setTimeout(r, 40));
+    expect(admitted).toBe(false);
+    expect((await db.execute(sql`SELECT * FROM mutations`)).rowCount).toBe(0);
     finishUnit.resolve();
+    await oldFinished.promise;
+    expect((await replacement).run.status).toBe("success");
+    expect(committed).toBe(false);
+    expect(secondMutation).toBe(false);
+    expect((await db.execute(sql`SELECT * FROM mutations`)).rowCount).toBe(0);
+    expect((await readT631Run(run.id))?.status).toBe("interrupted");
+    expect(fixture.sync).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps polling and duplicate starts safe while a unit exceeds bounded row-lock waits", async () => {
+    const entered = deferred(), finish = deferred();
+    fixture.sync.mockImplementation(async (_payload, _dry, unit) => {
+      await unit(async () => { entered.resolve(); await finish.promise; });
+      return result;
+    });
+    const { run } = await startT631Run(false, "actor");
+    await entered.promise;
+    try {
+      expect((await readT631Run(run.id))?.status).toBe("running");
+      expect(await startT631Run(true, "scheduler", true)).toMatchObject({ duplicate: true, run: { id: run.id } });
+    } finally { finish.resolve(); }
+    expect((await terminal(run.id)).status).toBe("success");
+  });
+
+  it("settles a cron waiter on ambiguous renewal without claiming the external fetch was cancelled", async () => {
+    const fetching = deferred(), finish = deferred();
+    fixture.fetch.mockImplementation(async () => {
+      fetching.resolve(); await finish.promise;
+      return { success: true, data: { success: true, data: { workers: [] } } };
+    });
+    vi.spyOn(semaphoreStorage, "renew").mockRejectedValue(new Error("uncertain renewal"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const waiting = startT631Run(false, "scheduler", true);
+    const rejected = expect(waiting).rejects.toThrow("ownership lost");
+    await fetching.promise;
+    await vi.advanceTimersByTimeAsync(5000);
+    await rejected;
+    vi.useRealTimers();
+    expect(fixture.sync).not.toHaveBeenCalled();
+    await db.execute(sql`UPDATE semaphores SET expires_at = clock_timestamp() - interval '1 second'
+      WHERE key = ${T631_RESOURCE}`);
+    const recovered = await readT631Run();
+    expect(recovered?.status).toBe("interrupted");
+    finish.resolve();
+    await new Promise(r => setTimeout(r, 30));
+    expect((await readT631Run(recovered!.id))?.status).toBe("interrupted");
+    expect(fixture.sync).not.toHaveBeenCalled();
+  });
+
+  it("rejects a superseded token's late success without overwriting recovered history", async () => {
+    const reconciling = deferred(), finish = deferred(), oldFinished = deferred();
+    fixture.sync.mockImplementationOnce(async () => {
+      reconciling.resolve(); await finish.promise; oldFinished.resolve();
+      return result;
+    });
+    const { run } = await startT631Run(false, "actor");
+    await reconciling.promise;
+    await db.execute(sql`UPDATE semaphores SET expires_at = clock_timestamp() - interval '1 second'`);
+    const replacement = await startT631Run(true, "scheduler", true);
+    expect(replacement.run.status).toBe("success");
+    finish.resolve();
+    await oldFinished.promise;
     await new Promise(r => setTimeout(r, 30));
     expect((await readT631Run(run.id))?.status).toBe("interrupted");
-    nextUnit.resolve();
-    await new Promise(r => setTimeout(r, 50));
-    expect(secondMutation).toBe(false);
-    expect((await readT631Run(run.id))?.status).toBe("interrupted");
-    expect(fixture.sync).toHaveBeenCalledTimes(1);
+    expect((await readT631Run(replacement.run.id))?.status).toBe("success");
   });
 
   it.each([
@@ -173,16 +260,22 @@ describe("durable T631 execution", () => {
   });
 
   it("preserves effective actor in detached worker units", async () => {
+    let afterCommit = false;
     fixture.sync.mockImplementation(async (_payload, _dry, unit) => {
       await unit(async () => {
         expect(requestContext.getStore()?.userId).toBe("effective");
         await getClient().execute(sql`SELECT 1`);
+        onAfterCommit(() => { afterCommit = true; });
       });
       return result;
     });
-    const { run } = await startT631Run(false, "effective", true);
+    const { run } = await runInTransaction(async () => {
+      await getClient().execute(sql`SET LOCAL transaction_read_only = on`);
+      return startT631Run(false, "effective", true);
+    });
     expect(run.triggeredBy).toBe("effective");
     expect(run.status).toBe("success");
+    expect(afterCommit).toBe(true);
   });
 
   it("does not expose a run from another job kind", async () => {

@@ -64,3 +64,18 @@ it("checks the local deadline even before the event-loop heartbeat executes", as
   expect(() => lock.assertOwned()).toThrow();
   vi.restoreAllMocks();
 });
+it("rejects local loss inside the guarded transaction before it can commit history", async () => {
+  const s = store();
+  let committed = false;
+  s.guarded = async (_id, work) => {
+    const result = await work({} as PoolClient);
+    committed = true;
+    return result;
+  };
+  const lock = await acquire(s);
+  await expect(lock.whileOwned(async () => {
+    vi.spyOn(performance, "now").mockReturnValue(31000);
+  })).rejects.toThrow("ownership lost");
+  expect(committed).toBe(false);
+  vi.restoreAllMocks();
+});
