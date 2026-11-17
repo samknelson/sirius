@@ -22,6 +22,18 @@ export interface JobRunStorage {
   delete(id: string): Promise<boolean>;
 }
 
+// Cron's scheduler (including manual runs) omits startedAt, as required by
+// InsertJobRun: now() stores the SQL session's wall clock. Drizzle normally
+// labels naive fields UTC, which shifts that start a second time on display.
+// Other run kinds are intentionally untouched, as are ORM-written completions.
+// Keep this on display reads only: scheduling/dueness retains its existing path.
+const displayedStartInstant = sql`
+  CASE WHEN ${jobRuns.pluginKind} = 'cron'
+    THEN ${jobRuns.startedAt} AT TIME ZONE current_setting('TimeZone')
+    ELSE ${jobRuns.startedAt} AT TIME ZONE 'UTC'
+  END
+`.mapWith((value: string) => new Date(value));
+
 const withUser = {
   id: jobRuns.id,
   configurationId: jobRuns.configurationId,
@@ -39,7 +51,7 @@ const withUser = {
   cancelRequested: jobRuns.cancelRequested,
   confirmationHash: jobRuns.confirmationHash,
   confirmationUsedAt: jobRuns.confirmationUsedAt,
-  startedAt: jobRuns.startedAt,
+  startedAt: displayedStartInstant,
   completedAt: jobRuns.completedAt,
   triggeredBy: jobRuns.triggeredBy,
   userFirstName: users.firstName,
