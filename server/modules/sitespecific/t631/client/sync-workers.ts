@@ -4,6 +4,7 @@ import { logger, storageLogger } from "../../../../logger";
 import { getOptionsType } from "../../../options-registry";
 import { runInTransaction } from "../../../../storage/transaction-context";
 import { t631IdentityValues } from "@shared/t631-identity";
+import { getTodayYmd } from "@shared/utils/date";
 import { isMaintenanceModeError } from "../../../../services/maintenance-flag";
 
 interface T631WorkerRow {
@@ -169,7 +170,7 @@ async function syncMemberStatus(opts: {
   if (currentIds.includes(synced.id)) {
     detail(dryRun ? "would_keep_status" : "kept_status", `already current: ${synced.name}`);
   } else {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayYmd();
     if (dryRun) {
       result.statusesSet++;
       detail("would_set_status", `${synced.name} (${code}) dated ${today}`);
@@ -588,7 +589,7 @@ export async function syncWorkerEins(
           if (wouldSync) {
             result.statusesSet++;
             result.edlsActivated++;
-            result.details.push({ remoteWorkerId, action: "would_set_status", error: `${wouldSync.name} (${remoteMsRaw.trim()})` });
+            result.details.push({ remoteWorkerId, action: "would_set_status", error: `${wouldSync.name} (${remoteMsRaw.trim()}) dated ${getTodayYmd()}` });
             result.details.push({ remoteWorkerId, action: "would_edls_activate" });
           } else if (remoteMsRaw.trim() && !msCtx.knownSiriusIds.has(remoteMsRaw.trim())) {
             result.details.push({ remoteWorkerId, action: "ms_unmatched", error: `remote worker_ms "${remoteMsRaw.trim()}" does not match any local member status sirius_id; status and EDLS untouched` });
