@@ -40,6 +40,7 @@ export function initializeSystemStatusPluginSystem(): void {
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/uptime";
 import "./plugins/process";
+import "./plugins/semaphores";
 import "./plugins/user-activity";
 import "./plugins/instance";
 import "./plugins/container";

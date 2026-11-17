@@ -5,6 +5,7 @@ import { CronExecutionLock, type SemaphoreStore } from "../../server/cron/execut
 const locks: CronExecutionLock[] = [];
 function store() {
   return {
+    status: vi.fn(async () => ({ observedAt: new Date(), truncated: false, entries: [] })),
     claim: vi.fn(async () => true), renew: vi.fn(async () => true),
     release: vi.fn(async () => {}),
     guarded: async <T>(_id: unknown, work: (client: PoolClient) => Promise<T>) => work({} as PoolClient),

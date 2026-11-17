@@ -12,3 +12,14 @@ export const semaphores = pgTable("semaphores", {
     OR (${t.ownerProcessId} IS NOT NULL AND ${t.ownershipToken} IS NOT NULL AND ${t.expiresAt} IS NOT NULL)
   `),
 ]);
+
+/** Read-only projection: never expose the ownership token to status consumers. */
+export interface SemaphoreStatusSnapshot {
+  observedAt: Date;
+  truncated: boolean;
+  entries: Array<Pick<typeof semaphores.$inferSelect, "key" | "ownerProcessId" | "expiresAt"> & {
+    ownerName: string | null;
+    ownerTelemetry: "present" | "missing";
+    state: "held" | "expired" | "unowned";
+  }>;
+}
