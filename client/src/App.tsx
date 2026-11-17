@@ -355,6 +355,7 @@ const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
+const ProcessesPage = lazy(() => import("@/pages/config/processes"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
 const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
@@ -3709,6 +3710,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DefaultPolicyPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/processes">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ProcessesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

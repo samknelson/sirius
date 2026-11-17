@@ -68,6 +68,7 @@ import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
 import { registerLedgerPaymentBatchRoutes } from "./modules/ledger/payment-batches";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/system/logs";
+import { registerProcessRoutes } from "./modules/system/processes";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
 import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
@@ -461,6 +462,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerProcessRoutes(app, requireAccess);
   registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
   registerWorkerMshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerMsh);
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);

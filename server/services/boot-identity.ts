@@ -12,7 +12,8 @@
  * database, or the env registry.
  *
  * The value lives for the lifetime of the process and is deliberately NOT
- * persisted: a restarted process must not be able to reproduce it.
+ * reused by a restart: the observational registry may persist it, but each
+ * restarted process must mint a new identity.
  */
 import { randomUUID } from "node:crypto";
 

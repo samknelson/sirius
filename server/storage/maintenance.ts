@@ -9,6 +9,8 @@
  * to that one transaction; the connection returns to read-only afterwards.
  *
  * Sanctioned call sites (keep this list current):
+ *   - process registration/heartbeat/end only (system/processes.ts).
+ *     Retention deletes deliberately do not use the exception.
  *   - session persistence writes (server/storage/system/sessions.ts):
  *     login, rolling expiry, logout, and session pruning keep working so
  *     admins can reach the system-mode escape route;

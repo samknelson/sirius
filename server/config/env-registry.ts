@@ -138,6 +138,13 @@ export interface EnvironmentVariableDeclaration {
 }
 
 const registry = new Map<string, EnvironmentVariableDeclaration>();
+registry.set("PROCESS_NAME", {
+  name: "PROCESS_NAME",
+  description: "Optional non-unique process label, captured at backend startup.",
+  secret: false,
+  category: "core",
+  changeTakesEffect: "restart",
+});
 const overrides = new Map<string, (value: string | undefined) => string | undefined>();
 
 /**

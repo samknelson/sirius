@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./plugins/processes";
 import { logger } from "../../../logger";
 import {
   registerPluginKind,

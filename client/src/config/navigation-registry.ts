@@ -66,6 +66,7 @@ export const configSections: NavSection[] = [
       { path: "/config/system-mode", label: "System Mode", icon: Server, testId: "nav-config-system-mode", permission: "admin" },
       { path: "/config/auth-settings", label: "Auth Settings", icon: KeyRound, testId: "nav-config-auth-settings", permission: "admin" },
       { path: "/config/system-status", label: "System Status", icon: Activity, testId: "nav-config-system-status", permission: "admin" },
+      { path: "/config/processes", label: "Processes", icon: Server, testId: "nav-config-processes", permission: "admin" },
       { path: "/config/env", label: "Environment", icon: Terminal, testId: "nav-config-env", permission: "admin" },
       { path: "/config/timezone", label: "Time Zone", icon: Clock, testId: "nav-config-timezone", permission: "admin" },
       { path: "/config/components", label: "Components", icon: Package, testId: "nav-config-components", permission: "admin" },

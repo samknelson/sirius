@@ -315,6 +315,13 @@ export async function bootstrapApp(
   {
     const { initEnvOverrides } = await import("./services/env-overrides");
     await initEnvOverrides();
+    // Every DB-backed role reports, independently of singleton cron ownership.
+    const { startProcessReporter, stopProcessReporter } = await import("./services/process-reporter");
+    startProcessReporter(roles.ids);
+    installCronShutdownHooks(server, async () => {
+      await stopProcessReporter();
+      await cronScheduler.stop();
+    });
 
     // Safety net, normally a no-op: the stored override was already read
     // directly at the top of this function. It fires only if the peek could
@@ -620,7 +627,6 @@ export async function bootstrapApp(
   // api-ws-only containers never initialize either singleton.
   cronScheduler.setOwnership(roles.has("api-user"));
   if (roles.has("api-user")) {
-    installCronShutdownHooks(server, () => cronScheduler.stop());
     const { getSession } = await import("./auth");
     const sessionMiddleware = getSession();
     initializeWebSocket(server, sessionMiddleware);

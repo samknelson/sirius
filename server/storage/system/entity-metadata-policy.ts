@@ -14,6 +14,7 @@ export const EXCLUDED_METADATA_TABLES = [
   "comm",
   "comm_tags",
   "job_runs",
+  "processes",
   "esigs",
   "event_occurrences",
   "event_participants",

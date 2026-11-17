@@ -135,6 +135,7 @@ import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig, 
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./system/sessions";
 import { type SessionHistoryStorage, createSessionHistoryStorage } from "./system/session-history";
+import { type ProcessesStorage, createProcessesStorage } from "./system/processes";
 import { type FloodStorage, createFloodStorage } from "./system/flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
 import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch/jobs";
@@ -224,6 +225,7 @@ import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentities
 import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
 export interface IStorage {
+  processes: ProcessesStorage;
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
@@ -352,6 +354,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  processes: ProcessesStorage;
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
@@ -479,6 +482,7 @@ export class DatabaseStorage implements IStorage {
   grievanceContracts: GrievanceContractStorage;
 
   constructor() {
+    this.processes = createProcessesStorage();
     this.variables = withStorageLogging(
       createVariableStorage(),
       variableLoggingConfig,

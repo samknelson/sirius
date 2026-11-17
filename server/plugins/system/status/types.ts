@@ -14,6 +14,8 @@ export type StatusScanMode = (typeof STATUS_SCAN_MODES)[number];
 
 /** One message produced by a status plugin's scan. */
 export interface StatusMessage {
+  /** Internal navigation supplied by trusted plugin code. */
+  link?: { href: string; label: string };
   priority: StatusPriority;
   title: string;
   details?: string;

@@ -14,6 +14,7 @@ import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 export type StatusPriority = "info" | "notice" | "warning" | "error";
 
 export interface StatusMessage {
+  link?: { href: string; label: string };
   priority: StatusPriority;
   title: string;
   details?: string;
@@ -102,6 +103,9 @@ export function StatusMessageList({
               <div className="text-sm text-muted-foreground break-words">
                 {message.details}
               </div>
+            )}
+            {message.link && message.link.href.startsWith("/") && !message.link.href.startsWith("//") && (
+              <a className="text-sm underline" href={message.link.href}>{message.link.label}</a>
             )}
           </div>
         </li>

@@ -186,6 +186,8 @@ export async function shutdownAndExit(server: Server | undefined): Promise<void>
 
   // Release the dedicated scheduler connection before pool.end(), which
   // otherwise waits for that checked-out session forever.
+  const { stopProcessReporter } = await import("./process-reporter");
+  await stopProcessReporter();
   const { cronScheduler } = await import("../cron");
   await cronScheduler.stop();
 
