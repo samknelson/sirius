@@ -14,6 +14,7 @@ interface WorkerEinSyncResult {
   dryRun: boolean;
   created: number;
   updated: number;
+  deleted: number;
   unchanged: number;
   skipped: number;
   errors: number;
@@ -51,7 +52,7 @@ export default function T631FetchPage() {
       setSyncResult(data);
       toast({
         title: data.dryRun ? "Dry run complete" : "Fetch Workers complete",
-        description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors; phones: ${data.phonesCreated} created, ${data.phonesDeleted} deleted, ${data.phonesUnchanged} kept, ${data.optins} opt-ins; statuses: ${data.statusesSet} set, EDLS: ${data.edlsActivated} activated, ${data.edlsDeactivated} deactivated`,
+        description: `${data.workersCreated} workers created, ${data.created} IDs created, ${data.deleted} IDs deleted, ${data.updated} workers reconciled, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors; phones: ${data.phonesCreated} created, ${data.phonesDeleted} deleted, ${data.phonesUnchanged} kept, ${data.optins} opt-ins; statuses: ${data.statusesSet} set, EDLS: ${data.edlsActivated} activated, ${data.edlsDeactivated} deactivated`,
         variant: data.errors > 0 ? "destructive" : "default",
       });
     },
@@ -137,6 +138,7 @@ export default function T631FetchPage() {
                   <Badge variant="secondary" data-testid="badge-sync-workers-created">{syncResult.workersCreated} workers created</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-created">{syncResult.created} created</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-updated">{syncResult.updated} updated</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-deleted">{syncResult.deleted} IDs deleted</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-unchanged">{syncResult.unchanged} unchanged</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-skipped">{syncResult.skipped} skipped</Badge>
                   <Badge variant={syncResult.errors > 0 ? "destructive" : "secondary"} data-testid="badge-sync-errors">

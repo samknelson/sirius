@@ -386,6 +386,7 @@ function sheetFailure(error: unknown): FreemanMigrateError {
     "More than one worker matches the normalized Freeman EIN",
     "More than one worker matches the normalized Teamsters 631 ID",
     "More than one migrated worker has the same Freeman source identity",
+    "Freeman EIN conflict",
     "No employment status is configured",
     "More than one Freeman crew lead has the same source ID",
   ];
@@ -788,6 +789,14 @@ async function resolveWorker(
   const t631Id = text(pick(source, "worker_id", "workerId"));
   const normalizedT631 = t631Id?.replace(/\D/g, "") || null;
   const einAlias = `freeman_ein:${normalizedEin}`;
+  const assertCanAttachEin = async (workerId: string) => {
+    const ids = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
+    const plannedOtherEin = !live && [...(planState?.workers.entries() ?? [])]
+      .some(([alias, owner]) => owner === workerId && alias.startsWith("freeman_ein:") && alias !== einAlias);
+    if (ids.some(id => id.typeId === idTypes.ein) || plannedOtherEin) {
+      throw new Error("Freeman EIN conflict: matched worker already has a different EIN; identity left unchanged.");
+    }
+  };
 
   const matchByDigits = async (
     typeId: string,
@@ -825,6 +834,7 @@ async function resolveWorker(
     : undefined;
   const t631WorkerId = existingT631WorkerId ?? plannedT631WorkerId;
   if (t631WorkerId) {
+    await assertCanAttachEin(t631WorkerId);
     if (live) {
       // The normalized EIN lookup above found no owner while the worker-ID
       // table is locked, so the fallback worker can safely acquire it.
@@ -860,6 +870,7 @@ async function resolveWorker(
   }
   const nameWorkerId = nameMatches[0];
   if (nameWorkerId) {
+    await assertCanAttachEin(nameWorkerId);
     if (live) {
       await storage.workerIds.createWorkerId({
         workerId: nameWorkerId,

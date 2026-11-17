@@ -376,7 +376,8 @@ export function SheetDetailsView({
                       };
                       const showExtras = crewAssignments.some((assignment) => !!getExtras(assignment));
                       const slotStyle = {
-                        gridTemplateColumns: `2rem 3rem ${showDisplayId ? "4rem " : ""}minmax(0, 1fr)${showExtras ? " minmax(0, 0.65fr)" : ""}`,
+                        // Ten digits, plus the ID cell's horizontal padding and left border.
+                        gridTemplateColumns: `2rem 3rem ${showDisplayId ? "calc(10ch + 1rem + 1px) " : ""}minmax(0, 1fr)${showExtras ? " minmax(0, 0.65fr)" : ""}`,
                       };
                       const slotClassName = "grid min-h-8 text-sm border-b last:border-b-0 [&>span]:min-w-0 [&>span]:border-l [&>span:first-child]:border-l-0 [&>span]:px-2 [&>span]:py-1";
                       const renderSlot = (idx: number) => {
