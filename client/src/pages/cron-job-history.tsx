@@ -68,16 +68,27 @@ function parseOutputData(output: string | null): CronJobOutputData | null {
 
 function CronJobHistoryContent() {
   const { name } = useParams<{ name: string }>();
-  const [selectedRun, setSelectedRun] = useState<CronJobRun | null>(null);
+  const [page, setPage] = useState(1);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
-  const { data: runs = [], isLoading } = useQuery<CronJobRun[]>({
-    queryKey: ["/api/cron-jobs", name, "runs"],
+  const { data, isLoading, isError, refetch } = useQuery<{ runs: CronJobRun[]; hasMore: boolean }>({
+    queryKey: ["/api/cron-jobs", name, "runs", page],
     queryFn: async () => {
-      const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}/runs`);
+      const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}/runs?page=${page}`);
       if (!response.ok) throw new Error('Failed to fetch run history');
       return response.json();
     },
     enabled: !!name,
+  });
+  const runs = data?.runs ?? [];
+  const { data: selectedRun, isLoading: detailLoading, isError: detailError, refetch: retryDetail } = useQuery<CronJobRun>({
+    queryKey: ["/api/cron-jobs", name, "run", selectedRunId],
+    queryFn: async () => {
+      const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}/runs/${encodeURIComponent(selectedRunId!)}`);
+      if (!response.ok) throw new Error("Failed to fetch run details");
+      return response.json();
+    },
+    enabled: !!selectedRunId,
   });
 
   const formatSummaryValue = (value: any): React.ReactNode => {
@@ -108,7 +119,7 @@ function CronJobHistoryContent() {
     <Card>
       <CardHeader>
         <CardTitle>Run History</CardTitle>
-        <CardDescription>Complete execution history for this job</CardDescription>
+        <CardDescription>Execution history, newest first. Showing up to 25 runs per page.</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -117,9 +128,11 @@ function CronJobHistoryContent() {
             <Skeleton className="h-12" />
             <Skeleton className="h-12" />
           </div>
+        ) : isError ? (
+          <div role="alert">Failed to load run history. <Button variant="outline" onClick={() => refetch()}>Retry</Button></div>
         ) : runs.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-history">
-            No runs yet. This job hasn't been executed.
+            {page === 1 ? "No runs yet. This job hasn't been executed." : "No runs on this page."}
           </p>
         ) : (
           <Table>
@@ -143,7 +156,7 @@ function CronJobHistoryContent() {
                       {format(new Date(run.startedAt), "MMM d, HH:mm:ss")}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {outputData ? `${outputData.executionTimeSec}s` : "—"}
+                      {run.completedAt ? `${Math.max(0, (new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000).toFixed(1)}s` : "—"}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={run.status} />
@@ -178,7 +191,7 @@ function CronJobHistoryContent() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSelectedRun(run)}
+                        onClick={() => setSelectedRunId(run.id)}
                         data-testid={`button-view-${run.id}`}
                       >
                         <Eye className="h-4 w-4 mr-1" />
@@ -191,10 +204,15 @@ function CronJobHistoryContent() {
             </TableBody>
           </Table>
         )}
+        <div className="flex items-center justify-between gap-3 mt-4">
+          <Button variant="outline" disabled={page === 1 || isLoading} onClick={() => setPage(p => p - 1)}>Previous</Button>
+          <span className="text-sm">Page {page}</span>
+          <Button variant="outline" disabled={!data?.hasMore || isLoading || isError} onClick={() => setPage(p => p + 1)}>Next</Button>
+        </div>
       </CardContent>
 
       {/* View Run Details Dialog */}
-      <Dialog open={selectedRun !== null} onOpenChange={(open) => !open && setSelectedRun(null)}>
+      <Dialog open={selectedRunId !== null} onOpenChange={(open) => !open && setSelectedRunId(null)}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-run-detail">
           <DialogHeader>
             <div className="flex items-center justify-between">
@@ -216,6 +234,8 @@ function CronJobHistoryContent() {
               </Badge>
             </div>
           </DialogHeader>
+          {detailLoading && <p>Loading run details…</p>}
+          {detailError && <div role="alert">Failed to load run details. <Button onClick={() => retryDetail()}>Retry</Button></div>}
           {selectedRun && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
@@ -310,9 +330,10 @@ function CronJobHistoryContent() {
 }
 
 export default function CronJobHistory() {
+  const { name } = useParams<{ name: string }>();
   return (
     <CronJobLayout activeTab="history">
-      <CronJobHistoryContent />
+      <CronJobHistoryContent key={name} />
     </CronJobLayout>
   );
 }

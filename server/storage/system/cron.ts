@@ -1,7 +1,7 @@
 import { createNoopValidator } from "../utils/validation";
 import { getClient } from "../transaction-context";
 import { jobRuns, users, type JobRun, type InsertJobRun } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export const validate = createNoopValidator<InsertJobRun, JobRun>();
 
@@ -12,7 +12,7 @@ export type JobRunWithUser = JobRun & {
 };
 
 export interface JobRunStorage {
-  list(filters?: { configurationId?: string; pluginKind?: string; pluginId?: string; status?: string }): Promise<JobRunWithUser[]>;
+  list(filters?: { configurationId?: string; pluginKind?: string; pluginId?: string; status?: string; limit?: number; offset?: number; summaryOnly?: boolean }): Promise<JobRunWithUser[]>;
   getById(id: string): Promise<JobRunWithUser | undefined>;
   getLatestByConfigurationId(configurationId: string): Promise<JobRunWithUser | undefined>;
   getLatestByPlugin(pluginKind: string, pluginId: string): Promise<JobRunWithUser | undefined>;
@@ -57,11 +57,22 @@ export function createJobRunStorage(): JobRunStorage {
       if (filters?.status) conditions.push(eq(jobRuns.status, filters.status));
 
       const query = getClient()
-        .select(withUser)
+        .select(filters?.summaryOnly ? {
+          ...withUser,
+          output: sql<string | null>`null`,
+          input: sql<null>`null`,
+          progress: sql<null>`null`,
+          checkpoint: sql<null>`null`,
+          error: sql<string | null>`left(${jobRuns.error}, 500)`,
+        } : withUser)
         .from(jobRuns)
         .leftJoin(users, eq(jobRuns.triggeredBy, users.id))
-        .orderBy(desc(jobRuns.startedAt));
-      return conditions.length ? query.where(and(...conditions)) : query;
+        .where(and(...conditions))
+        .orderBy(desc(jobRuns.startedAt), desc(jobRuns.id))
+        .$dynamic();
+      if (filters?.limit !== undefined) query.limit(filters.limit);
+      if (filters?.offset !== undefined) query.offset(filters.offset);
+      return query;
     },
 
     async getById(id): Promise<JobRunWithUser | undefined> {

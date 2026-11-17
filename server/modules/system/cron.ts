@@ -80,7 +80,9 @@ export function registerCronJobRoutes(
       }
 
       const job = toLegacyCronJob(envelope);
-      const latestRun = await storage.jobRuns.getLatestByPlugin("cron", name);
+      const latestRun = req.query.summary === "true"
+        ? (await storage.jobRuns.list({ pluginKind: "cron", pluginId: name, limit: 1, summaryOnly: true }))[0]
+        : await storage.jobRuns.getLatestByPlugin("cron", name);
 
       // Surface the plugin's default settings so read-only views can render the
       // effective config (defaults overlaid with the saved `data`). Editing now
@@ -109,10 +111,30 @@ export function registerCronJobRoutes(
       }
 
       // Include orphaned history from a previous incarnation of this singleton.
-      const runs = await storage.jobRuns.list({ pluginKind: "cron", pluginId: name });
-      res.json(runs);
+      const page = Number(req.query.page ?? 1);
+      if (!Number.isSafeInteger(page) || page < 1 || page > 1000000) {
+        return res.status(400).json({ message: "Invalid history page" });
+      }
+      const pageSize = 25;
+      const runs = await storage.jobRuns.list({
+        pluginKind: "cron", pluginId: name,
+        limit: pageSize + 1, offset: (page - 1) * pageSize, summaryOnly: true,
+      });
+      res.json({ runs: runs.slice(0, pageSize), page, pageSize, hasMore: runs.length > pageSize });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cron job runs" });
+    }
+  });
+
+  app.get("/api/cron-jobs/:name/runs/:runId", requireAccess('admin'), async (req, res) => {
+    try {
+      const run = await storage.jobRuns.getById(req.params.runId);
+      if (!run || run.pluginKind !== "cron" || run.pluginId !== req.params.name) {
+        return res.status(404).json({ message: "Cron job run not found" });
+      }
+      res.json(run);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch cron job run" });
     }
   });
 

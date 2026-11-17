@@ -47,9 +47,9 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
   const { name } = useParams<{ name: string }>();
 
   const { data: job, isLoading, error } = useQuery<CronJob>({
-    queryKey: ["/api/cron-jobs", name],
+    queryKey: activeTab === "history" ? ["/api/cron-jobs", name, "summary"] : ["/api/cron-jobs", name],
     queryFn: async () => {
-      const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}`);
+      const response = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}${activeTab === "history" ? "?summary=true" : ""}`);
       if (!response.ok) {
         throw new Error("Cron job not found");
       }
