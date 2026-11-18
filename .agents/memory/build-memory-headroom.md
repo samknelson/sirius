@@ -18,3 +18,10 @@ frontend/backend build, and sample child-process RSS when recalibrating it.
 Do not assume a larger Node heap fixes a machine-memory limit. An abrupt end
 during transformation without a logged error makes memory pressure a suspect,
 not a confirmed cause; keep that uncertainty explicit unless logs confirm it.
+
+When the logged heap OOM occurs specifically at **computing gzip size**, remove
+optional compressed-size reporting before increasing the heap. That reporting
+step can exhaust the constrained builder even after transformation and chunk
+rendering succeed. A full build with reporting disabled succeeded under the
+same heap ceiling with process-tree RSS below the publishing machine's RAM.
+This is only a build-reporting cost; it does not control HTTP compression.

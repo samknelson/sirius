@@ -31,6 +31,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Avoid concurrent gzip buffers on the small publishing builder. This
+    // changes only the size report, not generated assets or HTTP compression.
+    reportCompressedSize: false,
   },
   server: {
     host: "0.0.0.0",
