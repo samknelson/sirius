@@ -77,17 +77,17 @@
 # ----------------------------------------------------------------------------
 # Stage 1: builder
 # ----------------------------------------------------------------------------
-FROM node:24.22.1-bookworm-slim AS builder
+FROM node:24.22.3-bookworm-slim AS builder
 
 # Toolchain required to compile native modules (bcrypt, bufferutil).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Node 24.22.1 already supplies npm 11.19.1. No global npm upgrade is
+# Node 24.22.3 supplies npm 11.19.1. No global npm upgrade is
 # needed for the old npm 10 exit-handler bug. Assert the bundled versions
 # instead of installing an unbounded npm major.
-RUN test "$(node --version)" = "v24.22.1" && test "$(npm --version)" = "11.19.1"
+RUN test "$(node --version)" = "v24.22.3" && test "$(npm --version)" = "11.19.1"
 
 WORKDIR /app
 
@@ -132,7 +132,7 @@ RUN npm prune --omit=dev
 # ----------------------------------------------------------------------------
 # Stage 2: runtime
 # ----------------------------------------------------------------------------
-FROM node:24.22.1-bookworm-slim AS runtime
+FROM node:24.22.3-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
 # Default port; override with -e PORT=...

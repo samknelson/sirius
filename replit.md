@@ -4,10 +4,10 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Run & Operate
 
--   **Runtime:** Node **24.22.1** (LTS), npm **11.19.1** (bundled).
+-   **Runtime:** Node **24.22.3** (LTS), npm **11.19.1** (bundled).
     `.node-version` and `package.json` record the exact supported versions.
     Use Replit's standard Node 24 module. The owner selected its supplied
-    patch rather than custom provisioning solely to obtain 24.22.2.
+    patch rather than custom runtime provisioning.
     The existing `stable-25_05` channel is unchanged.
     Reload the environment after changes; `node -v` and
     `npm -v` must report those versions before installing with `npm ci`.
