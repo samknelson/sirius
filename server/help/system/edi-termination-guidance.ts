@@ -83,6 +83,9 @@ export const ediTerminationGuidance = `
   A missing or stale heartbeat does not authorize another run; ask an administrator to
   investigate interrupted work. Background work is not guaranteed to survive a server restart.</p>
   <p>Coverage checks have resource and database-wait limits to protect other users.
+   Historical evidence is processed using private temporary server storage rather
+   than keeping the whole reached history in memory. Temporary storage also has a
+   finite limit; it is not a durable review or a restart-recovery mechanism.
   Exceeding a limit fails the whole check; it never accepts shortened history or
   partial evidence. Another EDI operation on the same server may temporarily block
   starting a check. After a confirmed failure, ask an administrator to inspect the

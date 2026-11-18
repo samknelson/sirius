@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 export const COVERAGE_LIMITS = {
   page: 1000, keys: 400_000, rows: 125_000, bytes: 64 * 1024 * 1024,
   durationMs: 120_000, queryMs: 10_000,
+  rssBytes: 768 * 1024 * 1024, heapBytes: 384 * 1024 * 1024,
 } as const;
 
 export type CoverageCorrelation = { wizardId?: string; runId?: string };
@@ -25,15 +26,21 @@ export class CoverageBudget {
   private bytes = 0;
   private rows = 0;
   private keys = 0;
+  private scanned = 0;
+  private spillBytes = 0;
+  private spillIndexEntries = 0;
   private phase = "Starting evidence check";
   constructor(private readonly correlation: CoverageCorrelation = {}) {}
   check(keys = 0) {
     this.keys = Math.max(this.keys, keys);
+    const memory = process.memoryUsage();
     const exceeded = [
       { dimension: "elapsedMs", observed: Math.floor(performance.now() - this.started), limit: COVERAGE_LIMITS.durationMs },
       { dimension: "coordinateKeys", observed: this.keys, limit: COVERAGE_LIMITS.keys },
       { dimension: "retainedRecords", observed: this.rows, limit: COVERAGE_LIMITS.rows },
       { dimension: "evidenceBytes", observed: this.bytes, limit: COVERAGE_LIMITS.bytes },
+      { dimension: "rssBytes", observed: memory.rss, limit: COVERAGE_LIMITS.rssBytes },
+      { dimension: "heapBytes", observed: memory.heapUsed, limit: COVERAGE_LIMITS.heapBytes },
     ].filter(d => d.observed > d.limit);
     if (exceeded.length) {
       const diagnostics = { scanId: this.scanId, ...this.correlation, phase: this.phase, exceeded };
@@ -43,10 +50,25 @@ export class CoverageBudget {
       throw new CoverageBudgetError(diagnostics);
     }
   }
-  retain(row: unknown) {
+  retain(row: unknown, evidence = true) {
+    if (evidence) this.scanned++;
     this.rows++;
     this.bytes += Buffer.byteLength(JSON.stringify(row));
     this.check();
+  }
+  release(row: unknown) {
+    this.rows--;
+    this.bytes -= Buffer.byteLength(JSON.stringify(row));
+  }
+  spill(bytes: number) { this.spillBytes = bytes; }
+  indexEntry(delta: number) { this.spillIndexEntries += delta; }
+  refuseStorage(): never {
+    const diagnostics = { scanId: this.scanId, ...this.correlation, phase: this.phase,
+      exceeded: [{ dimension: "stagingStorageUnavailable", observed: 1, limit: 0 }] };
+    logger.warn("EDI coverage resources", {
+      service: "edi-coverage", event: "budget-exceeded", ...this.snapshot(), ...diagnostics,
+    });
+    throw new CoverageBudgetError(diagnostics);
   }
   log(event: string, phase: string, extra: Record<string, number> = {}) {
     if (event === "phase-start") this.phase = phase;
@@ -56,7 +78,8 @@ export class CoverageBudget {
   }
   private snapshot() {
     const { rss, heapUsed, external } = process.memoryUsage();
-    return { scanId: this.scanId, ...this.correlation, rows: this.rows, evidenceBytes: this.bytes,
+    return { scanId: this.scanId, ...this.correlation, rows: this.rows, scannedRecords: this.scanned,
+      spillBytes: this.spillBytes, spillIndexEntries: this.spillIndexEntries, evidenceBytes: this.bytes,
       keys: this.keys, elapsedMs: Math.round(performance.now() - this.started), rss, heapUsed, external };
   }
   async yield(keys = 0) {

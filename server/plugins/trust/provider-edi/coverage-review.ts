@@ -4,11 +4,14 @@ import type { EdiCoverageCandidate, EdiCoverageDecision } from "@shared/edi-cove
 import type { TrustProviderEdiContext, TrustProviderEdiPlugin } from "./registry";
 import { effectiveBenefitSiriusIds, readAsOfYmd, resolveBenefitIds } from "./base";
 import { isEdiCobra } from "./coverage-segments";
-import { approveConflict, competingSources, coverageKey, evidenceHash, evidenceHashRecords, reviewConflict, indexCoverageProjection, type CoverageProjection } from "./coverage-choices";
+import { approveConflict, competingSources, coverageKey, evidenceHash, evidenceHashRecords, reviewConflict, type CoverageProjection } from "./coverage-choices";
 import { monthEnd, monthIndex, monthStart, readTerminationPolicy, terminationWindow } from "./termination-policy";
 import { effectiveMedicalPlanGroupMap } from "./plugins/sitespecific-smf-shared";
 import { CoverageBudget, COVERAGE_LIMITS } from "./coverage-budget";
 import { coverageReader, type CoverageCoordinate } from "./coverage-reader";
+import { CoverageSpill } from "./coverage-spill";
+import type { CoverageEvidenceRow } from "./coverage-reader";
+import { spillCoverageProjection } from "./coverage-spill-projection";
 
 let activeDiscovery = false;
 
@@ -31,6 +34,8 @@ async function discoverBoundedCoverage(
   report: (percent: number | null, details: { phase: string; processed?: number; total?: number }) => Promise<void>,
 ) {
   const budget = new CoverageBudget(ctx.coverageCorrelation);
+  const store = new CoverageSpill(budget);
+  try {
   let stageStart = performance.now();
   let phase = "Resolving benefits";
   const stage = async (next: string) => {
@@ -58,12 +63,16 @@ async function discoverBoundedCoverage(
   const asOf = readAsOfYmd(ctx);
   const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
   const window = terminationWindow(asOf, policy.months);
-  const reader = coverageReader(ctx, budget);
+  const reader = coverageReader(ctx, budget, store);
   const { groups, relationMap } = reader;
   await stage("Reading report-month coverage");
   await reader.read(and(inArray(trustWmb.benefitId, benefitIds),
     eq(trustWmb.year, Number(asOf.slice(0, 4))), eq(trustWmb.month, Number(asOf.slice(5, 7)))));
-  const roots = [...groups.values()].flatMap(group => group.slice(0, 1));
+  const roots = store.map<CoverageCoordinate>();
+  for (const [key, group] of groups) {
+    roots.set(key, group[0]);
+    if (roots.size % 100 === 0) await budget.yield();
+  }
   await stage("Reading termination evidence");
   const events: (typeof trustWmbEvents.$inferSelect)[] = [];
   if (policy.subscribers || policy.dependents) {
@@ -89,33 +98,41 @@ async function discoverBoundedCoverage(
       await reader.ensure(coordinates);
       for (const coordinate of coordinates) {
         const previous = groups.get(coverageKey(coordinate)) ?? [];
-        if (previous.some(r => r.sourceRelationId ? policy.dependents : policy.subscribers)) roots.push(previous[0]);
+        if (previous.some(r => r.sourceRelationId ? policy.dependents : policy.subscribers)) roots.set(coverageKey(previous[0]), previous[0]);
       }
       await budget.yield();
       if (page.length < COVERAGE_LIMITS.page) break;
       cursor = page[page.length - 1].id;
     }
   }
-  const needed = new Set<string>();
+  const needed = store.map<boolean>();
   await stage("Tracing historical families");
   type State = { coordinate: CoverageCoordinate; family: boolean; walk: boolean };
-  let queue: State[] = [];
-  const scheduled = new Set<string>();
+  const queue = store.map<State>();
+  let sequence = 0;
+  const scheduled = store.map<boolean>();
   const schedule = (coordinate: CoverageCoordinate, family: boolean, walk: boolean) => {
     const key = `${coverageKey(coordinate)}|${family}|${walk}`;
     if (scheduled.has(key)) return;
-    budget.check(scheduled.size + 1);
-    scheduled.add(key);
+    budget.check();
+    scheduled.set(key, true);
     // Never retain a whole evidence row in traversal state.
     const { workerId, benefitId, year, month } = coordinate;
-    queue.push({ coordinate: { workerId, benefitId, year, month }, family, walk });
+    queue.set(String(++sequence).padStart(12, "0"), { coordinate: { workerId, benefitId, year, month }, family, walk });
   };
-  for (const root of roots) schedule(root, true, true);
-  roots.length = 0;
+  for (const root of roots.values()) {
+    schedule(root, true, true);
+    if (sequence % 100 === 0) await budget.yield();
+  }
   // Explore all candidate families, not whichever source happens to sort first.
   // Historical segments can extend without a lookback cap; gaps stop traversal.
-  while (queue.length) {
-    const batch = queue.splice(0, COVERAGE_LIMITS.page);
+  while (queue.size) {
+    const batch: State[] = [];
+    for (const [key, state] of queue) {
+      batch.push(state); queue.delete(key);
+      if (batch.length === COVERAGE_LIMITS.page) break;
+    }
+    budget.check(batch.length * 3);
     await reader.ensure(batch.map(s => s.coordinate));
     await reader.ensure(batch.filter(s => s.family).map(s => s.coordinate), true);
     const previousCoordinates = batch.filter(s => s.walk).map(({ coordinate }) => {
@@ -124,12 +141,12 @@ async function discoverBoundedCoverage(
     });
     await reader.ensure(previousCoordinates);
     for (let i = 0; i < batch.length; i++) {
-      if (i % 500 === 0) await budget.yield(scheduled.size);
+      if (i % 500 === 0) await budget.yield();
       const { coordinate, family, walk } = batch[i];
       const key = coverageKey(coordinate);
       const group = groups.get(key);
       if (!group?.length) continue;
-      needed.add(key);
+      needed.set(key, true);
       if (family) {
         for (const child of reader.children.get(key) ?? []) schedule(groups.get(child)![0], true, true);
         for (const benefit of supplemental) {
@@ -145,7 +162,7 @@ async function discoverBoundedCoverage(
       const previousClasses = new Set((groups.get(coverageKey(previousCoordinate)) ?? [])
         .map(row => `${row.sourceRelationId ?? ""}|${isEdiCobra(row.employerSiriusId)}`));
       for (let rowIndex = 0; rowIndex < group.length; rowIndex++) {
-      if (rowIndex && rowIndex % 500 === 0) await budget.yield(scheduled.size);
+      if (rowIndex && rowIndex % 500 === 0) await budget.yield();
       const row = group[rowIndex];
       const index = monthIndex(row.year, row.month);
       const previous = monthStart(index - 1);
@@ -156,8 +173,18 @@ async function discoverBoundedCoverage(
       }
     }
   }
-  const relevant = [...needed].flatMap(key => groups.get(key)!);
-  const labels = new Map(relevant.map(r => [r.workerId, [r.given, r.family].filter(Boolean).join(" ") || r.workerSiriusId || r.workerId]));
+  const relevant = store.map<CoverageEvidenceRow>();
+  const labels = store.map<string>();
+  const relevantRelations = store.map<NonNullable<ReturnType<typeof relationMap.get>>>();
+  for (const key of needed.keys()) {
+    for (const r of groups.get(key)!) {
+      relevant.set(r.id, r);
+      labels.set(r.workerId, [r.given, r.family].filter(Boolean).join(" ") || r.workerSiriusId || r.workerId);
+      const relation = r.sourceRelationId && relationMap.get(r.sourceRelationId);
+      if (relation) relevantRelations.set(relation.id, relation);
+    }
+    if (relevant.size % 500 === 0) await budget.yield();
+  }
   const label = (id: string) => labels.get(id) ?? id;
   await stage("Reviewing competing sources");
   await report(needed.size ? 0 : null, { phase, processed: 0, total: needed.size });
@@ -166,10 +193,10 @@ async function discoverBoundedCoverage(
   let processed = 0;
   let reviewBytes = 0;
   let lastReport = performance.now();
-  for (const key of [...needed].sort()) {
+  for (const key of needed.keys()) {
     processed++;
     if (processed % 500 === 0) {
-      await budget.yield(scheduled.size);
+      await budget.yield();
       if (performance.now() - lastReport > 500) {
         await report(Math.round(processed / needed.size * 100), { phase, processed, total: needed.size });
         lastReport = performance.now();
@@ -180,10 +207,15 @@ async function discoverBoundedCoverage(
     // Refuse pathological candidate × parent evidence BEFORE allocating copies
     // or canonicalizing them. This is a whole-run refusal, never truncation.
     let evidenceItems = group.length;
+    let evidenceBytes = Buffer.byteLength(JSON.stringify(group));
     for (const r of group) {
       const relation = r.sourceRelationId && relationMap.get(r.sourceRelationId);
-      if (relation) evidenceItems += groups.get(coverageKey({ ...r, workerId: relation.worker1 }))?.length ?? 0;
-      if (evidenceItems > 10_000) throw new Error("Coverage conflict evidence is too large to review safely. Correct competing sources before retrying; no partial review was accepted.");
+      if (relation) {
+        const parents = groups.get(coverageKey({ ...r, workerId: relation.worker1 })) ?? [];
+        evidenceItems += parents.length;
+        evidenceBytes += Buffer.byteLength(JSON.stringify(parents)) + Buffer.byteLength(JSON.stringify(relation));
+      }
+      if (evidenceItems > 10_000 || evidenceBytes > 8 * 1024 * 1024) throw new Error("Coverage conflict evidence is too large to review safely. Correct competing sources before retrying; no partial review was accepted.");
     }
     const familyEvidence = group.map(r => {
       const relation = r.sourceRelationId ? relationMap.get(r.sourceRelationId) : null;
@@ -219,10 +251,9 @@ async function discoverBoundedCoverage(
     decision: null, stale: true,
   });
   await stage("Validating evidence fingerprint");
-  const relevantRelations = new Set(relevant.map(r => r.sourceRelationId));
-  const fingerprint = await evidenceHashRecords({
-    relevant: relevant.sort((a, b) => a.id.localeCompare(b.id)),
-    relations: [...relationMap.values()].filter(r => relevantRelations.has(r.id)).sort((a, b) => a.id.localeCompare(b.id)),
+  const fingerprint = "spill-v1:" + await evidenceHashRecords({
+    relevant: relevant.values(),
+    relations: relevantRelations.values(),
     events: events.sort((a, b) => a.id.localeCompare(b.id)),
   });
   await stage("Evidence check finished");
@@ -234,10 +265,12 @@ async function discoverBoundedCoverage(
     const group = groups.get(coverageKey({ ...event, year: +previous.slice(0, 4), month: +previous.slice(5, 7) })) ?? [];
     return !group.length || group.some(row => row.sourceRelationId ? policy.dependents : policy.subscribers);
   });
-  return { conflicts, groups, relationMap, relevant, fingerprint, events: populationEvents };
+  return { conflicts, groups, relationMap, relevant, fingerprint, events: populationEvents,
+    store, budget, dispose: () => store.dispose() };
+  } catch (error) { store.dispose(); throw error; }
 }
 
-export function coverageProjection(review: Awaited<ReturnType<typeof discoverCoverage>>): CoverageProjection {
+export async function coverageProjection(review: Awaited<ReturnType<typeof discoverCoverage>>): Promise<CoverageProjection> {
   const unresolved = review.conflicts.filter(c => !c.decision);
   if (unresolved.length) throw new Error(`${unresolved.length} unresolved or stale coverage conflict(s). Open Coverage sources, explicitly select each source and save a reason, then retry generation.`);
   const excludedIds = new Set<string>();
@@ -255,7 +288,9 @@ export function coverageProjection(review: Awaited<ReturnType<typeof discoverCov
   }
   // A parent can lose its own subscriber row through another decision even
   // when its child's coverage has only one source and needs no approval.
-  for (const row of review.relevant) {
+  let validated = 0;
+  for (const row of review.relevant.values()) {
+    if (++validated % 100 === 0) await review.budget.yield();
     if (!row.sourceRelationId || excludedIds.has(row.id)) continue;
     const relation = review.relationMap.get(row.sourceRelationId);
     const index = monthIndex(row.year, row.month);
@@ -267,6 +302,5 @@ export function coverageProjection(review: Awaited<ReturnType<typeof discoverCov
       throw new Error(`WMB ${row.id}: retained dependent ${row.workerId} requires valid subscriber coverage for ${row.year}-${row.month}. Review Coverage sources or correct family history; standalone subscriber coverage cannot be invented.`);
     }
   }
-  return indexCoverageProjection({ excludedIds, decisions: review.conflicts.map(c => c.decision!), fingerprint: review.fingerprint },
-    review.relevant, review.events, [...review.relationMap.values()]);
+  return spillCoverageProjection(review, { excludedIds, decisions: review.conflicts.map(c => c.decision!), fingerprint: review.fingerprint });
 }

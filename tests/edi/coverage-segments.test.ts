@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse } from "csv-parse/sync";
 import { coverageSegments, isEdiCobra, type SegmentCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
 import { wmbPrimaryKeys, buildMemberUnits } from "../../server/plugins/trust/provider-edi/base";
@@ -209,8 +209,11 @@ describe("real assembly and carrier date/qualifier fidelity", () => {
 });
 
 describe("run-only coverage approval evidence", () => {
+  let lastReview: Awaited<ReturnType<typeof discoverCoverage>> | undefined;
+  afterEach(() => lastReview?.dispose());
   const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
   async function review(rows: SegmentCoverage[], decisions: EdiCoverageDecision[] = [], rels = [relation], events: ReturnType<typeof event>[] = []) {
+    lastReview?.dispose();
     const fixture = ediReadFixture([
       [{ id: "benefit", siriusId: "K" }],
       events.filter(event => !rows.some(r => r.workerId === event.workerId && r.benefitId === event.benefitId &&
@@ -236,17 +239,18 @@ describe("run-only coverage approval evidence", () => {
     const mock = vi.spyOn(readerModule, "coverageReader").mockReturnValue({
       groups, relationMap, children,
       read: async () => { rows.filter(r => r.year === 2026 && r.month === 10).forEach(add); },
-      ensure: async (coordinates, family) => {
+      ensure: async (coordinates: readonly readerModule.CoverageCoordinate[], family?: boolean) => {
         for (const coordinate of coordinates) for (const r of rows) {
           const rel = r.sourceRelationId && relationMap.get(r.sourceRelationId);
           if (r.benefitId === coordinate.benefitId && r.year === coordinate.year && r.month === coordinate.month &&
               (family ? rel && rel.worker1 === coordinate.workerId : r.workerId === coordinate.workerId)) add(r);
         }
       },
-    } as ReturnType<typeof readerModule.coverageReader>);
+    } as unknown as ReturnType<typeof readerModule.coverageReader>);
     fixture.ctx.terminationPolicy = policy;
     try {
       const result = await discoverCoverage(fixture.ctx, plugin, decisions);
+      lastReview = result;
       fixture.assertReadsConsumed();
       return result;
     } finally { mock.mockRestore(); }
@@ -263,12 +267,12 @@ describe("run-only coverage approval evidence", () => {
     const initial = await review(rows);
     const conflict = initial.conflicts[0];
     expect(conflict.decision).toBeNull();
-    expect(() => coverageProjection(initial)).toThrow(/unresolved/);
+    await expect(coverageProjection(initial)).rejects.toThrow(/unresolved/);
     expect(() => approveConflict(conflict, { evidence: conflict.evidence, reason: "why" }, "admin", "now")).toThrow(/select/);
     expect(() => approveConflict(conflict, { evidence: conflict.evidence, selectedId: "cobra", reason: " " }, "admin", "now")).toThrow(/reason/);
     const decision = choose(conflict, "cobra");
     expect(decision).toMatchObject({ decidedBy: "effective-admin", selectedId: "cobra" });
-    const projection = coverageProjection(await review(rows, [decision]));
+    const projection = await coverageProjection(await review(rows, [decision]));
     expect(projectCoverage(rows, projection, r => r.id).map(r => r.id)).toEqual(["cobra"]);
     expect((await review(rows)).conflicts[0].decision).toBeNull();
     expect(decision.candidates).toHaveLength(2);
@@ -282,7 +286,7 @@ describe("run-only coverage approval evidence", () => {
     ]) {
       const result = await review(changed, [decision]);
       expect(result.conflicts[0].stale).toBe(true);
-      expect(() => coverageProjection(result)).toThrow(/stale/);
+      await expect(coverageProjection(result)).rejects.toThrow(/stale/);
     }
     const reordered = await review([...rows].reverse(), [decision]);
     expect(reordered.conflicts[0].decision).toEqual(decision);
@@ -298,7 +302,7 @@ describe("run-only coverage approval evidence", () => {
     const rows = [row(10), child(10), child(10, { id: "own-child", sourceRelationId: null })];
     const initial = await review(rows);
     const decision = choose(initial.conflicts[0], "child-10");
-    const projection = coverageProjection(await review(rows, [decision]));
+    const projection = await coverageProjection(await review(rows, [decision]));
     const fixture = ediReadFixture([[{ id: "benefit", siriusId: "K" }],
       rows.map(r => ({ ...r, subscriberWorkerId: r.sourceRelationId ? "parent" : null }))]);
     fixture.ctx.coverageProjection = projection;
@@ -311,7 +315,7 @@ describe("run-only coverage approval evidence", () => {
   it("uses selected termination history without erasing reinstatement or scan safeguards", async () => {
     const rows = [row(9), row(9, { id: "term-cobra", employerSiriusId: "COBRA" })];
     const initial = await review(rows, [], [], [event("parent", 10)]);
-    const projection = coverageProjection(await review(rows, [choose(initial.conflicts[0], "term-cobra")], [], [event("parent", 10)]));
+    const projection = await coverageProjection(await review(rows, [choose(initial.conflicts[0], "term-cobra")], [], [event("parent", 10)]));
     const selected = projectCoverage(rows, projection, r => r.id);
     expect(selectTerminationCandidates([event("parent", 10)], selected, [], new Set(), "2026-10-01", policy)[0])
       .toMatchObject({ familyWmbId: "term-cobra", start: "2026-09-01", end: "2026-09-30" });
@@ -327,6 +331,6 @@ describe("run-only coverage approval evidence", () => {
     expect(initial.conflicts).toHaveLength(1);
     const decision = choose(initial.conflicts[0], "parent-as-dependent");
     const projected = await review(rows, [decision], [relation, parentRelation]);
-    expect(() => coverageProjection(projected)).toThrow(/retained dependent child.*standalone subscriber coverage cannot be invented/);
+    await expect(coverageProjection(projected)).rejects.toThrow(/retained dependent child.*standalone subscriber coverage cannot be invented/);
   });
 });

@@ -5,9 +5,14 @@ import { discoverCoverage } from "../../server/plugins/trust/provider-edi/covera
 import { CoverageBudgetError } from "../../server/plugins/trust/provider-edi/coverage-budget";
 import { reviewConflict, evidenceHash } from "../../server/plugins/trust/provider-edi/coverage-choices";
 import type { EdiCoverageCandidate } from "@shared/edi-coverage-choices";
+const ephemeral = vi.hoisted(() => ({
+  dispose: () => {},
+  budget: { yield: async () => {}, check: () => {}, retain: () => {}, release: () => {} },
+  store: { map: () => new Map(), check: () => {} },
+}));
 vi.mock("../../server/plugins/trust/provider-edi/coverage-review", async original => ({
   ...await original<any>(),
-  discoverCoverage: vi.fn(async () => ({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture" })),
+  discoverCoverage: vi.fn(async () => ({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "fixture" })),
 }));
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { registeredEdiPlugins } from "./fixtures/harness";
@@ -75,7 +80,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture", events: [] });
+  vi.mocked(discoverCoverage).mockResolvedValue({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "fixture", events: [] } as any);
   state.allowed = true;
   state.rows = [{ data: { pk: "saved", firstName: "Fixture", memberSsn: "000123456" } }];
   state.getRows.mockImplementation(async () => state.rows);
@@ -129,7 +134,7 @@ describe("authorized, read-only Deliver exports", () => {
       subscriberLabel: "Fictional Member", subscriberWorkerId: "fictional-person", isCobra: false, familyIssue: null,
     };
     const conflict = reviewConflict([candidate, { ...candidate, id: "cobra", isCobra: true, employerSiriusId: "COBRA" }], "evidence", []);
-    vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [conflict], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture", events: [] });
+    vi.mocked(discoverCoverage).mockResolvedValue({ ...ephemeral, conflicts: [conflict], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "fixture", events: [] } as any);
     return { key: conflict.key, evidence: conflict.evidence, selectedId: "cobra", reason: "Reviewed fictional source evidence" };
   }
   it.each(["sitespecific-bao-kaiser", "sitespecific-smf-local11"])(
@@ -194,8 +199,8 @@ describe("authorized, read-only Deliver exports", () => {
   it("checks source evidence again before publishing completed metadata", async () => {
     const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
     const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue([]);
-    vi.mocked(discoverCoverage).mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "before", events: [] })
-      .mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "after", events: [] });
+    vi.mocked(discoverCoverage).mockResolvedValueOnce({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "before", events: [] } as any)
+      .mockResolvedValueOnce({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "after", events: [] } as any);
     const { storage } = await import("../../server/storage");
     try {
       await expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!.run!({
@@ -226,7 +231,7 @@ describe("authorized, read-only Deliver exports", () => {
         headers: { authorization: "fixture", "Content-Type": "application/json" },
         body: JSON.stringify({ input: { asOfDate: "2026-10-01" } }) })).status).toBe(500);
     } finally {
-      release({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "new" });
+      release({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "new" });
       await finished();
     }
     expect((await (await get("/coverage/data")).json())).toMatchObject({ ready: true, conflicts: [], fingerprint: "new" });
@@ -279,7 +284,7 @@ describe("authorized, read-only Deliver exports", () => {
     vi.mocked(discoverCoverage).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
     expect((await postCoverage({ action: "check" })).status).toBe(202);
     state.wizard.data.progress.coverage.runId = "different-owner";
-    release({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "late" });
+    release({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "late" });
     await vi.waitFor(() => expect(state.writeProgress.mock.calls.some(c => c[3].status === "completed")).toBe(true));
     expect(state.wizard.data.coverageSnapshot.fingerprint).toBe("fixture");
     expect(state.wizard.data.progress.coverage.runId).toBe("different-owner");

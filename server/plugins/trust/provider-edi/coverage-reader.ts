@@ -3,6 +3,7 @@ import { contacts, employers, trustBenefits, trustWmb, workerRelations, workers 
 import type { TrustProviderEdiContext } from "./registry";
 import { coverageKey, type CoverageRelation } from "./coverage-choices";
 import { CoverageBudget, COVERAGE_LIMITS } from "./coverage-budget";
+import { CoverageSpill } from "./coverage-spill";
 
 export type CoverageCoordinate = { workerId: string; benefitId: string; year: number; month: number };
 const columns = {
@@ -24,14 +25,14 @@ export const coordinateWhere = (r: CoverageCoordinate, children = false) => and(
 /** Loads only requested person/benefit/month groups, never installation history.
  * All conflicting candidates are kept. Pagination bounds each driver result;
  * the budget separately bounds retained evidence, including duplicate sources. */
-export function coverageReader(ctx: TrustProviderEdiContext, budget: CoverageBudget) {
-  const groups = new Map<string, CoverageEvidenceRow[]>();
-  const relationMap = new Map<string, CoverageRelation>();
-  const relationsLoaded = new Set<string>();
-  const loaded = new Set<string>();
-  const seen = new Set<string>();
-  const childrenLoaded = new Set<string>();
-  const children = new Map<string, Set<string>>();
+export function coverageReader(ctx: TrustProviderEdiContext, budget: CoverageBudget, store = new CoverageSpill(budget)) {
+  const groups = store.map<CoverageEvidenceRow[]>();
+  const relationMap = store.map<CoverageRelation>();
+  const relationsLoaded = store.map<boolean>();
+  const loaded = store.map<boolean>();
+  const seen = store.map<boolean>();
+  const childrenLoaded = store.map<boolean>();
+  const children = store.map<string[]>();
   async function read(where: SQL | undefined, family = false) {
     let cursor: string | undefined;
     for (;;) {
@@ -47,6 +48,7 @@ export function coverageReader(ctx: TrustProviderEdiContext, budget: CoverageBud
         .where(and(where, cursor ? gt(trustWmb.id, cursor) : undefined))
         .orderBy(trustWmb.id).limit(COVERAGE_LIMITS.page),
       { statementTimeoutMs: COVERAGE_LIMITS.queryMs });
+      for (const row of page) budget.retain(row);
       budget.log("database-end", "Coverage page", { count: page.length, milliseconds: Math.round(performance.now() - started) });
       // Relations are shared across many history months. Read/digest each once,
       // including caching missing ids; never transfer arbitrary metadata.
@@ -63,31 +65,33 @@ export function coverageReader(ctx: TrustProviderEdiContext, budget: CoverageBud
         for (const relation of relations) {
           budget.retain(relation);
           relationMap.set(relation.id, relation);
+          budget.release(relation);
         }
-        for (const id of relationIds) relationsLoaded.add(id);
+        for (const id of relationIds) relationsLoaded.set(id, true);
         budget.log("database-end", "Family relations", { count: relations.length });
       }
       for (const row of page) {
         // Direct queries request complete coordinates (including every source).
         // A family query proves only that parent's children, NOT all sources of
         // a child's coordinate. Do not cache that partial answer as complete.
-        if (!family) loaded.add(coverageKey(row));
+        if (!family) loaded.set(coverageKey(row), true);
         if (seen.has(row.id)) continue;
-        budget.retain(row);
-        seen.add(row.id);
+        seen.set(row.id, true);
         const key = coverageKey(row);
         const group = groups.get(key) ?? [];
         group.push(row);
+        if (group.length > 10_000) throw new Error("Coverage coordinate has too many sources to review safely. No partial review was accepted.");
         groups.set(key, group);
         const relation = row.sourceRelationId && relationMap.get(row.sourceRelationId);
         if (relation) {
           const parent = coverageKey({ ...row, workerId: relation.worker1 });
-          const childKeys = children.get(parent) ?? new Set<string>();
+          const childKeys = new Set(children.get(parent) ?? []);
           childKeys.add(key);
-          children.set(parent, childKeys);
+          children.set(parent, [...childKeys]);
         }
       }
-      await budget.yield(loaded.size + childrenLoaded.size + groups.size);
+      for (const row of page) budget.release(row);
+      await budget.yield();
       if (page.length < COVERAGE_LIMITS.page) break;
       cursor = page[page.length - 1].id;
     }
@@ -111,9 +115,9 @@ export function coverageReader(ctx: TrustProviderEdiContext, budget: CoverageBud
         ${trustWmb.benefitId}, ${trustWmb.year}, ${trustWmb.month})
         IN (VALUES ${sql.join(values, sql`, `)})`), family);
       // Empty coordinates are authoritative answers too.
-      for (const key of batch.keys()) cache.add(key);
+      for (const key of batch.keys()) cache.set(key, true);
       batch.clear();
-      budget.check(loaded.size + childrenLoaded.size + groups.size);
+      budget.check();
     };
     for (const r of coordinates) {
       const key = coverageKey(r);
@@ -123,5 +127,5 @@ export function coverageReader(ctx: TrustProviderEdiContext, budget: CoverageBud
     }
     if (batch.size) await flush();
   }
-  return { groups, relationMap, children, read, ensure };
+  return { groups, relationMap, children, read, ensure, dispose: () => store.dispose() };
 }

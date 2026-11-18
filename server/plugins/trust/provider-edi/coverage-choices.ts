@@ -23,7 +23,7 @@ function canonical(v: unknown): unknown {
 }
 
 /** Same canonical bytes as evidenceHash, without one large synchronous copy. */
-export async function evidenceHashRecords(records: Record<string, readonly unknown[]>): Promise<string> {
+export async function evidenceHashRecords(records: Record<string, Iterable<unknown>>): Promise<string> {
   const hash = createHash("sha256");
   hash.update("{");
   let first = true;
@@ -31,9 +31,11 @@ export async function evidenceHashRecords(records: Record<string, readonly unkno
     hash.update(`${first ? "" : ","}${JSON.stringify(key)}:[`);
     first = false;
     const rows = records[key];
-    for (let i = 0; i < rows.length; i++) {
-      hash.update(`${i ? "," : ""}${JSON.stringify(canonical(rows[i]))}`);
+    let i = 0;
+    for (const row of rows) {
+      hash.update(`${i ? "," : ""}${JSON.stringify(canonical(row))}`);
       if (i % 500 === 0) await new Promise<void>(resolve => setImmediate(resolve));
+      i++;
     }
     hash.update("]");
   }
@@ -61,13 +63,21 @@ export interface CoverageProjection {
   fingerprint: string;
 }
 // Ephemeral only: never serialize raw history into wizard JSON or decisions.
-const indexes = new WeakMap<CoverageProjection, {
-  byId: Map<string, SegmentCoverage>;
+export interface CoverageProjectionIndex {
+  byId: Pick<Map<string, SegmentCoverage>, "get" | "size">;
   byPerson: Map<string, SegmentCoverage[]>;
   segments: ReturnType<typeof coverageSegments>;
   events?: (typeof trustWmbEvents.$inferSelect)[];
   relations?: CoverageRelation[];
-}>();
+  rowsForMonth?: (workerId: string, benefitId: string, year: number, month: number) => SegmentCoverage[];
+  relation?: (id: string) => CoverageRelation | undefined;
+  dispose?: () => void;
+}
+const indexes = new WeakMap<CoverageProjection, CoverageProjectionIndex>();
+export function setCoverageProjectionIndex(projection: CoverageProjection, index: CoverageProjectionIndex) {
+  indexes.set(projection, index);
+  return projection;
+}
 export function indexCoverageProjection(projection: CoverageProjection, rows: readonly SegmentCoverage[],
   events?: (typeof trustWmbEvents.$inferSelect)[], relations?: CoverageRelation[]) {
   const retained = rows.filter(row => !projection.excludedIds.has(row.id));
@@ -85,7 +95,10 @@ export function indexCoverageProjection(projection: CoverageProjection, rows: re
   return projection;
 }
 export const coverageProjectionIndex = (projection?: CoverageProjection) => projection ? indexes.get(projection) : undefined;
-export const releaseCoverageProjectionIndex = (projection: CoverageProjection) => indexes.delete(projection);
+export const releaseCoverageProjectionIndex = (projection: CoverageProjection) => {
+  indexes.get(projection)?.dispose?.();
+  indexes.delete(projection);
+};
 export function projectCoverage<T>(rows: readonly T[], projection: CoverageProjection | undefined, id: (r: T) => string): T[] {
   return projection ? rows.filter(r => !projection.excludedIds.has(id(r))) : [...rows];
 }

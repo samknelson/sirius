@@ -1,5 +1,103 @@
 # Coverage evidence background verification
 
+## Spill-backed historical families (2026-11-18)
+
+The later supplied scan `f1a586e2-2b6a-455e-acda-102c54c46f04`
+refused **125,001 retained records against 125,000**, at 63,063 ms.
+It reported 51,284,468 evidence bytes, 345,891 coordinate keys,
+775,229,440 RSS bytes and 641,441,000 heap bytes. This establishes a
+retention-cap failure, not timeout or demonstrated OOM. It does not establish
+the full reached population. The older measurements below are historical.
+
+Discovery now uses a run-private SQLite file for evidence, complete/empty
+coordinate caches, relation caches, family links, visited states, frontier,
+labels and ordered fingerprint inputs. Family contributions are still partial
+coordinate answers: direct lookup must fetch all competing sources. Review
+streams ordered groups, including rejected sources, and projection validates
+every retained dependent against selected historical parent authority.
+Generation uses disk-backed ID/boundary lookups and compact contiguous segment
+intervals, not all monthly rows for each person. The final independent discovery
+still checks the fingerprint before exposing generated output.
+
+Source reads remain through `storage.readOnly`; staging never writes the source
+database. The deployed Dockerfile uses Node 20 Debian and includes native build
+tools for the production `better-sqlite3` dependency. This has been exercised in
+the Node 20 workspace, not in the affected deployed image.
+
+### Resource and privacy contract
+
+- Random run directories are owner-only (0700), evidence files 0600, outside
+  the repository under the runtime's temporary directory. They contain sensitive
+  evidence: operators must protect the container filesystem and host backups.
+- Each SQLite file is limited to 256 MiB including its indexes; four coordinated
+  slots limit aggregate evidence-file allocation to 1 GiB per temporary root.
+  The bounded page cache is 4 MiB per file; memory-mapped IO is disabled.
+  No WAL or rollback journal duplicates history. One disposable transaction
+  avoids a filesystem commit per index mutation.
+- Slot acquisition/scavenging is serialized by a small SQLite coordinator.
+  Only demonstrably dead PIDs are scavenged; live/unknown owners are not removed.
+  An abandoned directory is removed on the next acquisition, not on a timer.
+  PID reuse conservatively delays cleanup rather than risking another run.
+- Explicit `finally` cleanup covers successful checks, decision/completion,
+  generation, errors and cooperative cancellation. Process death leaves private
+  files for the next acquisition. No restart-resume promise is made.
+- The 120-second evidence budget, 10-second query deadline, 125,000 live-record
+  ceiling and 64 MiB accounted live-evidence ceiling remain. Whole-process
+  checks also refuse above 768 MiB RSS or 384 MiB used heap. These include
+  unrelated application allocations; isolated measurements do not prove
+  serving-process headroom.
+- Each stored value is limited to 4 MiB, each coordinate to 10,000 candidates,
+  candidate-plus-parent conflict construction to 10,000 items / 8 MiB, and
+  the saved review remains limited to 2 MB. Failures refuse the whole result;
+  these limits never truncate evidence.
+- Logs separate scanned record transfers, live retained records/serialized
+  bytes, disk bytes, aggregate staging-index entries, live key high water,
+  process RSS/heap and elapsed time. Serialized live-evidence bytes are not a
+  claim to measure all V8 object overhead; RSS/heap checks include that overhead.
+- Fingerprints use an explicit `spill-v1:` prefix and deterministic SQLite
+  binary key order. Older completed reviews must be refreshed before further
+  actions; a failed action still needs fresh evidence and explicit resubmission.
+
+### Verification workload
+
+The opt-in isolated PostgreSQL fixture now includes 550 parent/child families
+across 120 months plus an old competing source connecting two families:
+**132,001 relevant WMB records**. It supplies 110 MB of wide relation metadata
+which is digested at the database boundary, not transferred as repeated JSON.
+The fixture explicitly selects the original family, generates and encodes all
+1,100 Carelon output rows, then mutates the rejected historical source and
+requires stale-review rejection. No carrier delivery or production data repair
+is performed.
+
+The first successful above-cap review/projection/generation measurement was
+65.207 seconds, 227 reader queries with 100 ms injected delay, peak RSS
+232,615,936 bytes, peak heap 115,906,992 bytes, and 1,778 concurrent HTTP
+requests with worst latency 107.6 ms. The subsequent mutation assertion in that
+run hit a fixture uniqueness constraint; that fixture was corrected separately.
+The final compact-interval implementation passed the complete family fixture,
+including rejected-source mutation and relation-metadata invalidation:
+**66.084 seconds** through generation, **221,454,336 bytes peak RSS**
+(211.2 MiB), **106,284,072 bytes peak used heap** (101.4 MiB),
+**1,802 concurrent requests**, worst **149.1 ms**, and all **1,100 rows**
+generated/encoded. The seven other ingestion/budget cases passed in the preceding
+full run; the corrected family case was then rerun independently. Full
+`npm run check` and 230 focused coverage/termination/HTTP/help tests passed.
+The status harness
+serves HTTP plus `SELECT 1`, not the authenticated live wizard endpoint.
+
+Built-in `system:edi-wizard-terminations` at `/wizards/%` now explains private,
+finite, temporary staging. Existing failure/retry guidance remains accurate:
+refresh does not repair oversized evidence or replay rejected actions. No local
+database help is changed. Signed-in Help and Coverage sources UI verification
+remains separate from source/API tests and the unauthenticated preview.
+
+**Affected-deployment acceptance remains open.** After merge, an authorized
+operator should confirm native-module availability, writable private temporary
+storage, container disk allowance and whole-process headroom, then perform one
+measured check/generation on the affected run while measuring real status
+responsiveness. Review fresh evidence and resubmit intended actions explicitly.
+Do not infer success from these isolated results or repeatedly retry the incident.
+
 ## Confirmed time-budget refusal and correction (2026-11-18)
 
 The authorized log excerpt supplied for this task establishes **elapsed time**
