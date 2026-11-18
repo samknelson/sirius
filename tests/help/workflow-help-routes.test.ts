@@ -39,6 +39,18 @@ const signedIn = { "x-test-user": "fixture-user" };
 const read = (path: string) => fetch(`${base}${path}`, { headers: signedIn });
 
 describe("backfilled guidance through existing authenticated read handlers", () => {
+  it("serves coverage refusal recovery guidance only on the wizard path", async () => {
+    const response = await read("/api/helps/lookup?path=/wizards/fictional-run");
+    const entries = await response.json();
+    const help = entries.find((entry: any) => entry.id === "system:edi-wizard-terminations");
+    expect(help.details).toContain("exceeded dimension");
+    expect(help.details).toContain("application server console");
+    expect(help.details).toContain("Do not repeatedly retry");
+    expect(help.details).toBe(sanitizeHtml(help.details, "rich-document"));
+    for (const path of ["/wizards", "/config/wizards", "/workers/fictional-run"]) {
+      expect(help.paths.some((pattern: string) => likePatternMatches(pattern, path))).toBe(false);
+    }
+  });
   it("requires sign-in for listing, lookup, and individual built-ins", async () => {
     for (const path of ["/api/helps", "/api/helps/lookup?path=/config/helps",
       "/api/helps/system:benefits-scan"]) {

@@ -36,3 +36,16 @@ concurrent requests on an isolated target. A heap-growth threshold measured from
 one starting sample is not a retained-memory estimate: garbage collection policy
 can make the same completed workload show very different peaks. Report the
 runtime limits used, and keep local evidence distinct from staging acceptance.
+
+Measure database round-trip count against observed per-page latency, not just
+local SQL execution time. Preserve complete/empty-coordinate cache semantics:
+a family lookup proves only that parent's contribution, not a child's other sources.
+
+**Why:** An authorized refusal showed the 120-second time ceiling while record
+and byte counts remained below their limits; local low-latency fixtures hid the
+cost of many small queries. Narrowing a family lookup must not hide competing sources.
+
+**How to apply:** Exercise real isolated SQL with representative added latency.
+Relation metadata may be represented by a database-computed cryptographic digest,
+but changes must still invalidate approvals and all family-authority fields remain
+available. Do not raise safety ceilings solely because the local scan is faster.

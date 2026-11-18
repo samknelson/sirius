@@ -30,7 +30,7 @@ async function discoverBoundedCoverage(
   ctx: TrustProviderEdiContext, plugin: TrustProviderEdiPlugin, decisions: readonly EdiCoverageDecision[],
   report: (percent: number | null, details: { phase: string; processed?: number; total?: number }) => Promise<void>,
 ) {
-  const budget = new CoverageBudget();
+  const budget = new CoverageBudget(ctx.coverageCorrelation);
   let stageStart = performance.now();
   let phase = "Resolving benefits";
   const stage = async (next: string) => {
@@ -106,15 +106,16 @@ async function discoverBoundedCoverage(
     if (scheduled.has(key)) return;
     budget.check(scheduled.size + 1);
     scheduled.add(key);
-    queue.push({ coordinate, family, walk });
+    // Never retain a whole evidence row in traversal state.
+    const { workerId, benefitId, year, month } = coordinate;
+    queue.push({ coordinate: { workerId, benefitId, year, month }, family, walk });
   };
   for (const root of roots) schedule(root, true, true);
   roots.length = 0;
   // Explore all candidate families, not whichever source happens to sort first.
   // Historical segments can extend without a lookback cap; gaps stop traversal.
   while (queue.length) {
-    const batch = queue;
-    queue = [];
+    const batch = queue.splice(0, COVERAGE_LIMITS.page);
     await reader.ensure(batch.map(s => s.coordinate));
     await reader.ensure(batch.filter(s => s.family).map(s => s.coordinate), true);
     const previousCoordinates = batch.filter(s => s.walk).map(({ coordinate }) => {

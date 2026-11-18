@@ -3,6 +3,11 @@ import { coverageSegments, isEdiCobra, type SegmentCoverage } from "./coverage-s
 import type { EdiCoverageCandidate, EdiCoverageConflict, EdiCoverageDecision } from "@shared/edi-coverage-choices";
 import type { trustWmbEvents, workerRelations } from "@shared/schema";
 
+/** Retain family authority, not arbitrary relation metadata. The digest still
+ * invalidates approvals if that metadata changes between checks. */
+export type CoverageRelation = Pick<typeof workerRelations.$inferSelect,
+  "id" | "worker1" | "worker2" | "relationType" | "startYmd" | "endYmd"> & { dataFingerprint?: string | null };
+
 export const coverageKey = (r: Pick<SegmentCoverage, "workerId" | "benefitId" | "year" | "month">) =>
   `${r.workerId}|${r.benefitId}|${r.year}-${String(r.month).padStart(2, "0")}`;
 
@@ -61,10 +66,10 @@ const indexes = new WeakMap<CoverageProjection, {
   byPerson: Map<string, SegmentCoverage[]>;
   segments: ReturnType<typeof coverageSegments>;
   events?: (typeof trustWmbEvents.$inferSelect)[];
-  relations?: (typeof workerRelations.$inferSelect)[];
+  relations?: CoverageRelation[];
 }>();
 export function indexCoverageProjection(projection: CoverageProjection, rows: readonly SegmentCoverage[],
-  events?: (typeof trustWmbEvents.$inferSelect)[], relations?: (typeof workerRelations.$inferSelect)[]) {
+  events?: (typeof trustWmbEvents.$inferSelect)[], relations?: CoverageRelation[]) {
   const retained = rows.filter(row => !projection.excludedIds.has(row.id));
   const byPerson = new Map<string, SegmentCoverage[]>();
   for (const row of retained) {

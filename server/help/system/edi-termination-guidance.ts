@@ -86,7 +86,11 @@ export const ediTerminationGuidance = `
   Exceeding a limit fails the whole check; it never accepts shortened history or
   partial evidence. Another EDI operation on the same server may temporarily block
   starting a check. After a confirmed failure, ask an administrator to inspect the
-  scan diagnostics before retrying a resource-limit error. Do not repeatedly retry
+   scan diagnostics before retrying a resource-limit error. The refusal includes the
+   exceeded dimension, measured amount, limit, last phase and a reference. Give that
+   reference and the wizard run to the administrator; the application server console
+   logs contain matching EDI coverage resource entries, not the in-app log viewer.
+   Do not repeatedly retry
   unchanged oversized evidence. An unavailable status still does not prove work stopped.</p>
   <p>Unresolved or stale choices block generation. Added, removed or changed candidate/family evidence
   requires explicit review again, even if your chosen WMB still exists. If previously

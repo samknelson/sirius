@@ -2,6 +2,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { discoverCoverage } from "../../server/plugins/trust/provider-edi/coverage-review";
+import { CoverageBudgetError } from "../../server/plugins/trust/provider-edi/coverage-budget";
 import { reviewConflict, evidenceHash } from "../../server/plugins/trust/provider-edi/coverage-choices";
 import type { EdiCoverageCandidate } from "@shared/edi-coverage-choices";
 vi.mock("../../server/plugins/trust/provider-edi/coverage-review", async original => ({
@@ -86,6 +87,7 @@ beforeEach(() => {
       reportMeta: { recordCount: 1 },
       delivery: { deliveredAt: "2026-10-01", filename: "old.txt" },
       coverageSnapshot: { fingerprint: "fixture", conflicts: [] },
+      progress: { coverage: { status: "completed", runId: "previous-check" } },
     },
   };
   state.update.mockImplementation(async (_id, update) => {
@@ -175,7 +177,7 @@ describe("authorized, read-only Deliver exports", () => {
     await finished();
     expect(state.wizard.data.progress.coverage.status).toBe("failed");
     expect(state.update).not.toHaveBeenCalled();
-    state.wizard.data.progress = { run: { status: "in_progress" } };
+    state.wizard.data.progress = { coverage: { status: "completed" }, run: { status: "in_progress" } };
     expect((await postCoverage(input)).status).toBe(409);
     expect(state.update).not.toHaveBeenCalled();
   });
@@ -239,6 +241,32 @@ describe("authorized, read-only Deliver exports", () => {
     await finished();
     expect(state.wizard.data.progress.coverage.status).toBe("completed");
     expect(state.wizard.data.coverageReviewed).toBe(false);
+  });
+  it("persists budget diagnostics and requires a fresh check without replaying the refused decision", async () => {
+    const input = conflictFixture();
+    const previous = structuredClone(state.wizard.data.coverageSnapshot);
+    state.wizard.data.coverageReviewed = true;
+    vi.mocked(discoverCoverage).mockRejectedValueOnce(new CoverageBudgetError({
+      scanId: "fictional-scan", wizardId: "saved", runId: "fixture-run", phase: "Tracing historical families",
+      exceeded: [{ dimension: "retainedRecords", observed: 125001, limit: 125000 }],
+    }));
+    expect((await postCoverage(input)).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.progress.coverage).toMatchObject({
+      status: "failed", phase: "Tracing historical families",
+      coverageBudget: { scanId: "fictional-scan" },
+    });
+    expect(state.wizard.data.coverageSnapshot).toEqual(previous);
+    expect(state.wizard.data.coverageDecisions).toBeUndefined();
+    expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "coverage")!.getState!(state.wizard)).toBe("pending");
+    expect((await postCoverage(input)).status).toBe(400);
+    expect((await postCoverage({ action: "complete" })).status).toBe(400);
+    expect((await postCoverage({ action: "check" })).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.progress.coverage.status).toBe("completed");
+    expect(state.wizard.data.progress.coverage.coverageBudget).toBeNull();
+    expect(state.wizard.data.coverageReviewed).toBe(false);
+    expect(state.wizard.data.coverageDecisions).toBeUndefined();
   });
   it("refuses stale submitted settings or decision revisions before admission", async () => {
     const input = conflictFixture();

@@ -11,7 +11,44 @@ import { discoverCoverage, coverageProjection } from "../../server/plugins/trust
 import { coverageProjectionIndex } from "../../server/plugins/trust/provider-edi/coverage-choices";
 import { registeredEdiPlugins } from "./fixtures/harness";
 import type { TrustProviderEdiContext } from "../../server/plugins/trust/provider-edi/registry";
-import { CoverageBudget, COVERAGE_LIMITS } from "../../server/plugins/trust/provider-edi/coverage-budget";
+import { CoverageBudget, CoverageBudgetError, COVERAGE_LIMITS } from "../../server/plugins/trust/provider-edi/coverage-budget";
+import { coverageReader } from "../../server/plugins/trust/provider-edi/coverage-reader";
+
+describe("coverage resource diagnostics", () => {
+  it("reports each exceeded dimension, preserves the meaningful phase and excludes evidence values", () => {
+    const check = (trigger: (budget: CoverageBudget) => void, dimension: string) => {
+      const budget = new CoverageBudget({ wizardId: "fictional-wizard", runId: "fictional-run" });
+      budget.log("phase-start", "Tracing historical families");
+      budget.log("database-end", "Coverage page");
+      try {
+        trigger(budget);
+        expect.fail("Expected a whole-run resource refusal");
+      } catch (error) {
+        expect(error).toBeInstanceOf(CoverageBudgetError);
+        const failure = error as CoverageBudgetError;
+        expect(failure.diagnostics).toMatchObject({
+          wizardId: "fictional-wizard", runId: "fictional-run", phase: "Tracing historical families",
+          exceeded: expect.arrayContaining([expect.objectContaining({ dimension })]),
+        });
+        expect(failure.message).toContain(failure.diagnostics.scanId);
+        expect(failure.message).not.toContain("private-fixture-value");
+        for (const limit of failure.diagnostics.exceeded) expect(limit.observed).toBeGreaterThan(limit.limit);
+      }
+    };
+    check(budget => budget.check(COVERAGE_LIMITS.keys + 1), "coordinateKeys");
+    check(budget => {
+      for (let i = 0; i <= COVERAGE_LIMITS.rows; i++) budget.retain({});
+    }, "retainedRecords");
+    check(budget => {
+      const bytes = vi.spyOn(Buffer, "byteLength").mockReturnValue(COVERAGE_LIMITS.bytes + 1);
+      try { budget.retain({ value: "private-fixture-value" }); } finally { bytes.mockRestore(); }
+    }, "evidenceBytes");
+    check(budget => {
+      const clock = vi.spyOn(performance, "now").mockReturnValue(performance.now() + COVERAGE_LIMITS.durationMs + 1);
+      try { budget.check(); } finally { clock.mockRestore(); }
+    }, "elapsedMs");
+  });
+});
 
 // Opt-in production-shaped ingestion measurement. No app URL, database, member
 // record, carrier generation or delivery is touched.
@@ -20,6 +57,8 @@ describe.skipIf(process.env.EDI_COVERAGE_PG !== "1").sequential("bounded Postgre
   let pool: pg.Pool;
   let ctx: TrustProviderEdiContext;
   let started = false;
+  let queries = 0;
+  let queryDelayMs = 0;
   const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-smf-carelon")!;
   beforeAll(async () => {
     root = mkdtempSync(`${tmpdir()}/edi-coverage-pg-`);
@@ -62,8 +101,10 @@ describe.skipIf(process.env.EDI_COVERAGE_PG !== "1").sequential("bounded Postgre
       configId: "fictional-carelon", configData: {}, providerId: null, sftpClientId: null,
       input: { asOfDate: "2026-11-15" }, terminationPolicy: { subscribers: true, dependents: true, months: 1 },
       storage: { readOnly: { query: (read: any, options?: { statementTimeoutMs: number }) => db.transaction(async tx => {
+        queries++;
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
         await tx.execute(sql`select set_config('statement_timeout', ${String(options?.statementTimeoutMs ?? 10_000)}, true)`);
+        if (queryDelayMs) await new Promise(resolve => setTimeout(resolve, queryDelayMs));
         return read(tx);
       }) } },
     } as unknown as TrustProviderEdiContext;
@@ -75,6 +116,9 @@ describe.skipIf(process.env.EDI_COVERAGE_PG !== "1").sequential("bounded Postgre
   });
 
   it("ingests relevant history without transferring unrelated medical history and keeps HTTP responsive", async () => {
+    // Supplied incident pages took 95–104ms per ~100 rows. Add that full
+    // latency on top of real local SQL; do not substitute mocked evidence.
+    queryDelayMs = 100;
     const server = createServer(async (_req, res) => {
       try { await pool.query("SELECT 1"); res.end("ready"); }
       catch { res.statusCode = 503; res.end("unavailable"); }
@@ -99,10 +143,16 @@ describe.skipIf(process.env.EDI_COVERAGE_PG !== "1").sequential("bounded Postgre
       }
     })();
     const t = performance.now();
+    const queryStart = queries;
     try {
       const plan = await pool.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
         SELECT id FROM trust_wmb WHERE worker_id='worker-1' AND benefit_id='eap'
         AND year=2026 AND month=11 ORDER BY id LIMIT 1000`);
+      const batchPlan = await pool.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT w.id FROM trust_wmb w WHERE w.year=2026 AND w.month=10 AND w.benefit_id='eap'
+        AND (w.worker_id,w.benefit_id,w.year,w.month) IN
+        (VALUES ${Array.from({ length: 1000 }, (_, i) => `('worker-${i + 1}'::varchar,'eap'::varchar,2026,10)`).join(",")})
+        ORDER BY w.id LIMIT 1000`);
       const review = await discoverCoverage(ctx, plugin);
       expect(review.relevant).toHaveLength(120_000);
       expect(review.conflicts).toEqual([]);
@@ -116,15 +166,106 @@ describe.skipIf(process.env.EDI_COVERAGE_PG !== "1").sequential("bounded Postgre
       mkdirSync("generated-artifacts", { recursive: true });
       writeFileSync("generated-artifacts/edi-ingestion-measurements.json", JSON.stringify({
         durationMs: Math.round(performance.now() - t), rows: review.relevant.length,
+        queries: queries - queryStart,
+        injectedQueryDelayMs: queryDelayMs,
         peakRss, peakHeap, rssGrowth: peakRss - baseline.rss, heapGrowth: peakHeap - baseline.heapUsed,
         eventLoopMaxMs: loop.max / 1e6, maxHttpMs, requests,
         coordinatePlan: plan.rows[0]["QUERY PLAN"],
+        batchPlan: batchPlan.rows[0]["QUERY PLAN"],
       }, null, 2));
     } finally {
+      queryDelayMs = 0;
       stop = true; await polling; loop.disable();
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
   }, 150_000);
+
+  it("checks long family histories without retaining wide relation metadata", async () => {
+    await pool.query(`
+      INSERT INTO worker_relations SELECT 'long-rel-'||n,'long-parent-'||n,'long-child-'||n,'child',null,null,
+        jsonb_build_object('fixture',repeat('x',200000)) FROM generate_series(1,400) n;
+      INSERT INTO trust_wmb
+      SELECT 'long-'||role||'-'||w||'-'||m, 'long-'||role||'-'||w, 'ordinary','eap',
+        2031+m/12,m%12+1,CASE WHEN role='child' THEN 'long-rel-'||w ELSE null END
+      FROM generate_series(1,400) w CROSS JOIN generate_series(0,119) m
+      CROSS JOIN (VALUES ('parent'),('child')) roles(role);
+      ANALYZE;
+    `);
+    const run = { ...ctx, input: { asOfDate: "2040-12-01" } };
+    queryDelayMs = 100;
+    const baseline = process.memoryUsage();
+    let peakRss = baseline.rss, peakHeap = baseline.heapUsed, requests = 0, maxHttpMs = 0;
+    const server = createServer(async (_req, res) => { await pool.query("SELECT 1"); res.end("ready"); });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as { port: number };
+    let stopped = false;
+    const polling = (async () => {
+      while (!stopped) {
+        const start = performance.now();
+        const response = await fetch(`http://127.0.0.1:${address.port}/status`);
+        expect(await response.text()).toBe("ready");
+        maxHttpMs = Math.max(maxHttpMs, performance.now() - start);
+        requests++;
+        const memory = process.memoryUsage();
+        peakRss = Math.max(peakRss, memory.rss); peakHeap = Math.max(peakHeap, memory.heapUsed);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    })();
+    const start = performance.now(), queryStart = queries;
+    try {
+      const familyPlan = await pool.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT w.id FROM trust_wmb w JOIN worker_relations r ON w.source_relation_id=r.id
+        WHERE w.year=2040 AND w.month=12 AND w.benefit_id='eap'
+        AND (r.worker_1,w.benefit_id,w.year,w.month) IN
+        (VALUES ${Array.from({ length: 400 }, (_, i) => `('long-parent-${i + 1}'::varchar,'eap'::varchar,2040,12)`).join(",")})
+        ORDER BY w.id LIMIT 1000`);
+      const review = await discoverCoverage(run, plugin);
+      expect(review.relevant).toHaveLength(96_000);
+      expect(review.relationMap.size).toBe(400);
+      expect(review.conflicts).toEqual([]);
+      expect(JSON.stringify([...review.relationMap.values()]).length).toBeLessThan(200_000);
+      const projection = coverageProjection(review);
+      const current = review.relevant.find(r => r.workerId === "long-child-1" && r.year === 2040 && r.month === 12)!;
+      expect(coverageProjectionIndex(projection)!.segments.start(current)).toBe("2031-01-01");
+      expect(maxHttpMs).toBeLessThan(1000);
+      expect(requests).toBeGreaterThan(2);
+      writeFileSync("generated-artifacts/edi-family-measurements.json", JSON.stringify({
+        durationMs: Math.round(performance.now() - start), rows: review.relevant.length, queries: queries - queryStart,
+        injectedQueryDelayMs: queryDelayMs,
+        peakRss, peakHeap, maxHttpMs, requests, familyPlan: familyPlan.rows[0]["QUERY PLAN"],
+      }, null, 2));
+    } finally {
+      queryDelayMs = 0;
+      stopped = true; await polling;
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+    // Digest changes must invalidate even non-authoritative metadata edits.
+    const one = { ...ctx, input: { asOfDate: "2031-01-01" } };
+    const before = await discoverCoverage(one, plugin);
+    await pool.query(`UPDATE worker_relations SET data='{"fixture":"changed"}' WHERE id='long-rel-1'`);
+    const after = await discoverCoverage(one, plugin);
+    expect(after.fingerprint).not.toBe(before.fingerprint);
+  }, 150_000);
+
+  it("caches complete and empty coordinates but never treats a family subset as complete", async () => {
+    const reader = coverageReader(ctx, new CoverageBudget());
+    const coordinate = { workerId: "worker-1", benefitId: "eap", year: 2026, month: 11 };
+    await reader.ensure([coordinate]);
+    const completeCount = queries;
+    await reader.ensure([coordinate, coordinate]);
+    expect(queries).toBe(completeCount);
+    const empty = { ...coordinate, workerId: "absent" };
+    await reader.ensure([empty]);
+    const emptyCount = queries;
+    await reader.ensure([empty]);
+    expect(queries).toBe(emptyCount);
+    await pool.query(`INSERT INTO worker_relations VALUES ('subset-rel','subset-parent','subset-child','child',null,null,null);
+      INSERT INTO trust_wmb VALUES ('subset-one','subset-child','ordinary','eap',2041,1,'subset-rel'),
+        ('subset-other','subset-child','cobra','eap',2041,1,null);`);
+    await reader.ensure([{ ...coordinate, workerId: "subset-parent", year: 2041, month: 1 }], true);
+    await reader.ensure([{ ...coordinate, workerId: "subset-child", year: 2041, month: 1 }]);
+    expect(reader.groups.get("subset-child|eap|2041-01")).toHaveLength(2);
+  });
 
   it("preserves duplicate family candidates and future reinstatement in real SQL", async () => {
     await pool.query(`
@@ -149,18 +290,19 @@ describe.skipIf(process.env.EDI_COVERAGE_PG !== "1").sequential("bounded Postgre
   }, 60_000);
 
   it("refuses excess evidence and releases discovery admission for the next attempt", async () => {
-    const retain = vi.spyOn(CoverageBudget.prototype, "retain").mockImplementation(() => {
-      throw new Error("Coverage evidence exceeded its safe resource budget");
+    await pool.query(`INSERT INTO trust_wmb
+      SELECT 'oversized-'||n,'oversized-person-'||n,'ordinary','eap',2070,1,null
+      FROM generate_series(1,125001) n; ANALYZE trust_wmb;`);
+    const oversized = { ...ctx, input: { asOfDate: "2070-01-01" },
+      coverageCorrelation: { wizardId: "fictional-wizard", runId: "fictional-run" } };
+    await expect(discoverCoverage(oversized, plugin)).rejects.toMatchObject({
+      diagnostics: { wizardId: "fictional-wizard", runId: "fictional-run",
+        phase: "Reading report-month coverage",
+        exceeded: expect.arrayContaining([{ dimension: "retainedRecords", observed: 125001, limit: 125000 }]) },
     });
-    try { await expect(discoverCoverage(ctx, plugin)).rejects.toThrow(/resource budget/); }
-    finally { retain.mockRestore(); }
-    const budget = new CoverageBudget();
-    expect(() => budget.check(COVERAGE_LIMITS.keys + 1)).toThrow(/resource budget/);
-    for (let i = 0; i < COVERAGE_LIMITS.rows; i++) budget.retain({});
-    expect(() => budget.retain({})).toThrow(/resource budget/);
     const empty = { ...ctx, input: { asOfDate: "2030-01-01" }, terminationPolicy: { subscribers: false, dependents: false, months: 1 } };
     expect((await discoverCoverage(empty, plugin)).relevant).toEqual([]);
-  });
+  }, 60_000);
 
   it("carries only applicable endings through discovery, projection and key generation for every role combination", async () => {
     await pool.query(`

@@ -144,6 +144,7 @@ function buildEdiContext(
   const data = (ctx.wizard.data as any) || {};
   const snapshot = completedOutput ? data.reportMeta?.generationContext : undefined;
   return {
+    coverageCorrelation: { wizardId: ctx.wizardId, runId: ctx.runId },
     configId: selected.configId,
     configData: snapshot?.configData ?? selected.data ?? {},
     providerId: selected.providerId,
@@ -251,7 +252,8 @@ const coverageStep: WizardStepHandler = {
   requiredComponent: COMPONENT,
   retrySafe: true,
   getRunBlocker: generationBlocker,
-  getState: wizard => (wizard.data as any)?.coverageReviewed === true ? "completed" : "pending",
+   getState: wizard => (wizard.data as any)?.coverageReviewed === true &&
+     (wizard.data as any)?.progress?.coverage?.status === "completed" ? "completed" : "pending",
   getData: async ctx => {
     const selected = readSelectedConfig(ctx.wizard);
     if (!selected) throw new Error("Pick Configuration and save Parameters first.");
@@ -275,6 +277,8 @@ const coverageStep: WizardStepHandler = {
     if (action !== "check" && selected && resolvePlugin(selected.pluginId).benefitSiriusIds?.length) {
       const data = ctx.wizard.data as any;
       const revision = coverageRevision(data);
+       if (data.progress?.coverage?.status !== "completed")
+         throw new Error("Refresh evidence and wait for a completed check before submitting this action.");
       if (!data.coverageSnapshot) throw new Error("Check Coverage sources first.");
       if (ctx.input.revision !== revision || data.coverageSnapshot.revision !== revision)
         throw new Error("Settings or decisions changed. Refresh evidence before submitting this action.");

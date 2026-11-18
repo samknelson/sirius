@@ -7,17 +7,40 @@ export const COVERAGE_LIMITS = {
   durationMs: 120_000, queryMs: 10_000,
 } as const;
 
+export type CoverageCorrelation = { wizardId?: string; runId?: string };
+export class CoverageBudgetError extends Error {
+  constructor(readonly diagnostics: {
+    scanId: string; wizardId?: string; runId?: string; phase: string;
+    exceeded: { dimension: string; observed: number; limit: number }[];
+  }) {
+    super(`Coverage evidence exceeded its safe resource budget: ${diagnostics.exceeded.map(
+      d => `${d.dimension} ${d.observed} > ${d.limit}`).join("; ")}. Phase: ${diagnostics.phase}. Reference: ${diagnostics.scanId}. No partial review was accepted. Ask an administrator to inspect the scan diagnostics before retrying.`);
+    this.name = "CoverageBudgetError";
+  }
+}
+
 export class CoverageBudget {
   private readonly started = performance.now();
   private readonly scanId = randomUUID();
   private bytes = 0;
   private rows = 0;
+  private keys = 0;
+  private phase = "Starting evidence check";
+  constructor(private readonly correlation: CoverageCorrelation = {}) {}
   check(keys = 0) {
-    if (performance.now() - this.started > COVERAGE_LIMITS.durationMs ||
-        keys > COVERAGE_LIMITS.keys || this.rows > COVERAGE_LIMITS.rows ||
-        this.bytes > COVERAGE_LIMITS.bytes) {
-      this.log("budget-exceeded", "Refusing incomplete evidence", { keys });
-      throw new Error("Coverage evidence exceeded its safe resource budget. No partial review was accepted. Ask an administrator to inspect the coverage scan diagnostics before retrying.");
+    this.keys = Math.max(this.keys, keys);
+    const exceeded = [
+      { dimension: "elapsedMs", observed: Math.floor(performance.now() - this.started), limit: COVERAGE_LIMITS.durationMs },
+      { dimension: "coordinateKeys", observed: this.keys, limit: COVERAGE_LIMITS.keys },
+      { dimension: "retainedRecords", observed: this.rows, limit: COVERAGE_LIMITS.rows },
+      { dimension: "evidenceBytes", observed: this.bytes, limit: COVERAGE_LIMITS.bytes },
+    ].filter(d => d.observed > d.limit);
+    if (exceeded.length) {
+      const diagnostics = { scanId: this.scanId, ...this.correlation, phase: this.phase, exceeded };
+      logger.warn("EDI coverage resources", {
+        service: "edi-coverage", event: "budget-exceeded", ...this.snapshot(), ...diagnostics,
+      });
+      throw new CoverageBudgetError(diagnostics);
     }
   }
   retain(row: unknown) {
@@ -26,11 +49,15 @@ export class CoverageBudget {
     this.check();
   }
   log(event: string, phase: string, extra: Record<string, number> = {}) {
-    const { rss, heapUsed, external } = process.memoryUsage();
+    if (event === "phase-start") this.phase = phase;
     logger.info("EDI coverage resources", {
-      service: "edi-coverage", scanId: this.scanId, event, phase, rows: this.rows, evidenceBytes: this.bytes,
-      elapsedMs: Math.round(performance.now() - this.started), rss, heapUsed, external, ...extra,
+      service: "edi-coverage", ...this.snapshot(), event, phase, ...extra,
     });
+  }
+  private snapshot() {
+    const { rss, heapUsed, external } = process.memoryUsage();
+    return { scanId: this.scanId, ...this.correlation, rows: this.rows, evidenceBytes: this.bytes,
+      keys: this.keys, elapsedMs: Math.round(performance.now() - this.started), rss, heapUsed, external };
   }
   async yield(keys = 0) {
     this.check(keys);

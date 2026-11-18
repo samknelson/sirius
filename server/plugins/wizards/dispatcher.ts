@@ -19,7 +19,7 @@ import type { Wizard } from "@shared/schema";
 import { randomUUID } from "node:crypto";
 import { startValidationRun, validationProgressWriter } from "./validation-run";
 import { withWizardValidationWrite } from "../../storage/wizard-validation-lock";
-import { tryAdmitCoverageRun } from "../trust/provider-edi/coverage-budget";
+import { tryAdmitCoverageRun, CoverageBudgetError } from "../trust/provider-edi/coverage-budget";
 import { startProcessRun, PROCESS_PROTOCOL } from "./process-run";
 
 type AuthMiddleware = (
@@ -391,6 +391,7 @@ export function registerWizardDispatcherRoutes(
         processed: 0,
         total: 0,
         error: null,
+        ...(loaded.plugin.id === "trust_provider_edi" ? { coverageBudget: null } : {}),
         startedAt: new Date().toISOString(),
         heartbeatAt: new Date().toISOString(),
       }, true, {}, undefined, undefined, loaded.plugin.id, step.retrySafe ? "safe-retry" : "initial",
@@ -441,11 +442,16 @@ export function registerWizardDispatcherRoutes(
           logger.error("Wizard dispatch run failed", {
             service: SERVICE,
             wizardId: loaded.wizard.id,
+            runId,
             step: step.id,
+            ...(error instanceof CoverageBudgetError ? { coverageBudget: error.diagnostics } : {}),
             error: error instanceof Error ? error.message : String(error),
           });
           await boundedWrite(() => storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
             status: "failed",
+            ...(error instanceof CoverageBudgetError ? {
+              phase: error.diagnostics.phase, coverageBudget: error.diagnostics,
+            } : {}),
             error:
               error instanceof Error ? error.message : "Run failed",
           }));

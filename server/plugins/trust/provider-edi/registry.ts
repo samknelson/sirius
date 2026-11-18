@@ -23,6 +23,7 @@ export interface EdiBatchAggregates {
 }
 
 export interface TrustProviderEdiContext {
+  coverageCorrelation?: import("./coverage-budget").CoverageCorrelation;
   coverageProjection?: import("./coverage-choices").CoverageProjection;
   /** Base plugin_configs row id of the selected EDI configuration. */
   configId: string;
