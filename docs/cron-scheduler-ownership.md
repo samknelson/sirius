@@ -116,6 +116,83 @@ exact-run results, effective-actor attribution and detached transaction scope
 are preserved. Partial imports are **never automatically replayed**. This is
 database mutation fencing, not a claim of exactly-once external execution.
 
+### Stalled T631 worker transactions
+
+Only T631 worker mutation units opt into **60-second statement_timeout** and
+**15-second idle_in_transaction_session_timeout**, installed with SET LOCAL
+before taking either fence. These are business-work limits, not the five-second
+coordination deadline. They apply equally to worker changes and the missing-worker
+pass, including identity-table lock waits. They do not shorten vendor requests,
+change other transaction callers, bypass maintenance, or release either fence
+early. Settings revert when the transaction ends.
+
+Sixty seconds allows SQL substantially longer than a coordination operation but
+bounds a blocked or stuck statement. Fifteen seconds bounds a stalled JavaScript
+callback between queries, including an aborted transaction whose client never
+rolls back. Worker units contain database work, not vendor requests; holding
+identity and semaphore locks idle for longer is not useful progress. These are
+conservative safety ceilings, not measured production performance targets or
+permission to extend the lease. Renewal can still fail earlier while the row
+is locked, and the normal ownership check must then roll back the unit.
+
+Timeouts and fatal connection errors interrupt the whole import, rather than
+being counted as ordinary per-worker failures. The limited transaction owns
+its checkout, listens for checked-out client errors, destroys uncertain clients,
+and never flushes after-commit callbacks on failure. An idle disconnect settles
+the caller even while its JavaScript callback is suspended. If that callback
+resumes, it still holds the dead transaction client, not a fresh connection,
+and cannot publish a late commit.
+
+A server-side statement timeout cancels SQL; the client normally rolls back
+immediately. If the client cannot respond, the idle-in-transaction timeout
+subsequently terminates the session and releases both locks. A silent network
+partition therefore does not depend solely on TCP failure detection for database
+lock release. This is not a hard end-to-end recovery SLA: server overload,
+rollback time, failover, pool availability and polling cadence add latency.
+An event-loop blocked by synchronous JavaScript cannot be interrupted by a
+promise. Many individually short queries are not a whole-transaction deadline.
+
+### Operator recovery procedure
+
+1. Stop new manual and scheduled T631 imports. Do not run another import merely
+   to test recovery; partial earlier worker commits may already exist.
+2. Inspect the exact run's history and database sessions using an approved DBA
+   connection to the affected database. Run the following read-only query (it
+   deliberately omits SQL text and worker data):
+
+   ```sql
+   SELECT pid, backend_start, application_name, state, xact_start, query_start,
+          state_change, wait_event_type, wait_event, pg_blocking_pids(pid) AS blockers
+   FROM pg_stat_activity
+   WHERE datname = current_database()
+     AND application_name = 't631:worker-unit'
+   ORDER BY xact_start;
+   ```
+
+   Confirm the database, PID, backend start time and lock ownership; use
+   `pg_locks` to confirm the retained advisory fence (classid 0, objid 2032002,
+   objsubid 1). A blocker may be a different workload holding the identity table;
+   do not terminate unrelated blockers without investigating them.
+3. Allow the statement/idle limits and rollback to work. Status polling can
+   recover history once the old transaction ends and the lease is available.
+   An expired semaphore or stale heartbeat alone is **not** proof that locks
+   have been released. Never DELETE the semaphore, clear its token, unlock a
+   fence, or manually mark the run successful to force recovery.
+4. If the session remains stuck, an authorized DBA may terminate **only the
+   confirmed T631 worker backend**. Recheck PID and backend_start immediately
+   before executing `pg_terminate_backend(pid)`; PIDs can be reused. Termination
+   rolls back the current unit. `pg_cancel_backend` alone is insufficient for
+   an idle/aborted transaction and may leave locks held until rollback.
+   Never terminate every application connection as a shortcut.
+5. Confirm that the backend has disappeared and its locks have gone; a true
+   return from the termination request is not proof of completed rollback.
+   If database termination cannot complete, escalate to the database operator;
+   keep imports stopped, rather than relaxing fencing.
+6. Poll the exact run to allow normal fenced recovery to record interruption.
+   Review partial committed effects before explicitly authorizing a new import.
+   Nothing in recovery automatically replays workers. Resume scheduling only
+   after that review.
+
 ## Deployment
 
 **Before this T631 cutover, drain or stop every old advisory-ownership T631

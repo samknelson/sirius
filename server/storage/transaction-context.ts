@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import { db } from './db';
+import { db, pool } from './db';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { sql } from 'drizzle-orm';
 
 type DrizzleTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -69,10 +71,12 @@ export function isInTransaction(): boolean {
 }
 
 export async function runInTransaction<T>(
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
+  limits?: TransactionLimits,
 ): Promise<T> {
   const existingTx = transactionStorage.getStore();
   if (existingTx) {
+    if (limits) throw new Error("Transaction limits require a new outer transaction.");
     // Nested call: the outermost runInTransaction owns the commit and the
     // after-commit flush. Any onAfterCommit() here enqueues onto its queue.
     return fn();
@@ -80,7 +84,9 @@ export async function runInTransaction<T>(
 
   const afterCommit: Array<() => void> = [];
   const result = await afterCommitStorage.run(afterCommit, () =>
-    db.transaction(async (tx) => transactionStorage.run(tx, fn))
+    limits
+      ? limitedTransaction(fn, limits)
+      : db.transaction(async (tx) => transactionStorage.run(tx, fn))
   );
 
   // Reached only when the transaction committed (a rollback throws above).
@@ -92,6 +98,82 @@ export async function runInTransaction<T>(
     }
   }
   return result;
+}
+
+export interface TransactionLimits {
+  statementMs: number;
+  idleMs: number;
+  applicationName: string;
+}
+
+export class TransactionInterrupted extends Error {
+  constructor() { super("Database transaction interrupted; partial earlier work may remain."); }
+}
+
+function isDatabaseInterruption(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  while (error && typeof error === "object" && !seen.has(error)) {
+    seen.add(error);
+    const value = error as { code?: string; cause?: unknown };
+    if (value.code === "57014" || value.code === "25P03" ||
+        value.code?.startsWith("08") || /^57P0[123]$/.test(value.code ?? "")) return true;
+    error = value.cause;
+  }
+  return false;
+}
+
+// Opt-in business transactions, not the short semaphore coordination deadline.
+// Own the checkout so fatal errors on an idle checked-out client are handled
+// (the pool's error handler only covers idle *pooled* clients).
+async function limitedTransaction<T>(fn: () => Promise<T>, limits: TransactionLimits): Promise<T> {
+  for (const ms of [limits.statementMs, limits.idleMs]) {
+    if (!Number.isSafeInteger(ms) || ms <= 0) throw new Error("Transaction limits must be positive milliseconds.");
+  }
+  const client = await pool.connect();
+  let failed = false;
+  let released = false;
+  const destroy = () => {
+    if (!released) { released = true; client.release(true); }
+  };
+  let rejectFailure!: (error: Error) => void;
+  const failure = new Promise<never>((_, reject) => { rejectFailure = reject; });
+  const onError = () => {
+    failed = true;
+    destroy();
+    rejectFailure(new TransactionInterrupted());
+  };
+  client.on("error", onError);
+  const operation = drizzle(client).transaction(async tx => {
+    await tx.execute(sql`SELECT
+      set_config('statement_timeout', ${String(limits.statementMs)}, true),
+      set_config('idle_in_transaction_session_timeout', ${String(limits.idleMs)}, true),
+      set_config('application_name', ${limits.applicationName}, true)`);
+    try {
+      // Both supported drivers expose structurally compatible transactions.
+      const result = await transactionStorage.run(tx as unknown as DrizzleTransaction, fn);
+      if (failed) throw new TransactionInterrupted();
+      return result;
+    } catch (error) {
+      if (isDatabaseInterruption(error)) throw new TransactionInterrupted();
+      throw error;
+    }
+  });
+  try {
+    return await Promise.race([operation, failure]);
+  } catch (error) {
+    // Rollback/COMMIT may themselves fail. Never return an uncertain connection.
+    destroy();
+    if (failed || isDatabaseInterruption(error)) throw new TransactionInterrupted();
+    throw error;
+  } finally {
+    if (!released) {
+      client.removeListener("error", onError);
+      released = true;
+      client.release();
+    }
+    // Destroyed clients retain their listener to absorb late driver errors.
+    // Promise.race observes the operation even if suspended JS resumes later.
+  }
 }
 
 /**

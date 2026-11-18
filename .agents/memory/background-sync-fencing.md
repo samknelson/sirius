@@ -32,3 +32,17 @@ not imply cancellation of pending external requests.
 transaction, separate from short maintenance-exempt coordination writes.
 Lost owners stop at the next boundary, and uncertain history is recovered
 without automatically replaying partial commits.
+
+Server-side statement and idle-in-transaction limits complement, rather than
+replace, mutation fencing. Keep business limits distinct from coordination
+deadlines, and handle errors on checked-out clients explicitly.
+
+**Why:** A stalled client can retain transaction locks after lease expiry; a
+pool's idle-client error listener does not protect a checked-out connection.
+Cancelling SQL alone can leave an aborted transaction holding locks when its
+client never rolls back.
+
+**How to apply:** Use transaction-local business limits and a checked-out-client
+failure boundary; discard after-commit callbacks and interrupt the import on
+database interruption. Recovery must still wait for database lock release, not
+infer it from a termination request or an expired lease.

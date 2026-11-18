@@ -94,6 +94,87 @@ afterAll(async () => {
 });
 
 describe("durable T631 execution", () => {
+  it("interrupts timed-out worker SQL, rolls back effects, and permits fenced recovery", async () => {
+    const committed = vi.fn();
+    fixture.sync.mockImplementation(async (_data, _dry, unit) => {
+      await expect(unit(async () => {
+        const settings = await getClient().execute(sql`SELECT
+          current_setting('statement_timeout') AS statement,
+          current_setting('idle_in_transaction_session_timeout') AS idle`);
+        expect(settings.rows[0]).toEqual({ statement: "1min", idle: "15s" });
+        onAfterCommit(committed);
+        await getClient().execute(sql`INSERT INTO mutations VALUES ('rolled back')`);
+        await getClient().execute(sql`SET LOCAL statement_timeout = '100ms'`);
+        await getClient().execute(sql`SELECT pg_sleep(5)`);
+      })).rejects.toBeInstanceOf(SyncInterrupted);
+      throw new SyncInterrupted();
+    });
+    const accepted = await startT631Run(false, "actor", true);
+    expect(accepted.run.status).toBe("interrupted");
+    expect(committed).not.toHaveBeenCalled();
+    expect((await db.execute(sql`SELECT * FROM mutations`)).rowCount).toBe(0);
+    fixture.sync.mockResolvedValue(result);
+    expect((await startT631Run(true, "actor", true)).run.status).toBe("success");
+  });
+
+  it.each(["idle", "terminated"])("releases fences after a %s connection and rejects late worker writes", async mode => {
+    const resume = deferred();
+    const entered = deferred();
+    const finished = deferred();
+    const committed = vi.fn();
+    let pid = 0;
+    let lateError: unknown;
+    fixture.sync.mockImplementation(async (_data, _dry, unit) => {
+      await unit(async () => {
+        try {
+          onAfterCommit(committed);
+          await getClient().execute(sql`INSERT INTO mutations VALUES ('rolled back')`);
+          pid = Number((await getClient().execute(sql`SELECT pg_backend_pid() AS pid`)).rows[0].pid);
+          if (mode === "idle") await getClient().execute(sql`SET LOCAL idle_in_transaction_session_timeout = '150ms'`);
+          entered.resolve();
+          await resume.promise;
+          await getClient().execute(sql`INSERT INTO mutations VALUES ('late')`);
+        } catch (error) { lateError = error; throw error; }
+        finally { finished.resolve(); }
+      });
+      return result;
+    });
+    const accepted = await startT631Run(false, "actor");
+    await entered.promise;
+    if (mode === "terminated") await db.execute(sql`SELECT pg_terminate_backend(${pid})`);
+    expect((await terminal(accepted.run.id)).status).toBe("interrupted");
+    expect((await db.execute(sql`SELECT * FROM mutations`)).rowCount).toBe(0);
+    fixture.sync.mockResolvedValue(result);
+    expect((await startT631Run(true, "actor", true)).run.status).toBe("success");
+    resume.resolve();
+    await finished.promise;
+    expect(lateError).toBeDefined();
+    expect(committed).not.toHaveBeenCalled();
+    expect((await db.execute(sql`SELECT * FROM mutations`)).rowCount).toBe(0);
+  });
+
+  it("allows business SQL beyond five seconds and restores settings on pool reuse", async () => {
+    const settingsQuery = `SELECT current_setting('statement_timeout') AS statement,
+      current_setting('idle_in_transaction_session_timeout') AS idle,
+      current_setting('application_name') AS name`;
+    const baseline = (await pool.query(settingsQuery)).rows[0];
+    const committed = vi.fn();
+    await runInTransaction(async () => {
+      onAfterCommit(committed);
+      await getClient().execute(sql`SELECT pg_sleep(5.1)`);
+    }, { statementMs: 60_000, idleMs: 15_000, applicationName: "t631:test-unit" });
+    expect(committed).toHaveBeenCalledOnce();
+    const clients = await Promise.all(Array.from({ length: pool.totalCount }, () => pool.connect()));
+    try {
+      for (const client of clients) {
+        const { rows } = await client.query(settingsQuery);
+        expect(rows[0]).toEqual(baseline);
+      }
+    } finally { clients.forEach(client => client.release()); }
+    await expect(runInTransaction(() => runInTransaction(async () => {},
+      { statementMs: 1, idleMs: 1, applicationName: "nested" }))).rejects.toThrow("outer transaction");
+  });
+
   it("accepts before a slow fetch, survives request scope, and retains full exact-run results", async () => {
     const slow = deferred();
     fixture.fetch.mockImplementation(async () => { await slow.promise; return { success: true, data: { success: true, data: { workers: [] } } }; });

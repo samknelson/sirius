@@ -1,7 +1,7 @@
 import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { jobRuns, type JobRun } from "@shared/schema";
 import { db } from "../storage/db";
-import { getClient, runInTransaction, runOutsideTransaction } from "../storage/transaction-context";
+import { getClient, runInTransaction, runOutsideTransaction, TransactionInterrupted } from "../storage/transaction-context";
 import { requestContext } from "../middleware/request-context";
 import { assertExternalServiceAllowed, isMaintenanceModeError } from "./maintenance-flag";
 import { isComponentEnabled } from "../modules/components";
@@ -19,6 +19,13 @@ const PLUGIN = "sitespecific-t631-worker-fetch";
 export const T631_RESOURCE = "t631:sync-workers";
 // Retained transaction fence; no session-level ownership connection.
 const FENCE = 2032002;
+// Worker SQL may exceed coordination's five seconds. Server-side limits still
+// release locks if the executor stalls or its connection disappears silently.
+const WORKER_LIMITS = {
+  statementMs: 60_000,
+  idleMs: 15_000,
+  applicationName: "t631:worker-unit",
+};
 const scope = and(eq(jobRuns.pluginKind, KIND), eq(jobRuns.pluginId, PLUGIN));
 const running = and(scope, eq(jobRuns.status, "running"));
 const interruptedMessage = "Sync interrupted. Partial live changes may remain. Review before starting another run; nothing is automatically replayed.";
@@ -129,12 +136,12 @@ async function execute(run: JobRun, owner: ResourceLease) {
           await checkEnabled();
           await work();
         });
-      }));
+      }, WORKER_LIMITS));
     } catch (error) {
       // Reconciliation catches ordinary per-worker failures and continues.
       // Ownership loss must instead stop the whole import, including its
       // missing-worker pass, using its existing interruption contract.
-      if (error instanceof SemaphoreLost) throw new SyncInterrupted();
+      if (error instanceof SemaphoreLost || error instanceof TransactionInterrupted) throw new SyncInterrupted();
       throw error;
     }
   };
