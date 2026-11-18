@@ -163,11 +163,19 @@ export class HtaUnionImportWizard extends FeedWizard {
       },
       {
         id: 'addressLine1',
-        name: 'Home Address',
+        name: 'Address Line 1',
         type: 'string',
         required: false,
         description: 'Street address (optional)',
         displayOrder: 13
+      },
+      {
+        id: 'addressLine2',
+        name: 'Address Line 2',
+        type: 'string',
+        required: false,
+        description: 'Apartment, suite, or unit (optional)',
+        displayOrder: 13.5
       },
       {
         id: 'city',
@@ -535,28 +543,15 @@ export class HtaUnionImportWizard extends FeedWizard {
     const state = row.state?.toString().trim();
     const postalCode = row.postalCode?.toString().trim();
 
-    if (addressLine1 || city || state || postalCode) {
-      const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
-      if (existingAddresses.length > 0) {
-        const primaryAddress = existingAddresses.find((a: { isPrimary: boolean }) => a.isPrimary) || existingAddresses[0];
-        await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
+    if (addressLine1 && city && state && postalCode) {
+      await storage.contacts.addresses.createOrMatchAddress(contactId, {
           street: addressLine1,
+          street2: row.addressLine2?.toString().trim(),
           city,
           state,
           postalCode,
           country: 'US'
-        });
-      } else {
-        await storage.contacts.addresses.createContactPostal({
-          contactId,
-          street: addressLine1,
-          city,
-          state,
-          postalCode,
-          country: 'US',
-          isPrimary: true
-        });
-      }
+        }, "import");
     }
   }
 

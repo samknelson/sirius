@@ -68,7 +68,7 @@ const EDI_FIELDS: EdiField[] = [
   { name: "Work", width: 10 },
   { name: "FILLER10", width: 30 },
   { name: "Address Line 1", width: 40, get: (r) => str(r.street) },
-  { name: "Address Line 2", width: 40 },
+  { name: "Address Line 2", width: 40, get: (r) => str(r.street2) },
   { name: "FILLER11", width: 30 },
   { name: "City", width: 45, get: (r) => str(r.city) },
   { name: "FILLER12", width: 45 },

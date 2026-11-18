@@ -130,6 +130,7 @@ export function GooglePlacesAutocomplete({
 
 export interface ParsedAddress {
   street: string;
+  street2?: string;
   city: string;
   state: string;
   postalCode: string;
@@ -159,6 +160,7 @@ export function parseGooglePlace(place: google.maps.places.PlaceResult): ParsedA
 
   return {
     street: street || "",
+    street2: getComponent(["subpremise"]) || "",
     city: getComponent(["locality", "sublocality"]) || "",
     state: getShortComponent(["administrative_area_level_1"]) || "",
     postalCode: getComponent(["postal_code"]) || "",

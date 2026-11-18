@@ -108,6 +108,7 @@ function workerToCsvRow(
     .join("; ");
 
   row.Street = worker.address_street || "";
+  row["Address Line 2"] = worker.address_street2 || "";
   row.City = worker.address_city || "";
   row.State = worker.address_state || "";
   row["Postal Code"] = worker.address_postal_code || "";
@@ -141,6 +142,7 @@ function buildColumns(
     "Member Status",
     "Employer(s)",
     "Street",
+    "Address Line 2",
     "City",
     "State",
     "Postal Code",

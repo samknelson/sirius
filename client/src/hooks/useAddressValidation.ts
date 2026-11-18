@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 
 export interface AddressInput {
   street: string;
+  street2?: string | null;
   city: string;
   state: string;
   postalCode: string;
@@ -16,6 +17,7 @@ export interface AddressValidationResult {
   warnings: string[];
   suggestions?: {
     street?: string;
+    street2?: string;
     city?: string;
     state?: string;
     postalCode?: string;

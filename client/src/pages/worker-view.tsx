@@ -474,6 +474,7 @@ function WorkerDetailsContent() {
                       </p>
                     )}
                     <p>{primaryAddress.street}</p>
+                    {primaryAddress.street2 && <p>{primaryAddress.street2}</p>}
                     <p>{primaryAddress.city}, {primaryAddress.state} {primaryAddress.postalCode}</p>
                     <p className="text-sm text-muted-foreground">{primaryAddress.country}</p>
                   </div>

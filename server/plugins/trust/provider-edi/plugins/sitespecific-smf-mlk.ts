@@ -107,12 +107,15 @@ export function mlkAddressFields(
     ownV !== "" ? ownV : isQmsco ? "" : subV;
   const zip5 = (p: EdiPerson) =>
     String(p.postal?.postalCode ?? "").replace(/\D/g, "").slice(0, 5);
+  const addressOwner = member.postal?.street ? member : isQmsco ? null : subscriber;
   return {
     phone: pick(phoneDigits(member.phoneNumber), phoneDigits(subscriber.phoneNumber)),
-    address1: pick(str(member.postal?.street), str(subscriber.postal?.street)),
-    city: pick(str(member.postal?.city), str(subscriber.postal?.city)),
-    state: pick(str(member.postal?.state), str(subscriber.postal?.state)),
-    zip: pick(zip5(member), zip5(subscriber)),
+    address1: member.postal?.street
+      ? [member.postal.street, member.postal.street2].filter(Boolean).join(", ")
+      : isQmsco ? "" : [subscriber.postal?.street, subscriber.postal?.street2].filter(Boolean).join(", "),
+    city: str(addressOwner?.postal?.city),
+    state: str(addressOwner?.postal?.state),
+    zip: addressOwner ? zip5(addressOwner) : "",
   };
 }
 

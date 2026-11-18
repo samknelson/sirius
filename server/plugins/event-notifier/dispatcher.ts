@@ -276,6 +276,7 @@ async function deliver(
         toAddress: {
           name: contact?.displayName ?? undefined,
           addressLine1: chosen.street,
+          addressLine2: chosen.street2 || undefined,
           city: chosen.city,
           state: chosen.state,
           zip: chosen.postalCode,

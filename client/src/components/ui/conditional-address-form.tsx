@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface AddressFormData {
   street: string;
+  street2?: string | null;
   city: string;
   state: string;
   postalCode: string;
@@ -48,6 +49,7 @@ export function ConditionalAddressForm({
     resolver: zodResolver(addressFormSchema),
     defaultValues: {
       street: "",
+      street2: "",
       city: "",
       state: "",
       postalCode: "",
@@ -86,6 +88,7 @@ export function ConditionalAddressForm({
     
     // Update all form fields with parsed data
     form.setValue("street", parsed.street);
+    form.setValue("street2", parsed.street2 || form.getValues("street2") || "");
     form.setValue("city", parsed.city);
     form.setValue("state", parsed.state);
     form.setValue("postalCode", parsed.postalCode);
@@ -182,7 +185,7 @@ export function ConditionalAddressForm({
             {hasSelectedPlace && (
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                 <div>
-                  <label className="text-sm font-medium">Street</label>
+                  <label className="text-sm font-medium">Address Line 1</label>
                   <p className="text-sm text-muted-foreground">{formValues.street}</p>
                 </div>
                 <div>
@@ -208,7 +211,7 @@ export function ConditionalAddressForm({
               name="street"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Street Address</FormLabel>
+                  <FormLabel>Address Line 1</FormLabel>
                   <FormControl>
                     <Input placeholder="123 Main St" data-testid="input-street" {...field} />
                   </FormControl>
@@ -284,6 +287,13 @@ export function ConditionalAddressForm({
         )}
         
         {/* Common fields for both modes */}
+        <FormField control={form.control} name="street2" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Address Line 2</FormLabel>
+            <FormControl><Input placeholder="Apartment, suite, or unit (optional)" data-testid="input-street2" {...field} value={field.value || ""} /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
         <div className="flex items-center justify-between">
           <FormField
             control={form.control}

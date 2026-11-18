@@ -168,7 +168,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 const LOADER = "t3t1-contacts-workers";
 /** Loader logic version — BUMP whenever transform logic changes so unchanged
  * S1 rows reprocess into the corrected S2 shape on their next run. */
-const LOGIC_VERSION = 3;
+const LOGIC_VERSION = 4; // Reconcile unchanged, previously flattened addresses once.
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -970,7 +970,7 @@ async function main() {
     const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
     const zip5 = (s: string | null | undefined) => (s ?? "").trim().slice(0, 5);
     const addrRaw = scalarOf(c.fields["field_sirius_address"]);
-    let desiredAddr: { street: string; city: string; state: string; postalCode: string; country: string } | null = null;
+    let desiredAddr: { street: string; street2: string | null; city: string; state: string; postalCode: string; country: string } | null = null;
     let addrIncomplete = false;
     let latitude: number | undefined;
     let longitude: number | undefined;
@@ -981,7 +981,8 @@ async function main() {
         const v = a[k];
         return v == null ? null : String(v).trim() || null;
       };
-      const street = [pick("thoroughfare"), pick("premise")].filter(Boolean).join(" ");
+      const street = pick("thoroughfare");
+      const street2 = pick("premise");
       const city = pick("locality");
       const state = pick("administrative_area");
       const postalCode = pick("postal_code");
@@ -990,7 +991,7 @@ async function main() {
         rejects.add("address_incomplete", { nid: c.nid });
         addrIncomplete = true;
       } else {
-        desiredAddr = { street, city, state, postalCode, country };
+        desiredAddr = { street, street2, city, state, postalCode, country };
         const geo = scalarOf(c.fields["field_sirius_address_geo"]);
         if (geo && typeof geo === "object") {
           const g = geo as Record<string, unknown>;
@@ -1006,9 +1007,10 @@ async function main() {
       }
     }
     if (!addrIncomplete) {
-      const equivalent = (e: { street: string | null; city: string | null; state: string | null; postalCode: string | null }) =>
+      const equivalent = (e: { street: string | null; street2?: string | null; city: string | null; state: string | null; postalCode: string | null }) =>
         desiredAddr != null &&
         norm(e.street) === norm(desiredAddr.street) &&
+        (e.street2?.trim() || "") === (desiredAddr.street2?.trim() || "") &&
         norm(e.city) === norm(desiredAddr.city) &&
         norm(e.state) === norm(desiredAddr.state) &&
         zip5(e.postalCode) === zip5(desiredAddr.postalCode);

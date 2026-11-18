@@ -12,6 +12,7 @@ type PermissionMiddleware = (permission: string) => (req: Request, res: Response
 // Validation schema for address input
 const addressInputSchema = z.object({
   street: z.string().min(1, "Street address is required"),
+  street2: z.string().nullable().optional(),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
   postalCode: z.string().min(1, "Postal code is required"),

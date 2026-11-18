@@ -90,6 +90,7 @@ export interface WorkerContactExportRow {
   denorm_employer_ids: string[] | null;
   phone_number: string | null;
   address_street: string | null;
+  address_street2?: string | null;
   address_city: string | null;
   address_state: string | null;
   address_postal_code: string | null;
@@ -119,6 +120,7 @@ export interface WorkerWithDetails {
   address_id: string | null;
   address_friendly_name: string | null;
   address_street: string | null;
+  address_street2?: string | null;
   address_city: string | null;
   address_state: string | null;
   address_postal_code: string | null;
@@ -837,6 +839,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       a.id as address_id,
       a.friendly_name as address_friendly_name,
       a.street as address_street,
+      a.street2 as address_street2,
       a.city as address_city,
       a.state as address_state,
       a.postal_code as address_postal_code,
@@ -1092,6 +1095,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           (SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = w.id) AS denorm_employer_ids,
           (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
           (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
+          (SELECT cpo.street2 FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street2,
           (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
           (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
           (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
@@ -1108,6 +1112,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         denorm_employer_ids: string[] | null;
         phone_number: string | null;
         address_street: string | null;
+        address_street2: string | null;
         address_city: string | null;
         address_state: string | null;
         address_postal_code: string | null;
@@ -1120,6 +1125,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         denorm_employer_ids: row.denorm_employer_ids,
         phone_number: row.phone_number,
         address_street: row.address_street,
+        address_street2: row.address_street2,
         address_city: row.address_city,
         address_state: row.address_state,
         address_postal_code: row.address_postal_code,

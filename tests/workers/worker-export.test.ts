@@ -40,6 +40,7 @@ function makeWorker(index: number, extra: Record<string, unknown> = {}) {
     address_id: null,
     address_friendly_name: null,
     address_street: index === 1 ? "1 Main\nSuite 2" : "1 Main",
+    address_street2: "Unit 4B",
     address_city: "London",
     address_state: "LDN",
     address_postal_code: "NW1",
@@ -201,6 +202,7 @@ describe("GET /api/workers/export", () => {
       "Current Benefits": "Medical, Core",
     });
     expect(firstRecord.Street).toBe("1 Main\nSuite 2");
+    expect(firstRecord["Address Line 2"]).toBe("Unit 4B");
     expect(lastRecord["First Name"]).toBe("Given 251");
     expect(batchCalls.map((call) => call.cursor)).toEqual([
       null,

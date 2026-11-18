@@ -17,6 +17,7 @@ import { useAddressValidationConfig } from "@/hooks/useAddressValidationConfig";
 interface AddressFormData {
   friendlyName?: string;
   street: string;
+  street2?: string | null;
   city: string;
   state: string;
   postalCode: string;
@@ -65,6 +66,7 @@ export function UnifiedAddressInput({
     resolver: zodResolver(addressFormSchema),
     defaultValues: {
       street: "",
+      street2: "",
       city: "",
       state: "",
       postalCode: "",
@@ -88,6 +90,7 @@ export function UnifiedAddressInput({
     if (defaultValues) {
       const parts = [
         defaultValues.street,
+        defaultValues.street2,
         defaultValues.city,
         defaultValues.state,
         defaultValues.postalCode,
@@ -99,6 +102,7 @@ export function UnifiedAddressInput({
         setShowParsedView(true);
         setParsedAddress({
           street: defaultValues.street || "",
+          street2: defaultValues.street2 || "",
           city: defaultValues.city || "",
           state: defaultValues.state || "",
           postalCode: defaultValues.postalCode || "",
@@ -109,6 +113,7 @@ export function UnifiedAddressInput({
         const confirmedState: AddressFormData = {
           friendlyName: defaultValues.friendlyName,
           street: defaultValues.street || "",
+          street2: defaultValues.street2 || "",
           city: defaultValues.city || "",
           state: defaultValues.state || "",
           postalCode: defaultValues.postalCode || "",
@@ -128,7 +133,7 @@ export function UnifiedAddressInput({
 
     const subscription = form.watch((value, { name }) => {
       // Only geocode if an address field changed
-      if (!name || !['street', 'city', 'state', 'postalCode', 'country'].includes(name)) {
+      if (!name || !['street', 'street2', 'city', 'state', 'postalCode', 'country'].includes(name)) {
         return;
       }
 
@@ -139,7 +144,7 @@ export function UnifiedAddressInput({
 
       // Debounce geocoding by 1 second
       geocodingTimeoutRef.current = setTimeout(async () => {
-        const { street, city, state, postalCode, country } = value;
+        const { street, street2, city, state, postalCode, country } = value;
         
         // Only geocode if we have at least some address components
         if (!street && !city && !state && !postalCode) {
@@ -150,6 +155,7 @@ export function UnifiedAddressInput({
         try {
           const result = await apiRequest("POST", "/api/geocode", {
             street: street || "",
+            street2: street2 || "",
             city: city || "",
             state: state || "",
             postalCode: postalCode || "",
@@ -194,6 +200,7 @@ export function UnifiedAddressInput({
         
         // Update form with parsed data
         form.setValue("street", response.structuredAddress.street || "");
+        form.setValue("street2", response.structuredAddress.street2 || "");
         form.setValue("city", response.structuredAddress.city || "");
         form.setValue("state", response.structuredAddress.state || "");
         form.setValue("postalCode", response.structuredAddress.postalCode || "");
@@ -205,6 +212,7 @@ export function UnifiedAddressInput({
         // Update confirmed state snapshot
         const newConfirmedState = {
           street: response.structuredAddress.street || "",
+          street2: response.structuredAddress.street2 || "",
           city: response.structuredAddress.city || "",
           state: response.structuredAddress.state || "",
           postalCode: response.structuredAddress.postalCode || "",
@@ -274,6 +282,7 @@ export function UnifiedAddressInput({
     
     form.reset({
       street: "",
+      street2: "",
       city: "",
       state: "",
       postalCode: "",
@@ -293,6 +302,7 @@ export function UnifiedAddressInput({
     // Update parsed address
     setParsedAddress({
       street: formValues.street,
+      street2: formValues.street2 || "",
       city: formValues.city,
       state: formValues.state,
       postalCode: formValues.postalCode,
@@ -319,6 +329,7 @@ export function UnifiedAddressInput({
     const stateToRestore = persistedSnapshot || {
       friendlyName: undefined,
       street: "",
+      street2: "",
       city: "",
       state: "",
       postalCode: "",
@@ -336,6 +347,7 @@ export function UnifiedAddressInput({
     if (stateToRestore.street || stateToRestore.city) {
       setParsedAddress({
         street: stateToRestore.street,
+        street2: stateToRestore.street2 || "",
         city: stateToRestore.city,
         state: stateToRestore.state,
         postalCode: stateToRestore.postalCode,
@@ -477,6 +489,10 @@ export function UnifiedAddressInput({
         )}
 
         <div className="flex justify-end space-x-2">
+          <Button type="button" variant="outline" onClick={() => {
+            setShowParsedView(true);
+            setIsEditing(true);
+          }} data-testid="button-manual-address">Enter Manually</Button>
           <Button
             type="button"
             variant="outline"
@@ -549,7 +565,7 @@ export function UnifiedAddressInput({
                   name="street"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Street Address</FormLabel>
+                      <FormLabel>Address Line 1</FormLabel>
                       <FormControl>
                         <Input placeholder="123 Main St" data-testid="input-street" {...field} />
                       </FormControl>
@@ -557,6 +573,13 @@ export function UnifiedAddressInput({
                     </FormItem>
                   )}
                 />
+                <FormField control={form.control} name="street2" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address Line 2</FormLabel>
+                    <FormControl><Input placeholder="Apartment, suite, or unit (optional)" data-testid="input-street2" {...field} value={field.value || ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -643,10 +666,14 @@ export function UnifiedAddressInput({
               // Display mode
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Street</label>
+                  <label className="text-sm font-medium">Address Line 1</label>
                   <p className="text-sm text-muted-foreground" data-testid="text-street">
                     {parsedAddress?.street || "—"}
                   </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Address Line 2</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-street2">{parsedAddress?.street2 || "—"}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">City</label>

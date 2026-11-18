@@ -2,6 +2,12 @@ import type { SystemHelpEntry } from "./index";
 
 /** Shared built-in prose only; local database help is never changed. */
 export const ediTerminationGuidance = `
+  <p><strong>Postal address lines</strong></p>
+  <p>Address Line 1 and Address Line 2 are sent in the carrier's existing address slots.
+  Formats with only one street slot combine both lines within that slot's existing limit.
+  Historical combined street text is not automatically split. Correct the contact address
+  or replace it from an authoritative two-line import, then generate a new file.
+  Address changes do not change coverage or termination settings.</p>
   <p><strong>Membership termination settings</strong></p>
   <p>For Trust Provider EDI membership files, <strong>Explicit subscriber terminations</strong>
   and <strong>Explicit dependent terminations</strong> independently include ended people.

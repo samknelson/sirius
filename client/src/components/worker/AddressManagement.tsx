@@ -51,11 +51,13 @@ interface AddressManagementProps {
   workerId: string;
   contactId: string;
   canEdit?: boolean;
+  selfService?: boolean;
 }
 
 interface AddressFormData {
   friendlyName?: string;
   street: string;
+  street2?: string | null;
   city: string;
   state: string;
   postalCode: string;
@@ -65,7 +67,7 @@ interface AddressFormData {
   validationResponse?: any;
 }
 
-export default function AddressManagement({ workerId, contactId, canEdit = true }: AddressManagementProps) {
+export default function AddressManagement({ workerId, contactId, canEdit = true, selfService = false }: AddressManagementProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<ContactPostal | null>(null);
   const [editFriendlyName, setEditFriendlyName] = useState("");
@@ -95,7 +97,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
   // Add address mutation
   const addAddressMutation = useMutation({
     mutationFn: async (data: AddressFormData) => {
-      return apiRequest("POST", `/api/contacts/${contactId}/addresses`, data);
+      return apiRequest("POST", `/api/contacts/${contactId}/addresses${selfService ? "/self" : ""}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "addresses"] });
@@ -190,6 +192,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
       const response = await apiRequest("POST", "/api/postal/verify-address", {
         addressId: address.id,
         addressLine1: address.street,
+        addressLine2: address.street2 || undefined,
         city: address.city,
         state: address.state,
         zip: address.postalCode,
@@ -261,6 +264,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
     mutationFn: async (address: ContactPostal) => {
       const response = await apiRequest("POST", "/api/postal/verify-and-register", {
         addressLine1: address.street,
+        addressLine2: address.street2 || undefined,
         city: address.city,
         state: address.state,
         zip: address.postalCode,
@@ -566,6 +570,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                     {address.friendlyName && (
                       <p className="text-sm text-muted-foreground">{address.street}</p>
                     )}
+                    {address.street2 && <p className="text-sm text-muted-foreground">{address.street2}</p>}
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button
@@ -664,6 +669,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
               <div className="space-y-1">
                 <Label className="text-muted-foreground">Address</Label>
                 <p className="font-medium">{editingAddress.street}</p>
+                {editingAddress.street2 && <p>{editingAddress.street2}</p>}
                 <p className="text-sm text-muted-foreground">
                   {editingAddress.city}, {editingAddress.state} {editingAddress.postalCode}
                 </p>
@@ -769,6 +775,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Address</h4>
                     <p className="font-medium">{viewingAddress.street}</p>
+                    {viewingAddress.street2 && <p>{viewingAddress.street2}</p>}
                     <p className="text-muted-foreground">
                       {viewingAddress.city}, {viewingAddress.state} {viewingAddress.postalCode}
                     </p>
@@ -917,6 +924,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
               <div className="space-y-1">
                 <Label className="text-muted-foreground">Address</Label>
                 <p className="font-medium">{postalOptinAddress.street}</p>
+                {postalOptinAddress.street2 && <p>{postalOptinAddress.street2}</p>}
                 <p className="text-sm text-muted-foreground">
                   {postalOptinAddress.city}, {postalOptinAddress.state} {postalOptinAddress.postalCode}
                 </p>

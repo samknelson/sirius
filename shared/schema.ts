@@ -874,6 +874,7 @@ export const contactPostal = pgTable("contact_postal", {
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   friendlyName: text("friendly_name"),
   street: text("street").notNull(),
+  street2: text("street2"),
   city: text("city").notNull(),
   state: text("state").notNull(),
   postalCode: text("postal_code").notNull(),
@@ -1859,6 +1860,7 @@ export const insertVariableSchema = createInsertSchema(variables).omit({
 });
 
 export const insertContactPostalSchema = createInsertSchema(contactPostal, {
+  street2: z.string().nullable().transform(value => value?.trim() || null).optional(),
   source: z.enum(['worker_self', 'employer_feed', 'admin', 'import', 'system']).optional(),
   deliverabilityStatus: z.enum(['unknown', 'verified', 'undeliverable', 'vacant', 'returned_mail']).optional(),
 }).omit({
@@ -2321,6 +2323,7 @@ export const parseAddressRequestSchema = z.object({
 
 export const structuredAddressSchema = z.object({
   street: z.string().optional(),
+  street2: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
   postalCode: z.string().optional(),

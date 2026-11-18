@@ -36,6 +36,7 @@ export async function resolvePostalAddress(storage: IStorage, contactId: string)
   return {
     name: contact?.displayName || undefined,
     addressLine1: addr.street,
+    addressLine2: addr.street2 || undefined,
     city: addr.city,
     state: addr.state,
     zip: addr.postalCode,

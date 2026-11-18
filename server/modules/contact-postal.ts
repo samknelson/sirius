@@ -41,6 +41,7 @@ function extractGeometryFromValidationResponse(validationResponse: any): {
 // never blocks an address from being saved.
 async function geocodeAddressParts(parts: {
   street?: string | null;
+  street2?: string | null;
   city?: string | null;
   state?: string | null;
   postalCode?: string | null;
@@ -52,6 +53,7 @@ async function geocodeAddressParts(parts: {
   try {
     const result = await addressValidationService.geocodeAddress({
       street: parts.street ?? "",
+      street2: parts.street2 ?? "",
       city: parts.city ?? "",
       state: parts.state ?? "",
       postalCode: parts.postalCode ?? "",
@@ -173,6 +175,7 @@ export function registerContactPostalRoutes(
         contactId,
         {
           street: parsed.street,
+          street2: parsed.street2,
           city: parsed.city,
           state: parsed.state,
           postalCode: parsed.postalCode,
@@ -250,6 +253,7 @@ export function registerContactPostalRoutes(
         contactId,
         {
           street: parsed.street,
+          street2: parsed.street2,
           city: parsed.city,
           state: parsed.state,
           postalCode: parsed.postalCode,
@@ -311,6 +315,7 @@ export function registerContactPostalRoutes(
       const {
         source: _source,
         street: _street,
+        street2: _street2,
         city: _city,
         state: _state,
         postalCode: _pc,

@@ -888,31 +888,14 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // Only process address if at least street (addressLine1) and city are provided
     // These are minimum required fields for a valid address
     if (addressLine1 && city && state && postalCode) {
-      // Check if contact already has addresses
-      const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
-      
-      if (existingAddresses.length > 0) {
-        // Update the primary address
-        const primaryAddress = existingAddresses.find((a: { isPrimary: boolean }) => a.isPrimary) || existingAddresses[0];
-        await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
+      await storage.contacts.addresses.createOrMatchAddress(contactId, {
           street: addressLine1,
+          street2: addressLine2,
           city,
           state,
           postalCode,
           country: 'US' // Default to US
-        });
-      } else {
-        // Create a new primary address
-        await storage.contacts.addresses.createContactPostal({
-          contactId,
-          street: addressLine1,
-          city,
-          state,
-          postalCode,
-          country: 'US', // Default to US
-          isPrimary: true
-        });
-      }
+        }, "import");
     }
   }
 

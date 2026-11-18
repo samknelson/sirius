@@ -26,6 +26,13 @@ The core migration runner applies migrations in version order and only runs
 those with `version > migrations_version`, bumping the counter on each success.
 The same counter is shared by ALL core migration files.
 
+**Do not infer the floor from the end of the registry file.**
+**Why:** merged migration blocks may be registered near the top while the
+tail still ends with older fork versions.
+**How to apply:** inspect the maximum across every registered core migration
+and on-disk core filename before choosing a number; the final import is not
+necessarily the highest version.
+
 **The trap:** when two branches diverge and each adds its own core migrations
 using overlapping low version numbers, the local `migrations_version` can already
 be *past* a version number that an incoming (merged) migration uses. That

@@ -22,7 +22,7 @@ function TrustProviderContactViewContent() {
   const primaryAddress = addresses.find(a => a.isPrimary && a.isActive);
 
   const formatAddress = (address: ContactPostal) => {
-    return `${address.street}, ${address.city}, ${address.state} ${address.postalCode}`;
+    return `${[address.street, address.street2].filter(Boolean).join(", ")}, ${address.city}, ${address.state} ${address.postalCode}`;
   };
 
   return (

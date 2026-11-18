@@ -972,6 +972,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           'Email': w.email || '',
           'Phone': w.phone_number || '',
           'Street': w.address_street || '',
+          'Address Line 2': w.address_street2 || '',
           'City': w.address_city || '',
           'State': w.address_state || '',
           'Postal Code': w.address_postal_code || '',
@@ -1523,10 +1524,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // POST /api/geocode - Geocode an address
   app.post("/api/geocode", requireAuth, async (req, res) => {
     try {
-      const { street, city, state, postalCode, country } = req.body;
+      const { street, street2, city, state, postalCode, country } = req.body;
 
       const result = await addressValidationService.geocodeAddress({
         street: street || "",
+        street2: street2 || "",
         city: city || "",
         state: state || "",
         postalCode: postalCode || "",

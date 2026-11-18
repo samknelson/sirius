@@ -273,7 +273,8 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       if (data.address1 && data.city && data.state && data.zip) {
         await storage.contacts.addresses.createContactPostal({
           contactId: contact.id,
-          street: data.address2 ? `${data.address1}, ${data.address2}` : data.address1,
+          street: data.address1,
+          street2: data.address2,
           city: data.city,
           state: data.state,
           postalCode: data.zip,
@@ -348,29 +349,14 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       }
 
       if (data.address1 && data.city && data.state && data.zip) {
-        const street = data.address2 ? `${data.address1}, ${data.address2}` : data.address1;
-        const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
-        const primaryAddress = existingAddresses.find(a => a.isPrimary);
-        
-        if (primaryAddress) {
-          await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
-            street,
+        await storage.contacts.addresses.createOrMatchAddress(worker.contactId, {
+            street: data.address1,
+            street2: data.address2,
             city: data.city,
             state: data.state,
             postalCode: data.zip,
             country: 'US',
-          });
-        } else {
-          await storage.contacts.addresses.createContactPostal({
-            contactId: worker.contactId,
-            street,
-            city: data.city,
-            state: data.state,
-            postalCode: data.zip,
-            country: 'US',
-            isPrimary: true,
-          });
-        }
+          }, "employer_feed");
       }
     },
 

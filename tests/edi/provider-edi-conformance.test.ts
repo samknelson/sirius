@@ -58,7 +58,7 @@ describe("EDI-only personal field casing through every registered feed", () => {
           contactId: "qmsco-contact", relationId: "qmsco-rel", relationSiriusId: "QMSCO",
         });
         const postal = Object.freeze({
-          street: "12 Mixed Case St", city: "Los Angeles", state: "Ca", postalCode: "90001",
+          street: "12 Mixed Case St", street2: "Suite 4B", city: "Los Angeles", state: "Ca", postalCode: "90001",
         });
         const local11 = plugin.id.endsWith("-local11");
         const hours = Object.freeze({
@@ -148,6 +148,8 @@ describe("EDI-only personal field casing through every registered feed", () => {
           } else {
             expect(row.city).toBe("Los Angeles");
             if ("street" in row) expect(row.street).toBe(postal.street);
+            if ("street2" in row) expect(row.street2).toBe(postal.street2);
+            if ("address2" in row) expect(row.address2).toBe(postal.street2);
           }
         }
         // Frozen source records also make accidental in-place normalization throw.

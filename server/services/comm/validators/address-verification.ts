@@ -2,6 +2,7 @@ import type {
   AddressVerificationResult,
   PostalAddress,
 } from '../providers/postal';
+import { buildCanonicalAddress } from '../providers/postal';
 import { wcRequest, type WcRequestMode } from '../../webclient';
 import { isMaintenanceModeError } from '../../maintenance-flag';
 import type { WcVendorTarget } from "../../webclient";
@@ -105,6 +106,13 @@ function withCallerRecipient(
   address: PostalAddress,
 ): AddressVerificationResult {
   const answer: AddressVerificationResult = { ...result };
+  // A building-level normalized answer is not authority to remove a unit.
+  // Do not accept its canonical key either: that would merge distinct units'
+  // opt-in and deliverability identities.
+  if (address.addressLine2?.trim() && !answer.normalizedAddress?.addressLine2?.trim()) {
+    answer.normalizedAddress = { ...(answer.normalizedAddress || address), addressLine2: address.addressLine2.trim() };
+    answer.canonicalAddress = buildCanonicalAddress(answer.normalizedAddress);
+  }
   if (answer.normalizedAddress) {
     answer.normalizedAddress = {
       ...answer.normalizedAddress,

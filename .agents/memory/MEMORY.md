@@ -92,8 +92,8 @@
 - [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations are silently skipped after the shared counter; filenames and registration are both required.
 - [Entity-files adapter fork extension](entity-files-adapter-fork-extension.md) — BAO DC/case documents retain adapter-backed lifecycle semantics while upstream uses shared entity_files.
 - [Notifier postal templates](notifier-postal-template-channel.md) — postal is a first-class token-template channel; preserve its HTML letter wrapping when adopting shared delivery shaping.
-- [S1 loader mechanics](s1-loader-run-order.md) — loader ordering follows id-map dependencies; linked topic covers paging, observability, and prerequisites.
-- [S1 Sirius ID authority](s1-sirius-id-authority.md) — while S1 is writable, S2 must not allocate SIDs, even for shells; staging hashes cannot prove live-source reservations.
+- S1 — [loader mechanics](s1-loader-run-order.md) follows id-map dependencies; [SID authority](s1-sirius-id-authority.md) stays in writable S1, including shells.
+- [Address parsing evidence](address-parsing-evidence.md) — comma count does not prove a second line; separate state/ZIP segments and building-only vendor answers need independent locality evidence.
 - [EDLS schedule answer authority](edls-schedule-answer-authority.md) — an AAT bearer link intentionally authorizes its worker’s final EDLS accept/decline response; legacy schedule links remain read-only.
 - [Permission registry vs role tables](permission-registry-vs-role-tables.md) — getRolePermissions drops keys an uninitialized registry doesn't know (empty pre-app-init); ask getRolesWithPermission for authority questions.
 - [Break-glass admin from env](break-glass-admin-from-env.md) — LOCAL_AUTH_* is a per-boot reconciler (exists/active/admin/password); refusals must be decided BEFORE the first write, and env overrides mean in-app admins can set it too.

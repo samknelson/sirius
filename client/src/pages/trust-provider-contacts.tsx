@@ -498,7 +498,7 @@ function TrustProviderContactsContent() {
                             <div className="flex items-center gap-2">
                               <MapPin size={14} />
                               <span data-testid={`text-contact-address-${contact.id}`}>
-                                {contact.primaryAddress.street}, {contact.primaryAddress.city}, {contact.primaryAddress.state} {contact.primaryAddress.postalCode}
+                                {[contact.primaryAddress.street, contact.primaryAddress.street2].filter(Boolean).join(", ")}, {contact.primaryAddress.city}, {contact.primaryAddress.state} {contact.primaryAddress.postalCode}
                               </span>
                             </div>
                           )}

@@ -28,6 +28,7 @@ import { additionalPluginKindHelp } from "./additional-plugin-kinds";
 import { reportTypeHelp } from "./report-types";
 import { maskModeHelp } from "./mask-mode";
 import { denormStatusHelp, denormRelationshipsHelp } from "./denorm";
+import { postalAddressLinesHelp } from "./postal-address-lines";
 
 /**
  * A "system" help entry ships as source code and is always present,
@@ -46,6 +47,7 @@ export interface SystemHelpEntry {
 export type HelpWithSource = Help & { source: "system" | "config" };
 
 const entries: SystemHelpEntry[] = [
+  postalAddressLinesHelp,
   richEditorFormattingHelp,
   maskModeHelp,
   workerPaymentChooserHelp,

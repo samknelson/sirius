@@ -129,7 +129,7 @@ export function carelonAddressFields(
     String(p.postal?.postalCode ?? "").replace(/\D/g, "").slice(0, 5);
   const src = stripQuotes(member.postal?.street) ? member : subscriber;
   return {
-    address1: stripQuotes(src.postal?.street),
+    address1: [src.postal?.street, src.postal?.street2].filter(Boolean).map(stripQuotes).join(", "),
     city: stripQuotes(src.postal?.city),
     state: str(src.postal?.state),
     zip: zip5(src),

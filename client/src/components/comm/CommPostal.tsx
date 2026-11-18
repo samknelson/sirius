@@ -124,6 +124,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
     mutationFn: async (address: Address) => {
       const response = await apiRequest("POST", "/api/postal/verify-address", {
         addressLine1: address.street,
+        addressLine2: address.street2 || undefined,
         city: address.city,
         state: address.state,
         zip: address.postalCode,
@@ -191,6 +192,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
     mutationFn: async (address: Address) => {
       const response = await apiRequest("POST", "/api/postal/verify-and-register", {
         addressLine1: address.street,
+        addressLine2: address.street2 || undefined,
         city: address.city,
         state: address.state,
         zip: address.postalCode,
@@ -282,7 +284,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
     const toAddress = {
       name: contactName,
       addressLine1: verificationResult?.normalizedAddress?.addressLine1 || selectedAddress.street,
-      addressLine2: verificationResult?.normalizedAddress?.addressLine2 || undefined,
+      addressLine2: verificationResult?.normalizedAddress?.addressLine2 || selectedAddress.street2 || undefined,
       city: verificationResult?.normalizedAddress?.city || selectedAddress.city,
       state: verificationResult?.normalizedAddress?.state || selectedAddress.state,
       zip: verificationResult?.normalizedAddress?.zip || selectedAddress.postalCode,
@@ -388,7 +390,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
   const activeAddresses = addresses.filter(a => a.isActive);
 
   const formatAddress = (addr: Address) => {
-    const parts = [addr.street];
+    const parts = [addr.street, addr.street2].filter(Boolean);
     parts.push(`${addr.city}, ${addr.state} ${addr.postalCode}`);
     return parts.join(", ");
   };

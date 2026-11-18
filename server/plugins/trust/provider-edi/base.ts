@@ -320,6 +320,7 @@ export async function wmbPrimaryKeys(
 
 export interface EdiPostal {
   street: string | null;
+  street2?: string | null;
   city: string | null;
   state: string | null;
   postalCode: string | null;
@@ -548,6 +549,7 @@ export async function buildMemberUnits(
       const [postal] = await db
         .select({
           street: contactPostal.street,
+          street2: contactPostal.street2,
           city: contactPostal.city,
           state: contactPostal.state,
           postalCode: contactPostal.postalCode,
@@ -669,12 +671,14 @@ export function requireWorkerSiriusId(
 /** Common postal → row fields (street/city/state/5-digit zip). */
 export function postalFields(postal: EdiPostal | null): {
   street: string;
+  street2: string;
   city: string;
   state: string;
   zip: string;
 } {
   return {
     street: postal?.street ?? "",
+    street2: postal?.street2 ?? "",
     city: postal?.city ?? "",
     state: postal?.state ?? "",
     zip: String(postal?.postalCode ?? "").replace(/\D/g, "").slice(0, 5),

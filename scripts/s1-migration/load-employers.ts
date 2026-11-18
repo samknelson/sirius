@@ -47,8 +47,8 @@
  *     erroneously-created option rows are LEFT in place (staff may have
  *     adopted them; deleting risks data).
  *   - phones co_phone/_phone_2/_fax → E.164 rows (Phone / Phone 2 / Fax)
- *   - address co_address(+_2 merged into street — createOrMatchAddress has no
- *     line2)/city/state/zip → contact_postal via createOrMatchAddress
+ *   - address co_address/co_address_2/city/state/zip → contact_postal via
+ *     createOrMatchAddress; changed import-owned rows are deactivated, not rewritten
  *   - field_grievance_company → companies/employer_companies is DEFERRED
  *     (absent from synthetic; counted when present so the prod run surfaces it)
  *
@@ -128,7 +128,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 })();
 const LOADER = "t7t24-employers";
 /** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2; // Reconcile unchanged, previously flattened addresses once.
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -717,13 +717,14 @@ async function main() {
     if (anyAddr && (!streetBase || !city || !state || !postalCode)) {
       rejects.add("address_incomplete", { nid: c.nid });
     } else {
-      const street = street2 ? `${streetBase}, ${street2}` : streetBase;
+      const street = streetBase;
       const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
       const zip5 = (s: string | null | undefined) => (s ?? "").trim().slice(0, 5);
-      const existingAddrs = await storage.contacts.addresses.getContactPostalByContact(contactId);
+      const existingAddrs = (await storage.contacts.addresses.getContactPostalByContact(contactId)).filter(e => e.isActive);
       const isEquivalent = (e: (typeof existingAddrs)[number]) =>
         anyAddr &&
         norm(e.street) === norm(street) &&
+        (e.street2?.trim() || "") === (street2?.trim() || "") &&
         norm(e.city) === norm(city) &&
         norm(e.state) === norm(state) &&
         zip5(e.postalCode) === zip5(postalCode);
@@ -748,7 +749,7 @@ async function main() {
           await withNotificationsSuppressed(() =>
             storage.contacts.addresses.createOrMatchAddress(
               contactId!,
-              { street: street!, city: city!, state: state!, postalCode: postalCode!, country: "US" },
+              { street: street!, street2, city: city!, state: state!, postalCode: postalCode!, country: "US" },
               "import",
               {},
             ),

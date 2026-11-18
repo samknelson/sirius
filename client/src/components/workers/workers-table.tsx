@@ -703,6 +703,7 @@ export function WorkersTable({
         contactId: worker.contact_id,
         friendlyName: worker.address_friendly_name,
         street: worker.address_street,
+        street2: worker.address_street2 || null,
         city: worker.address_city,
         state: worker.address_state,
         postalCode: worker.address_postal_code,
@@ -1731,6 +1732,7 @@ export function WorkersTable({
                                   <p className="text-sm text-foreground">
                                     {worker.address.street}
                                   </p>
+                                  {worker.address.street2 && <p className="text-sm text-foreground">{worker.address.street2}</p>}
                                   <p className="text-sm text-foreground">
                                     {worker.address.city}, {worker.address.state} {worker.address.postalCode}
                                   </p>

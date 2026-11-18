@@ -10,6 +10,7 @@ export interface Address {
   contactId: string;
   friendlyName: string | null;
   street: string;
+  street2?: string | null;
   city: string;
   state: string;
   postalCode: string;

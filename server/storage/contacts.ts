@@ -199,7 +199,7 @@ export interface AddressStorage {
   updateContactPostal(id: string, address: Partial<InsertContactPostal>): Promise<ContactPostal | undefined>;
   deleteContactPostal(id: string): Promise<boolean>;
   setAddressAsPrimary(addressId: string, contactId: string): Promise<ContactPostal | undefined>;
-  findMatchingAddress(contactId: string, street: string, city: string, state: string, postalCode: string, country?: string): Promise<ContactPostal | undefined>;
+  findMatchingAddress(contactId: string, street: string, city: string, state: string, postalCode: string, country?: string, street2?: string | null): Promise<ContactPostal | undefined>;
   /**
    * Three outcomes, and the caller is told which: a new address (`isNew`), a
    * matched address the call also changed (`changed` — promoted to primary,
@@ -209,7 +209,7 @@ export interface AddressStorage {
    */
   createOrMatchAddress(
     contactId: string,
-    addressData: { street: string; city: string; state: string; postalCode: string; country: string },
+    addressData: { street: string; street2?: string | null; city: string; state: string; postalCode: string; country: string },
     source: AddressSource,
     metadata?: { friendlyName?: string; latitude?: number; longitude?: number; accuracy?: string },
   ): Promise<{ address: ContactPostal; isNew: boolean; changed: boolean }>;
@@ -394,6 +394,7 @@ export function createAddressStorage(): AddressStorage {
     },
 
     async createContactPostal(data: InsertContactPostal): Promise<ContactPostal> {
+      data = { ...data, street2: data.street2?.trim() || null };
       const client = getClient();
       addressValidate.validateOrThrow(data);
 
@@ -420,7 +421,7 @@ export function createAddressStorage(): AddressStorage {
         throw new Error("Address not found");
       }
 
-      const immutableFields = ["street", "city", "state", "postalCode", "country"] as const;
+      const immutableFields = ["street", "street2", "city", "state", "postalCode", "country"] as const;
       const updateKeys = Object.keys(addressUpdate);
       const attemptedImmutable = immutableFields.filter(f => updateKeys.includes(f));
       if (attemptedImmutable.length > 0) {
@@ -553,7 +554,7 @@ export function createAddressStorage(): AddressStorage {
       return address || undefined;
     },
 
-    async findMatchingAddress(contactId, street, city, state, postalCode, country?: string) {
+    async findMatchingAddress(contactId, street, city, state, postalCode, country?: string, street2?: string | null) {
       const client = getClient();
       const existing = await client.select().from(contactPostal).where(eq(contactPostal.contactId, contactId));
       const normStreet = normalizeAddressField(street);
@@ -565,6 +566,7 @@ export function createAddressStorage(): AddressStorage {
       return existing.find(a => {
         return a.isActive
           && normalizeAddressField(a.street) === normStreet
+          && (a.street2?.trim() || "") === (street2?.trim() || "")
           && normalizeAddressField(a.city) === normCity
           && normalizeAddressField(a.state) === normState
           && a.postalCode.replace(/\D/g, "").substring(0, 5) === normZip
@@ -580,6 +582,7 @@ export function createAddressStorage(): AddressStorage {
         addressData.state,
         addressData.postalCode,
         addressData.country,
+        addressData.street2,
       );
 
       if (existing) {
@@ -665,6 +668,7 @@ export function createAddressStorage(): AddressStorage {
       const address = await this.createContactPostal({
         contactId,
         street: addressData.street,
+        street2: addressData.street2,
         city: addressData.city,
         state: addressData.state,
         postalCode: addressData.postalCode,
@@ -935,7 +939,7 @@ export function createContactStorage(): ContactStorage {
       }
 
       let phones: { contactId: string; number: string; isPrimary: boolean }[] = [];
-      let addrs: { contactId: string; street: string; city: string; state: string; isPrimary: boolean }[] = [];
+      let addrs: { contactId: string; street: string; street2: string | null; city: string; state: string; isPrimary: boolean }[] = [];
 
       try {
         phones = await client
@@ -953,6 +957,7 @@ export function createContactStorage(): ContactStorage {
           .select({
             contactId: contactPostal.contactId,
             street: contactPostal.street,
+            street2: contactPostal.street2,
             city: contactPostal.city,
             state: contactPostal.state,
             isPrimary: contactPostal.isPrimary,
@@ -971,7 +976,7 @@ export function createContactStorage(): ContactStorage {
       const addrMap = new Map<string, string>();
       for (const a of addrs) {
         if (!addrMap.has(a.contactId) || a.isPrimary) {
-          addrMap.set(a.contactId, [a.street, a.city, a.state].filter(Boolean).join(", "));
+          addrMap.set(a.contactId, [a.street, a.street2, a.city, a.state].filter(Boolean).join(", "));
         }
       }
 

@@ -92,7 +92,7 @@ registerTokenPlugin({
     const addr = primaryOnly ? primary : primary || addresses.find((a) => a.isActive);
     if (!addr) return null;
     const full =
-      [addr.street, addr.city, addr.state, addr.postalCode]
+      [addr.street, addr.street2, addr.city, addr.state, addr.postalCode]
         .filter(Boolean)
         .join(", ") || null;
     const out: TokenEntity = {

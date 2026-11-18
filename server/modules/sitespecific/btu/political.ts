@@ -114,7 +114,7 @@ export function registerBtuPoliticalRoutes(
       const addresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
       const primary = addresses.find(a => a.isPrimary && a.isActive) || addresses.find(a => a.isActive);
       if (!primary) return res.json({ address: null });
-      const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
+      const parts = [primary.street, primary.street2, primary.city, primary.state, primary.postalCode].filter(Boolean);
       res.json({ address: parts.join(", ") });
     } catch (error: unknown) {
       console.error("Failed to fetch primary address:", error);
@@ -143,7 +143,7 @@ export function registerBtuPoliticalRoutes(
         if (!primary) {
           return res.status(400).json({ message: "No address provided and worker has no primary address on file." });
         }
-        const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
+        const parts = [primary.street, primary.street2, primary.city, primary.state, primary.postalCode].filter(Boolean);
         address = parts.join(", ");
       }
 
@@ -248,7 +248,7 @@ export function registerBtuPoliticalRoutes(
             continue;
           }
 
-          const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
+          const parts = [primary.street, primary.street2, primary.city, primary.state, primary.postalCode].filter(Boolean);
           const address = parts.join(", ");
 
           const result = await lookupRepresentatives(address, { districtCacheStorage: storage.btuPolitical });

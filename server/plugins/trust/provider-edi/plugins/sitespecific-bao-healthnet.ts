@@ -52,7 +52,7 @@ const EDI_FIELDS: EdiField[] = [
   { name: "Gender", width: 1, get: (r) => str(r.gender) },
   { name: "Date of Birth", width: 8, get: (r) => str(r.birthDate) },
   { name: "Address Line 1", width: 25, get: (r) => str(r.street) },
-  { name: "Address Line 2", width: 25 },
+  { name: "Address Line 2", width: 25, get: (r) => str(r.street2) },
   { name: "City", width: 17, get: (r) => str(r.city) },
   { name: "State", width: 2, get: (r) => str(r.state) },
   { name: "Zip Code", width: 5, get: (r) => str(r.zip) },

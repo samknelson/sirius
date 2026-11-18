@@ -77,6 +77,7 @@ export interface AddressValidationResult {
   warnings: string[];
   suggestions?: {
     street?: string;
+    street2?: string;
     city?: string;
     state?: string;
     postalCode?: string;
@@ -88,6 +89,7 @@ export interface AddressValidationResult {
 // Address input interface
 export interface AddressInput {
   street: string;
+  street2?: string | null;
   city: string;
   state: string;
   postalCode: string;
@@ -252,6 +254,7 @@ class AddressValidationService {
       // Construct address string for Google validation
       const addressString = [
         address.street,
+        address.street2,
         address.city,
         address.state,
         address.postalCode,
@@ -292,7 +295,9 @@ class AddressValidationService {
         
         if (inputStreetNormalized !== googleStreetNormalized) {
           warnings.push("Street address may not match Google's records");
-          suggestions.street = googleStructured.street;
+          // With an unstructured/legacy street, Google may have removed a
+          // unit along with normalizing the road. Never offer that lossy edit.
+          if (address.street2?.trim()) suggestions.street = googleStructured.street;
         }
       }
 
@@ -471,6 +476,21 @@ class AddressValidationService {
       
       // Parse address components into our structured format
       const structuredAddress = this.parseGoogleAddressComponents(addressComponents, result);
+      // Google can answer at building granularity. Preserve explicit second
+      // lines or a clearly identified unit, never an ambiguous local street:
+      // for unpunctuated input that can contain the entire city and state.
+      const local = this.parseAddressStringLocally(rawAddress, context);
+      if (!structuredAddress.street2) {
+        const unit = rawAddress.match(/\b(?:apt(?:artment)?|suite|ste|unit|floor|fl|building|bldg)\.?\s*#?\s*[a-z0-9-]+/i)
+          ?? rawAddress.match(/#\s*[a-z0-9-]+/i);
+        // Only trust an inferred extra line when the independently parsed
+        // locality agrees with Google's answer. Segment count alone is not
+        // evidence of an apartment (city/state/ZIP can be separate lines).
+        const sameLocality = local.city?.trim().toLowerCase() === structuredAddress.city?.trim().toLowerCase()
+          && local.state?.trim().toLowerCase() === structuredAddress.state?.trim().toLowerCase()
+          && local.postalCode?.replace(/\D/g, "").slice(0, 5) === structuredAddress.postalCode?.replace(/\D/g, "").slice(0, 5);
+        structuredAddress.street2 = (sameLocality ? local.street2 : undefined) || unit?.[0];
+      }
       
       // Calculate confidence based on Google's result quality
       const confidence = this.calculateGoogleConfidence(result, structuredAddress);
@@ -537,6 +557,7 @@ class AddressValidationService {
 
     return {
       street: street || "",
+      street2: getComponent(["subpremise"]) || "",
       city: getComponent(["locality", "sublocality", "administrative_area_level_3"]) || "",
       state: getShortComponent(["administrative_area_level_1"]) || "",
       postalCode: getComponent(["postal_code"]) || "",
@@ -585,7 +606,7 @@ class AddressValidationService {
   private parseAddressStringLocally(rawAddress: string, context?: ParseAddressRequest['context']): StructuredAddress {
     // Enhanced heuristic parsing for various address formats
     const trimmed = rawAddress.trim();
-    const parts = trimmed.split(',').map(part => part.trim()).filter(part => part.length > 0);
+    const parts = trimmed.split(/[,\n]/).map(part => part.trim()).filter(part => part.length > 0);
     
     const result: StructuredAddress = {};
 
@@ -612,8 +633,23 @@ class AddressValidationService {
       return result;
     }
 
+    // A separately delimited ZIP belongs to the preceding state, not to a
+    // new address line. Identify that suffix before locating city/extra lines.
+    if (workingParts.length >= 3 && /^\d{5}(?:-\d{4})?$/.test(workingParts[workingParts.length - 1])) {
+      const previous = this.parseStateAndZip(workingParts[workingParts.length - 2]);
+      if (previous.state && !previous.postalCode) {
+        workingParts.splice(-2, 2, `${previous.state} ${workingParts[workingParts.length - 1]}`);
+      }
+    }
+
     // Extract street address (always the first part)
     result.street = workingParts[0];
+    // Explicit extra comma/newline-delimited address lines precede the city.
+    // This parses new input only; stored historical addresses are never split.
+    if (workingParts.length >= 4) {
+      result.street2 = workingParts.slice(1, -2).join(", ");
+      workingParts = [workingParts[0], ...workingParts.slice(-2)];
+    }
 
     if (workingParts.length === 1) {
       // Only street provided, try to extract postal code from it
@@ -852,6 +888,7 @@ class AddressValidationService {
     try {
       const addressString = [
         address.street,
+        address.street2,
         address.city,
         address.state,
         address.postalCode,

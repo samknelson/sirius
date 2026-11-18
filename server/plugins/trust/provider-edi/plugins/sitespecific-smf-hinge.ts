@@ -95,14 +95,15 @@ export function hingeAddressFields(
   isQmsco: boolean,
 ): { address1: string; address2: string; city: string; state: string; zip: string; email: string } {
   const own = member.postal;
+  const postal = own?.street ? own : isQmsco ? null : subscriber.postal;
   const pick = <T>(ownV: T | null | undefined, subV: T | null | undefined): T | "" =>
     (ownV ?? "") !== "" ? (ownV as T) : isQmsco ? "" : ((subV ?? "") as T | "");
   return {
-    address1: str(pick(own?.street, subscriber.postal?.street)),
-    address2: "",
-    city: str(pick(own?.city, subscriber.postal?.city)),
-    state: str(pick(own?.state, subscriber.postal?.state)),
-    zip: str(pick(zip5(own ?? null) || null, zip5(subscriber.postal ?? null) || null)),
+    address1: str(postal?.street),
+    address2: str(postal?.street2),
+    city: str(postal?.city),
+    state: str(postal?.state),
+    zip: zip5(postal ?? null),
     email: str(pick(member.email, subscriber.email)),
   };
 }
