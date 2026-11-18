@@ -1,7 +1,6 @@
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
-import { startT631Run } from "../../../../services/t631-sync-runs";
-import type { WorkerEinSyncResult } from "../../../../modules/sitespecific/t631/client/sync-workers";
+import { executeT631WorkerSync } from "../../../../services/t631-worker-sync";
 
 registerCronPlugin({
   metadata: {
@@ -17,10 +16,7 @@ registerCronPlugin({
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
 
-    const { run, duplicate } = await startT631Run(isDryRun, context.triggeredBy ?? "scheduler", true);
-    if (duplicate) return { message: "Skipped: a T631 worker sync is already active.", metadata: { runId: run.id } };
-    if (run.status !== "success") throw new Error(run.error ?? "T631 sync did not complete.");
-    const syncResult = JSON.parse(run.output!) as WorkerEinSyncResult;
+    const syncResult = await executeT631WorkerSync(context);
 
     const prefix = isDryRun ? "[TEST] " : "";
     const message =
@@ -30,13 +26,8 @@ registerCronPlugin({
     return {
       message,
       metadata: {
-        created: syncResult.created,
-        updated: syncResult.updated,
-        deleted: syncResult.deleted,
-        unchanged: syncResult.unchanged,
-        skipped: syncResult.skipped,
-        errors: syncResult.errors,
-        details: syncResult.details,
+        dryRun: isDryRun,
+        ...syncResult,
       },
     };
   },

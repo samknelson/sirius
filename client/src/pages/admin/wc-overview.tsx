@@ -37,7 +37,6 @@ import { SchemaForm } from "@/components/json-schema-form";
 import { WcLayout } from "@/components/layouts/WebServicesLayout";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { getApiErrorMessage, apiRequest } from "@/lib/queryClient";
-import { Link } from "wouter";
 
 interface WcRow {
   pluginId: string;
@@ -151,12 +150,7 @@ export default function WcOverviewPage() {
           <h2 className="text-lg font-semibold">Provider operations</h2>
           <p className="text-sm text-muted-foreground">
             See which configured provider supplies each request type and safely
-            run supported operations. Teamsters 631 worker dry-runs, imports, and synchronization
-            remain on the{" "}
-            <Link href="/config/edls/t631-fetch" className="underline underline-offset-4">
-              Teamsters 631 Sync
-            </Link>{" "}
-            page.
+            run supported operations.
           </p>
            <p className="mt-1 text-xs text-muted-foreground">
              <strong>Default for provider</strong> is used when a caller names a

@@ -313,6 +313,14 @@ export class CronScheduler {
         isManual,
         mode,
         settings: mergedSettings,
+        execution: {
+          assertOwned: () => lock.assertOwned(),
+          inTransaction: work => lock.inTransaction(async () => {
+            const current = await storage.jobRuns.getById(run.id);
+            if (current?.status !== "running") throw new CronExecutionLost();
+            return work();
+          }),
+        },
       }, () => lock.assertOwned()), lock.lost]);
       lock.assertOwned();
 

@@ -9,6 +9,18 @@ Keep background-run ownership for the whole operation, and fence each mutation u
 
 **How to apply:** Preserve partial work between units, make a unit transactional, and fence terminal writes too. Detached work must leave the request transaction while retaining the effective actor. Recovery marks interruption; it must never replay partial imports.
 
+For T631 worker imports, use cron as the only execution owner and results surface.
+Do not reintroduce an independently launched worker sync or a second resource lease.
+The removed Fetch Workers page should have neither navigation links nor a redirect.
+
+**Why:** The owner approved consolidating manual and scheduled imports under cron
+to eliminate duplicate locks, history, polling, and UI. One owner must still fence
+business transactions; removing a duplicate lease is not permission to remove mutation safety.
+
+**How to apply:** Manual imports use the existing cron Run page. Pass the cron
+execution's authority into worker transactions, preserve complete results in cron
+history, and drain old executors whenever ownership keys change across versions.
+
 For sync throughput work, retain exclusion against noncooperating ID writers;
 do not replace a table lock with an advisory lock merely to shorten waits.
 Reuse mutable identity reads only within the protected transaction, invalidating

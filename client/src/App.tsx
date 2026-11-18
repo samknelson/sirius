@@ -288,7 +288,6 @@ const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
-const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
 const FreemanEdlsMigratePage = lazy(() => import("@/pages/admin/sitespecific/freeman/edls-migrate"));
 const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
@@ -2957,16 +2956,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EdlsTasksPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/edls/t631-fetch">
-        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <T631FetchPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

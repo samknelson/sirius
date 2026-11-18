@@ -178,8 +178,8 @@ export function createJobRunStorage(): JobRunStorage {
     // Caller has validated and row-locked the semaphore in this transaction. History is
     // created only AFTER acquiring that lock, so every other running execute
     // row is from an older ownership, regardless of clocks/configuration/mode.
-    // The lease guard checks database expiry again before commit. T631's
-    // separate run kind is untouched; partial old work may still be finishing.
+    // The lease guard checks database expiry again before commit. Worker units
+    // using that same semaphore row fence recovery until they commit/roll back.
     async interruptAbandonedCronRuns(pluginId, currentRunId, owner): Promise<number> {
       const rows = await drizzle(owner).update(jobRuns).set({
         status: "interrupted",

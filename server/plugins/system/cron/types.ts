@@ -16,6 +16,15 @@ export interface CronJobContext {
   isManual: boolean;
   mode: "live" | "test";
   settings: Record<string, unknown>;
+  /**
+   * The existing cron execution's authority, not another lock. Mutation units
+   * must supply an ambient business transaction; the guard fences its commit
+   * against takeover and normal history/recovery writes.
+   */
+  execution: {
+    assertOwned(): void;
+    inTransaction<T>(work: () => Promise<T>): Promise<T>;
+  };
 }
 
 /**

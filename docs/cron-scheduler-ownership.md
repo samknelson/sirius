@@ -60,33 +60,34 @@ expiration plus standby retry/database latency, not a guaranteed exact delay.
 Expiration does NOT prove the old process stopped. Event-loop pauses or network
 partitions can leave old JavaScript or external requests running after takeover.
 These are coordinated starts, not exactly-once effects or universal write
-fencing. T631's resource-specific mutation fencing remains essential. No generic plugin
+fencing. T631's per-worker mutation fencing remains essential. No generic plugin
 cancellation or automatic replay is introduced.
 
 ## T631 worker import ownership
 
-Manual **Sync Workers** and scheduled T631 worker imports additionally claim
-`t631:sync-workers`, across all configurations and test/live modes. This is
-separate from `cron:execution:sitespecific-t631-worker-fetch`: a cron execution
-owns its outer execution lease, but must also contend with manual imports for
-the T631 resource. T631 contenders return the existing active run (or a start/
-finishing-unit conflict), never queue or automatically retry an import. Raw
-diagnostic fetches and historical one-off tools are not coordinated imports.
+T631 worker imports run exclusively through the cron plugin. Both scheduled
+execution and the cron **Run** page (test/live) use the one
+`cron:execution:sitespecific-t631-worker-fetch` semaphore and one cron history
+record. There is no standalone Fetch Workers page, redirect, start/status API,
+T631 resource lease, or duplicate run record. Existing historical T631 records
+are retained unchanged. Raw diagnostic fetches remain read-only vendor calls,
+not imports.
 
 T631 uses the same boot UUID, per-acquisition token, 30-second lease,
 5-second renewal cadence, monotonic local deadlines and bounded coordination
 operations. There is **no dedicated ownership connection** during vendor
 requests, between workers, or between coordination operations. Failed or
 ambiguous renewal permanently withdraws that executor's authority. A waiting
-cron caller is rejected promptly on lease loss; this does **not** cancel an
-already pending remote request, and loss of the outer cron lease does not
-cancel arbitrary plugin code or revoke the independent T631 lease.
+cron caller receives its interrupted run promptly on lease loss; this does
+**not** cancel an already pending remote request. The worker executor uses that
+same cron authority, so a late response cannot begin reconciliation.
 
 Each worker change and missing-worker deactivation runs in its actual ambient
 business transaction, retaining identity table locking and per-worker commits.
-The transaction first takes the retained transaction-level advisory fence
-`2032002`, then locks the semaphore row. It validates the token, boot UUID,
-database-clock expiry and local validity before and after the unit. The
+The cron execution context exposes only an ownership assertion and an ambient
+transaction guard, not acquisition or release. The transaction locks the cron
+semaphore row and verifies its cron run is still running. It validates the token,
+boot UUID, database-clock expiry and local validity before and after the unit. The
 semaphore row remains locked through commit or rollback: takeover cannot
 overlap that unit even if its lease expires. Row-lock acquisition is bounded
 to two seconds, but business work has neither the coordination maintenance
@@ -101,18 +102,17 @@ commit. Existing reconciliation and throughput rules are unchanged.
 
 Admission/recovery and terminal history writes use short, bounded semaphore
 transactions, validating ownership before and after the write and sharing the
-same transaction fence with worker units. Recovery interrupts abandoned
-running T631 rows and inserts a new run atomically when requested. It cannot
-pass an old protected transaction. Status polling can acquire the resource
-and recover abandoned history; if a protected unit blocks acquisition, polling
-still returns durable history without presuming that unit is dead.
-Heartbeats and process telemetry are observational only.
+same semaphore row fence with worker units. A subsequent cron execution
+interrupts abandoned running cron rows before invoking the plugin. It cannot
+pass an old protected transaction. History reads do not claim ownership,
+recover runs, or replay work. Process telemetry is observational only.
 
 An expired, superseded or locally lost executor cannot begin another unit or
 publish success. Late replies are discarded, and conditional terminal writes
 never overwrite recovered history. When ownership cannot be proven, uncertain
-history stays running until a later owner can safely recover it. Completed
-exact-run results, effective-actor attribution and detached transaction scope
+history can be marked interrupted conditionally; a subsequent owner also
+recovers abandoned cron rows before execution. Completed exact-run results
+include all reconciliation totals and worker details. Effective-actor attribution and detached transaction scope
 are preserved. Partial imports are **never automatically replayed**. This is
 database mutation fencing, not a claim of exactly-once external execution.
 
@@ -120,10 +120,10 @@ database mutation fencing, not a claim of exactly-once external execution.
 
 Only T631 worker mutation units opt into **60-second statement_timeout** and
 **15-second idle_in_transaction_session_timeout**, installed with SET LOCAL
-before taking either fence. These are business-work limits, not the five-second
+before taking the semaphore fence. These are business-work limits, not the five-second
 coordination deadline. They apply equally to worker changes and the missing-worker
 pass, including identity-table lock waits. They do not shorten vendor requests,
-change other transaction callers, bypass maintenance, or release either fence
+change other transaction callers, bypass maintenance, or release the fence
 early. Settings revert when the transaction ends.
 
 Sixty seconds allows SQL substantially longer than a coordination operation but
@@ -145,7 +145,7 @@ and cannot publish a late commit.
 
 A server-side statement timeout cancels SQL; the client normally rolls back
 immediately. If the client cannot respond, the idle-in-transaction timeout
-subsequently terminates the session and releases both locks. A silent network
+subsequently terminates the session and releases its locks. A silent network
 partition therefore does not depend solely on TCP failure detection for database
 lock release. This is not a hard end-to-end recovery SLA: server overload,
 rollback time, failover, pool availability and polling cadence add latency.
@@ -169,12 +169,12 @@ promise. Many individually short queries are not a whole-transaction deadline.
    ORDER BY xact_start;
    ```
 
-   Confirm the database, PID, backend start time and lock ownership; use
-   `pg_locks` to confirm the retained advisory fence (classid 0, objid 2032002,
-   objsubid 1). A blocker may be a different workload holding the identity table;
+   Confirm the database, PID, backend start time and lock ownership. Protected
+   worker units hold the cron semaphore row until commit/rollback, as well as
+   the existing identity locks. A blocker may be a different workload holding the identity table;
    do not terminate unrelated blockers without investigating them.
-3. Allow the statement/idle limits and rollback to work. Status polling can
-   recover history once the old transaction ends and the lease is available.
+3. Allow the statement/idle limits and rollback to work. Cron records observed
+   interruptions; abandoned history is recovered under the next execution's lease.
    An expired semaphore or stale heartbeat alone is **not** proof that locks
    have been released. Never DELETE the semaphore, clear its token, unlock a
    fence, or manually mark the run successful to force recovery.
@@ -188,21 +188,21 @@ promise. Many individually short queries are not a whole-transaction deadline.
    return from the termination request is not proof of completed rollback.
    If database termination cannot complete, escalate to the database operator;
    keep imports stopped, rather than relaxing fencing.
-6. Poll the exact run to allow normal fenced recovery to record interruption.
-   Review partial committed effects before explicitly authorizing a new import.
-   Nothing in recovery automatically replays workers. Resume scheduling only
-   after that review.
+6. Read the exact cron run and review partial committed effects before explicitly
+   authorizing a new import. If its history remained running after a crash,
+   the next authorized execution recovers it under its own lease. Nothing in
+   history recovery automatically replays workers. Resume scheduling only after review.
 
 ## Deployment
 
-**Before this T631 cutover, drain or stop every old advisory-ownership T631
+**Before this T631 consolidation, drain or stop every old T631
 execution, including manually started imports, before starting new code.**
 Stop new manual starts and scheduled imports and let existing executions
-finish where possible. The old session advisory ownership key and the new
-`t631:sync-workers` semaphore do not coordinate admission. The retained unit
-fence is not a substitute for draining: mixed versions can otherwise fetch
-and reconcile alternating units. On rollback, likewise drain/stop all
-semaphore-owned T631 executions **before** starting advisory-owned code.
+finish where possible. Old standalone executors own `t631:sync-workers`, while
+new worker mutation units use the cron execution semaphore. These keys do not
+coordinate, and the old advisory unit fence is no longer acquired. Mixed-version
+rolling deployment is unsafe. On rollback, likewise drain/stop all new T631
+executions **before** starting code with the standalone execution path.
 Forced termination may leave partial commits; inspect history and effects
 before manually deciding whether to run another import. Never replay
 automatically.
