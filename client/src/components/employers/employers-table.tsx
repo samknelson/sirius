@@ -366,12 +366,13 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className="text-sm font-medium text-foreground"
+                    <Link
+                      href={`/employers/${employer.id}`}
+                      className="text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
                       data-testid={`text-employer-name-${employer.id}`}
                     >
                       {employer.name}
-                    </span>
+                    </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm text-muted-foreground" data-testid={`text-employer-industry-${employer.id}`}>
@@ -461,6 +462,14 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   })}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
+                      <Link
+                        href={`/employers/${employer.id}/wizards`}
+                        className="text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+                        aria-label={`View ${employer.name} Wizards`}
+                        data-testid={`link-employer-wizards-${employer.id}`}
+                      >
+                        Wizards
+                      </Link>
                       <Link href={`/employers/${employer.id}`}>
                         <Button
                           variant="ghost"
