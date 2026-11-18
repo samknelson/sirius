@@ -5,12 +5,16 @@ import { join, basename } from "node:path";
 import { FLEET, PROFILES, validateSyncConfig } from "../../scripts/s1-migration/sync-config";
 import { parseFinancialSyncApprovals } from "../../scripts/s1-migration/lib/financial-sync-contract";
 import { SCHEDULED_SYNC_ARGS } from "../../scripts/s1-migration/lib/daily-automation";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
+import { VerificationEvidence, projectVerificationDiagnostics } from "../../scripts/s1-migration/lib/report-diagnostics";
 
 const fake = vi.hoisted(() => ({
   spawn: vi.fn(), query: vi.fn(), end: vi.fn(), release: vi.fn(), record: vi.fn(),
   resultPath: "", balanceIdentity: {} as unknown, moneyIdentity: {} as unknown,
   moneyFailure: false,
   electionsFailure: false, stageFailure: false, wmb: vi.fn(),
+  diagnosticsFailure: false,
 }));
 vi.mock("child_process", () => ({ spawnSync: fake.spawn }));
 vi.mock("../../server/storage/db", () => ({
@@ -64,6 +68,7 @@ beforeEach(() => {
   fake.moneyFailure = false;
   fake.electionsFailure = false;
   fake.stageFailure = false;
+  fake.diagnosticsFailure = false;
   fake.wmb.mockResolvedValue({ status: "pass" });
   fake.query.mockImplementation(async (text: string) => ({ rows: text.includes("pg_try_advisory_lock") ? [{ got: true }] : [] }));
   fake.record.mockResolvedValue(1);
@@ -103,7 +108,60 @@ beforeEach(() => {
           durabilitySnapshot: { rowCount: 0, migrationOwnedRows: 0, digest: "fixture" } },
       };
     }
+    if (fake.diagnosticsFailure) {
+      const value = result as Record<string, any>;
+      const canary = { email: "sensitive-canary@example.com", ssn: "123456789",
+        name: "Private Canary Person", stderr: "private-stderr-canary", token: "credential-canary" };
+      if (script === "load-contacts-workers.ts") {
+        const evidence = new VerificationEvidence();
+        for (let i = 0; i < 31; i++) evidence.add("worker_ssn_mismatch", { workerNid: 10 + i });
+        // Execute the actual standard builder+emitter against synthetic IO.
+        const source = readFileSync("scripts/s1-migration/lib/sync.ts", "utf8");
+        const from = source.indexOf("export function buildLoaderResult(");
+        const functions = source.slice(from).replaceAll("export function ", "function ");
+        const program = ts.transpileModule(`${functions}
+          const result = buildLoaderResult({ ...input, verifyFailures: 31,
+            verificationDiagnostics: diagnostics, detail: {} });
+          emitLoaderResult(result);
+          result.exit = loaderExitCode(result);
+          result;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+        const emitted = vi.fn();
+        result = runInNewContext(program, {
+          input: value, diagnostics: evidence.report(), projectVerificationDiagnostics,
+          getTimeZoneEvidence: () => value.runtime.timeZone,
+          getEnvironmentVariable: () => options.env.S1_RESULT_JSON_PATH,
+          writeFileSync: emitted, console: { log() {} },
+        });
+        expect((result as any).exit).toBe(1);
+        expect(JSON.parse(emitted.mock.calls[0][1]).verify.diagnostics.counts.worker_ssn_mismatch).toBe(31);
+        (result as any).verify.diagnostics.samples[0] = {
+          ...(result as any).verify.diagnostics.samples[0], ...canary,
+        };
+      }
+      if (script === "load-payments.ts") {
+        value.rejectGate = { status: "fail", counts: { status_missing: 10 }, allowed: [],
+          disallowed: [{ reason: "status_missing", count: 10 }] };
+        value.detail.rejectSamples = { status_missing: Array.from({ length: 10 }, (_, i) => ({ nid: i + 100, ...canary })) };
+        value.detail.raw = canary;
+      }
+      if (script === "verify-balance-parity.ts") {
+        Object.assign(value, {
+          result: "FAIL", failures: ["mismatch class not allowed: payment_status_missing=10",
+            "aggregate: drift beyond tolerance (0c) — ar=0.00 payments=-2.00", canary.stderr],
+          mismatches: { payment_status_missing: 10, ar_missing_in_s2: 31 },
+          mismatchSamples: { payment_status_missing: [{ nid: 100, ...canary }],
+            ar_missing_in_s2: Array.from({ length: 31 }, (_, ledgerId) => ({ ledgerId, ...canary })) },
+          aggregate: { ar: { driftCents: 0 }, payments: { driftCents: -200 } },
+          perAccount: [{ accountId: "00000000-0000-4000-8000-000000000001",
+            accountName: canary.name, ar: { driftCents: 0 }, payments: { driftCents: -200 }, ok: false }],
+          ...canary,
+        });
+      }
+    }
     writeFileSync(options.env.S1_RESULT_JSON_PATH, JSON.stringify(result));
+    if (fake.diagnosticsFailure && ["load-contacts-workers.ts", "load-payments.ts", "verify-balance-parity.ts"].includes(script)) {
+      return { status: 1 };
+    }
     return { status: (fake.stageFailure && script === "stage.ts") ||
       (fake.electionsFailure && script === "load-elections.ts") ? 1 : 0 };
   });
@@ -125,6 +183,47 @@ async function runFleet(extra: string[] = [], scheduled = false) {
 const calls = () => fake.spawn.mock.calls.map(([, args]) => args as string[]);
 
 describe("actual daily fleet financial wiring", () => {
+  it("persists bounded failure evidence through the fleet and run-history sanitizer without sensitive values", async () => {
+    fake.diagnosticsFailure = true;
+    const report = await runFleet([], true);
+    expect(report).toMatchObject({ result: "FAIL", keepGoing: true,
+      gates: { fleet: "fail", parity: "fail" } });
+    const worker = report.fleet.find((s: { id: string }) => s.id === "contacts-workers");
+    expect(worker.verify).toMatchObject({ status: "fail", failures: 31,
+      diagnostics: { counts: { worker_ssn_mismatch: 31 }, sampleLimit: 25, samplesTruncated: true } });
+    expect(worker.verify.diagnostics.samples).toHaveLength(25);
+    const payments = report.fleet.find((s: { id: string }) => s.id === "payments");
+    expect(payments).toMatchObject({ verify: { status: "pass" },
+      failureDetail: { rejects: { counts: { status_missing: 10 },
+        samples: { status_missing: [{ nid: 100 }, ...Array.from({ length: 9 }, (_, i) => ({ nid: i + 101 }))] },
+        samplesTruncated: { status_missing: false } } } });
+    const balance = report.parity.balance.diagnostics;
+    expect(balance).toMatchObject({ mismatches: { payment_status_missing: 10, ar_missing_in_s2: 31 },
+      aggregate: { payments: { driftCents: -200 } },
+      perAccount: [{ ok: false, payments: { driftCents: -200 } }],
+      samplesTruncated: { ar_missing_in_s2: true },
+      failures: ["mismatch class not allowed: payment_status_missing=10",
+        "aggregate: drift beyond tolerance (0c) — ar=0.00 payments=-2.00"] });
+    expect(balance.mismatchSamples.ar_missing_in_s2).toHaveLength(25);
+    expect(fake.record).toHaveBeenCalledWith(expect.any(Date), expect.anything(),
+      expect.objectContaining({ parity: expect.objectContaining({ balance: expect.objectContaining({ diagnostics: balance }) }) }));
+    // Execute the unchanged run-history sanitization code at its actual depth.
+    const route = readFileSync("server/plugins/system/oneoff/plugins/s1-migration/routes.ts", "utf8");
+    const sanitizer = route.slice(route.indexOf("const SENSITIVE_KEY_RE"), route.indexOf("export function registerS1MigrationRoutes"));
+    const program = ts.transpileModule(`${sanitizer}\nsanitizeRunJson(report);`,
+      { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+    const visible = runInNewContext(program, { report });
+    expect(visible.fleet.find((s: { id: string }) => s.id === "contacts-workers").verify).toEqual(worker.verify);
+    expect(visible.parity.balance.diagnostics).toEqual(balance);
+    const json = JSON.stringify(report);
+    for (const value of ["sensitive-canary", "123456789", "Private Canary", "private-stderr", "credential-canary"]) {
+      expect(json).not.toContain(value);
+    }
+    expect(calls().map(a => basename(a[1]))).toContain("load-ledger.ts");
+    expect(calls().filter(a => basename(a[1]) === "verify-month-parity.ts")).toHaveLength(3);
+    expect(fake.wmb).toHaveBeenCalledWith(expect.objectContaining({ importSucceeded: false }));
+    expect(process.exitCode).toBe(1);
+  });
   it("continues the scheduled fleet after elections rejects without accepting the failure", async () => {
     fake.electionsFailure = true;
     const report = await runFleet([], true);
@@ -183,6 +282,10 @@ describe("actual daily fleet financial wiring", () => {
       expect(report.fleet.find((step: { id: string }) => step.id === id).financialIdentity.status).toBe("pass");
     }
     expect(process.exitCode).toBe(0);
+    // Older and unrelated loaders need not emit new diagnostic fields.
+    expect(report.fleet.find((step: { id: string }) => step.id === "contacts-workers").verify)
+      .toEqual({ status: "pass", failures: 0 });
+    expect(report.parity.balance.diagnostics).toBeUndefined();
   });
 
   it("forwards each deliberate approval only to its own stream at retained staging", async () => {

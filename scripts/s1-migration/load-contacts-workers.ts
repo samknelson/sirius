@@ -153,6 +153,7 @@ import {
   type SyncFinding,
 } from "./lib/sync";
 import { planSiriusIdOwnership } from "../../server/plugins/system/oneoff/plugins/s1-migration/sirius-id-ownership-plan";
+import { VerificationEvidence } from "./lib/report-diagnostics";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Reject classes the operator explicitly allows for THIS run (comma-sep).
@@ -1449,6 +1450,7 @@ async function main() {
   // last processed; --force-reconcile re-verifies the whole population).
   progress.phase("verify", processedContacts.length + processedWorkers.length);
   let verifyFailures = 0;
+  const verifyEvidence = new VerificationEvidence();
   const verifyFailedContactNids = new Set<number>();
   const verifyFailedWorkerNids = new Set<number>();
   if (!DRY_RUN) {
@@ -1466,6 +1468,7 @@ async function main() {
         if (!rejects.has("contact_no_name", c.nid)) {
           console.error(`VERIFY: contact nid ${c.nid} has no id_map entry`);
           verifyFailures++;
+          verifyEvidence.add("contact_mapping_missing", { contactNid: c.nid });
           verifyFailedContactNids.add(c.nid);
         }
         continue;
@@ -1474,6 +1477,7 @@ async function main() {
       if (!row) {
         console.error(`VERIFY: contact nid ${c.nid} maps to missing row ${m.s2Id}`);
         verifyFailures++;
+        verifyEvidence.add("contact_row_missing", { contactNid: c.nid, contactId: m.s2Id });
         verifyFailedContactNids.add(c.nid);
       }
     }
@@ -1482,17 +1486,22 @@ async function main() {
     {
       const phList = [...PLACEHOLDER_EMAILS];
       const phCheck = await db.execute(sql`
-        SELECT lower(trim(email)) AS email, count(*)::int AS cnt
+        SELECT lower(trim(email)) AS email, count(*)::int AS cnt, min(id::text) AS contact_id
           FROM contacts
          WHERE lower(trim(email)) IN (${sql.join(phList.map((e) => sql`${e}`), sql`, `)})
          GROUP BY lower(trim(email))
       `);
-      const leaks = (phCheck as unknown as { rows: Array<{ email: string; cnt: number }> }).rows;
+      const leaks = (phCheck as unknown as { rows: Array<{ email: string; cnt: number; contact_id: string }> }).rows;
       if (leaks.length > 0) {
         console.error(
           `VERIFY: ${leaks.reduce((sum, r) => sum + Number(r.cnt), 0)} contact(s) still carry placeholder emails across ${leaks.length} address(es)`,
         );
         verifyFailures += leaks.length;
+        // One failed assertion per distinct placeholder address, as before.
+        // Identify one target without persisting the address or compared value.
+        for (const leak of leaks) verifyEvidence.add("placeholder_email_present", {
+          contactId: leak.contact_id, affectedContacts: Number(leak.cnt),
+        });
       }
       // Log safe aggregates only.
       if (suppressions.size > 0) {
@@ -1517,11 +1526,13 @@ async function main() {
           if (rowEmail !== addr && !rejects.has("duplicate_email", nid)) {
             console.error(`VERIFY: shared-address owner contact nid ${nid} does not carry its address`);
             verifyFailures++;
+            verifyEvidence.add("shared_email_owner_missing", { contactNid: nid, contactId: m.s2Id });
             verifyFailedContactNids.add(nid);
           }
         } else if (rowEmail === addr) {
           console.error(`VERIFY: contact nid ${nid} carries a shared address it does not own (rule ${plan.rule})`);
           verifyFailures++;
+          verifyEvidence.add("shared_email_nonowner_present", { contactNid: nid, contactId: m.s2Id });
           verifyFailedContactNids.add(nid);
         }
       }
@@ -1536,6 +1547,7 @@ async function main() {
         if (!rejects.has("worker_contact_unresolved", w.nid)) {
           console.error(`VERIFY: worker nid ${w.nid} has no id_map entry`);
           verifyFailures++;
+          verifyEvidence.add("worker_mapping_missing", { workerNid: w.nid });
           verifyFailedWorkerNids.add(w.nid);
         }
         continue;
@@ -1543,6 +1555,7 @@ async function main() {
       if (m.stub) {
         console.error(`VERIFY: worker nid ${w.nid} still marked stub after load`);
         verifyFailures++;
+        verifyEvidence.add("worker_still_stub", { workerNid: w.nid, workerId: m.s2Id });
         verifyFailedWorkerNids.add(w.nid);
         continue;
       }
@@ -1550,6 +1563,7 @@ async function main() {
       if (!row) {
         console.error(`VERIFY: worker nid ${w.nid} maps to missing row ${m.s2Id}`);
         verifyFailures++;
+        verifyEvidence.add("worker_row_missing", { workerNid: w.nid, workerId: m.s2Id });
         verifyFailedWorkerNids.add(w.nid);
         continue;
       }
@@ -1560,11 +1574,13 @@ async function main() {
         if (row.siriusId !== String(vFsid)) {
           console.error(`VERIFY: worker nid ${w.nid} row has sirius_id ${row.siriusId}, expected field_sirius_id ${vFsid}`);
           verifyFailures++;
+          verifyEvidence.add("worker_sirius_id_mismatch", { workerNid: w.nid, workerId: m.s2Id });
           verifyFailedWorkerNids.add(w.nid);
         }
       } else {
         console.error(`VERIFY: worker nid ${w.nid} has no valid staged sirius_id after preflight`);
         verifyFailures++;
+        verifyEvidence.add("worker_source_sirius_id_invalid", { workerNid: w.nid, workerId: m.s2Id });
         verifyFailedWorkerNids.add(w.nid);
       }
       // Legacy NID coverage: every loaded worker carries its nid
@@ -1573,6 +1589,7 @@ async function main() {
         if (!ids.some((e) => e.typeId === legacyNidTypeId && e.value === String(w.nid))) {
           console.error(`VERIFY: worker nid ${w.nid} has no Legacy NID worker_ids row`);
           verifyFailures++;
+          verifyEvidence.add("worker_legacy_nid_missing", { workerNid: w.nid, workerId: m.s2Id });
           verifyFailedWorkerNids.add(w.nid);
         }
       }
@@ -1580,6 +1597,8 @@ async function main() {
       if (cm && row.contactId !== cm.s2Id) {
         console.error(`VERIFY: worker nid ${w.nid} contact_id mismatch`);
         verifyFailures++;
+        verifyEvidence.add("worker_contact_mismatch", { workerNid: w.nid, workerId: m.s2Id,
+          relatedContactNid: cnid ?? undefined, contactId: row.contactId, expectedContactId: cm.s2Id });
         verifyFailedWorkerNids.add(w.nid);
       }
       const stagedSsnRaw = strOf(w.fields, "field_sirius_ssn");
@@ -1587,6 +1606,7 @@ async function main() {
       if (expectedSsn && !rejects.has("ssn_collision_q36", w.nid) && (row.ssn ?? null) !== expectedSsn) {
         console.error(`VERIFY: worker nid ${w.nid} does not own its normalized staged SSN`);
         verifyFailures++;
+        verifyEvidence.add("worker_ssn_mismatch", { workerNid: w.nid, workerId: m.s2Id });
         verifyFailedWorkerNids.add(w.nid);
       }
     }
@@ -1597,6 +1617,8 @@ async function main() {
       if (!incoming || owners.length !== 1 || owners[0].id !== incoming.s2Id) {
         console.error(`VERIFY: planned SSN transfer for worker nid ${transfer.incomingNid} did not produce unique ownership`);
         verifyFailures++;
+        verifyEvidence.add("worker_ssn_transfer_ownership", { workerNid: transfer.incomingNid,
+          workerId: incoming?.s2Id, ownerCount: owners.length });
         verifyFailedWorkerNids.add(transfer.incomingNid);
       }
     }
@@ -1664,6 +1686,7 @@ async function main() {
     rejects,
     allowedRejects: ALLOWED_REJECTS,
     verifyFailures,
+    verificationDiagnostics: verifyEvidence.report(),
     findings,
     allowedFindings: ALLOWED_FINDINGS,
     detail: report,

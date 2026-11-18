@@ -39,6 +39,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { deleteMapping, getMappings, markSourceDeleted, type MappingInfo } from "./idmap";
 import type { RejectLog } from "./loader-utils";
 import { getTimeZoneEvidence, type TimeZoneEvidence } from "./timezone-contract";
+import { projectVerificationDiagnostics, type VerificationDiagnostics } from "./report-diagnostics";
 
 // ---------------------------------------------------------------------------
 // Canonical hashing
@@ -346,7 +347,7 @@ export interface LoaderResult {
     allowed: string[];
     disallowed: Array<{ reason: string; count: number }>;
   };
-  verify: { status: "pass" | "fail"; failures: number };
+  verify: { status: "pass" | "fail"; failures: number; diagnostics?: VerificationDiagnostics };
   findings: SyncFinding[];
   /** Findings whose kind was NOT allowed via --allow-findings. Non-empty ⇒
    * the run fails (the orchestrator makes these blocking by run mode). */
@@ -371,6 +372,7 @@ export function buildLoaderResult(args: {
   rejects?: RejectLog;
   allowedRejects?: string[];
   verifyFailures: number;
+  verificationDiagnostics?: VerificationDiagnostics;
   findings?: SyncFinding[];
   allowedFindings?: string[];
   detail?: Record<string, unknown>;
@@ -388,7 +390,8 @@ export function buildLoaderResult(args: {
     forceReconcile: args.forceReconcile,
     summary,
     rejectGate: { status: disallowed.length > 0 ? "fail" : "pass", counts, allowed, disallowed },
-    verify: { status: args.verifyFailures > 0 ? "fail" : "pass", failures: args.verifyFailures },
+    verify: { status: args.verifyFailures > 0 ? "fail" : "pass", failures: args.verifyFailures,
+      ...(args.verificationDiagnostics ? { diagnostics: projectVerificationDiagnostics(args.verificationDiagnostics) } : {}) },
     findings,
     blockingFindings: findings.filter((f) => !allowedFindings.has(f.kind)),
     detail: args.detail ?? {},

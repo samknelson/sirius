@@ -95,6 +95,7 @@ const MIGRATION_LOCK_KEY = 727001; // same key as bootstrap-target/seed-trust-co
 import { assertFleetVersions } from "./lib/fleet-version-check";
 import { emptyWmbPhase, runWmbEventPhase } from "./lib/wmb-event-phase";
 import { parseFinancialSyncApprovals, financialApprovalArgs, financialIdentitySummary } from "./lib/financial-sync-contract";
+import { projectBalanceDiagnostics, projectPaymentRejects, projectVerificationDiagnostics, type VerificationDiagnostics } from "./lib/report-diagnostics";
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -188,7 +189,7 @@ interface EnvelopeLike {
   forceReconcile: boolean;
   summary: Record<(typeof SUMMARY_FIELDS)[number], number>;
   rejectGate: { status: "pass" | "fail"; counts: Record<string, number>; allowed: string[]; disallowed: Array<{ reason: string; count: number }> };
-  verify: { status: "pass" | "fail"; failures: number };
+  verify: { status: "pass" | "fail"; failures: number; diagnostics?: VerificationDiagnostics };
   findings: Array<{ kind: string }>;
   blockingFindings: Array<{ kind: string }>;
   runtime: { timeZone: { runtimeTimeZone: string; dbSessionTimeZone: string | null; expected: string } | null };
@@ -472,7 +473,10 @@ async function main() {
         forceReconcile: env?.forceReconcile ?? forcedThisRun,
         summary: env?.summary ?? null,
         rejectGate: env ? { status: env.rejectGate.status, counts: env.rejectGate.counts, allowed: env.rejectGate.allowed, disallowed: env.rejectGate.disallowed } : null,
-        verify: env ? env.verify : null,
+        verify: env ? { status: env.verify.status, failures: env.verify.failures,
+          ...(env.verify.diagnostics ? { diagnostics: projectVerificationDiagnostics(env.verify.diagnostics) } : {}) } : null,
+        ...(env && step.id === "payments" && stepFailures.length
+          ? { failureDetail: { rejects: projectPaymentRejects(env.rejectGate.counts, env.detail) } } : {}),
         findingsByKind: env ? countByKind(env.findings) : null,
         blockingFindings: env ? env.blockingFindings.length : null,
         financialIdentity: stepIdentity,
@@ -640,7 +644,8 @@ async function main() {
       }
       report.parity = {
         status: balOk && monthRecords.every((m) => m.status === "pass") ? "pass" : "fail",
-        balance: { status: balOk ? "pass" : "fail", exitCode: bal.exitCode, durationSec: bal.durationSec, toleranceCents: profile.parity.toleranceCents, financialIdentity: identity, identityError },
+        balance: { status: balOk ? "pass" : "fail", exitCode: bal.exitCode, durationSec: bal.durationSec, toleranceCents: profile.parity.toleranceCents, financialIdentity: identity, identityError,
+          ...(!balOk && bal.result ? { diagnostics: projectBalanceDiagnostics(bal.result) } : {}) },
         months: monthRecords,
         allowUnresolved,
       };

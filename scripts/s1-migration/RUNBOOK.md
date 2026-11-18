@@ -18,6 +18,99 @@ Import the individual operation module, not a CLI entrypoint or the plugin
 registration module. See [the ownership manifest](OWNERSHIP-RELOCATION.md)
 for the method/caller map and verification limitations.
 
+## Saved daily diagnostics — read-only triage
+
+**Rollout boundary:** these diagnostics require a separately authorized rebuild
+and rollout of the immutable **migration image** and the task definition that
+uses it. Updating the web app alone does not change scheduled migration code.
+Confirm the running image includes the change before expecting new fields.
+This documentation does not authorize deployment, schedule changes, a production
+rerun, force reconciliation, new reject allowances, tolerance changes, or repairs.
+An already-running task keeps its old image. No transform/version bump or
+forced full-population re-verification is required for this reporting-only change.
+
+Use **One-off Jobs → S1 Migration → Run history** (expand the saved report),
+or authenticated `GET /api/s1-migration/runs?limit=200` through the existing
+administrator/component/Oneoff access gates. Both expose the same sanitized
+saved reports. Record run IDs and start/finish times so child reports are matched
+to the correct daily run; matching failure counts do not prove matching records.
+If older children have fallen outside the recent-history limit, an authorized
+operator with read-only DB access can locate saved runs without executing a CLI:
+
+```sql
+BEGIN READ ONLY;
+SELECT id, started_at, finished_at,
+       args->>'loader' AS loader, args->>'harness' AS harness,
+       report->>'command' AS command, report->>'result' AS result
+FROM s1_staging.runs
+WHERE args->>'loader' IN ('t3t1-contacts-workers', 't19-payments')
+   OR args->>'harness' = 'verify-balance-parity'
+   OR report->>'command' = 'sync'
+ORDER BY id DESC
+LIMIT 200;
+ROLLBACK;
+```
+
+Do not dump raw staging records or arbitrary report fields outside the boundary.
+For the next **already authorized** run after image rollout:
+
+1. **Contacts/workers verification:** inspect the saved loader's
+   `verify.diagnostics` and the daily `fleet` entry with
+   `id="contacts-workers"` → `verify.diagnostics`. `counts` contains uncapped
+   totals by stable assertion code; `samples` holds at most 25 assertions,
+   with explicit `sampleLimit` and `samplesTruncated`. Samples identify source
+   contact/worker NIDs and mapped target UUIDs when available. For contact-link
+   drift they include the source contact NID and actual/expected target contact
+   UUIDs, not names. SSN assertions contain identifiers only, never SSNs.
+   The global placeholder check still counts one assertion per distinct
+   placeholder address (not per affected contact); its sample gives one target
+   contact UUID and the group's `affectedContacts`, never the address. Shared
+   email checks count each ownership assertion and persist no email values.
+   Sample exhaustion never stops checking, counting, or failed-record
+   fingerprint exclusions. Existing global-placeholder fingerprint behavior
+   remains unchanged. This evidence does not expand the normal verify scope:
+   unchanged fingerprint-fast-path rows are not re-verified, except for the
+   existing global/shared-email checks.
+2. **Payment rejects:** the saved `t19-payments` loader already retains
+   `detail.rejectSamples.status_missing[*].nid` (and samples for other reject
+   reasons). Failed daily payment entries now also contain
+   `failureDetail.rejects`, a narrow projection of reason counts and bounded
+   source IDs. Its per-reason `samplesTruncated` states whether more failures
+   exist than samples. Use those NIDs to locate the ten missing-status payments
+   inside the authorized source system, read-only. A payment `verify.status`
+   of `pass` does **not** override `rejectGate.status="fail"` or make a missing
+   status acceptable; rejected rows are not evidence of verified import.
+3. **Balance parity:** saved `verify-balance-parity` runs already contain
+   `failures`, `mismatches`, `mismatchSamples`, `perAccount`, `aggregate`, and
+   (when present) `unattributed`. A failed daily aggregate now retains these
+   safe fields under `parity.balance.diagnostics`: fixed failure reasons,
+   uncapped mismatch counts, at most 25 identifier-only samples per reason,
+   and fund-account/aggregate drift (no account names or per-person amounts).
+   Source samples use `ledgerId` for AR and `nid` for payments; target UUIDs
+   identify missing-provenance/unparsable-key cases without copying bad keys.
+   Failure messages and account summaries are capped at 25 too, with original
+   `failureCount`/`accountCount` and truncation indicators; failed accounts come
+   first. The independently saved harness report remains the fuller evidence
+   if the aggregate is capped.
+4. **Keep the conclusions separate:** inspect actual AR and payment stream
+   `driftCents` per account and in aggregate, in addition to mismatch classes.
+   Missing payment statuses may contribute to parity failure but do not prove
+   its entire cause. Identity parity, month parity, verification, reject gates
+   and money drift are independent checks. A skipped historical WMB phase after
+   rejected import is expected safety behavior, not an instruction to enable it.
+   Report the three inventories separately before requesting any correction.
+
+The supplied November 18 daily JSON records passing staging, all three month
+comparisons and financial identity, failed contacts/workers verification,
+ten disallowed `status_missing` payments, and balance exit 1 at zero tolerance.
+The two supplied contacts/workers JSON reports each store only a failure count
+of one: neither the assertion nor its record can be reconstructed from those
+JSON files, and sameness cannot be inferred. Older saved payment-loader and
+balance-harness reports may already locate payment rejects and parity mismatches;
+the supplied aggregate alone cannot. Older/count-only envelopes remain readable
+but do not gain evidence retroactively. A child that never produces an envelope
+is a separate failure mode, not addressed by these diagnostics.
+
 ## Historical financial-link correction — separate operator approval
 
 Before corrected wet money sync on an existing target, follow

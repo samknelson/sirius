@@ -10,6 +10,7 @@ import {
 } from "../../scripts/s1-migration/lib/daily-automation";
 import { emptyWmbPhase, runWmbEventPhase } from "../../scripts/s1-migration/lib/wmb-event-phase";
 import { reviewedCoverageDetail } from "./wmb-coverage-fixture";
+import { projectBalanceDiagnostics, projectPaymentRejects } from "../../scripts/s1-migration/lib/report-diagnostics";
 
 const disabledWmb = { ...emptyWmbPhase(false), status: "disabled" as const,
   reason: "awaiting-tested-image-activation" };
@@ -76,6 +77,43 @@ describe("scheduled S1 daily automation", () => {
     expect(summary.status).toBe("success");
     expect(summary.counters).toEqual({ created: 1, unchanged: 20, rejected: 0 });
     expect(summaryMessage(summary, new Date("2026-09-16T12:00:00Z"))).not.toContain("database");
+  });
+
+  it("keeps detailed run diagnostics out of daily alert summaries", () => {
+    const diagnostic = { nid: 12345, name: "private-canary-name", stderr: "private-canary-error" };
+    const summary = sanitizeDailySummary({ ...passing, result: "FAIL",
+      ...{ fleet: [{ failureDetail: diagnostic, verify: { diagnostics: diagnostic } }],
+        parity: { balance: { diagnostics: diagnostic } } },
+    });
+    expect(summary.status).toBe("failure");
+    expect(JSON.stringify(summary)).not.toContain("private-canary");
+    expect(JSON.stringify(summary)).not.toContain("12345");
+  });
+
+  it.each([0, 25, 26])("bounds parity and payment samples with accurate totals at %i failures", n => {
+    const samples = Array.from({ length: n }, (_, nid) => ({ nid, email: "private-canary@example.com",
+      status: "private-canary-status", key: "private-canary-key" }));
+    const payments = projectPaymentRejects({ status_missing: n }, { rejectSamples: { status_missing: samples } });
+    expect(payments.counts.status_missing).toBe(n);
+    expect(payments.samples.status_missing).toHaveLength(Math.min(25, n));
+    expect(payments.samplesTruncated.status_missing).toBe(n > 25);
+    const balance = projectBalanceDiagnostics({
+      failures: Array.from({ length: n }, () => "mismatch class not allowed: payment_status_missing=1"),
+      mismatches: { payment_status_missing: n }, mismatchSamples: { payment_status_missing: samples },
+      perAccount: Array.from({ length: n }, (_, i) => ({
+        accountId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, ok: i !== n - 1,
+        accountName: "private-canary-account", ar: { s1Sum: "1.00", s2Sum: "2.00", driftCents: 100 },
+      })),
+    });
+    expect(balance.mismatches.payment_status_missing).toBe(n);
+    expect(balance.mismatchSamples.payment_status_missing).toHaveLength(Math.min(25, n));
+    expect(balance.samplesTruncated.payment_status_missing).toBe(n > 25);
+    expect(balance).toMatchObject({ failureCount: n, accountCount: n,
+      failuresTruncated: n > 25, accountsTruncated: n > 25 });
+    expect(balance.failures).toHaveLength(Math.min(25, n));
+    expect(balance.perAccount).toHaveLength(Math.min(25, n));
+    if (n > 0) expect(balance.perAccount[0].ok).toBe(false);
+    expect(JSON.stringify({ balance, payments })).not.toContain("private-canary");
   });
 
   it("separates report-only findings from hard failure", () => {
