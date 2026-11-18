@@ -70,10 +70,10 @@ S1 keeps person data on a separate `sirius_contact` node referenced by the worke
 | `field_sirius_email` | `_value` | `contacts.email` (unique) + optional `comm_email_optin` seed | NEEDS-TRANSFORM T12 (dedupe) |
 | `field_sirius_phone` | `_value` | `contact_phone` (`is_primary=true`) | NEEDS-TRANSFORM T5 |
 | `field_sirius_phone_alt` | `_value` | `contact_phone` (`is_primary=false`, `friendly_name='Alt'`) | NEEDS-TRANSFORM T5 |
-| `field_sirius_address` | `_thoroughfare/_premise/_locality/_administrative_area/_postal_code/_country` (+6 MASKED subcols) | `contact_postal.street/city/state/postal_code/country` | NEEDS-TRANSFORM T13 (compound merge) |
+| `field_sirius_address` | `_thoroughfare/_premise/_locality/_administrative_area/_postal_code/_country` (+6 MASKED subcols) | `contact_postal.street/street2/city/state/postal_code/country` respectively | NEEDS-TRANSFORM T13 (explicit separate lines; no inferred split) |
 | `field_sirius_address_geo` | `_left/_top/_right/_bottom` (point; `_lat/_lon/_geom` MASKED) | `contact_postal.longitude` ← `_left`, `latitude` ← `_top` | NEEDS-TRANSFORM T13 |
 | `field_sirius_address_accuracy` | `_value` "ROOFTOP" | `contact_postal.accuracy` | direct |
-| `field_sirius_address_canon` | `_value` REDACTED | `contact_postal` (input to `createOrMatchAddress` canonicalization) | NEEDS-TRANSFORM T13 |
+| `field_sirius_address_canon` | `_value` REDACTED | retained in staging only; not used to infer address lines | NO-S2-EQUIVALENT |
 | `field_sirius_address_county` | `_value` | `contact_postal.validation_response.county` (no column) | NO-S2-EQUIVALENT (jsonb stash) |
 | `field_sirius_lang` | `_value` en/es (multi) | preferred language — no S2 column | NO-S2-EQUIVALENT + Q10 |
 | `field_sirius_contact_tags` | `_tid` multi (vocab `sirius_contact_tags`?) | closest S2: `options_comm_tags` (per-comm, not per-contact) | AMBIGUOUS-SOURCE Q11 |
@@ -276,7 +276,7 @@ Production has the full grievance table set (290 tables: 145 `field_data_*` + 14
 | `field_grievance_co_role` | `employer_contacts.position` (free-text rep title, whitespace-normalized; **NOT a contact type** — corrected 2026-08-19, re-run removes the old title-as-type links) | NEEDS-TRANSFORM T24 |
 | `field_grievance_co_email` (`_email`) | `contacts.email` | direct |
 | `field_grievance_co_phone`/`_phone_2`/`_fax` | `contact_phone` rows (friendly_name Phone/Phone 2/Fax) | NEEDS-TRANSFORM T5 |
-| `field_grievance_co_address`/`_address_2`/`_city`/`_state`/`_zip` | `contact_postal.street(+line2)/city/state/postal_code` | NEEDS-TRANSFORM T13 |
+| `field_grievance_co_address`/`_address_2`/`_city`/`_state`/`_zip` | `contact_postal.street/street2/city/state/postal_code` respectively | NEEDS-TRANSFORM T13 |
 | `field_grievance_shops` (`_target_id`, employer) | `employer_contacts.employer_id` | NEEDS-TRANSFORM T2 |
 | `field_grievance_company` (`_target_id`) | `companies` (has `sirius_id`) + `employer_companies` | NEEDS-TRANSFORM T2 |
 | `field_grievance_contact_types` (`_tid`, multi) | `employer_contacts.contact_type_id` — **SOLE source of contact types (2026-08-19)**; **MULTI-LINK (N25 closed 2026-08-05): one row per (contact, employer, type)** — storage widened + loader shipped. Prod (07 §P5, re-stated 2026-08-19): term-derived links only; `co_role` no longer counts toward links | NEEDS-TRANSFORM T24 |

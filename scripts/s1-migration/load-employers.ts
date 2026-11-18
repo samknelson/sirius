@@ -128,7 +128,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 })();
 const LOADER = "t7t24-employers";
 /** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
-const LOGIC_VERSION = 2; // Reconcile unchanged, previously flattened addresses once.
+const LOGIC_VERSION = 3; // Replay split addresses, including prior line-2-only sources.
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -140,7 +140,7 @@ const FATAL_SHOPCONTACT_REASONS = ["shopcontact_no_name", "shopcontact_employer_
 /** Keyed reasons that additionally BLOCK fingerprint advance (row must stay
  * retryable — the blocker can clear without an S1 edit… but the fingerprint
  * captures the ownership outcome anyway; belt and suspenders). */
-const CONTACT_ADVANCE_BLOCKERS = [...FATAL_SHOPCONTACT_REASONS, "duplicate_email"] as const;
+const CONTACT_ADVANCE_BLOCKERS = [...FATAL_SHOPCONTACT_REASONS, "duplicate_email", "address_incomplete"] as const;
 
 /** §9b fields with no S2 home yet — counted so the prod run surfaces volume. */
 const SHOP_UNLOADED_FIELDS = [
@@ -442,8 +442,7 @@ async function main() {
         const winner = await putMapping("contact", c.nid, contactId, {
           stub: false,
           loader: LOADER,
-          fingerprint: fp,
-          logicVersion: LOGIC_VERSION,
+          // Claim identity now; consume only after address reconciliation and verify.
         });
         if (winner !== contactId) {
           console.error(`RACE: contact nid ${c.nid} already mapped to ${winner}; row ${contactId} may be an orphan`);
@@ -713,9 +712,9 @@ async function main() {
     const city = strOf(c.fields, "field_grievance_co_city");
     const state = strOf(c.fields, "field_grievance_co_state");
     const postalCode = strOf(c.fields, "field_grievance_co_zip");
-    const anyAddr = Boolean(streetBase || city || state || postalCode);
+    const anyAddr = Boolean(streetBase || street2 || city || state || postalCode);
     if (anyAddr && (!streetBase || !city || !state || !postalCode)) {
-      rejects.add("address_incomplete", { nid: c.nid });
+      rejects.add("address_incomplete", { nid: c.nid }, c.nid);
     } else {
       const street = streetBase;
       const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -767,8 +766,8 @@ async function main() {
       } else {
         summary.unchanged++;
       }
-      contactsPendingAdvance.push({ s1Id: c.nid, fingerprint: fp });
     }
+    contactsPendingAdvance.push({ s1Id: c.nid, fingerprint: fp });
   }
   report.shopContacts = scStats;
   report.roleLinkCandidateSamples = roleLinkCandidateSamples;

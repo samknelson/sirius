@@ -169,7 +169,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 const LOADER = "t3t1-contacts-workers";
 /** Loader logic version — BUMP whenever transform logic changes so unchanged
  * S1 rows reprocess into the corrected S2 shape on their next run. */
-const LOGIC_VERSION = 4; // Reconcile unchanged, previously flattened addresses once.
+const LOGIC_VERSION = 5; // Split replay; consume contacts only after address reconciliation.
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -472,8 +472,8 @@ async function main() {
   const summary = emptySummary();
   /** rows skipped by the consumed-fingerprint fast path (subset of summary.unchanged) */
   let fastPathSkips = 0;
-  /** fingerprint advances for PRE-EXISTING mappings, applied after verify —
-   * NEW mappings are stamped at putMapping time (the S2 write just landed). */
+  /** Contact fingerprints (new and existing) advance after reconciliation
+   * and verify; worker creation retains its existing immediate stamp. */
   const pendingContactAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
   const pendingWorkerAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
   /** rows actually processed this run (changed/new) — verify scope */
@@ -867,8 +867,7 @@ async function main() {
         const winner = await putMapping("contact", c.nid, contactId, {
           stub: false,
           loader: LOADER,
-          fingerprint: fp,
-          logicVersion: LOGIC_VERSION,
+          // Claim identity now; consume only after address reconciliation and verify.
         });
         if (winner !== contactId) {
           console.error(`RACE: contact nid ${c.nid} already mapped to ${winner}; row ${contactId} may be an orphan`);
@@ -894,19 +893,18 @@ async function main() {
       }
     }
 
-    // Fingerprint advance for pre-existing mappings — deferred to after
-    // verify. Rows with a cross-row-dependent deferral (duplicate email)
-    // never advance: they retry every run until the blocker clears.
+    // All contact mappings consume only after reconciliation and verify.
+    // Deferred email or incomplete addresses must remain retryable.
     const finishRow = () => {
+      if (!DRY_RUN && contactId && !rejects.hasAnyIn(c.nid, ["duplicate_email", "address_incomplete"])) {
+        pendingContactAdvance.push({ s1Id: c.nid, fingerprint: fp });
+      }
       if (mapped) {
-        if (!rejects.has("duplicate_email", c.nid)) {
-          pendingContactAdvance.push({ s1Id: c.nid, fingerprint: fp });
-        }
         if (rowWrites > 0) summary.updated++;
         else summary.unchanged++; // reconciled, proven drift-free
       } else if (!isFreshCreate) {
-        // stub-adopt: new mapping onto an existing row (fingerprint stamped
-        // at putMapping) — counts as updated when anything was written
+        // stub-adopt: new mapping onto an existing row — counts as updated
+        // when anything was written
         if (rowWrites > 0) summary.updated++;
         else summary.unchanged++;
       }
@@ -989,7 +987,7 @@ async function main() {
       const postalCode = pick("postal_code");
       const country = pick("country") ?? "US";
       if (!street || !city || !state || !postalCode) {
-        rejects.add("address_incomplete", { nid: c.nid });
+        rejects.add("address_incomplete", { nid: c.nid }, c.nid);
         addrIncomplete = true;
       } else {
         desiredAddr = { street, street2, city, state, postalCode, country };
