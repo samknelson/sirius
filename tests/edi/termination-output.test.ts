@@ -48,7 +48,8 @@ beforeEach(() => {
     wmb: { id, workerId: id, benefitId: "benefit", year: 2026, month: id === "active" ? 11 : 10 },
     benefitSiriusId: "D", isCobra: id === "history", coverageStartYmd: "2026-01-01",
     subscriber: person,
-    dependents: [{ ...person, ssn: "009876543", relationId: "relation", relationSiriusId: "SP" }],
+    dependents: [{ ...person, ssn: "009876543", relationId: "relation", relationSiriusId: "SP",
+      isCobra: id === "history", coverageStartYmd: "2026-09-01" }],
   }));
   fixture.events = ["history", "child"].map(workerId => ({
     id: workerId, benefitId: "benefit", workerId, year: 2026, month: 11,

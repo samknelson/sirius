@@ -269,6 +269,7 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
           memberType: memberType(dep.relationSiriusId),
           memberSsn: padSsn(dep.ssn),
           memberName: displayName(dep),

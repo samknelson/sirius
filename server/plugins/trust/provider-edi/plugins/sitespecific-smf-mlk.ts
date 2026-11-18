@@ -235,6 +235,7 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
           memDep: "D",
           depAcct: requireWorkerSiriusId(dep, "MLK"),
           depRel: mlkDepRel(dep.relationSiriusId),

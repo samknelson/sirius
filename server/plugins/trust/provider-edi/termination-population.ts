@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
-import { trustWmb, trustWmbEvents, trustWmbScanQueue, workerRelations } from "@shared/schema";
+import { trustWmb, trustWmbEvents, trustWmbScanQueue, workerRelations, employers } from "@shared/schema";
+import { coverageSegments } from "./coverage-segments";
 import type { TrustProviderEdiContext } from "./registry";
 import {
   monthIndex, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
@@ -7,7 +8,7 @@ import {
 import { readAsOfYmd } from "./base";
 
 export type Coverage = Pick<typeof trustWmb.$inferSelect,
-  "id" | "workerId" | "benefitId" | "year" | "month" | "sourceRelationId" | "employerId">;
+  "id" | "workerId" | "benefitId" | "year" | "month" | "sourceRelationId" | "employerId"> & { employerSiriusId?: string | null };
 export type TermEvent = Pick<typeof trustWmbEvents.$inferSelect,
   "id" | "workerId" | "benefitId" | "year" | "month" | "data">;
 export type Relation = Pick<typeof workerRelations.$inferSelect,
@@ -80,6 +81,7 @@ export function selectTerminationCandidates(
     byPerson.set(key, list);
   }
   const result: TerminationCandidate[] = [];
+  const segments = coverageSegments(coverage);
   for (const event of events) {
     const eventMonth = monthIndex(event.year, event.month);
     const endMonth = eventMonth - 1;
@@ -101,10 +103,7 @@ export function selectTerminationCandidates(
     if (!inferred && !confirmedEventIds.has(event.id)) {
       throw new Error(`Termination event ${event.id}: no current failed continuation scan supports this event. Reconcile WMB events before generating.`);
     }
-    // Do not arbitrarily choose between historic COBRA/employer identities.
-    if (new Set(previous.map(r => r.employerId)).size !== 1) {
-      throw new Error(`Termination event ${event.id}: multiple historical employers; carrier identity is unresolved.`);
-    }
+    segments.validateMonth(member);
     let family = member;
     if (member.sourceRelationId) {
       const relation = relationMap.get(member.sourceRelationId);
@@ -115,22 +114,19 @@ export function selectTerminationCandidates(
       }
       const parents = (byPerson.get(`${relation.worker1}|${member.benefitId}`) ?? [])
         .filter(r => monthIndex(r.year, r.month) === endMonth && !r.sourceRelationId);
-      if (!parents.length || new Set(parents.map(r => r.employerId)).size !== 1) {
+      if (!parents.length) {
         throw new Error(`Termination event ${event.id}: historical subscriber coverage is missing or ambiguous.`);
       }
       family = parents.sort((a, b) => a.id.localeCompare(b.id))[0];
+      segments.validateMonth(family);
+      segments.start(family);
     }
-    // Episode continuity includes benefit AND historical family AND employer.
-    const months = new Set(history.filter(r =>
-      r.sourceRelationId === member.sourceRelationId && r.employerId === member.employerId,
-    ).map(r => monthIndex(r.year, r.month)));
-    let start = endMonth;
-    while (months.has(start - 1)) start--;
+    const start = segments.start(member);
     result.push({
       eventId: event.id, benefitId: event.benefitId, workerId: event.workerId,
       familyWmbId: family.id,
       rowKey: role === "subscriber" ? family.id : `${family.id}:${member.sourceRelationId}`,
-      role, start: monthStart(start), end: monthEnd(endMonth),
+      role, start, end: monthEnd(endMonth),
       evidence: inferred ? "coverage inferred" : "confirmed scan",
     });
   }
@@ -160,6 +156,12 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
     const parentIds = [...new Set(relations.map(r => r.worker1).filter(id => !workerIds.includes(id)))];
     if (parentIds.length) coverage.push(...await ctx.storage.readOnly.query(db =>
       db.select().from(trustWmb).where(and(inArray(trustWmb.workerId, parentIds), inArray(trustWmb.benefitId, benefitIds)))));
+    const employerIds = [...new Set(coverage.map(r => r.employerId))];
+    const employerRows = employerIds.length ? await ctx.storage.readOnly.query(db =>
+      db.select({ id: employers.id, siriusId: employers.siriusId }).from(employers)
+        .where(inArray(employers.id, employerIds))) : [];
+    const employerSids = new Map(employerRows.map(r => [r.id, r.siriusId]));
+    const classifiedCoverage = coverage.map(r => ({ ...r, employerSiriusId: employerSids.get(r.employerId) ?? null }));
     // Parent scans can carry individual dependent decisions. Load once per
     // batch, not once per person. Newest attempts supersede older summaries.
     const scans = await ctx.storage.readOnly.query(db => db.select({
@@ -175,7 +177,7 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
     const confirmed = confirmedTerminationIds(batch, scans);
     const contradicted = new Set([...terminationScanDecisions(batch, scans)]
       .filter(([, decision]) => !decision).map(([id]) => id));
-    result.push(...selectTerminationCandidates(batch, coverage, relations, confirmed, asOf, policy, contradicted));
+    result.push(...selectTerminationCandidates(batch, classifiedCoverage, relations, confirmed, asOf, policy, contradicted));
   }
   return result;
 }

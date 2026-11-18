@@ -298,6 +298,8 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd < COVERAGE_START_FLOOR ? COVERAGE_START_FLOOR : dep.coverageStartYmd),
+          enrollmentUnit: dep.isCobra ? "7000" : "0000",
           recordCode: "D",
           memberSsn: padSsn(dep.ssn),
           memberName: displayName(dep),

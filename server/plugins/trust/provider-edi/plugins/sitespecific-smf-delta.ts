@@ -365,6 +365,8 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
+          divisionId: deltaDivisionId(dep.isCobra),
           memberSsn: padSsn(dep.ssn),
           memberName: displayName(dep),
           memberClassification: deltaMemberClassification(dep.relationSiriusId),

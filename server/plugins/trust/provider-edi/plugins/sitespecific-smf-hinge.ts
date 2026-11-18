@@ -187,6 +187,7 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
           memberName: displayName(dep),
           firstName: dep.givenName ?? "",
           lastName: dep.familyName ?? "",

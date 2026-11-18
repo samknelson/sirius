@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { registeredEdiPlugins } from "./fixtures/harness";
+import { assertUnmixedCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
 
 const state = vi.hoisted(() => ({
   wizard: {} as any,
@@ -78,6 +79,37 @@ beforeEach(() => {
 const get = (path: string, authenticated = true) => fetch(`${base}${path}`, { headers: authenticated ? { authorization: "fixture" } : {} });
 
 describe("authorized, read-only Deliver exports", () => {
+  it("persists actionable mixed-overlap failures and refuses stale output", async () => {
+    const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
+    const keys = vi.spyOn(plugin, "getPrimaryKeys").mockImplementation(async () => {
+      const row = { id: "ordinary-wmb", workerId: "fictional-person", benefitId: "fictional-benefit",
+        year: 2026, month: 10, employerId: "ordinary-employer", sourceRelationId: null };
+      assertUnmixedCoverage([row, { ...row, id: "cobra-wmb", employerId: "cobra-employer", employerSiriusId: "13226164" }]);
+      return [];
+    });
+    state.writeProgress.mockImplementation(async (_id, step, _runId, patch) => {
+      state.wizard.data.progress = { ...state.wizard.data.progress, [step]: {
+        ...state.wizard.data.progress?.[step], ...patch,
+      } };
+      return state.wizard;
+    });
+    try {
+      const response = await fetch(`${base}/run/run`, {
+        method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" }, body: "{}",
+      });
+      expect(response.status).toBe(202);
+      await vi.waitFor(() => expect(state.wizard.data.progress?.run?.status).toBe("failed"));
+      const saved = state.wizard.data.progress.run.error;
+      for (const detail of ["Correction required", "fictional-person", "fictional-benefit", "2026-10",
+        "ordinary-wmb", "cobra-wmb", "ordinary-employer", "cobra-employer", "13226164"]) expect(saved).toContain(detail);
+      expect(state.wizard.data.reportMeta).toBeNull();
+      expect((await get("/deliver/export?format=provider")).status).toBe(500);
+      expect(state.upload).not.toHaveBeenCalled();
+    } finally {
+      keys.mockRestore();
+      state.writeProgress.mockReset();
+    }
+  });
   it("downloads saved/delivered runs in either format without generating, delivering or writing", async () => {
     const snapshot = structuredClone(state.wizard);
     for (const format of ["provider", "carrier-csv"]) {

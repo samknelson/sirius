@@ -67,12 +67,15 @@ describe("EDI-only personal field casing through every registered feed", () => {
           hoursYear: 2026, hoursMonth: 10, hoursAmt: 123, hoursType: "Regular",
         });
         const needsExtraRead = /-(healthnet|delta|expressscripts|carelon)$/.test(plugin.id);
+        const wmb = { id: "wmb", workerId: "sub-worker", benefitId: "benefit", employerId: "employer", sourceRelationId: null, year: 2026, month: 10 };
+        const history = [wmb, ...[dependent, missing, qmsco].map(dep => ({
+          id: dep.depWmbId, workerId: dep.depWorkerId, benefitId: dep.benefitId,
+          employerId: "employer", sourceRelationId: dep.sourceRelationId, year: dep.year, month: dep.month,
+        }))];
         const fixture = ediReadFixture(local11 ? [[hours]] : [
-          [{ id: "wmb", workerId: "sub-worker", benefitId: "benefit", employerId: "employer", year: 2026, month: 10 }],
-          [], // COBRA employers
+          [wmb],
           [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
-          [{ workerId: "sub-worker", year: 2026, month: 10 }],
-          [dependent, missing, qmsco],
+          [dependent, missing, qmsco], history,
           [subscriber], [postal], [{ phoneNumber: "2135550100" }],
           [postal], [], [postal], [], [postal], [],
           ...(needsExtraRead ? [[]] : []),
@@ -81,9 +84,8 @@ describe("EDI-only personal field casing through every registered feed", () => {
         // A fresh fixture is needed because scripted reads are consumed once.
         if (!local11) {
           const modelFixture = ediReadFixture([
-            [{ id: "wmb", workerId: "sub-worker", benefitId: "benefit", employerId: "employer", year: 2026, month: 10 }],
-            [], [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
-            [], [dependent, missing, qmsco],
+            [wmb], [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
+            [dependent, missing, qmsco], history,
             [subscriber], [postal], [], [postal], [], [postal], [], [postal], [],
           ]);
           const [unit] = await buildMemberUnits(["wmb"], modelFixture.ctx);

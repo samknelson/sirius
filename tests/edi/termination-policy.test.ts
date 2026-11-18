@@ -107,9 +107,9 @@ describe("per-person termination evidence", () => {
     expect(select([...events].reverse(), [...rows].reverse())).toEqual(a);
     expect(new Set(a.map(c => c.familyWmbId)).size).toBe(2);
   });
-  it("rejects ambiguous employers and broken historical families", () => {
+  it("rejects mixed classes and broken historical families", () => {
     expect(() => select([event("parent")], [coverage("parent"),
-      coverage("parent", 10, { id: "other", employerId: "COBRA" })])).toThrow(/multiple historical employers/);
+      coverage("parent", 10, { id: "other", employerId: "cobra-employer", employerSiriusId: "13226164" })])).toThrow(/Correction required.*mixed COBRA/);
     expect(() => select(undefined, undefined, both, [])).toThrow(/historical family/);
     expect(() => select([event("child")], [coverage("child", 10, { sourceRelationId: relation.id })])).toThrow(/historical subscriber/);
   });

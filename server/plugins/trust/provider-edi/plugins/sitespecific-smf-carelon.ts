@@ -312,6 +312,8 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
+          memberStatus: dep.isCobra ? "C" : "A",
           relCode: carelonRelCode(dep.relationSiriusId),
           memberName: displayName(dep),
           memberSsn: padSsn(dep.ssn),

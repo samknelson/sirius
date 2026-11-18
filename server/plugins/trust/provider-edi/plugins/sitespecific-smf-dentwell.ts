@@ -185,6 +185,7 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
           memberType: "DEP",
           relationshipCode: dentwellRelationshipCode(dep.relationSiriusId),
           ...person(dep),

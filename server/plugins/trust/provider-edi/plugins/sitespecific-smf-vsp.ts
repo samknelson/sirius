@@ -253,6 +253,9 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
+          divisionCode: vspDivisionCode(isEnhanced, dep.isCobra),
+          statusCode: dep.isCobra ? "C" : "A",
           recordId: "DEP",
           dependentSsn: padSsn(dep.ssn),
           memberName: displayName(dep),

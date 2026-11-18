@@ -46,7 +46,7 @@
 - [E2E route harness auth stub](route-harness-auth-stub.md) — standalone route tests need req.user={claims:{sub},dbUser:user} (resolveDbUser cache); multer must run AFTER authz.
 - [Masquerade effective-actor convention](masquerade-effective-actor.md) — masqueraded user is THE actor everywhere (context, notifications, audit user_id); real user only in provenance fields/meta.masqueradedBy; resolve via getEffectiveUser (dynamic import to avoid cycle).
 - [Shared policy → server hook injection](shared-policy-server-hook-injection.md) — shared access-policy files can't import server registries; use a boot-wired injectable resolver that fails closed when unset.
-- [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists); COBRA = employer siriusId "COBRA".
+- [Trust-provider EDI authority](trust-provider-edi-scoping.md) — benefit-scoped; confirmed COBRA IDs, class-specific segments, and correction-required mixed overlaps never change underlying coverage.
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
 - Storage audit safety — [raw args can persist PII](storage-audit-log-args-pii.md); [method names determine before/after synthesis](storage-logging-hook-name-conventions.md).

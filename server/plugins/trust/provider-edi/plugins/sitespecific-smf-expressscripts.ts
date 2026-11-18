@@ -368,6 +368,8 @@ registerTrustProviderEdiPlugin({
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
+          coverageStart: ymdCompact(dep.coverageStartYmd),
+          contractType: dep.isCobra ? "CB" : "AC",
           memberSsn: padSsn(dep.ssn),
           memberName: displayName(dep),
           relationshipCode: esiRelationshipCode(dep.relationSiriusId),

@@ -17,6 +17,7 @@ import type {
   EdiBatchAggregates,
 } from "./registry";
 import { logger } from "../../../logger";
+import { coverageSegments, isEdiCobra } from "./coverage-segments";
 
 /**
  * Shared base logic for trust-provider EDI plugins.
@@ -230,7 +231,7 @@ export async function resolveBenefitIds(
  * Default membership: one trust_wmb row id per worker holding a monthly
  * benefit record for any of the benefits in the as-of month. If a worker
  * has several qualifying rows (e.g. two employers), pick deterministically —
- * prefer a non-COBRA employer row, then lowest row id.
+ * use the lowest row id within a benefit; mixed classes require correction.
  *
  * DECISION (dependents-as-subscribers): a covered dependent must appear on
  * the file ONLY as a dependent record under their subscriber — never also as
@@ -260,6 +261,9 @@ export async function wmbPrimaryKeys(
         sourceRelationId: trustWmb.sourceRelationId,
         subscriberWorkerId: workerRelations.worker1,
         employerSiriusId: employers.siriusId,
+        employerId: trustWmb.employerId,
+        year: trustWmb.year,
+        month: trustWmb.month,
       })
       .from(trustWmb)
       .leftJoin(employers, eq(trustWmb.employerId, employers.id))
@@ -275,6 +279,8 @@ export async function wmbPrimaryKeys(
         ),
       ),
   );
+  const segments = coverageSegments(wmbRows);
+  for (const row of wmbRows) segments.validateMonth(row);
   // Subscribers on this file: workers holding their own (null-source) row
   // for a benefit. Keyed per benefit so multi-benefit runs don't cross-mask.
   const subscriberKeys = new Set(
@@ -292,21 +298,20 @@ export async function wmbPrimaryKeys(
   );
   const byWorker = new Map<string, (typeof wmbRows)[number]>();
   for (const row of candidateRows) {
-    const prev = byWorker.get(row.workerId);
+    const key = `${row.workerId}|${row.benefitId}`;
+    const prev = byWorker.get(key);
     if (!prev) {
-      byWorker.set(row.workerId, row);
+      byWorker.set(key, row);
       continue;
     }
-    const prevCobra = prev.employerSiriusId === "COBRA";
-    const rowCobra = row.employerSiriusId === "COBRA";
-    if (
-      (prevCobra && !rowCobra) ||
-      (prevCobra === rowCobra && row.id < prev.id)
-    ) {
-      byWorker.set(row.workerId, row);
+    if (prev.sourceRelationId !== row.sourceRelationId) {
+      throw new Error(`Correction required: ambiguous subscriber/dependent ownership for person ${row.workerId}, benefit ${row.benefitId}, WMB rows ${[prev.id, row.id].sort().join(", ")}. Distinct families cannot be deduplicated.`);
+    }
+    if (row.id < prev.id) {
+      byWorker.set(key, row);
     }
   }
-  return Array.from(byWorker.values()).map((r) => r.id);
+  return Array.from(byWorker.values()).map((r) => r.id).sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +361,8 @@ function normalizeEdiPerson<T extends Pick<EdiPerson, "givenName" | "familyName"
 }
 
 export interface EdiDependent extends EdiPerson {
+  coverageStartYmd: string;
+  isCobra: boolean;
   relationId: string;
   /** Relation-type Sirius ID (e.g. SP/DP/C/QMSCO). */
   relationSiriusId: string | null;
@@ -386,11 +393,11 @@ export interface EdiMemberUnit {
    * multi-benefit plugin tell which benefit a member unit came from.
    */
   benefitSiriusId: string | null;
-  /** True when the wmb row's employer has the Sirius ID "COBRA". */
+  /** Classification from the historical WMB employer's confirmed Sirius ID. */
   isCobra: boolean;
   /**
    * yyyy-mm-dd first day of the worker's CONTIGUOUS run of monthly records
-   * for this benefit ending at the wmb month (unfloored — plugins apply
+    * for this benefit, family and COBRA class ending at the wmb month (unfloored — plugins apply
    * their own go-live floors).
    */
   coverageStartYmd: string;
@@ -437,24 +444,6 @@ export async function buildMemberUnits(
       .from(trustWmb)
       .where(inArray(trustWmb.id, keys));
 
-    // COBRA subscribers are those whose monthly benefit record's employer
-    // has the Sirius ID "COBRA".
-    const employerIds = Array.from(
-      new Set(wmbRows.map((e) => e.employerId).filter(Boolean)),
-    );
-    const cobraEmployers = employerIds.length
-      ? await db
-          .select({ id: employers.id })
-          .from(employers)
-          .where(
-            and(
-              inArray(employers.id, employerIds),
-              eq(employers.siriusId, "COBRA"),
-            ),
-          )
-      : [];
-    const cobraEmployerIds = new Set(cobraEmployers.map((e) => e.id));
-
     // Coverage start = first month of the worker's CONTIGUOUS run of
     // monthly records for this benefit ending at the wmb month. Load all
     // (worker, year, month) pairs for the batch's workers + benefits once.
@@ -472,48 +461,6 @@ export async function buildMemberUnits(
     const siriusByBenefitId = new Map(
       benefitRows.map((b) => [b.id, b.siriusId]),
     );
-    const allMonths = workerIds.length
-      ? await db
-          .select({
-            workerId: trustWmb.workerId,
-            benefitId: trustWmb.benefitId,
-            year: trustWmb.year,
-            month: trustWmb.month,
-          })
-          .from(trustWmb)
-          .where(
-            and(
-              inArray(trustWmb.workerId, workerIds),
-              inArray(trustWmb.benefitId, benefitIds),
-            ),
-          )
-      : [];
-    const monthsByWorker = new Map<string, Set<string>>();
-    for (const m of allMonths) {
-      const key = `${m.workerId}|${m.benefitId}`;
-      let set = monthsByWorker.get(key);
-      if (!set) monthsByWorker.set(key, (set = new Set()));
-      set.add(`${m.year}-${m.month}`);
-    }
-    /** Walk back from (year, month) while the previous month exists. */
-    function coverageStartFor(workerId: string, benefitId: string, year: number, month: number): string {
-      const set = monthsByWorker.get(`${workerId}|${benefitId}`);
-      let y = year;
-      let m = month;
-      while (set) {
-        let py = y;
-        let pm = m - 1;
-        if (pm === 0) {
-          pm = 12;
-          py -= 1;
-        }
-        if (!set.has(`${py}-${pm}`)) break;
-        y = py;
-        m = pm;
-      }
-      return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-01`;
-    }
-
     // Dependent WMB rows for the batch's benefits/months, keyed to their
     // subscriber via the source relation's worker1. One batched query; the
     // exact (benefit, year, month) match happens in JS since a batch can in
@@ -525,6 +472,7 @@ export async function buildMemberUnits(
         ? await db
             .select({
               depWmbId: trustWmb.id,
+              employerId: trustWmb.employerId,
               benefitId: trustWmb.benefitId,
               year: trustWmb.year,
               month: trustWmb.month,
@@ -556,9 +504,26 @@ export async function buildMemberUnits(
               ),
             )
         : [];
+    const relevantDeps = depWmbRows.filter(dep => wmbRows.some(wmb =>
+      dep.subscriberWorkerId === wmb.workerId && dep.benefitId === wmb.benefitId &&
+      dep.year === wmb.year && dep.month === wmb.month));
+    const historyWorkerIds = [...new Set([...workerIds, ...relevantDeps.map(r => r.depWorkerId)])];
+    const history = historyWorkerIds.length ? await db.select({
+      id: trustWmb.id, workerId: trustWmb.workerId, benefitId: trustWmb.benefitId,
+      year: trustWmb.year, month: trustWmb.month, employerId: trustWmb.employerId,
+      sourceRelationId: trustWmb.sourceRelationId, employerSiriusId: employers.siriusId,
+    }).from(trustWmb).leftJoin(employers, eq(trustWmb.employerId, employers.id))
+      .where(and(inArray(trustWmb.workerId, historyWorkerIds), inArray(trustWmb.benefitId, benefitIds))) : [];
+    const historyById = new Map(history.map(r => [r.id, r]));
+    const segments = coverageSegments(history);
+    function segmentFor(id: string) {
+      const row = historyById.get(id);
+      if (!row) throw new Error(`WMB ${id}: coverage history changed or is missing. Regenerate after correcting history.`);
+      return { isCobra: isEdiCobra(row.employerSiriusId), coverageStartYmd: segments.start(row) };
+    }
     // subscriberWorkerId|benefitId|year-month → dependent rows.
     const depsBySubscriber = new Map<string, typeof depWmbRows>();
-    for (const dep of depWmbRows) {
+    for (const dep of relevantDeps) {
       if (!dep.relationId || !dep.subscriberWorkerId) {
         // Dangling source relation: the scan granted this row through a
         // relation that no longer exists, so it can't be attached to a
@@ -634,9 +599,13 @@ export async function buildMemberUnits(
       const dependents: EdiDependent[] = [];
       const seenDepWorkers = new Set<string>();
       for (const dep of depRows) {
+        if (depRows.some(other => other.depWorkerId === dep.depWorkerId && other.sourceRelationId !== dep.sourceRelationId)) {
+          throw new Error(`Correction required: ambiguous dependent ownership for person ${dep.depWorkerId}, benefit ${dep.benefitId}, coverage month ${dep.year}-${String(dep.month).padStart(2, "0")}. WMB rows ${depRows.filter(other => other.depWorkerId === dep.depWorkerId).map(other => other.depWmbId).join(", ")} belong to distinct family relations.`);
+        }
         if (seenDepWorkers.has(dep.depWorkerId)) continue;
         seenDepWorkers.add(dep.depWorkerId);
         dependents.push(normalizeEdiPerson({
+          ...segmentFor(dep.depWmbId),
           relationId: dep.relationId!,
           relationSiriusId: dep.relationSiriusId ?? null,
           ssn: dep.ssn,
@@ -656,8 +625,7 @@ export async function buildMemberUnits(
       units.push({
         wmb,
         benefitSiriusId: siriusByBenefitId.get(wmb.benefitId) ?? null,
-        isCobra: cobraEmployerIds.has(wmb.employerId),
-        coverageStartYmd: coverageStartFor(wmb.workerId, wmb.benefitId, wmb.year, wmb.month),
+        ...segmentFor(wmb.id),
         subscriber: normalizeEdiPerson({
           ...subscriber,
           postal: subscriberPostal,

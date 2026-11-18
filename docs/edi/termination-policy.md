@@ -31,9 +31,10 @@ future reinstatement) suppresses an obsolete ending. No scans, event backfills,
 eligibility changes or delivery calls are performed by population selection.
 
 Historical WMB source relations identify the family, including ended relationships.
-Missing/mismatched relations, missing subscriber coverage and ambiguous historical
-employers stop generation. Coverage start is specific to person, benefit, source
-relation and employer; report keys include benefit, person, family and ending.
+Missing/mismatched relations, missing subscriber coverage and mixed historical
+COBRA/non-COBRA classes stop generation. Coverage start is specific to person,
+benefit, source relation and COBRA classification, not ordinary employer identity;
+report keys include benefit, person, family and ending.
 Only the selected person's row is persisted, never the other historical family
 members. Historical batches are grouped by month so medical-plan lookups use the
 last-covered month. Existing contact details are used; this is not an archive of
@@ -46,6 +47,26 @@ for both active and ended people. A deliberately excluded row is not a
 reconstruction failure; other missing historical rows remain errors.
 
 ## Carrier reference inventory
+
+Membership EDI recognizes employer Sirius IDs `COBRA` and `13226164` as COBRA.
+Names and database UUIDs are not classification rules. October ordinary employer
+coverage → November COBRA → December ordinary employer coverage produces only the
+current month's membership, starting November 1 and December 1 respectively.
+Neither class change adds a termination while the same benefit continues.
+An ordinary employer change does not restart the segment. Equivalent same-family
+rows use the lowest WMB ID deterministically; distinct historical families remain
+subject to ownership checks. A genuine loss uses the final class's segment start
+and actual last-covered end date, with the existing event/scan evidence checks.
+
+Mixed COBRA/non-COBRA rows for one person/benefit/month require correction before
+successful generation. Validation precedes deduplication and includes active
+subscribers, included dependents, and historical months consulted to determine
+segment starts (including a classification boundary). Turning termination flags
+off does not bypass active-population validation. The existing saved Generate
+failure names person and benefit IDs, coverage month, WMB IDs, employer IDs and
+Sirius IDs. Correct the conflicting coverage through an authorized process, then
+Retry run. Neither class takes precedence, no separate diagnostics report is
+created, and EDI generation never changes eligibility or coverage history.
 
 | Carrier | End field / format | Explicit generation |
 | --- | --- | --- |

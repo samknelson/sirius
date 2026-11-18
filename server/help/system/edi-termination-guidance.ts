@@ -34,11 +34,26 @@ export const ediTerminationGuidance = `
   shows subscriber/dependent termination counts and warns about inferred history.</p>
   <p>A missing monthly record alone never creates a termination. Retained termination
   events need last-covered evidence and a reconstructible historical family.
-  Coverage corrections and any later reinstatement suppress old endings. Ambiguous
-  employers and missing family evidence stop
+  Coverage corrections and any later reinstatement suppress old endings. Mixed
+  COBRA/non-COBRA coverage and missing family evidence stop
   generation visibly; correct the evidence rather than guessing. Coverage-inferred
   history describes accepted stored coverage, not proof of a failed scan or complete
   legacy import. Demographics use retained current contact records, not archived addresses.</p>
+  <p><strong>Coverage segments</strong>: employer Sirius IDs COBRA and 13226164
+  identify COBRA for membership EDI. Employer names and database IDs do not.
+  October ordinary employer coverage followed by November COBRA starts the COBRA
+  segment November 1; December ordinary employer coverage starts a new segment
+  December 1. Continuing the same benefit does not add a termination for the old
+  classification. Ordinary employer changes do not restart dates, and equivalent
+  same-family employer rows are selected deterministically without duplicate output.
+  A true benefit ending uses the final classification's segment start and last-covered date.</p>
+  <p>If the same person has both classifications for the same benefit and month,
+  correction is required; neither wins automatically. This also applies to included
+  dependents and history needed for segment dates, even with termination settings off.
+  The saved Generate failure identifies the person, benefit, coverage month, WMB rows
+  and employers. Correct those conflicting records through your authorized coverage
+  correction process, then select <strong>Retry run</strong>. There is no separate
+  diagnostics report. Generation itself does not repair coverage records.</p>
   <p>All nine membership carriers support generation with either, both or neither
   termination setting enabled: Delta, Hinge, MLK, Carelon, Dentwell (Dyntl/LADC),
   VSP, Kaiser, Health Net and Express Scripts. Enabled roles include qualifying
