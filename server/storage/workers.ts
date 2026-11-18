@@ -870,7 +870,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       LIMIT 1
     ) p ON true
     LEFT JOIN LATERAL (
-      SELECT cpo.id, cpo.friendly_name, cpo.street, cpo.city, cpo.state, cpo.postal_code, cpo.country, cpo.is_primary
+      SELECT cpo.id, cpo.friendly_name, cpo.street, cpo.street2, cpo.city, cpo.state, cpo.postal_code, cpo.country, cpo.is_primary
       FROM contact_postal cpo
       WHERE cpo.contact_id = c.id AND cpo.is_active = true
       ORDER BY cpo.is_primary DESC NULLS LAST,
