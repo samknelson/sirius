@@ -33,3 +33,14 @@ opens or processes a saved upload is not a substitute for the submitter.
 existing event-notifier/communications framework. Do not invent an uploader
 for old drafts. Existing invoices are ledger account/month views, not separate
 invoice records or a request for new invoice-generation infrastructure.
+
+Legal uploads require a complete postal address only for newly created workers:
+Address 1, City, State and Postal/ZIP Code; Address 2 is optional.
+
+**Why:** The owner required Address when creating new workers, not an address
+requirement for every row in create/upsert mode.
+
+**How to apply:** Decide new versus existing using the shared SSN/alternate
+identity resolver. Keep address omissions valid for existing workers and leave
+other wizard types unchanged. Refuse missing new-worker address data before
+worker creation as well as during validation.

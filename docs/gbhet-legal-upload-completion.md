@@ -15,6 +15,17 @@ worker/grant resolution. The server checks it before acknowledging processing
 and again at execution. Upstream edits clear approval. Completed historical
 imports can be read without inventing an estimate or uploader.
 
+## New-worker addresses
+
+Both monthly and corrections uploads require **Address 1, City, State and
+Postal/ZIP Code** for rows that would create a new worker. Map these four columns
+when adding workers; Address 2 remains optional. Whitespace-only cells count as
+missing. A row that resolves to an existing worker through either SSN or an
+Alternate Tax ID can still omit an address, including in create/upsert mode.
+Validation identifies the missing fields by row. Preview, processing readiness
+and the creation boundary enforce the same requirement, including saved uploads
+with older validation results. Other wizard types are unchanged.
+
 ## Background work
 
 Leaving the page does not cancel an already started server run. Reopen the same

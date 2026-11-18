@@ -189,6 +189,8 @@ export abstract class FeedWizard extends BaseWizard {
   protected async workerCreated(_workerId: string): Promise<void> {}
   /** Run-local observation of the actual resolved/claimed worker, before row writes. */
   protected async workerResolved(_rowIndex: number, _workerId: string): Promise<void> {}
+  /** Subclasses can require row data only when identity resolution finds no worker. */
+  protected async validateNewWorkerRow(_row: Record<string, any>, _rowIndex: number): Promise<ValidationError[]> { return []; }
 
   /** Same parser/mapping used by Legal forecasts and actual feed processing. */
   async readMappedRows(wizard: { data: unknown }): Promise<Record<string, any>[]> {
@@ -265,6 +267,9 @@ export abstract class FeedWizard extends BaseWizard {
       if (field.format === 'ssn') {
         try {
           const resolved = await resolveTaxIdentity(storage, value);
+          if (mode === "create" && !resolved.worker) {
+            errors.push(...await this.validateNewWorkerRow(row, rowIndex));
+          }
           if (mode === "update" && !resolved.worker) {
             errors.push({ rowIndex, field: field.id, message: "No worker matches this identifier. Correct the row or ask staff to review it." });
           }
@@ -756,6 +761,8 @@ export abstract class FeedWizard extends BaseWizard {
               workerId = existingWorker.id;
             } else {
               // Worker doesn't exist, create new one
+              const newWorkerErrors = await this.validateNewWorkerRow(row, rowIndex);
+              if (newWorkerErrors.length) throw new Error(newWorkerErrors.map(error => error.message).join("; "));
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
               const claimed = await claimTaxWorker(storage, rawSSN, fullName, "create");
               workerId = claimed.worker.id;

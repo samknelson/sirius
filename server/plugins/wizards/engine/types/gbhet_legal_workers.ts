@@ -46,6 +46,12 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   protected async workerResolved(rowIndex: number, workerId: string) {
     runContextStorage.getStore()?.actualWorkers?.set(rowIndex, workerId);
   }
+  protected async validateNewWorkerRow(row: Record<string, any>, rowIndex: number): Promise<ValidationError[]> {
+    const fields = { addressLine1: "Address 1", city: "City", state: "State", postalCode: "Postal Code" };
+    return Object.entries(fields)
+      .filter(([field]) => !String(row[field] ?? "").trim())
+      .map(([field, name]) => ({ rowIndex, field, message: `${name} is required when creating a new worker` }));
+  }
 
   async assertForecastRows(wizard: { entityId: string | null; data: unknown }, rows: Record<string, any>[]) {
     const ctx: RunContext = { employerId: wizard.entityId || "", mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
@@ -163,13 +169,13 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         description: 'Worker gender (optional)',
         displayOrder: 10
       },
-      // Optional address fields
+      // Conditionally required for genuinely new workers, not existing-worker upserts.
       { 
         id: 'addressLine1', 
         name: 'Address 1', 
         type: 'string', 
         required: false,
-        description: 'Street address line 1 (optional)',
+        description: 'Street address line 1 (required for new workers)',
         displayOrder: 11
       },
       { 
@@ -185,7 +191,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         name: 'City', 
         type: 'string', 
         required: false,
-        description: 'City (optional)',
+        description: 'City (required for new workers)',
         displayOrder: 13
       },
       { 
@@ -193,7 +199,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         name: 'State', 
         type: 'string', 
         required: false,
-        description: 'State (optional)',
+        description: 'State (required for new workers)',
         displayOrder: 14
       },
       { 
@@ -201,7 +207,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         name: 'Postal Code', 
         type: 'string', 
         required: false,
-        description: 'Postal/ZIP code (optional)',
+        description: 'Postal/ZIP code (required for new workers)',
         displayOrder: 15
       },
       // Benefit eligibility fields - can be mapped to file columns to create WMB records

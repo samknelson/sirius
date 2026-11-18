@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({
   storage: {} as any, plugin: null as any,
   upload: vi.fn(),
-  csv: "SSN,First,Last,Status,Hours,Legal,Other\n123456789,Existing,Worker,Active,10,Yes,Yes\n234567891,New,Worker,Active,20,Yes,No\n234-56-7891,New,Worker,Active,20,Yes,No\n",
+  csv: "",
 }));
 vi.mock("../../server/storage", () => ({ storage: mock.storage }));
 vi.mock("../../server/storage/database", () => ({ storage: mock.storage }));
@@ -25,6 +25,7 @@ import { reportChargeResult } from "../../server/plugins/ledger/charge/execution
 import { forecastLegalUpload } from "../../server/plugins/wizards/gbhet-legal-forecast";
 import { gbhetLegalWorkersMonthly } from "../../server/plugins/wizards/engine/types/gbhet_legal_workers_monthly";
 import { gbhetLegalWorkersCorrections } from "../../server/plugins/wizards/engine/types/gbhet_legal_workers_corrections";
+import { FeedWizard } from "../../server/plugins/wizards/engine/feed";
 const benefit = "11111111-1111-4111-8111-111111111111", other = "22222222-2222-4222-8222-222222222222";
 let wizard: any, workers: any[], grants: any[], entries: any[], accounts: any[], alternateIds: any[];
 function config(id: string, account: string, benefitId: string, rate: number, scope: string, offset = -3) {
@@ -33,7 +34,7 @@ function config(id: string, account: string, benefitId: string, rate: number, sc
   } }, subsidiary: { scope, account, employerId: scope === "employer" ? "employer" : null } };
 }
 beforeEach(() => {
-  mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n123456789,Existing,Worker,Active,10,Yes,Yes\n234567891,New,Worker,Active,20,Yes,No\n234-56-7891,New,Worker,Active,20,Yes,No\n";
+  mock.csv = "SSN,First,Last,Status,Hours,Legal,Other,Address,City,State,ZIP\n123456789,Existing,Worker,Active,10,Yes,Yes,,,,\n234567891,New,Worker,Active,20,Yes,No,123 Test St,Boston,MA,02110\n234-56-7891,New,Worker,Active,20,Yes,No,123 Test St,Boston,MA,02110\n";
   mock.upload.mockReset().mockResolvedValue({ storagePath: "results", size: 1 });
   alternateIds = [];
   workers = [{ id: "existing", contactId: "existing-contact", ssn: "123456789" }];
@@ -42,7 +43,7 @@ beforeEach(() => {
   wizard = { id: "upload", entityId: "employer", status: "draft", currentStep: "process", data: {
     launchArguments: { year: 2026, month: 11 }, uploadedFileId: "input",
     mode: "create", hasHeaders: true,
-    columnMapping: { ssn: "col_0", firstName: "col_1", lastName: "col_2", employmentStatus: "col_3", numberOfHours: "col_4", benefit_1: "col_5", benefit_2: "col_6" },
+    columnMapping: { ssn: "col_0", firstName: "col_1", lastName: "col_2", employmentStatus: "col_3", numberOfHours: "col_4", benefit_1: "col_5", benefit_2: "col_6", addressLine1: "col_7", city: "col_8", state: "col_9", postalCode: "col_10" },
     benefitConfig: [{ fieldId: "benefit_1", benefitId: benefit }, { fieldId: "benefit_2", benefitId: other }],
     validationResults: { invalidRows: 0 },
   } };
@@ -72,7 +73,7 @@ beforeEach(() => {
     contacts: {
       getContact: async () => ({ displayName: "Worker" }),
       phoneNumbers: { getPhoneNumbersByContact: async () => [] },
-      addresses: { getContactPostalByContact: async () => [] },
+      addresses: { getContactPostalByContact: async () => [], createContactPostal: vi.fn(async data => ({ id: "address", ...data })) },
     },
     workerHours: { upsertWorkerHours: async () => {} },
     wizardEmploymentStatusMappings: { getByEmployer: async () => [] },
@@ -113,6 +114,35 @@ beforeEach(() => {
 });
 
 describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name preview/processing parity", feed => {
+  it.each(["234567891", "900123456"])("requires a complete address only for a new resolved identity (%s)", async ssn => {
+    const row = { ssn, firstName: "New", lastName: "Worker", employmentStatus: "Active" };
+    const errors = await feed.validateRow({ ...row, addressLine1: " \t " }, 4, "create");
+    expect(errors.map(error => error.field)).toEqual(["addressLine1", "city", "state", "postalCode"]);
+    expect(errors.every(error => error.rowIndex === 4 && !("value" in error))).toBe(true);
+    const full = { ...row, addressLine1: "123 Test St", city: "Boston", state: "MA", postalCode: "02110" };
+    expect(await feed.validateRow(full, 0, "create")).toEqual([]);
+    expect((await feed.validateRow({ ...full, state: " " }, 0, "create")).map(error => error.field)).toEqual(["state"]);
+    const { ALTERNATE_TAX_ID } = await import("../../shared/utils/worker-tax-identity");
+    alternateIds.push({ workerId: "existing", typeId: ALTERNATE_TAX_ID, value: "000123456" });
+    for (const existingId of ["123456789", "000123456"]) {
+      for (const mode of ["create", "update"] as const) {
+        expect(await feed.validateRow({ ...row, ssn: existingId }, 0, mode)).toEqual([]);
+      }
+    }
+  });
+  it("blocks missing addresses before preview, stale approvals and the worker-creation boundary", async () => {
+    wizard.type = feed.name;
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n900123456,New,Worker,Active,10,Yes,No\n";
+    wizard.data.legalPreviewApproval = "previously-approved";
+    await expect(forecastLegalUpload(feed, wizard)).rejects.toThrow("Run validation again");
+    await expect(feed.processFeedData("upload")).rejects.toThrow("Run validation again");
+    // Even a caller reaching the underlying engine with old validation results
+    // cannot create a worker first and discover the missing address afterwards.
+    const result = await FeedWizard.prototype.processFeedData.call(feed, "upload");
+    expect(result).toMatchObject({ createdCount: 0, failureCount: 1 });
+    expect(mock.storage.workers.createWorker).not.toHaveBeenCalled();
+    expect(mock.storage.trust.wmb.createWorkerBenefit).not.toHaveBeenCalled();
+  });
   it.each([false, true])("counts a worker once when submitted by both SSN and alternate ID (reversed: %s)", async reversed => {
     const { ALTERNATE_TAX_ID } = await import("../../shared/utils/worker-tax-identity");
     alternateIds.push({ workerId: "existing", typeId: ALTERNATE_TAX_ID, value: "000123456" });
@@ -147,7 +177,7 @@ describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name p
   });
   it("binds approval to the alternate identity even when estimated totals stay identical", async () => {
     wizard.type = feed.name;
-    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n900123456,New,Worker,Active,10,Yes,No\n";
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other,Address,City,State,ZIP\n900123456,New,Worker,Active,10,Yes,No,123 Test St,Boston,MA,02110\n";
     const first = await forecastLegalUpload(feed, wizard);
     mock.csv = mock.csv.replace("900123456", "901123456");
     const second = await forecastLegalUpload(feed, wizard);
@@ -157,7 +187,7 @@ describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name p
     expect(JSON.stringify([first, second])).not.toMatch(/900123456|901123456/);
   });
   it("counts alternate matches and creations, masks results, and retains a corrected SSN on reimport", async () => {
-    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n000123456,Existing,Worker,Active,10,Yes,Yes\n900-12-3456,New,Worker,Active,20,Yes,No\n900123456,New,Worker,Active,20,Yes,No\n";
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other,Address,City,State,ZIP\n000123456,Existing,Worker,Active,10,Yes,Yes,,,,\n900-12-3456,New,Worker,Active,20,Yes,No,123 Test St,Boston,MA,02110\n900123456,New,Worker,Active,20,Yes,No,123 Test St,Boston,MA,02110\n";
     const { ALTERNATE_TAX_ID } = await import("../../shared/utils/worker-tax-identity");
     alternateIds.push({ workerId: "existing", typeId: ALTERNATE_TAX_ID, value: "000123456" });
     wizard.type = feed.name;
