@@ -9,6 +9,8 @@ import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsVi
 import { formatAmount } from "@shared/currency";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EMPLOYER_SUBMITTED, paymentStatusLabel } from "@shared/legal-payment";
+import { Link } from "wouter";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -30,6 +32,7 @@ function PaymentViewContent() {
   });
 
   const details = (payment?.details || {}) as Record<string, unknown>;
+  const uploadPath = payment?.uploadWizardId ? `/wizards/${encodeURIComponent(payment.uploadWizardId)}` : undefined;
   const proposedAllocation = (details.proposedAllocation || []) as ProposedAllocationEntry[];
 
   const { data: allEAs = [] } = useQuery<{ id: string; entityType: string; entityId: string; entityName: string | null }[]>({
@@ -110,10 +113,11 @@ function PaymentViewContent() {
               <label className="text-sm font-medium text-muted-foreground">Status</label>
               <div className="mt-1">
                 <Badge variant={getStatusBadgeVariant(payment.status)} data-testid="badge-payment-status">
-                  {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                  {paymentStatusLabel(payment.status)}
                 </Badge>
               </div>
             </div>
+            {(typeof details.method === "string" || paymentType?.name) && <div><label className="text-sm font-medium text-muted-foreground">Payment method</label><p className="mt-1">{typeof details.method === "string" ? details.method : paymentType?.name}</p></div>}
 
             <div>
               <label className="text-sm font-medium text-muted-foreground">Allocated</label>
@@ -136,6 +140,14 @@ function PaymentViewContent() {
               </div>
             )}
           </div>
+          {payment.status === EMPLOYER_SUBMITTED && <div className="rounded-md border border-amber-500/40 bg-amber-50/60 p-3 text-sm dark:bg-amber-950/20">This employer-submitted receipt is not credited until staff verifies the actual receipt and clears the payment.</div>}
+          {uploadPath && <div><label className="text-sm font-medium text-muted-foreground">Related employer upload</label><p className="mt-1"><Link href={uploadPath} className="text-primary underline-offset-4 hover:underline">Open the upload and its detailed row results</Link></p></div>}
+          {(typeof details.timing === "string" || typeof details.paymentDate === "string" || typeof details.bankNickname === "string" || typeof details.notes === "string") && <div><label className="text-sm font-medium text-muted-foreground">Employer-submitted details</label><dl className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {typeof details.timing === "string" && <div><dt className="text-xs text-muted-foreground">Reported timing</dt><dd>{details.timing === "already_sent" ? "Already sent" : "Planned"}</dd></div>}
+            {typeof details.paymentDate === "string" && <div><dt className="text-xs text-muted-foreground">Reported payment date</dt><dd>{details.paymentDate}</dd></div>}
+            {typeof details.bankNickname === "string" && <div><dt className="text-xs text-muted-foreground">Bank nickname</dt><dd>{details.bankNickname}</dd></div>}
+            {typeof details.notes === "string" && <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap">{details.notes}</dd></div>}
+          </dl></div>}
 
           <div>
             <label className="text-sm font-medium text-muted-foreground">Dates</label>

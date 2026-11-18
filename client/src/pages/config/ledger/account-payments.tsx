@@ -15,8 +15,8 @@ import { Download, ArrowUpDown, Filter, X, Plus } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { stringify } from "csv-stringify/browser/esm/sync";
+import { paymentStatuses, paymentStatusLabel } from "@shared/legal-payment";
 
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 const ITEMS_PER_PAGE = 100;
 
 function getAllocatedEntities(payment: LedgerPaymentWithEntity): AllocatedEntity[] {
@@ -499,7 +499,7 @@ function AccountPaymentsContent() {
             data-testid="notice-cleared-filter"
           >
             <span className="font-medium">Showing cleared payments only.</span>{" "}
-            Draft, canceled, and error payments are excluded{filterStatus === "cleared" && !statusTouched ? " by default" : ""}. Change the Status filter to include them.
+            Draft, employer-submitted, canceled, and error payments are excluded{filterStatus === "cleared" && !statusTouched ? " by default" : ""}. Change the Status filter to include them.
           </div>
         )}
 
@@ -552,7 +552,7 @@ function AccountPaymentsContent() {
                     <SelectItem value="all">All Statuses</SelectItem>
                     {paymentStatuses.map(status => (
                       <SelectItem key={status} value={status}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                        {paymentStatusLabel(status)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -787,7 +787,7 @@ function AccountPaymentsContent() {
                       <TableCell>{paymentType?.name || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(payment.status)}>
-                          {payment.status}
+                          {paymentStatusLabel(payment.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm">

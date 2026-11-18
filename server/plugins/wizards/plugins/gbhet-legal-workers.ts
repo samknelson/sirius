@@ -11,6 +11,7 @@ import type { FeedWizard } from "../engine/feed";
 import type { GbhetLegalWorkersWizard } from "../engine/types/gbhet_legal_workers";
 import { forecastLegalUpload } from "../gbhet-legal-forecast";
 import { publishLegalCompletion } from "../gbhet-legal-completion.js";
+import { buildLegalConfirmationStep } from "../gbhet-legal-payment";
 import { getEffectiveUser } from "../../../modules/masquerade";
 import { storage } from "../../../storage";
 import {
@@ -68,7 +69,9 @@ function clearLegalDownstream(data: Record<string, any>) {
   next.processResults = null;
   next.legalPreviewApproval = null;
   next.legalPreview = null;
-  for (const id of ["benefits", "validate", "preview", "process", "review"]) delete next.progress[id];
+  for (const id of ["benefits", "validate", "preview", "process", "confirmation", "review"]) delete next.progress[id];
+  next.legalCompletion = null;
+  next.legalRemittances = null;
   return next;
 }
 
@@ -301,8 +304,10 @@ function buildGbhetSteps(feed: GbhetLegalWorkersWizard): WizardStepHandler[] {
     const result = await originalProcessRun(ctx);
     const saved = await ctx.storage.wizards.getById(ctx.wizardId);
     const totals = (saved?.data as any)?.legalCompletion?.totals;
-    return totals?.chargeFailures || totals?.chargeReadFailed
-      ? { ...result, status: "completed_with_errors" } : result;
+    const population = (saved?.data as any)?.legalCompletion?.population;
+    return { ...result, nextStep: "confirmation",
+      ...(totals?.chargeFailures || totals?.chargeReadFailed || population?.contactDifferences?.failedWorkers || population?.benefitReadFailures
+        ? { status: "completed_with_errors" } : {}) };
   };
   return [
     upload,
@@ -332,6 +337,7 @@ function buildGbhetSteps(feed: GbhetLegalWorkersWizard): WizardStepHandler[] {
       },
     },
     process,
+    buildLegalConfirmationStep(),
     buildFeedResultsStep({ id: "review", name: "Review" }),
   ];
 }

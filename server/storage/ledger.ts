@@ -21,6 +21,8 @@ import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
 import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
+import { EMPLOYER_SUBMITTED } from "@shared/legal-payment";
+import { runInTransaction } from "./transaction-context";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -62,6 +64,12 @@ export interface LedgerPaymentTypeStorage {
 }
 
 export interface LedgerPaymentStorage {
+  verifyUploadLinkSchema(): Promise<void>;
+  withLocked<T>(id: string, callback: () => Promise<T>): Promise<T>;
+  getByUpload(uploadId: string): Promise<LedgerPayment[]>;
+  getEmployerReview(limit: number, offset: number): Promise<{ data: Array<LedgerPayment & { employerName: string | null; accountName: string; currency: string }>; total: number }>;
+  createForUpload(uploadId: string, payment: InsertLedgerPayment): Promise<LedgerPayment>;
+  updateEmployerSubmission(id: string, payment: Pick<InsertLedgerPayment, "amount" | "paymentType" | "details">): Promise<LedgerPayment>;
   getAll(): Promise<LedgerPayment[]>;
   get(id: string): Promise<(LedgerPayment & { dateCreated: Date | null }) | undefined>;
   getByIds(ids: string[]): Promise<LedgerPayment[]>;
@@ -577,6 +585,64 @@ export function createLedgerEaStorage(): LedgerEaStorage {
 
 export function createLedgerPaymentStorage(): LedgerPaymentStorage {
   return {
+    async verifyUploadLinkSchema() {
+      const result = await getClient().execute(sqlRaw`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'ledger_payments'
+            AND column_name = 'upload_wizard_id' AND data_type = 'character varying'
+        ) AND EXISTS (
+          SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = 'public' AND t.relname = 'ledger_payments'
+            AND c.conname = 'ledger_payment_upload_ea_unique' AND c.contype = 'u'
+            AND pg_get_constraintdef(c.oid) = 'UNIQUE (upload_wizard_id, ledger_ea_id)'
+        ) AS ready
+      `);
+      if (!result.rows[0]?.ready) throw new Error("Legal payment linkage schema is missing. Apply the development schema and Publish before starting this release.");
+    },
+    async withLocked(id, callback) {
+      return runInTransaction(async () => {
+        await getClient().select({ id: ledgerPayments.id }).from(ledgerPayments).where(eq(ledgerPayments.id, id)).for("update");
+        return callback();
+      });
+    },
+    async getByUpload(uploadId) {
+      return getClient().select().from(ledgerPayments).where(eq(ledgerPayments.uploadWizardId, uploadId));
+    },
+    async getEmployerReview(limit, offset) {
+      const client = getClient();
+      const predicate = and(eq(ledgerPayments.status, EMPLOYER_SUBMITTED), eq(ledgerEa.entityType, "employer"));
+      const [total] = await client.select({ count: count() }).from(ledgerPayments)
+        .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id)).where(predicate);
+      const rows = await client.select({ payment: ledgerPayments, employerName: employers.name, accountName: ledgerAccounts.name, currency: ledgerAccounts.currencyCode })
+        .from(ledgerPayments).innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+        .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
+        .leftJoin(employers, eq(ledgerEa.entityId, employers.id)).where(predicate)
+        .orderBy(asc(ledgerPayments.id)).limit(limit).offset(offset);
+      return { data: rows.map(({ payment, ...rest }) => ({ ...payment, ...rest })), total: Number(total.count) };
+    },
+    async createForUpload(uploadId, payment) {
+      const client = getClient();
+      const [created] = await client.insert(ledgerPayments).values({
+        ...payment, uploadWizardId: uploadId, status: EMPLOYER_SUBMITTED,
+        allocated: false, dateReceived: null, dateCleared: null,
+      }).onConflictDoNothing({ target: [ledgerPayments.uploadWizardId, ledgerPayments.ledgerEaId] }).returning();
+      if (created) return created;
+      const [existing] = await client.select().from(ledgerPayments).where(and(
+        eq(ledgerPayments.uploadWizardId, uploadId), eq(ledgerPayments.ledgerEaId, payment.ledgerEaId),
+      ));
+      if (!existing) throw new Error("Could not recover the linked payment. Retry this submission.");
+      return existing;
+    },
+    async updateEmployerSubmission(id, payment) {
+      const [updated] = await getClient().update(ledgerPayments).set(payment).where(and(
+        eq(ledgerPayments.id, id), eq(ledgerPayments.status, EMPLOYER_SUBMITTED),
+        isNull(ledgerPayments.dateCleared),
+      )).returning();
+      if (!updated) throw new Error("Staff have started reviewing this payment; contact them to make changes.");
+      return updated;
+    },
     async getAll(): Promise<LedgerPayment[]> {
       const client = getClient();
       return await client.select().from(ledgerPayments)
@@ -739,6 +805,10 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
+      const [source] = await client.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
+      if (source?.uploadWizardId && paymentUpdate.ledgerEaId && source.ledgerEaId !== paymentUpdate.ledgerEaId) {
+        throw new Error("An upload-linked payment must remain on its original employer account.");
+      }
       // If payment type is being changed, validate currency match
       if (paymentUpdate.paymentType) {
         const [existingPayment] = await client.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
@@ -775,6 +845,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
+      const [source] = await client.select({ uploadId: ledgerPayments.uploadWizardId }).from(ledgerPayments).where(eq(ledgerPayments.id, id));
+      if (source?.uploadId) throw new Error("Upload-linked payments must be canceled, not deleted, to preserve their submission identity.");
       const entriesResult = await client.delete(ledger)
         .where(and(
           eq(ledger.referenceType, "payment"),
@@ -2238,6 +2310,21 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
   module: 'ledger.payments',
   table: 'ledger_payments',
   methods: {
+    createForUpload: {
+      enabled: true,
+      getEntityId: (_args, result) => formatPaymentForLog(result),
+      metadataEntityId: (_args, result) => result?.id,
+      getHostEntityId: (_args, result) => result?.id,
+      after: async (_args, result) => result,
+    },
+    updateEmployerSubmission: {
+      enabled: true,
+      getEntityId: (_args, result, before) => formatPaymentForLog(result || before),
+      metadataEntityId: (args, result) => result?.id ?? args[0],
+      getHostEntityId: (args, result) => result?.id ?? args[0],
+      before: async (args, storage) => storage.get(args[0]),
+      after: async (_args, result) => result,
+    },
     create: {
       enabled: true,
       getEntityId: (args, result) => formatPaymentForLog(result),

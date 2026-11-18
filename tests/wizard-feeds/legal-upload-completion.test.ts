@@ -1,12 +1,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   contacts: vi.fn(), contact: vi.fn(), user: vi.fn(), entries: vi.fn(), invoice: vi.fn(), emit: vi.fn(),
+  currencies: {} as Record<string, string>,
 }));
 vi.mock("../../server/storage", () => ({ storage: {
   contacts: { getContact: mocks.contact },
   employerContacts: { listByEmployer: mocks.contacts },
   users: { getUserByEmail: mocks.user },
-  ledger: { ea: { getByEntity: async () => [{ id: "ea1" }, { id: "ea2" }] },
+  ledger: { ea: { getByEntity: async () => [{ id: "ea1", accountId: "a" }, { id: "ea2", accountId: "b" }] },
+    accounts: { get: async (id: string) => ({ id, name: id, currencyCode: mocks.currencies[id] ?? "USD" }) },
     entries: { getByReference: mocks.entries }, invoices: { getDetails: mocks.invoice } },
 } }));
 vi.mock("../../server/plugins/event-notifier/registry", () => ({ registerEventNotifier: vi.fn() }));
@@ -31,6 +33,7 @@ const payload = (): LegalUploadCompletedPayload => ({
 });
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.currencies = {};
   mocks.contact.mockResolvedValue({ id: "contact1" });
   mocks.contacts.mockResolvedValue([
     { contactId: "contact1", contactTypeId: "selected", contact: { email: "a@example.com" } },
@@ -61,8 +64,8 @@ it("uses the same completion key across repeats, configs and overlapping selecto
 });
 it("resolves actual posted accounts and statement periods instead of guessing the upload month", async () => {
   mocks.entries.mockResolvedValue([
-    { eaId: "ea1", amount: "20.00", statementYmd: "2026-11-30" },
-    { eaId: "ea2", amount: "30.00", statementYmd: "2027-01-31" },
+    { id: "entry1", eaId: "ea1", amount: "20.00", statementYmd: "2026-11-30" },
+    { id: "entry2", eaId: "ea2", amount: "30.00", statementYmd: "2027-01-31" },
     { eaId: "not-owned", amount: "99.00", statementYmd: "2026-11-30" },
   ]);
   const { postedCharges, postedAmount, chargeReadFailed, ...base } = payload().totals;
@@ -83,6 +86,22 @@ it("does not turn a charge read failure into a known zero or invoice-ready claim
   expect(legalUploadSummary(payload())).toContain("No invoice is available");
   expect(legalUploadSummary({ ...payload(), outcome: "completed_with_errors" })).toContain("completed with errors");
   expect(legalUploadSummary({ ...payload(), outcome: "failed" })).toContain("Processing failed");
+});
+it("reports separate currency groups without netting and measures reconciled charge deltas", async () => {
+  mocks.entries.mockResolvedValue([
+    { id: "entry1", eaId: "ea1", amount: "20.00", statementYmd: "2026-11-30" },
+    { id: "entry2", eaId: "ea2", amount: "30.00", statementYmd: "2027-01-31" },
+  ]);
+  mocks.currencies.b = "CAD";
+  const { postedCharges, postedAmount, chargeReadFailed, ...base } = payload().totals;
+  const actual = await resolveLegalActuals("e", ["wmb", "wmb"], base, new Map([["entry1", "12.00"]]));
+  expect(actual.totals).toMatchObject({ postedCharges: 2, postedAmount: null, postedCurrency: null, chargeReadFailed: false });
+  expect(actual.chargeGroups).toMatchObject([
+    { eaId: "ea1", currency: "USD", amount: "8.00", entries: 1 },
+    { eaId: "ea2", currency: "CAD", amount: "30.00", entries: 1 },
+  ]);
+  const unavailable = await resolveLegalActuals("e", ["wmb"], base, null);
+  expect(unavailable).toMatchObject({ chargeGroups: null, totals: { postedCharges: null, postedAmount: null, chargeReadFailed: true } });
 });
 it("emits a terminal snapshot without raw rows and never emits for historical results alone", async () => {
   const data = { launchArguments: payload().period, legalSubmitter: payload().submitter,

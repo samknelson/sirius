@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
 import { RunProgressView } from "@/components/wizards/framework/RunProgressView";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
+import { LegalConfirmation } from "./LegalConfirmation";
 
 export function LegalProcess(props: WizardStepComponentProps) {
   const isRunning = props.step.progress?.status === "in_progress";
@@ -37,6 +38,7 @@ export function LegalProcess(props: WizardStepComponentProps) {
         </Card>
       )}
       <RunProgressView {...props} />
+      {props.step.progress?.status === "failed" && <LegalConfirmation {...props} />}
     </div>
   );
 }

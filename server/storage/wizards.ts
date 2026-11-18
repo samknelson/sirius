@@ -30,6 +30,7 @@ export interface MonthlyWizardCreateParams {
 }
 
 export interface WizardStorage {
+  withLocked<T>(id: string, callback: (wizard: Wizard) => Promise<T>): Promise<T>;
   list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]>;
   listAll(): Promise<Pick<Wizard, 'id' | 'type' | 'data'>[]>;
   getById(id: string): Promise<Wizard | undefined>;
@@ -57,6 +58,13 @@ export interface WizardStorage {
 
 export function createWizardStorage(): WizardStorage {
   return {
+    async withLocked<T>(id: string, callback: (wizard: Wizard) => Promise<T>): Promise<T> {
+      return runInTransaction(async () => {
+        const [wizard] = await getClient().select().from(wizards).where(eq(wizards.id, id)).for("update");
+        if (!wizard) throw new Error("Upload not found");
+        return callback(wizard);
+      });
+    },
     async list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]> {
       const client = getClient();
       const conditions = [];
@@ -160,7 +168,7 @@ export function createWizardStorage(): WizardStorage {
             eq(wizardEmployerMonthly.year, year),
             eq(wizardEmployerMonthly.month, month),
             eq(wizards.type, type),
-            or(eq(wizards.status, 'completed'), eq(wizards.status, 'complete'))
+            or(eq(wizards.status, 'completed'), eq(wizards.status, 'completed_with_errors'), eq(wizards.status, 'complete'))
           )
         );
       return row?.wizard;

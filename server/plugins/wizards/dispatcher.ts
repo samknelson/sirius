@@ -239,9 +239,14 @@ export function registerWizardDispatcherRoutes(
               .json({ message: "Invalid input", errors: result.errors });
           }
         }
-        const ctx = buildStepContext(loaded.wizard, step.id, input, req);
-        const out = await step.submit(ctx);
-        const updated = await persistStepResult(loaded.wizard.id, step.id, out);
+        const submit = async (wizard: Wizard) => {
+          const ctx = buildStepContext(wizard, step.id, input, req);
+          const out = await step.submit!(ctx);
+          return persistStepResult(wizard.id, step.id, out);
+        };
+        const updated = step.serializeSubmit
+          ? await storage.wizards.withLocked(loaded.wizard.id, submit)
+          : await submit(loaded.wizard);
         res.json(updated);
       } catch (error) {
         logger.error("Wizard dispatch submit failed", {
@@ -373,6 +378,10 @@ export function registerWizardDispatcherRoutes(
           };
           const updates: Record<string, unknown> = { data };
           if (out && out.status) updates.status = out.status;
+          if (out?.nextStep) {
+            if (!loaded.plugin.steps.some(candidate => candidate.id === out.nextStep)) throw new Error("Run returned an unknown next step");
+            updates.currentStep = out.nextStep;
+          }
           const saved = await storage.wizards.update(loaded.wizard.id, updates);
           notifyPersisted(saved, "completed");
         } catch (error) {

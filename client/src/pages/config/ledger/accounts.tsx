@@ -146,6 +146,9 @@ export default function LedgerAccountsPage() {
           <p className="text-muted-foreground mt-2">
             Manage ledger account types for financial tracking
           </p>
+          <Link href="/ledger/employer-payment-review" className="mt-2 inline-flex items-center text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Review employer-submitted receipts
+          </Link>
         </div>
         <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-account">
           <Plus className="h-4 w-4 mr-2" />

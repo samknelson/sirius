@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
+import { paymentStatuses, paymentStatusLabel } from "@shared/legal-payment";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -37,8 +38,6 @@ function formatStatementPeriods(details: Record<string, unknown> | null, fallbac
   if (uniquePeriods.size === 0) return fallback;
   return Array.from(uniquePeriods).join(", ");
 }
-
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 type SortField = "amount" | "createdDate" | "dateReceived" | "dateCleared";
 type SortDirection = "asc" | "desc";
@@ -436,7 +435,7 @@ function EAPaymentsContent() {
                     <SelectItem value="all">All statuses</SelectItem>
                     {paymentStatuses.map(status => (
                       <SelectItem key={status} value={status}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                        {paymentStatusLabel(status)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -628,7 +627,7 @@ function EAPaymentsContent() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>
-                          {payment.status}
+                          {paymentStatusLabel(payment.status)}
                         </Badge>
                       </TableCell>
                       <TableCell data-testid={`text-statement-${payment.id}`}>

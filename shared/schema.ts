@@ -928,7 +928,7 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
 
 export const ledgerPayments = pgTable("ledger_payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  status: text("status").notNull().$type<'draft' | 'canceled' | 'cleared' | 'error'>(),
+  status: text("status").notNull().$type<'draft' | 'employer_submitted' | 'canceled' | 'cleared' | 'error'>(),
   allocated: boolean("allocated").notNull().default(false),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   paymentType: varchar("payment_type").notNull().references(() => optionsLedgerPaymentType.id),
@@ -937,7 +937,11 @@ export const ledgerPayments = pgTable("ledger_payments", {
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
-});
+  // Trusted, immutable source + retry identity; generic forms cannot author it.
+  uploadWizardId: varchar("upload_wizard_id"),
+}, (table) => [
+  unique("ledger_payment_upload_ea_unique").on(table.uploadWizardId, table.ledgerEaId),
+]);
 
 export const ledgerEa = pgTable("ledger_ea", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1762,6 +1766,7 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
 
 export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
   id: true,
+  uploadWizardId: true,
 });
 
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({

@@ -116,6 +116,7 @@ import "./core/1111_create_wizard_work_location_mappings";
 import "./core/1112_worker_hours_worker_id_idx";
 import "./core/1113_complete_processed_gbhet_legal_wizards";
 import "./core/1114_retire_legacy_ban_cron_configs";
+import "./core/1115_legal_payment_upload_link";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

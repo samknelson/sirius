@@ -65,6 +65,8 @@ export interface WizardStepContext {
 }
 
 export interface WizardStepResult {
+  /** A successful run may open its next registered step without rerunning it. */
+  nextStep?: string;
   /**
    * Shallow-merged into the TOP LEVEL of `wizard.data` by the dispatcher.
    * Bulk row output must NOT go here — write it to `wizard_report_data`
@@ -82,6 +84,8 @@ export interface WizardStepResult {
  * plus this declaration alone.
  */
 export interface WizardStepHandler {
+  /** Serialize this step's submit and result persistence against the wizard row. */
+  serializeSubmit?: boolean;
   id: string;
   name: string;
   description?: string;

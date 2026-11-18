@@ -187,6 +187,8 @@ export abstract class FeedWizard extends BaseWizard {
   isFeed: boolean = true;
   /** Optional observation of an actually created worker, before later row work. */
   protected async workerCreated(_workerId: string): Promise<void> {}
+  /** Run-local observation of the actual resolved/claimed worker, before row writes. */
+  protected async workerResolved(_rowIndex: number, _workerId: string): Promise<void> {}
 
   /** Same parser/mapping used by Legal forecasts and actual feed processing. */
   async readMappedRows(wizard: { data: unknown }): Promise<Record<string, any>[]> {
@@ -656,6 +658,7 @@ export abstract class FeedWizard extends BaseWizard {
             if (!existingWorker) {
               throw new Error("No worker matches this identifier. Correct the row or ask staff to review it.");
             }
+            await this.workerResolved(rowIndex, existingWorker.id);
 
             // Update worker name components if provided
             if (firstName || lastName) {
@@ -759,6 +762,7 @@ export abstract class FeedWizard extends BaseWizard {
               isNewWorker = claimed.created;
               if (claimed.created) await this.workerCreated(workerId);
             }
+            await this.workerResolved(rowIndex, workerId);
 
             // Update name components if provided
             if (firstName || lastName) {

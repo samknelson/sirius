@@ -8,6 +8,10 @@ import { defaultBlankHours } from "../blank-hours";
 import { legalEligible, legalBenefitMonth, forecastLegalUpload } from "../../gbhet-legal-forecast";
 import { resolveLegalActuals } from "../../gbhet-legal-completion";
 import { captureChargeFailures } from "../../../ledger/charge/execution-observer";
+import { measureLegalPopulation } from "../../gbhet-legal-population";
+import type { LegalPopulation } from "@shared/legal-payment";
+import { mergeEnabledChargeConfigs, toChargeConfig } from "../../../ledger/charge/charge-config-resolution";
+import { legalBenefitPrice } from "../../../ledger/charge/gbhet-legal-pricing";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -26,6 +30,10 @@ interface RunContext {
   createdWorkerIds?: Set<string>;
   grantedWorkerIds?: Set<string>;
   createdWmbIds?: Set<string>;
+  actualWorkers?: Map<number, string>;
+  contactFailures?: Set<string>;
+  benefitFailures?: Set<string>;
+  unpriceableGrants?: number | null;
 }
 
 const runContextStorage = new AsyncLocalStorage<RunContext>();
@@ -34,6 +42,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
   protected async workerCreated(workerId: string) {
     runContextStorage.getStore()?.createdWorkerIds?.add(workerId);
+  }
+  protected async workerResolved(rowIndex: number, workerId: string) {
+    runContextStorage.getStore()?.actualWorkers?.set(rowIndex, workerId);
   }
 
   async assertForecastRows(wizard: { entityId: string | null; data: unknown }, rows: Record<string, any>[]) {
@@ -250,6 +261,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       { id: 'validate', name: 'Validate', description: 'Validate data integrity' },
       { id: 'preview', name: 'Preview', description: 'Estimate new workers, grants and charges' },
       { id: 'process', name: 'Process', description: 'Process and transform data' },
+      { id: 'confirmation', name: 'Confirmation and Payment', description: 'Review actual results and tell us how you will pay' },
       { id: 'review', name: 'Review', description: 'Review results' }
     ];
   }
@@ -515,6 +527,24 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     ctx.createdWorkerIds = new Set();
     ctx.grantedWorkerIds = new Set();
     ctx.createdWmbIds = new Set();
+    ctx.actualWorkers = new Map();
+    ctx.contactFailures = new Set();
+    ctx.benefitFailures = new Set();
+    ctx.unpriceableGrants = 0;
+    const successfulRows = new Set<number>();
+    let measurement: Awaited<ReturnType<typeof measureLegalPopulation>> | null = null;
+    let populationError: string | null = null;
+    try { measurement = await measureLegalPopulation(wizard, await this.readMappedRows(wizard)); }
+    catch { populationError = "Pre-import population/contact measurements are unavailable."; }
+    // Reconciled surviving keyed charges report their delta, not their full
+    // amount a second time. This snapshot is private to this execution.
+    const priorCharges = new Map<string, string>();
+    let priorChargesUnavailable = false;
+    try {
+      for (const ea of await storage.ledger.ea.getByEntity("employer", wizard.entityId!)) {
+        for (const entry of await storage.ledger.entries.getByEaId(ea.id)) priorCharges.set(entry.id, entry.amount);
+      }
+    } catch { priorChargesUnavailable = true; }
     const billing = { failures: 0 };
     let processedRows = 0, failedRows = 0;
     return runContextStorage.run(ctx, () => captureChargeFailures(billing, async () => {
@@ -522,21 +552,28 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         return await super.processFeedData(wizardId, batchSize, progress => {
           processedRows = progress.processed;
           failedRows = progress.failureCount;
+          if (progress.currentRow?.status === "success") successfulRows.add(progress.currentRow.index);
           return onProgress?.(progress);
         });
       } finally {
         // Even an aborted run can have committed workers/grants. Publish its
         // actual partial work, never the pre-run estimate as an actual total.
+        let population: LegalPopulation | null = null;
+        try {
+          population = await measurement?.finish(successfulRows, ctx.actualWorkers!, ctx.contactFailures!,
+            ctx.benefitFailures!, ctx.createdWorkerIds!) ?? null;
+        } catch { populationError = "Final worker benefit populations are unavailable."; }
         const completion = await resolveLegalActuals(wizard.entityId!, [...ctx.createdWmbIds!], {
           newWorkers: ctx.createdWorkerIds!.size,
           workersWithNewGrants: ctx.grantedWorkerIds!.size,
           newGrants: ctx.createdWmbIds!.size,
           processedRows, failedRows,
           chargeFailures: billing.failures,
-          unpriceableGrants: forecast.unpriceableGrants,
-        });
+          unpriceableGrants: ctx.unpriceableGrants!,
+        }, priorChargesUnavailable ? null : priorCharges);
         const fresh = await storage.wizards.getById(wizardId);
-        await storage.wizards.update(wizardId, { data: { ...(fresh?.data as any), legalCompletion: completion } });
+        await storage.wizards.update(wizardId, { data: { ...(fresh?.data as any),
+          legalCompletion: { ...completion, version: 2, population, populationError } } });
       }
     }));
   }
@@ -702,6 +739,15 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * Handles email, phone number, gender, and address fields
    */
   protected async processWorkerContactInfo(workerId: string, row: Record<string, any>): Promise<void> {
+    try {
+      await this.applyWorkerContactInfo(workerId, row);
+    } catch (error) {
+      runContextStorage.getStore()?.contactFailures?.add(workerId);
+      throw error;
+    }
+  }
+
+  private async applyWorkerContactInfo(workerId: string, row: Record<string, any>): Promise<void> {
     // Get the worker to find its contact ID
     const worker = await storage.workers.getWorker(workerId);
     if (!worker) {
@@ -897,6 +943,20 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
             const run = runContextStorage.getStore();
             run?.createdWmbIds?.add(wmb.id);
             run?.grantedWorkerIds?.add(workerId);
+            // Observe pricing of actual grants without changing grant behavior.
+            if (run && run.unpriceableGrants !== null) {
+              try {
+                const [globals, overrides] = await Promise.all([
+                  storage.pluginConfigs.search("charge", { pluginId: "gbhet-legal-benefit", enabled: true, scope: "global", employerId: null }),
+                  storage.pluginConfigs.search("charge", { pluginId: "gbhet-legal-benefit", enabled: true, scope: "employer", employerId }),
+                ]);
+                const configs = mergeEnabledChargeConfigs(globals.map(toChargeConfig), overrides.map(toChargeConfig))
+                  .filter(config => (config.settings as any)?.benefitId === benefitId);
+                if (!configs.length || configs.some(config => !config.account || !legalBenefitPrice(config.settings, targetYear, targetMonth))) {
+                  run.unpriceableGrants = (run.unpriceableGrants ?? 0) + 1;
+                }
+              } catch { run.unpriceableGrants = null; }
+            }
             result.created++;
             result.createdBenefits.push({
               benefitId,
@@ -905,6 +965,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
             });
           }
         } catch (error) {
+          runContextStorage.getStore()?.benefitFailures?.add(workerId);
           result.errors.push(`Failed to create WMB for benefit ${benefitId}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }

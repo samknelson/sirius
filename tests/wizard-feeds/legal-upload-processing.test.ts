@@ -69,7 +69,11 @@ beforeEach(() => {
       getWorkerIdByTypeAndValue: async (typeId: string, value: string) => alternateIds.find(id => id.typeId === typeId && id.value === value),
       createWorkerId: vi.fn(async data => { alternateIds.push(data); return data; }),
     },
-    contacts: { getContact: async () => ({ displayName: "Worker" }) },
+    contacts: {
+      getContact: async () => ({ displayName: "Worker" }),
+      phoneNumbers: { getPhoneNumbersByContact: async () => [] },
+      addresses: { getContactPostalByContact: async () => [] },
+    },
     workerHours: { upsertWorkerHours: async () => {} },
     wizardEmploymentStatusMappings: { getByEmployer: async () => [] },
     trustBenefits: { getActiveTrustBenefitOptions: async () => [{ id: benefit }, { id: other }] },
@@ -87,6 +91,7 @@ beforeEach(() => {
       }),
     } },
     ledger: {
+      accounts: { get: async (id: string) => ({ id, name: id, currencyCode: "USD" }) },
       ea: {
         getByEntityAndAccount: async (_type: string, _id: string, accountId: string) => accounts.find(a => a.accountId === accountId),
         getByEntity: async () => accounts,
@@ -97,6 +102,7 @@ beforeEach(() => {
         },
       },
       entries: {
+        getByEaId: async (id: string) => entries.filter(e => e.eaId === id),
         getByChargePluginKey: async (_plugin: string, key: string) => entries.find(e => e.chargePluginKey === key),
         getByReference: async (_type: string, id: string) => entries.filter(e => e.referenceId === id),
         create: vi.fn(async (entry) => { const saved = { ...entry, id: `entry-${entries.length}` }; entries.push(saved); return saved; }),
@@ -129,6 +135,10 @@ describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name p
     wizard.data.legalPreviewApproval = preview.fingerprint;
     expect(await feed.processFeedData("upload")).toMatchObject({ createdCount: 0, updatedCount: 2, failureCount: 0 });
     expect(workers).toHaveLength(1);
+    expect(wizard.data.legalCompletion.population).toMatchObject({
+      distinctWorkers: 1, confirmedWorkers: 1, unresolvedIdentityRows: 0,
+      workersWithBenefits: 1, existingGrants: 1,
+    });
     expect(wizard.data.legalCompletion.totals).toMatchObject({
       newWorkers: preview.newWorkers, workersWithNewGrants: preview.workersWithNewGrants,
       newGrants: preview.newGrants, postedAmount: preview.knownChargeTotal, postedCharges: 1,
@@ -157,6 +167,10 @@ describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name p
     const result = await feed.processFeedData("upload");
     expect(result).toMatchObject({ createdCount: 1, updatedCount: 2, failureCount: 0 });
     expect(workers).toHaveLength(2);
+    expect(wizard.data.legalCompletion.population).toMatchObject({
+      distinctWorkers: 2, confirmedWorkers: 2, unresolvedIdentityRows: 0,
+      contactDifferences: { workers: 0 },
+    });
     expect(workers[0].ssn).toBe("123456789");
     expect(workers[1].ssn).toBeUndefined();
     expect(alternateIds).toHaveLength(2);
@@ -217,5 +231,21 @@ describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name p
       chargeFailures: 1, postedCharges: 1, postedAmount: "30.00",
     });
     expect(wizard.data.legalCompletion.invoices.map((invoice: { path: string }) => invoice.path)).toEqual(["/ea/ea-a/invoices/11/2026"]);
+  });
+  it("retains actual alternate-worker creation when subsequent row writes fail, without calling it a confirmed benefit absence", async () => {
+    wizard.type = feed.name;
+    mock.csv = mock.csv.replaceAll("234567891", "900123456").replaceAll("234-56-7891", "900-12-3456");
+    wizard.data.legalPreviewApproval = (await forecastLegalUpload(feed, wizard)).fingerprint;
+    mock.storage.workers.updateWorkerContactNameComponents = async (id: string) => {
+      if (id !== "existing") throw new Error("Contact update failed");
+    };
+    const result = await feed.processFeedData("upload");
+    expect(result).toMatchObject({ successCount: 1, failureCount: 2 });
+    expect(wizard.data.legalCompletion.totals).toMatchObject({ newWorkers: 1, failedRows: 2 });
+    expect(wizard.data.legalCompletion.population).toMatchObject({
+      distinctWorkers: 2, confirmedWorkers: 1, unconfirmedWorkers: 1,
+      workersWithoutBenefits: 0, unresolvedRows: 2, unresolvedIdentityRows: 0,
+    });
+    expect(JSON.stringify(wizard.data.legalCompletion)).not.toMatch(/900123456|900-12-3456/);
   });
 });

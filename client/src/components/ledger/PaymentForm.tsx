@@ -19,6 +19,7 @@ import { Plus } from "lucide-react";
 import { type StatementSelection } from "@/components/ledger/StatementPicker";
 import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components/ledger/ParticipantAllocationBox";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
+import { paymentStatuses, paymentStatusLabel } from "@shared/legal-payment";
 
 const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
   eaId: "",
@@ -37,8 +38,6 @@ type EAListItem = {
   companyName?: string | null;
   data: unknown;
 };
-
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 export interface LedgerNotification {
   type: "created" | "updated" | "deleted";
@@ -617,7 +616,7 @@ export function PaymentForm({
                     <SelectContent>
                       {paymentStatuses.map((status) => (
                         <SelectItem key={status} value={status} data-testid={`option-${status}`}>
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                          {paymentStatusLabel(status)}
                         </SelectItem>
                       ))}
                     </SelectContent>

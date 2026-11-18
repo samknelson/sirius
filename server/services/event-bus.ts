@@ -140,6 +140,11 @@ export interface HoursSavedPayload {
 }
 
 export interface PaymentSavedPayload {
+  /** The saving route already awaited charge reconciliation. Other listeners
+   * still receive the committed event, but billing must not execute it twice. */
+  chargesHandled?: boolean;
+  allocationId?: string;
+  allocationStatementYmd?: string;
   paymentId: string;
   amount: string;
   status: string;

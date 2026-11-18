@@ -4,6 +4,7 @@ import { PaymentBatchLayout, usePaymentBatchLayout } from "@/components/layouts/
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { paymentStatusLabel } from "@shared/legal-payment";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,7 +96,7 @@ function PaymentDetailHeader({
             </CardTitle>
             <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
               <span>{paymentType?.name || "Unknown type"}</span>
-              <Badge variant="outline">{payment.status}</Badge>
+              <Badge variant="outline">{paymentStatusLabel(payment.status)}</Badge>
             </div>
           </div>
           <div className="flex gap-2">
@@ -301,7 +302,7 @@ function BatchPaymentsContent() {
                           <span className="font-medium tabular-nums">
                             {formatCurrency(p.amount, currency)}
                           </span>
-                          <Badge variant="outline" className="text-xs">{p.status}</Badge>
+                          <Badge variant="outline" className="text-xs">{paymentStatusLabel(p.status)}</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5 truncate">
                           {pt?.name || "—"}

@@ -1,7 +1,7 @@
 # Legal upload preview and completion
 
 Monthly and corrections uploads use **Upload → Map → Benefits → Validate →
-Preview → Process → Review**. Preview is a live, read-only estimate, not a
+Preview → Process → Confirmation and Payment → Review**. Preview is a live, read-only estimate, not a
 quote or a reservation. It normalizes worker identity, deduplicates
 worker/benefit/period grants, skips existing grants, and uses Legal billing's
 account-scoped employer/global override resolution, effective rates and billing
@@ -80,3 +80,70 @@ independent of notifier configuration and selector. The existing comm insert
 claim enforces at-most-once per upload/contact/channel, including overlapping
 configurations and repeated events. A failed send consumes its key, as normal;
 this does not introduce retries or guaranteed delivery.
+
+## Confirmation and payment
+
+For new monthly and corrections runs, processing opens **Confirmation and
+Payment**. Review remains available for detailed row results. Processing is
+complete independently of payment information; saving or submitting a
+remittance never reruns processing or emits another completion notification.
+
+The persisted completion projection includes actual worker creation observations,
+successful row membership, pre-import contact differences, benefit populations
+for the mapped benefits' three-month-offset period, and posted charge groups.
+SSNs and Alternate Tax IDs use the importer's shared resolver and conflict
+rules. Different identifiers resolving to one worker count once. Unmatched
+identifiers do not count as new workers unless creation actually occurred.
+Failed/unresolved identities are separate from confirmed workers without
+benefits. These measurements never contain raw tax identifiers or contact values.
+Contact differences describe meaningful submitted differences, not a guarantee
+that a worker-reported primary address was replaced. Known contact failures and
+differences on unconfirmed workers are reported separately.
+
+Charges are grouped by employer ledger account and currency, including the net
+change when an existing keyed charge was reconciled. Confirmation reads live
+authoritative account balances and links to each account's invoice summary.
+Missing historical measurements or failed reads are unavailable, not zero.
+Multiple currencies are never combined into one amount. No account, grant,
+charge or invoice is created by reading confirmation.
+
+Employers may save incomplete check/wire details as wizard form state. Only a
+positive valid amount plus an explicitly selected configured financial payment
+type creates a real ledger receipt. Under **Payment Types**, staff must set
+**Legal remittance method** to Check or Wire on each eligible financial type.
+Type names are not used to guess this setting. The type must match the charged
+account's currency. Reference, payer, timing, planned/sent date, bank/account
+nickname and notes are optional; never enter full banking numbers or credentials.
+Receipt and clearance dates remain unknown until staff record them.
+
+The receipt status is **Employer submitted — awaiting review**
+(`employer_submitted`). Pending receipts do not reduce balances or satisfy paid
+invoice logic. The projection shows the effect only after receipt/clearance,
+including older debt, underpayment, full payment and credits/overpayment.
+Each account is funded independently; no automatic allocation across accounts.
+
+The dispatcher locks the upload through submission and form-state persistence.
+The unique `(upload_wizard_id, ledger_ea_id)` constraint makes the receipt identity
+stable across retries. Employers edit the same pending receipt; staff-cleared,
+canceled or staff-draft receipts cannot be overwritten from the upload.
+Upload-linked receipts are canceled rather than deleted to preserve that identity.
+
+Staff use **Ledger → Employer Payment Review**, a server-paginated pending queue,
+then the existing payment view/edit flow to verify, edit, clear or cancel the
+original receipt. Clearance reconciliation is serialized on that receipt.
+The saving route awaits charge reconciliation once; its after-commit saved
+event is marked as already handled so the charge listener cannot run billing
+a second time. Legacy event-only payment saves still run through that listener.
+Generic payment writes and review endpoints remain staff-only; wizard submission
+also requires the Legal and Ledger components, completed results, the owning
+employer, the charged account's access policy, and valid method/currency.
+
+### Schema rollout
+
+The schema source adds `ledger_payments.upload_wizard_id` and the named unique
+constraint. Apply this additive shape in development and carry it to managed
+production through Publish. Registered migration `legal_payment_upload_link`
+only verifies the published shape; it deliberately performs no production
+startup DDL. Existing receipt rows keep a null link. Historical completed uploads
+remain viewable without invented population measurements, retroactive payment
+requirements, reprocessing or notification replay.

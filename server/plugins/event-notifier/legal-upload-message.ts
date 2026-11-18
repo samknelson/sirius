@@ -9,7 +9,7 @@ export function legalUploadSummary(payload: LegalUploadCompletedPayload): string
   const status = payload.outcome === "failed" ? "Processing failed"
     : payload.outcome === "completed_with_errors" ? "Processing completed with errors" : "Processing is complete";
   const money = totals.postedAmount === null ? "Charge totals could not be confirmed."
-    : `Posted charges: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(totals.postedAmount))} (${totals.postedCharges} entries).`;
+    : `Posted charges: ${new Intl.NumberFormat("en-US", { style: "currency", currency: totals.postedCurrency ?? "USD" }).format(Number(totals.postedAmount))} (${totals.postedCharges} entries).`;
   const billing = totals.chargeFailures ? " Some charge work failed; review the results." : "";
   const unpriced = totals.unpriceableGrants ? ` Pricing was unavailable for ${totals.unpriceableGrants} prospective grants; no charge is assumed for them.` : "";
   const noInvoice = payload.invoices.length ? "" : " No invoice is available from this upload's charges.";

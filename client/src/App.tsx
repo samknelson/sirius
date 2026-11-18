@@ -379,6 +379,7 @@ const PaymentBatchDetailsPage = lazy(() => import("@/pages/ledger/payment-batch-
 const PaymentBatchEditPage = lazy(() => import("@/pages/ledger/payment-batch-edit"));
 const PaymentBatchPaymentsPage = lazy(() => import("@/pages/ledger/payment-batch-payments"));
 const PaymentBatchLogsPage = lazy(() => import("@/pages/ledger/payment-batch-logs"));
+const EmployerPaymentReviewPage = lazy(() => import("@/pages/ledger/employer-payment-review"));
 const SiteInformation = lazy(() => import("@/pages/site-information"));
 const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
 const PolicyView = lazy(() => import("@/pages/policy-view"));
@@ -1675,6 +1676,14 @@ function Router() {
         <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/employer-payment-review">
+        <ProtectedRoute policy="staff" component="ledger">
+          <AuthenticatedLayout>
+            <EmployerPaymentReviewPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

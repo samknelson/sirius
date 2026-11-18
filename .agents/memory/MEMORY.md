@@ -157,3 +157,4 @@
 - [Colliding core migration histories](colliding-core-migration-histories.md) — when two branches stamp different work at one version, renumber one lineage and replay missing prerequisite work before its first consumer.
 - [Legal benefit uploads](gbhet-legal-benefit-uploads.md) — require an eligibility column and default to configured Legal benefit, never default blank eligibility cells or guess by name.
 - [Alternate tax identity policy](alternate-tax-id-policy.md) — shared placeholders require correction; unmatched does not prove new; no automatic SSN-to-alternate reconciliation.
+- [Payment reconciliation ownership](payment-reconciliation-ownership.md) — one billing owner per save; inline reconciliation and saved-event consumption must not execute the same payment twice.

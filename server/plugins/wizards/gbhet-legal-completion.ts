@@ -2,6 +2,7 @@ import type { Wizard } from "@shared/schema";
 import { storage } from "../../storage";
 import { eventBus, EventType } from "../../services/event-bus";
 import { dateToYmd } from "@shared/utils/date";
+import { ledgerMinor, ledgerDecimal, type LegalChargeGroup } from "@shared/legal-payment";
 
 export interface LegalInvoiceDestination {
   eaId: string;
@@ -16,29 +17,47 @@ export interface LegalActualTotals {
   newGrants: number;
   processedRows: number;
   failedRows: number;
-  postedCharges: number;
+  postedCharges: number | null;
   postedAmount: string | null;
+  postedCurrency?: string | null;
   chargeFailures: number;
   chargeReadFailed: boolean;
-  unpriceableGrants: number;
+  unpriceableGrants: number | null;
 }
 
 /** Snapshot contains only actual persisted work, not the uploaded rows.
  * Invoice existence uses the SAME account/month implementation as its route. */
 export async function resolveLegalActuals(
   employerId: string, wmbIds: string[], totals: Omit<LegalActualTotals, "postedCharges" | "postedAmount" | "chargeReadFailed">,
+  priorCharges: Map<string, string> | null = new Map(),
 ) {
   const invoices: LegalInvoiceDestination[] = [];
-  let postedCharges = 0, postedCents = 0, chargeReadFailed = false;
+  const chargeGroups = new Map<string, LegalChargeGroup>();
+  let postedCharges = 0, chargeReadFailed = priorCharges === null;
   try {
     const accounts = await storage.ledger.ea.getByEntity("employer", employerId);
     const owned = new Set(accounts.map(account => account.id));
+    const accountDetails = new Map(await Promise.all(accounts.map(async ea => {
+      const account = await storage.ledger.accounts.get(ea.accountId);
+      if (!account) throw new Error("The charged account is unavailable.");
+      return [ea.id, account] as const;
+    })));
     const groups = new Map<string, { eaId: string; year: number; month: number }>();
-    for (const id of wmbIds) {
+    const seenEntries = new Set<string>();
+    for (const id of new Set(wmbIds)) {
       for (const entry of await storage.ledger.entries.getByReference("wmb", id)) {
-        if (!entry.eaId || !owned.has(entry.eaId)) continue;
+        if (!entry.eaId || !owned.has(entry.eaId) || seenEntries.has(entry.id)) continue;
+        seenEntries.add(entry.id);
+        const account = accountDetails.get(entry.eaId)!;
+        const amount = ledgerMinor(entry.amount) - ledgerMinor(priorCharges?.get(entry.id) ?? "0");
+        const group = chargeGroups.get(entry.eaId) ?? {
+          eaId: entry.eaId, accountId: account.id, accountName: account.name,
+          currency: account.currencyCode, amount: "0.00", entries: 0, invoicePaths: [],
+        };
+        group.amount = ledgerDecimal(ledgerMinor(group.amount) + amount);
+        group.entries++;
+        chargeGroups.set(entry.eaId, group);
         postedCharges++;
-        postedCents += Math.round(Number(entry.amount) * 100);
         const ymd = entry.statementYmd || (entry.date ? dateToYmd(new Date(entry.date)) : null);
         if (!ymd) continue;
         const year = Number(ymd.slice(0, 4)), month = Number(ymd.slice(5, 7));
@@ -47,14 +66,24 @@ export async function resolveLegalActuals(
     }
     for (const group of groups.values()) {
       const details = await storage.ledger.invoices.getDetails(group.eaId, group.month, group.year);
-      if (details) invoices.push({ ...group, path: `/ea/${group.eaId}/invoices/${group.month}/${group.year}` });
+      if (details) {
+        const path = `/ea/${group.eaId}/invoices/${group.month}/${group.year}`;
+        invoices.push({ ...group, path });
+        chargeGroups.get(group.eaId)?.invoicePaths.push(path);
+      }
     }
   } catch {
     chargeReadFailed = true;
   }
   return {
-    totals: { ...totals, postedCharges, postedAmount: chargeReadFailed ? null : (postedCents / 100).toFixed(2), chargeReadFailed },
+    totals: { ...totals, postedCharges: chargeReadFailed ? null : postedCharges,
+      postedCurrency: chargeReadFailed || new Set([...chargeGroups.values()].map(g => g.currency)).size !== 1
+        ? null : [...chargeGroups.values()][0].currency,
+      postedAmount: chargeReadFailed || new Set([...chargeGroups.values()].map(g => g.currency)).size > 1
+        ? null : ledgerDecimal([...chargeGroups.values()].reduce((sum, group) => sum + ledgerMinor(group.amount), 0n)),
+      chargeReadFailed },
     invoices: chargeReadFailed ? [] : invoices,
+    chargeGroups: chargeReadFailed ? null : [...chargeGroups.values()],
   };
 }
 

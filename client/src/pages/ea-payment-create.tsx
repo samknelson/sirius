@@ -17,10 +17,9 @@ import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
 import { dateToYmd } from "@shared/utils/date";
+import { paymentStatuses, paymentStatusLabel } from "@shared/legal-payment";
 
 type PaymentCategory = "financial" | "adjustment";
-
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 interface LedgerNotification {
   type: string;
@@ -336,7 +335,7 @@ function EAPaymentCreateContent() {
                         <SelectContent>
                           {paymentStatuses.map((status) => (
                             <SelectItem key={status} value={status}>
-                              {status.charAt(0).toUpperCase() + status.slice(1)}
+                              {paymentStatusLabel(status)}
                             </SelectItem>
                           ))}
                         </SelectContent>

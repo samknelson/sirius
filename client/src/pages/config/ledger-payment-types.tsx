@@ -37,6 +37,7 @@ interface LedgerPaymentType {
   currencyCode: string;
   category: "financial" | "adjustment";
   sequence: number;
+  data?: unknown;
 }
 
 const paymentCategories = [
@@ -60,17 +61,23 @@ export default function LedgerPaymentTypesPage() {
   const [formDescription, setFormDescription] = useState("");
   const [formCurrencyCode, setFormCurrencyCode] = useState("USD");
   const [formCategory, setFormCategory] = useState<"financial" | "adjustment">("financial");
+  const [formLegalMethod, setFormLegalMethod] = useState<"" | "check" | "wire">("");
+  const [formExistingData, setFormExistingData] = useState<Record<string, unknown>>({});
   
   const { data: paymentTypes = [], isLoading } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/options/ledger-payment-type"],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
+    mutationFn: async (data: { name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment"; legalMethod: "" | "check" | "wire" }) => {
       // Find the highest sequence number
       const maxSequence = paymentTypes.reduce((max, type) => Math.max(max, type.sequence), -1);
       return apiRequest("POST", "/api/options/ledger-payment-type", { 
-        ...data, 
+        name: data.name,
+        description: data.description,
+        currencyCode: data.currencyCode,
+        category: data.category,
+        data: data.legalMethod ? { legalRemittanceMethod: data.legalMethod } : {},
         sequence: maxSequence + 1 
       });
     },
@@ -93,12 +100,13 @@ export default function LedgerPaymentTypesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
+    mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment"; legalMethod: "" | "check" | "wire"; existingData: Record<string, unknown> }) => {
       return apiRequest("PUT", `/api/options/ledger-payment-type/${data.id}`, {
         name: data.name,
         description: data.description,
         currencyCode: data.currencyCode,
         category: data.category,
+        data: { ...data.existingData, legalRemittanceMethod: data.legalMethod || null },
       });
     },
     onSuccess: () => {
@@ -156,6 +164,8 @@ export default function LedgerPaymentTypesPage() {
     setFormDescription("");
     setFormCurrencyCode("USD");
     setFormCategory("financial");
+    setFormLegalMethod("");
+    setFormExistingData({});
   };
 
   const handleEdit = (type: LedgerPaymentType) => {
@@ -164,6 +174,9 @@ export default function LedgerPaymentTypesPage() {
     setFormDescription(type.description || "");
     setFormCurrencyCode(type.currencyCode || "USD");
     setFormCategory(type.category || "financial");
+    const existingData = type.data && typeof type.data === "object" && !Array.isArray(type.data) ? type.data as Record<string, unknown> : {};
+    setFormExistingData(existingData);
+    setFormLegalMethod(existingData.legalRemittanceMethod === "check" || existingData.legalRemittanceMethod === "wire" ? existingData.legalRemittanceMethod : "");
   };
 
   const handleCancelEdit = () => {
@@ -186,6 +199,8 @@ export default function LedgerPaymentTypesPage() {
       description: formDescription.trim() || null,
       currencyCode: formCurrencyCode,
       category: formCategory,
+      legalMethod: formLegalMethod,
+      existingData: formExistingData,
     });
   };
 
@@ -203,6 +218,7 @@ export default function LedgerPaymentTypesPage() {
       description: formDescription.trim() || null,
       currencyCode: formCurrencyCode,
       category: formCategory,
+      legalMethod: formLegalMethod,
     });
   };
 
@@ -251,7 +267,7 @@ export default function LedgerPaymentTypesPage() {
         <CardHeader>
           <CardTitle>{listName ? `${listName} Management` : "Management"}</CardTitle>
           <CardDescription>
-            Manage the types of payments that can be recorded in the ledger. Use the arrows to reorder types.
+            Manage the types of payments that can be recorded in the ledger. Use the arrows to reorder types. For Legal upload receipts, staff must explicitly map each financial check or wire type; the method is never inferred from its name, and adjustment types cannot be used.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -266,6 +282,7 @@ export default function LedgerPaymentTypesPage() {
                   <TableHead>Order</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Legal remittance method</TableHead>
                   <TableHead>Currency</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -325,6 +342,17 @@ export default function LedgerPaymentTypesPage() {
                       ) : (
                         paymentCategories.find(c => c.value === type.category)?.label || "Financial"
                       )}
+                    </TableCell>
+                    <TableCell data-testid={`text-legal-remittance-method-${type.id}`}>
+                      {editingId === type.id ? (
+                        <Select value={formLegalMethod || "unset"} onValueChange={value => setFormLegalMethod(value === "unset" ? "" : value as "check" | "wire")}>
+                          <SelectTrigger data-testid={`select-edit-legal-method-${type.id}`}><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="unset">Not specified</SelectItem><SelectItem value="check">Check</SelectItem><SelectItem value="wire">Wire</SelectItem></SelectContent>
+                        </Select>
+                      ) : (() => {
+                        const data = type.data && typeof type.data === "object" && !Array.isArray(type.data) ? type.data as Record<string, unknown> : {};
+                        return data.legalRemittanceMethod === "check" || data.legalRemittanceMethod === "wire" ? data.legalRemittanceMethod : "Not specified";
+                      })()}
                     </TableCell>
                     <TableCell data-testid={`text-currency-${type.id}`}>
                       {editingId === type.id ? (
@@ -419,6 +447,14 @@ export default function LedgerPaymentTypesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-legal-method">Legal remittance method</Label>
+              <Select value={formLegalMethod || "unset"} onValueChange={value => setFormLegalMethod(value === "unset" ? "" : value as "check" | "wire")}>
+                <SelectTrigger id="add-legal-method" data-testid="select-add-legal-method"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="unset">Not specified</SelectItem><SelectItem value="check">Check</SelectItem><SelectItem value="wire">Wire</SelectItem></SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Staff must explicitly map every financial check or wire type used by Legal uploads. The method is never guessed from the type name; adjustment types are not eligible. Existing application-managed type data is preserved when edited.</p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="add-name">Name</Label>
               <Input

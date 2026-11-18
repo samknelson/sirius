@@ -162,7 +162,9 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       const notifications: LedgerNotification[] = [];
 
       if (paymentContext.allocationId) {
-        const matchingKey = expectedEntry?.chargePluginKey;
+        // Identity survives non-cleared states so a prior credit is removed
+        // when staff move the same receipt back to draft/review/canceled.
+        const matchingKey = `${config.id}:${paymentContext.paymentId}:${paymentContext.ledgerEaId}${resolvedStatementYmd ? `:${resolvedStatementYmd}` : ""}`;
         let existingEntry: Ledger | undefined;
 
         if (matchingKey) {

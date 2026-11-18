@@ -24,6 +24,7 @@ async function handleHoursSaved(payload: HoursSavedPayload): Promise<void> {
 }
 
 async function handlePaymentSaved(payload: PaymentSavedPayload): Promise<void> {
+  if (payload.chargesHandled) return;
   try {
     const result = await executeChargePlugins({ trigger: TriggerType.PAYMENT_SAVED, ...payload });
     if (result.totalTransactions.length > 0) {
