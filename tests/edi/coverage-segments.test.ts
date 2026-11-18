@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parse } from "csv-parse/sync";
 import { coverageSegments, isEdiCobra, type SegmentCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
 import { wmbPrimaryKeys, buildMemberUnits } from "../../server/plugins/trust/provider-edi/base";
@@ -8,6 +8,7 @@ import { ediReadFixture, registeredEdiPlugins } from "./fixtures/harness";
 import { approveConflict, competingSources, coverageKey, projectCoverage, evidenceHash, evidenceHashRecords } from "../../server/plugins/trust/provider-edi/coverage-choices";
 import { discoverCoverage, coverageProjection } from "../../server/plugins/trust/provider-edi/coverage-review";
 import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
+import * as readerModule from "../../server/plugins/trust/provider-edi/coverage-reader";
 
 const row = (month: number, extra: Partial<SegmentCoverage> = {}): SegmentCoverage => ({
   id: `parent-${month}`, workerId: "parent", benefitId: "benefit",
@@ -211,13 +212,44 @@ describe("run-only coverage approval evidence", () => {
   const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
   async function review(rows: SegmentCoverage[], decisions: EdiCoverageDecision[] = [], rels = [relation], events: ReturnType<typeof event>[] = []) {
     const fixture = ediReadFixture([
-      [{ id: "benefit", siriusId: "K" }], rows,
-      ...(rows.some(r => r.sourceRelationId) ? [rels] : []), events,
+      [{ id: "benefit", siriusId: "K" }],
+      events.filter(event => !rows.some(r => r.workerId === event.workerId && r.benefitId === event.benefitId &&
+        r.year * 12 + r.month >= event.year * 12 + event.month)),
     ]);
+    // Exercise the real closure algorithm with a demand-loaded reader. The
+    // companion PostgreSQL fixture verifies the reader's actual SQL separately.
+    const groups = new Map<string, any[]>();
+    const relationMap = new Map(rels.map(r => [r.id, { ...r, data: null, relationType: "fictional" }]));
+    const children = new Map<string, Set<string>>();
+    const add = (r: SegmentCoverage) => {
+      const key = coverageKey(r);
+      const group = groups.get(key) ?? [];
+      if (!group.some(other => other.id === r.id)) group.push(r);
+      groups.set(key, group);
+      const rel = r.sourceRelationId && relationMap.get(r.sourceRelationId);
+      if (rel) {
+        const parent = coverageKey({ ...r, workerId: rel.worker1 });
+        const list = children.get(parent) ?? new Set<string>();
+        list.add(key); children.set(parent, list);
+      }
+    };
+    const mock = vi.spyOn(readerModule, "coverageReader").mockReturnValue({
+      groups, relationMap, children,
+      read: async () => { rows.filter(r => r.year === 2026 && r.month === 10).forEach(add); },
+      ensure: async (coordinates, family) => {
+        for (const coordinate of coordinates) for (const r of rows) {
+          const rel = r.sourceRelationId && relationMap.get(r.sourceRelationId);
+          if (r.benefitId === coordinate.benefitId && r.year === coordinate.year && r.month === coordinate.month &&
+              (family ? rel && rel.worker1 === coordinate.workerId : r.workerId === coordinate.workerId)) add(r);
+        }
+      },
+    } as ReturnType<typeof readerModule.coverageReader>);
     fixture.ctx.terminationPolicy = policy;
-    const result = await discoverCoverage(fixture.ctx, plugin, decisions);
-    fixture.assertReadsConsumed();
-    return result;
+    try {
+      const result = await discoverCoverage(fixture.ctx, plugin, decisions);
+      fixture.assertReadsConsumed();
+      return result;
+    } finally { mock.mockRestore(); }
   }
   const choose = (conflict: Awaited<ReturnType<typeof review>>["conflicts"][number], selectedId: string) =>
     approveConflict(conflict, { evidence: conflict.evidence, selectedId, reason: "Reviewed fictional import sources" }, "effective-admin", "2026-10-01T10:00:00Z");

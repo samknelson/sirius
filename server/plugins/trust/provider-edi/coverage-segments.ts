@@ -36,6 +36,8 @@ function assertSingleFamily(rows: readonly SegmentCoverage[]): void {
 
 export function coverageSegments(rows: readonly SegmentCoverage[]) {
   const months = new Map<string, SegmentCoverage[]>();
+  const starts = new Map<string, number>();
+  const validated = new Set<string>();
   for (const row of rows) {
     const key = `${row.workerId}|${row.benefitId}|${monthIndex(row.year, row.month)}`;
     const group = months.get(key) ?? [];
@@ -46,16 +48,25 @@ export function coverageSegments(rows: readonly SegmentCoverage[]) {
     start(member: SegmentCoverage): string {
       let index = monthIndex(member.year, member.month);
       const cobra = isEdiCobra(member.employerSiriusId);
+      const path: string[] = [];
       for (;;) {
-        const group = months.get(`${member.workerId}|${member.benefitId}|${index}`) ?? [];
+        const key = `${member.workerId}|${member.benefitId}|${index}`;
+        const group = months.get(key) ?? [];
         // Even a boundary month must be unambiguous before it can establish
         // that the previous segment had a different classification.
-        assertUnmixedCoverage(group);
-        assertSingleFamily(group);
-        const family = group.filter(r => r.sourceRelationId === member.sourceRelationId);
-        if (!family.length || isEdiCobra(family[0].employerSiriusId) !== cobra) break;
+        if (!validated.has(key)) {
+          assertUnmixedCoverage(group);
+          assertSingleFamily(group);
+          validated.add(key);
+        }
+        if (!group.length || group[0].sourceRelationId !== member.sourceRelationId ||
+            isEdiCobra(group[0].employerSiriusId) !== cobra) break;
+        const cached = starts.get(key);
+        if (cached !== undefined) { index = cached - 1; break; }
+        path.push(key);
         index--;
       }
+      for (const key of path) starts.set(key, index + 1);
       return monthStart(index + 1);
     },
     validateMonth(member: SegmentCoverage): void {

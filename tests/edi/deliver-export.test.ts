@@ -46,7 +46,12 @@ vi.mock("../../server/plugins/_core", async original => ({
     return state.allowed ? { ok: true } : { ok: false, status: 403, message: "Forbidden" };
   },
 }));
-vi.mock("../../server/plugins/wizards/validation-run", () => ({ startValidationRun: vi.fn() }));
+vi.mock("../../server/plugins/wizards/validation-run", async original => ({
+  ...await original<any>(), startValidationRun: vi.fn(),
+}));
+vi.mock("../../server/storage/wizard-validation-lock", () => ({
+  withWizardValidationWrite: (write: () => Promise<unknown>) => write(),
+}));
 vi.mock("../../server/plugins/wizards/process-run", () => ({ startProcessRun: vi.fn(), PROCESS_PROTOCOL: "fixture" }));
 vi.mock("../../server/services/file-transfer-client", () => ({ testUpload: (...args: unknown[]) => state.upload(...args as []) }));
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: async () => ({ dbUser: { id: "fixture-user" } }) }));
@@ -69,7 +74,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture" });
+  vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture", events: [] });
   state.allowed = true;
   state.rows = [{ data: { pk: "saved", firstName: "Fixture", memberSsn: "000123456" } }];
   state.getRows.mockImplementation(async () => state.rows);
@@ -122,7 +127,7 @@ describe("authorized, read-only Deliver exports", () => {
       subscriberLabel: "Fictional Member", subscriberWorkerId: "fictional-person", isCobra: false, familyIssue: null,
     };
     const conflict = reviewConflict([candidate, { ...candidate, id: "cobra", isCobra: true, employerSiriusId: "COBRA" }], "evidence", []);
-    vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [conflict], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture" });
+    vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [conflict], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture", events: [] });
     return { key: conflict.key, evidence: conflict.evidence, selectedId: "cobra", reason: "Reviewed fictional source evidence" };
   }
   it.each(["sitespecific-bao-kaiser", "sitespecific-smf-local11"])(
@@ -187,8 +192,8 @@ describe("authorized, read-only Deliver exports", () => {
   it("checks source evidence again before publishing completed metadata", async () => {
     const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
     const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue([]);
-    vi.mocked(discoverCoverage).mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "before" })
-      .mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "after" });
+    vi.mocked(discoverCoverage).mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "before", events: [] })
+      .mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "after", events: [] });
     const { storage } = await import("../../server/storage");
     try {
       await expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!.run!({

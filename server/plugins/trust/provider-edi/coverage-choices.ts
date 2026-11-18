@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { isEdiCobra, type SegmentCoverage } from "./coverage-segments";
+import { coverageSegments, isEdiCobra, type SegmentCoverage } from "./coverage-segments";
 import type { EdiCoverageCandidate, EdiCoverageConflict, EdiCoverageDecision } from "@shared/edi-coverage-choices";
+import type { trustWmbEvents, workerRelations } from "@shared/schema";
 
 export const coverageKey = (r: Pick<SegmentCoverage, "workerId" | "benefitId" | "year" | "month">) =>
   `${r.workerId}|${r.benefitId}|${r.year}-${String(r.month).padStart(2, "0")}`;
@@ -54,6 +55,32 @@ export interface CoverageProjection {
   decisions: EdiCoverageDecision[];
   fingerprint: string;
 }
+// Ephemeral only: never serialize raw history into wizard JSON or decisions.
+const indexes = new WeakMap<CoverageProjection, {
+  byId: Map<string, SegmentCoverage>;
+  byPerson: Map<string, SegmentCoverage[]>;
+  segments: ReturnType<typeof coverageSegments>;
+  events?: (typeof trustWmbEvents.$inferSelect)[];
+  relations?: (typeof workerRelations.$inferSelect)[];
+}>();
+export function indexCoverageProjection(projection: CoverageProjection, rows: readonly SegmentCoverage[],
+  events?: (typeof trustWmbEvents.$inferSelect)[], relations?: (typeof workerRelations.$inferSelect)[]) {
+  const retained = rows.filter(row => !projection.excludedIds.has(row.id));
+  const byPerson = new Map<string, SegmentCoverage[]>();
+  for (const row of retained) {
+    const group = byPerson.get(row.workerId) ?? [];
+    group.push(row); byPerson.set(row.workerId, group);
+  }
+  indexes.set(projection, {
+    byId: new Map(retained.map(row => [row.id, row])),
+    segments: coverageSegments(retained),
+    events, relations,
+    byPerson,
+  });
+  return projection;
+}
+export const coverageProjectionIndex = (projection?: CoverageProjection) => projection ? indexes.get(projection) : undefined;
+export const releaseCoverageProjectionIndex = (projection: CoverageProjection) => indexes.delete(projection);
 export function projectCoverage<T>(rows: readonly T[], projection: CoverageProjection | undefined, id: (r: T) => string): T[] {
   return projection ? rows.filter(r => !projection.excludedIds.has(id(r))) : [...rows];
 }

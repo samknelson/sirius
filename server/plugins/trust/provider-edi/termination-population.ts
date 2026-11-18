@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { trustWmb, trustWmbEvents, trustWmbScanQueue, workerRelations, employers } from "@shared/schema";
 import { coverageSegments } from "./coverage-segments";
-import { projectCoverage } from "./coverage-choices";
+import { projectCoverage, coverageProjectionIndex } from "./coverage-choices";
 import type { TrustProviderEdiContext } from "./registry";
 import {
   monthIndex, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
@@ -71,6 +71,7 @@ export function selectTerminationCandidates(
   confirmedEventIds: ReadonlySet<string>, asOf: string,
   policy: ReturnType<typeof readTerminationPolicy>,
   contradictedEventIds: ReadonlySet<string> = new Set(),
+  segments = coverageSegments(coverage),
 ): TerminationCandidate[] {
   const window = terminationWindow(asOf, policy.months);
   const relationMap = new Map(relations.map(r => [r.id, r]));
@@ -82,7 +83,6 @@ export function selectTerminationCandidates(
     byPerson.set(key, list);
   }
   const result: TerminationCandidate[] = [];
-  const segments = coverageSegments(coverage);
   for (const event of events) {
     const eventMonth = monthIndex(event.year, event.month);
     const endMonth = eventMonth - 1;
@@ -140,7 +140,8 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
   if (!policy.subscribers && !policy.dependents) return [];
   const asOf = readAsOfYmd(ctx);
   const window = terminationWindow(asOf, policy.months);
-  const events = await ctx.storage.readOnly.query(db => db.select().from(trustWmbEvents).where(and(
+  const sharedIndex = coverageProjectionIndex(ctx.coverageProjection);
+  const events = sharedIndex?.events ?? await ctx.storage.readOnly.query(db => db.select().from(trustWmbEvents).where(and(
     inArray(trustWmbEvents.benefitId, benefitIds), eq(trustWmbEvents.eventType, "terminate"),
     sql`${trustWmbEvents.year} * 12 + ${trustWmbEvents.month} - 1 BETWEEN ${window.firstEnd + 1} AND ${window.report}`,
   )));
@@ -148,21 +149,27 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
   for (let offset = 0; offset < events.length; offset += 100) {
     const batch = events.slice(offset, offset + 100);
     const workerIds = [...new Set(batch.map(e => e.workerId))];
-    const coverage = await ctx.storage.readOnly.query(db => db.select().from(trustWmb).where(and(
+    const coverage: Coverage[] = sharedIndex ? workerIds.flatMap(id => sharedIndex.byPerson.get(id) ?? []).filter(r =>
+      benefitIds.includes(r.benefitId)) : await ctx.storage.readOnly.query(db => db.select().from(trustWmb).where(and(
       inArray(trustWmb.workerId, workerIds), inArray(trustWmb.benefitId, benefitIds),
     )));
     const relationIds = [...new Set(coverage.map(r => r.sourceRelationId).filter((v): v is string => !!v))];
-    const relations = relationIds.length ? await ctx.storage.readOnly.query(db =>
-      db.select().from(workerRelations).where(inArray(workerRelations.id, relationIds))) : [];
+    const relations = sharedIndex?.relations?.filter(r => relationIds.includes(r.id)) ?? (relationIds.length ? await ctx.storage.readOnly.query(db =>
+      db.select().from(workerRelations).where(inArray(workerRelations.id, relationIds))) : []);
     const parentIds = [...new Set(relations.map(r => r.worker1).filter(id => !workerIds.includes(id)))];
-    if (parentIds.length) coverage.push(...await ctx.storage.readOnly.query(db =>
-      db.select().from(trustWmb).where(and(inArray(trustWmb.workerId, parentIds), inArray(trustWmb.benefitId, benefitIds)))));
+    if (parentIds.length) {
+      if (sharedIndex) {
+        for (const id of parentIds) for (const row of sharedIndex.byPerson.get(id) ?? [])
+          if (benefitIds.includes(row.benefitId)) coverage.push(row);
+      } else coverage.push(...await ctx.storage.readOnly.query(db =>
+        db.select().from(trustWmb).where(and(inArray(trustWmb.workerId, parentIds), inArray(trustWmb.benefitId, benefitIds)))));
+    }
     const employerIds = [...new Set(coverage.map(r => r.employerId))];
-    const employerRows = employerIds.length ? await ctx.storage.readOnly.query(db =>
+    const employerRows = !sharedIndex && employerIds.length ? await ctx.storage.readOnly.query(db =>
       db.select({ id: employers.id, siriusId: employers.siriusId }).from(employers)
         .where(inArray(employers.id, employerIds))) : [];
     const employerSids = new Map(employerRows.map(r => [r.id, r.siriusId]));
-    const classifiedCoverage = coverage.map(r => ({ ...r, employerSiriusId: employerSids.get(r.employerId) ?? null }));
+    const classifiedCoverage = sharedIndex ? coverage : coverage.map(r => ({ ...r, employerSiriusId: employerSids.get(r.employerId) ?? null }));
     // Parent scans can carry individual dependent decisions. Load once per
     // batch, not once per person. Newest attempts supersede older summaries.
     const scans = await ctx.storage.readOnly.query(db => db.select({
@@ -174,7 +181,9 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
       sql`${trustWmbScanQueue.year} * 12 + ${trustWmbScanQueue.month} - 1 BETWEEN ${window.firstEnd + 1} AND ${window.report}`,
       or(inArray(trustWmbScanQueue.workerId, workerIds),
         ...workerIds.map(id => sql`(${trustWmbScanQueue.resultSummary}->'people') @> jsonb_build_array(jsonb_build_object('workerId', ${id}::text))`)),
-    )).orderBy(desc(trustWmbScanQueue.completedAt), desc(trustWmbScanQueue.id)));
+    )).orderBy(desc(trustWmbScanQueue.completedAt), desc(trustWmbScanQueue.id)).limit(5001),
+    { statementTimeoutMs: 10_000 });
+    if (scans.length > 5000) throw new Error("Termination scan evidence exceeded its safe resource budget. No partial generation is available; ask an administrator to inspect scan history.");
     const confirmed = confirmedTerminationIds(batch, scans);
     const contradicted = new Set([...terminationScanDecisions(batch, scans)]
       .filter(([, decision]) => !decision).map(([id]) => id));
@@ -182,7 +191,7 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
     // covered month or manufacture a termination/reinstatement gap.
     result.push(...selectTerminationCandidates(batch,
       projectCoverage(classifiedCoverage, ctx.coverageProjection, r => r.id),
-      relations, confirmed, asOf, policy, contradicted));
+      relations, confirmed, asOf, policy, contradicted, sharedIndex?.segments));
   }
   return result;
 }

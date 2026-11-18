@@ -17,7 +17,9 @@ import type {
 } from "./types";
 import type { Wizard } from "@shared/schema";
 import { randomUUID } from "node:crypto";
-import { startValidationRun } from "./validation-run";
+import { startValidationRun, validationProgressWriter } from "./validation-run";
+import { withWizardValidationWrite } from "../../storage/wizard-validation-lock";
+import { tryAdmitCoverageRun } from "../trust/provider-edi/coverage-budget";
 import { startProcessRun, PROCESS_PROTOCOL } from "./process-run";
 
 type AuthMiddleware = (
@@ -376,7 +378,13 @@ export function registerWizardDispatcherRoutes(
       } catch (error) {
         return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid run request." });
       }
-      const started = await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
+      const boundedWrite = <T,>(write: () => Promise<T>) =>
+        loaded.plugin.id === "trust_provider_edi" ? withWizardValidationWrite(write) : write();
+      const releaseResources = loaded.plugin.id === "trust_provider_edi" ? tryAdmitCoverageRun() : () => {};
+      if (!releaseResources) return res.status(409).json({ message: "Another EDI operation is running on this server. Refresh status and retry after it finishes." });
+      let started;
+      try {
+        started = await boundedWrite(() => storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
         status: "in_progress",
         percentComplete: null,
         phase: "Starting",
@@ -386,44 +394,65 @@ export function registerWizardDispatcherRoutes(
         startedAt: new Date().toISOString(),
         heartbeatAt: new Date().toISOString(),
       }, true, {}, undefined, undefined, loaded.plugin.id, step.retrySafe ? "safe-retry" : "initial",
-      loaded.plugin.id === "trust_provider_edi" ? loaded.wizard.data : undefined);
-      if (!started) return res.status(409).json({ message: "This run changed before it could start. Refresh status; only explicitly safe steps can be retried after a confirmed terminal result." });
+      loaded.plugin.id === "trust_provider_edi" ? loaded.wizard.data : undefined));
+      } catch {
+        releaseResources();
+        return res.status(503).json({ message: "Run admission could not be confirmed. Refresh status before retrying." });
+      }
+      if (!started) {
+        releaseResources();
+        return res.status(409).json({ message: "This run changed before it could start. Refresh status; only explicitly safe steps can be retried after a confirmed terminal result." });
+      }
       // Kick off the work and respond immediately.
       res.status(202).json({ started: true, runId });
 
       void (async () => {
-        const heartbeat = setInterval(() => {
-          void storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
-            heartbeatAt: new Date().toISOString(),
-          }).catch(error => logger.warn("Wizard run heartbeat failed", {
-            service: SERVICE, wizardId: loaded.wizard.id, step: step.id,
-            error: error instanceof Error ? error.message : String(error),
-          }));
-        }, 30_000);
+        let ownershipLost = false;
+        const writer = validationProgressWriter(async patch => {
+          const start = performance.now();
+          logger.info("Wizard progress write started", { service: SERVICE, step: step.id, runId });
+          try {
+            const saved = await boundedWrite(() => storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, patch));
+            if (!saved) ownershipLost = true;
+          } finally {
+            logger.info("Wizard progress write finished", { service: SERVICE, step: step.id, runId,
+              milliseconds: Math.round(performance.now() - start) });
+          }
+        }, () => logger.warn("Wizard progress write unavailable; ownership is not released", { service: SERVICE, step: step.id, runId }), 250);
+        const heartbeat = setInterval(() => writer.report({}), 30_000);
         try {
           const fresh = await storage.wizards.getById(loaded.wizard.id);
           if (!fresh) return;
           const ctx = buildStepContext(fresh, step.id, input, req, undefined, runId);
+          if (loaded.plugin.id === "trust_provider_edi") ctx.reportProgress = async (percentComplete, details) => {
+            if (ownershipLost) throw new Error("This operation no longer owns the wizard.");
+            writer.report({ percentComplete, ...details });
+          };
           const out = await step.run!(ctx);
-          await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
+          writer.stop();
+          if (ownershipLost) throw new Error("This operation no longer owns the wizard.");
+          await boundedWrite(() => storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
             status: "completed",
             completedAt: new Date().toISOString(),
             percentComplete: 100,
-          }, false, out?.data ?? {}, out?.status);
+          }, false, out?.data ?? {}, out?.status));
         } catch (error) {
+          writer.stop();
           logger.error("Wizard dispatch run failed", {
             service: SERVICE,
             wizardId: loaded.wizard.id,
             step: step.id,
             error: error instanceof Error ? error.message : String(error),
           });
-          await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
+          await boundedWrite(() => storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
             status: "failed",
             error:
               error instanceof Error ? error.message : "Run failed",
-          });
+          }));
         } finally {
+          writer.stop();
           clearInterval(heartbeat);
+          releaseResources();
         }
       })().catch(error => logger.error("Wizard terminal status could not be persisted", {
         service: SERVICE, wizardId: loaded.wizard.id, step: step.id,

@@ -22,3 +22,17 @@ Background evidence checking is a responsiveness change, not a confirmed fix for
 **Why:** The user identified synchronous discovery as a plausible cause of a 502, not an established cause. Historical continuity and later reinstatement must remain authoritative regardless of runtime cost.
 
 **How to apply:** Distinguish synthetic computation timings from live query latency. Do not claim the gateway cause was proven, impose an arbitrary history cutoff, or treat an unavailable/stale heartbeat as permission to retry interrupted work.
+
+Resource work must first scope authoritative queries and share historical
+calculation; process isolation is conditional on measured residual responsiveness
+risk, not a substitute for bounded reads. Do not introduce a persisted coverage
+span denormalization without separate approval.
+
+**Why:** The approved approach preserves complete EDI family/class segments and
+reinstatement evidence while avoiding another freshness/backfill subsystem.
+
+**How to apply:** Measure real database ingestion, peak process memory and
+concurrent requests on an isolated target. A heap-growth threshold measured from
+one starting sample is not a retained-memory estimate: garbage collection policy
+can make the same completed workload show very different peaks. Report the
+runtime limits used, and keep local evidence distinct from staging acceptance.

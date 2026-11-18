@@ -14,7 +14,7 @@ import {
 } from "../../trust/provider-edi/termination-policy";
 import { validateAgainstSchema } from "../../../lib/json-schema-validator";
 import { discoverCoverage, coverageProjection } from "../../trust/provider-edi/coverage-review";
-import { approveConflict, evidenceHash } from "../../trust/provider-edi/coverage-choices";
+import { approveConflict, evidenceHash, releaseCoverageProjectionIndex } from "../../trust/provider-edi/coverage-choices";
 import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
 
 /**
@@ -387,6 +387,7 @@ const runStep: WizardStepHandler = {
     }
 
     if (ediCtx.coverageProjection) {
+      releaseCoverageProjectionIndex(ediCtx.coverageProjection);
       const fresh = await discoverCoverage(ediCtx, plugin, ediCtx.coverageProjection.decisions,
         (percent, details) => ctx.reportProgress(percent, { ...details, phase: `Final evidence validation: ${details?.phase ?? ""}` }));
       const checked = coverageProjection(fresh);

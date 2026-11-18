@@ -18,7 +18,13 @@ import type {
 } from "./registry";
 import { logger } from "../../../logger";
 import { coverageSegments, isEdiCobra } from "./coverage-segments";
-import { projectCoverage } from "./coverage-choices";
+import { projectCoverage, coverageProjectionIndex } from "./coverage-choices";
+import { COVERAGE_LIMITS } from "./coverage-budget";
+
+function boundedCoverageRows<T>(rows: T[]): T[] {
+  if (rows.length > COVERAGE_LIMITS.rows) throw new Error("Coverage evidence exceeded its safe resource budget. No partial generation is available.");
+  return rows;
+}
 
 /**
  * Shared base logic for trust-provider EDI plugins.
@@ -211,6 +217,7 @@ export async function resolveBenefitIds(
       .select({ id: trustBenefits.id, siriusId: trustBenefits.siriusId })
       .from(trustBenefits)
       .where(inArray(trustBenefits.siriusId, [...benefitSiriusIds])),
+    { statementTimeoutMs: COVERAGE_LIMITS.queryMs },
   );
   const found = new Map(rows.map((r) => [r.siriusId, r.id]));
   const missing = benefitSiriusIds.filter((s) => !found.has(s));
@@ -253,7 +260,7 @@ export async function wmbPrimaryKeys(
   const asOfYmd = readAsOfYmd(ctx);
   const asOfYear = Number(asOfYmd.slice(0, 4));
   const asOfMonth = Number(asOfYmd.slice(5, 7));
-  const wmbRows = projectCoverage(await ctx.storage.readOnly.query(async (db) =>
+  const wmbRows = projectCoverage(boundedCoverageRows(await ctx.storage.readOnly.query(async (db) =>
     db
       .select({
         id: trustWmb.id,
@@ -278,8 +285,9 @@ export async function wmbPrimaryKeys(
           eq(trustWmb.year, asOfYear),
           eq(trustWmb.month, asOfMonth),
         ),
-      ),
-  ), ctx.coverageProjection, r => r.id);
+      ).limit(COVERAGE_LIMITS.rows + 1),
+    { statementTimeoutMs: COVERAGE_LIMITS.queryMs },
+  )), ctx.coverageProjection, r => r.id);
   const segments = coverageSegments(wmbRows);
   for (const row of wmbRows) segments.validateMonth(row);
   // Subscribers on this file: workers holding their own (null-source) row
@@ -502,22 +510,26 @@ export async function buildMemberUnits(
                 inArray(trustWmb.benefitId, benefitIds),
                 inArray(trustWmb.year, years),
                 inArray(trustWmb.month, months),
+                inArray(workerRelations.worker1, workerIds),
                 isNotNull(trustWmb.sourceRelationId),
               ),
-            )
+            ).limit(COVERAGE_LIMITS.rows + 1)
         : [];
+    if (depWmbRows.length > COVERAGE_LIMITS.rows) throw new Error("Dependent coverage exceeded its safe resource budget. No partial generation is available.");
     const relevantDeps = projectCoverage(depWmbRows, ctx.coverageProjection, r => r.depWmbId).filter(dep => wmbRows.some(wmb =>
       dep.subscriberWorkerId === wmb.workerId && dep.benefitId === wmb.benefitId &&
       dep.year === wmb.year && dep.month === wmb.month));
     const historyWorkerIds = [...new Set([...workerIds, ...relevantDeps.map(r => r.depWorkerId)])];
-    const history = projectCoverage(historyWorkerIds.length ? await db.select({
+    const sharedIndex = coverageProjectionIndex(ctx.coverageProjection);
+    const history = projectCoverage(boundedCoverageRows(!sharedIndex && historyWorkerIds.length ? await db.select({
       id: trustWmb.id, workerId: trustWmb.workerId, benefitId: trustWmb.benefitId,
       year: trustWmb.year, month: trustWmb.month, employerId: trustWmb.employerId,
       sourceRelationId: trustWmb.sourceRelationId, employerSiriusId: employers.siriusId,
     }).from(trustWmb).leftJoin(employers, eq(trustWmb.employerId, employers.id))
-      .where(and(inArray(trustWmb.workerId, historyWorkerIds), inArray(trustWmb.benefitId, benefitIds))) : [], ctx.coverageProjection, r => r.id);
-    const historyById = new Map(history.map(r => [r.id, r]));
-    const segments = coverageSegments(history);
+      .where(and(inArray(trustWmb.workerId, historyWorkerIds), inArray(trustWmb.benefitId, benefitIds)))
+      .limit(COVERAGE_LIMITS.rows + 1) : []), ctx.coverageProjection, r => r.id);
+    const historyById = sharedIndex?.byId ?? new Map(history.map(r => [r.id, r]));
+    const segments = sharedIndex?.segments ?? coverageSegments(history);
     function segmentFor(id: string) {
       const row = historyById.get(id);
       if (!row) throw new Error(`WMB ${id}: coverage history changed or is missing. Regenerate after correcting history.`);

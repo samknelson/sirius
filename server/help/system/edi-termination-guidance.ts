@@ -82,6 +82,12 @@ export const ediTerminationGuidance = `
   is not a failed or successful job: use <strong>Refresh status</strong> to reconnect.
   A missing or stale heartbeat does not authorize another run; ask an administrator to
   investigate interrupted work. Background work is not guaranteed to survive a server restart.</p>
+  <p>Coverage checks have resource and database-wait limits to protect other users.
+  Exceeding a limit fails the whole check; it never accepts shortened history or
+  partial evidence. Another EDI operation on the same server may temporarily block
+  starting a check. After a confirmed failure, ask an administrator to inspect the
+  scan diagnostics before retrying a resource-limit error. Do not repeatedly retry
+  unchanged oversized evidence. An unavailable status still does not prove work stopped.</p>
   <p>Unresolved or stale choices block generation. Added, removed or changed candidate/family evidence
   requires explicit review again, even if your chosen WMB still exists. If previously
   approved evidence is no longer part of the run, review and save <strong>Parameters</strong>
