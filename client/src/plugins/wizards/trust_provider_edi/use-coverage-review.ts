@@ -72,7 +72,7 @@ export function useCoverageReview(wizardId: string, autoStart = true) {
         fingerprint: review.data?.fingerprint, revision: review.data?.revision }),
     onSettled: reloadStatus,
   });
-  return { review, save, refresh, running, generating, statusUnavailable, progress, start,
+  return { review, save, refresh, running, generating, statusUnavailable, statusLoading: wizard.isPending, progress, start,
     ready: !statusUnavailable && !running &&
       (review.data?.applicable === false || (review.data?.ready === true && progress?.status === "completed")),
   };

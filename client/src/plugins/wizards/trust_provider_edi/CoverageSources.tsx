@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getApiErrorMessage } from "@/lib/queryClient";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
+import { WizardProgress } from "@/components/wizards/framework/WizardProgress";
 import type { EdiCoverageCandidate, EdiCoverageConflict, EdiCoverageDecision } from "@shared/edi-coverage-choices";
 import { hasValidCoverageDecision, useCoverageReview } from "./use-coverage-review";
 
@@ -125,7 +126,7 @@ function Snapshot({ decision }: { decision: EdiCoverageDecision }) {
 }
 
 export function CoverageSources({ wizardId, data }: WizardStepComponentProps) {
-  const { review, save, refresh, running, generating, statusUnavailable, progress, start, ready } = useCoverageReview(wizardId);
+  const { review, save, refresh, running, generating, statusUnavailable, statusLoading, progress, start, ready } = useCoverageReview(wizardId);
   const locked = running || start.isPending || !ready || data?.progress?.run?.status === "in_progress" || statusUnavailable || review.isFetching || review.isError;
   return <div className="space-y-5">
     <Card>
@@ -140,10 +141,16 @@ export function CoverageSources({ wizardId, data }: WizardStepComponentProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         {generating && <Alert><AlertDescription>Generation is active. Decisions are read-only until generation finishes.</AlertDescription></Alert>}
-        {statusUnavailable && <Alert variant="destructive"><AlertDescription>Current status is unavailable. This does not mean the work failed. Editing is disabled; use Refresh status to reconnect.</AlertDescription></Alert>}
-        {!statusUnavailable && progress?.status === "in_progress" && <div role="status" className="space-y-2">
-          <progress className="h-4 w-full" max={100} value={progress.percentComplete ?? undefined} aria-label="Coverage evidence progress" />
-          <p>{progress.phase || "Checking coverage evidence"}{progress.total ? ` · ${progress.processed ?? 0}/${progress.total}` : ""}</p>
+        {statusUnavailable && !statusLoading && <Alert variant="destructive"><AlertDescription>Current status is unavailable. This does not mean the work failed. Editing is disabled; use Refresh status to reconnect.</AlertDescription></Alert>}
+        {(statusLoading || (!statusUnavailable && start.isPending && !running)) &&
+          <WizardProgress label="Coverage evidence admission"
+            activity={statusLoading ? "Loading coverage status…" : "Confirming evidence check admission…"} />}
+        {!statusUnavailable && progress?.status === "in_progress" && <div className="space-y-2">
+          <WizardProgress label="Coverage evidence progress" percentComplete={progress.percentComplete}
+            activity="Checking coverage evidence…" phase={progress.phase}
+            counts={progress.total && progress.total > 0
+              ? `${progress.processed ?? 0}/${progress.total}`
+              : progress.processed && progress.processed > 0 ? `${progress.processed} processed` : undefined} />
           <p className="text-sm text-muted-foreground">Decisions, completion, settings and generation are blocked while checking. You may leave and return to this run.</p>
           {(!Number.isFinite(Date.parse(progress.heartbeatAt ?? "")) || Date.now() - Date.parse(progress.heartbeatAt!) > 120000) &&
             <p>Heartbeat is missing or stale. Work may be interrupted; do not start another check. Ask an administrator to investigate.</p>}

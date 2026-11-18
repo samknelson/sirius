@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { WizardProgress } from "./WizardProgress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Play, CheckCircle2, AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -31,7 +31,6 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
   const progress = tracked.data?.data?.progress?.[step.id] ??
     (tracked.isError ? undefined : step.progress);
   const status = progress?.status;
-  const pct = progress?.percentComplete ?? 0;
   const error = progress?.error;
   const running = status === "in_progress";
   const completed = status === "completed" || (!status && step.state === "completed");
@@ -78,12 +77,14 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          {completed ? (
+          {tracked.isError ? (
+            <AlertCircle className="h-5 w-5 text-destructive" />
+          ) : completed ? (
             <CheckCircle2 className="h-5 w-5 text-primary" />
           ) : failed ? (
             <AlertCircle className="h-5 w-5 text-destructive" />
           ) : running ? (
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <Loader2 className="h-5 w-5 motion-safe:animate-spin text-primary" />
           ) : (
             <Play className="h-5 w-5 text-muted-foreground" />
           )}
@@ -118,23 +119,23 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
           <p className="text-sm text-muted-foreground">{step.description}</p>
         )}
 
-        {running && (
-          <div className="space-y-2" data-testid="run-progress">
-            {progress?.percentComplete == null
-              ? <progress className="h-4 w-full" aria-label="Run progress" />
-              : <Progress value={pct} />}
-            <p className="text-sm text-muted-foreground">
-              Running… {progress?.percentComplete != null && `${pct}%`}
-              {progress?.phase && ` · ${progress.phase}`}
-              {bao && progress?.total > 0 && ` · ${progress.processed ?? 0}/${progress.total} rows`}
-            </p>
+        {!tracked.isError && (tracked.isPending || (runMutation.isPending && !running)) && (
+          <WizardProgress label="Run admission" activity={tracked.isPending ? "Loading run status…" : "Confirming run admission…"} />
+        )}
+        {running && !tracked.isError && (
+          <div data-testid="run-progress">
+            <WizardProgress label="Run progress" percentComplete={progress?.percentComplete}
+              phase={progress?.phase}
+              counts={progress?.total > 0
+                ? `${progress.processed ?? 0}/${progress.total}${bao ? " rows" : ""}`
+                : progress?.processed > 0 ? `${progress.processed} processed` : undefined} />
           </div>
         )}
 
-        {bao && completed && progress?.partialPostingRisk && <Alert variant="destructive"><AlertDescription>
+        {bao && completed && !tracked.isError && progress?.partialPostingRisk && <Alert variant="destructive"><AlertDescription>
           Process finished with {progress.rowIssues ?? "some"} row issues. Review the saved results; some rows may not be fully posted. Do not resubmit without reconciliation.
         </AlertDescription></Alert>}
-        {completed && (
+        {completed && !tracked.isError && (
           <Alert>
             <CheckCircle2 className="h-4 w-4" />
             <AlertDescription>
@@ -143,7 +144,7 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
           </Alert>
         )}
 
-        {failed && (
+        {failed && !tracked.isError && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -164,9 +165,14 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
           disabled={!canStart || runMutation.isPending}
           data-testid="button-run-wizard"
         >
-          {running ? (
+          {tracked.isError ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <AlertCircle className="h-4 w-4 mr-2" />
+              Status unavailable
+            </>
+          ) : running ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
               Running…
             </>
           ) : failed && step.retrySafe ? (
