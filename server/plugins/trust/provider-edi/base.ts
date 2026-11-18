@@ -18,6 +18,7 @@ import type {
 } from "./registry";
 import { logger } from "../../../logger";
 import { coverageSegments, isEdiCobra } from "./coverage-segments";
+import { projectCoverage } from "./coverage-choices";
 
 /**
  * Shared base logic for trust-provider EDI plugins.
@@ -252,7 +253,7 @@ export async function wmbPrimaryKeys(
   const asOfYmd = readAsOfYmd(ctx);
   const asOfYear = Number(asOfYmd.slice(0, 4));
   const asOfMonth = Number(asOfYmd.slice(5, 7));
-  const wmbRows = await ctx.storage.readOnly.query(async (db) =>
+  const wmbRows = projectCoverage(await ctx.storage.readOnly.query(async (db) =>
     db
       .select({
         id: trustWmb.id,
@@ -278,7 +279,7 @@ export async function wmbPrimaryKeys(
           eq(trustWmb.month, asOfMonth),
         ),
       ),
-  );
+  ), ctx.coverageProjection, r => r.id);
   const segments = coverageSegments(wmbRows);
   for (const row of wmbRows) segments.validateMonth(row);
   // Subscribers on this file: workers holding their own (null-source) row
@@ -440,10 +441,10 @@ export async function buildMemberUnits(
   ctx: TrustProviderEdiContext,
 ): Promise<EdiMemberUnit[]> {
   return ctx.storage.readOnly.query(async (db) => {
-    const wmbRows = await db
+    const wmbRows = projectCoverage(await db
       .select()
       .from(trustWmb)
-      .where(inArray(trustWmb.id, keys));
+      .where(inArray(trustWmb.id, keys)), ctx.coverageProjection, r => r.id);
 
     // Coverage start = first month of the worker's CONTIGUOUS run of
     // monthly records for this benefit ending at the wmb month. Load all
@@ -505,16 +506,16 @@ export async function buildMemberUnits(
               ),
             )
         : [];
-    const relevantDeps = depWmbRows.filter(dep => wmbRows.some(wmb =>
+    const relevantDeps = projectCoverage(depWmbRows, ctx.coverageProjection, r => r.depWmbId).filter(dep => wmbRows.some(wmb =>
       dep.subscriberWorkerId === wmb.workerId && dep.benefitId === wmb.benefitId &&
       dep.year === wmb.year && dep.month === wmb.month));
     const historyWorkerIds = [...new Set([...workerIds, ...relevantDeps.map(r => r.depWorkerId)])];
-    const history = historyWorkerIds.length ? await db.select({
+    const history = projectCoverage(historyWorkerIds.length ? await db.select({
       id: trustWmb.id, workerId: trustWmb.workerId, benefitId: trustWmb.benefitId,
       year: trustWmb.year, month: trustWmb.month, employerId: trustWmb.employerId,
       sourceRelationId: trustWmb.sourceRelationId, employerSiriusId: employers.siriusId,
     }).from(trustWmb).leftJoin(employers, eq(trustWmb.employerId, employers.id))
-      .where(and(inArray(trustWmb.workerId, historyWorkerIds), inArray(trustWmb.benefitId, benefitIds))) : [];
+      .where(and(inArray(trustWmb.workerId, historyWorkerIds), inArray(trustWmb.benefitId, benefitIds))) : [], ctx.coverageProjection, r => r.id);
     const historyById = new Map(history.map(r => [r.id, r]));
     const segments = coverageSegments(history);
     function segmentFor(id: string) {

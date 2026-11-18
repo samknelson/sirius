@@ -442,6 +442,7 @@ export function registerWizardDispatcherRoutes(
         if (step.getData) {
           const ctx = buildStepContext(loaded.wizard, step.id, {}, req);
           const payload = await step.getData(ctx);
+          if (loaded.plugin.id === "trust_provider_edi") res.setHeader("Cache-Control", "private, no-store");
           return res.json(payload);
         }
         if (step.kind !== "results") {

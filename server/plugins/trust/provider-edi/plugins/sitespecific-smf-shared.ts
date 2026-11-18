@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { trustBenefits, trustWmb } from "@shared/schema";
 import type { TrustProviderEdiContext } from "../registry";
 import type { EdiMemberUnit } from "../base";
+import { projectCoverage } from "../coverage-choices";
 
 /**
  * Shared SMF helpers for the fixed-width EDI plugins (Delta, Express
@@ -60,6 +61,7 @@ export async function clientGroupIdsByWorker(
   const rows = await ctx.storage.readOnly.query(async (db) =>
     db
       .select({
+        id: trustWmb.id,
         workerId: trustWmb.workerId,
         year: trustWmb.year,
         month: trustWmb.month,
@@ -78,7 +80,7 @@ export async function clientGroupIdsByWorker(
   );
   // Exact (worker, year, month) match per unit; first mapping-order hit wins.
   const held = new Map<string, Set<string>>();
-  for (const r of rows) {
+  for (const r of projectCoverage(rows, ctx.coverageProjection, r => r.id)) {
     const key = `${r.workerId}|${r.year}-${r.month}`;
     let set = held.get(key);
     if (!set) held.set(key, (set = new Set()));

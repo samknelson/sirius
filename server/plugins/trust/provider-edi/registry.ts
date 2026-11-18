@@ -23,6 +23,7 @@ export interface EdiBatchAggregates {
 }
 
 export interface TrustProviderEdiContext {
+  coverageProjection?: import("./coverage-choices").CoverageProjection;
   /** Base plugin_configs row id of the selected EDI configuration. */
   configId: string;
   /** The config's `data` blob (per-type variables, e.g. region code). */
@@ -53,6 +54,8 @@ export interface TrustProviderEdiContext {
  * the selected configuration.
  */
 export interface TrustProviderEdiPlugin extends BasePluginMetadata {
+  /** Supplemental WMB readers participate in the same run-only projection. */
+  coverageLookup?: "medical-groups" | "medical-type";
   /** JSON Schema for per-config variables stored in the config `data` blob. */
   configSchema?: JsonSchema;
   /** JSON Schema for wizard run parameters (e.g. as-of date). */

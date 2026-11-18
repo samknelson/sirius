@@ -1,6 +1,13 @@
 import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { discoverCoverage } from "../../server/plugins/trust/provider-edi/coverage-review";
+import { reviewConflict } from "../../server/plugins/trust/provider-edi/coverage-choices";
+import type { EdiCoverageCandidate } from "@shared/edi-coverage-choices";
+vi.mock("../../server/plugins/trust/provider-edi/coverage-review", async original => ({
+  ...await original<any>(),
+  discoverCoverage: vi.fn(async () => ({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture" })),
+}));
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { registeredEdiPlugins } from "./fixtures/harness";
 import { assertUnmixedCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
@@ -17,7 +24,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../../server/storage", () => ({ storage: {
   wizards: {
-    getById: async () => state.wizard,
+    getById: async () => structuredClone(state.wizard),
     getReportData: (...args: unknown[]) => state.getRows(...args),
     update: (...args: unknown[]) => state.update(...args),
     writeStepProgress: (...args: unknown[]) => state.writeProgress(...args),
@@ -62,6 +69,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture" });
   state.allowed = true;
   state.rows = [{ data: { pk: "saved", firstName: "Fixture", memberSsn: "000123456" } }];
   state.getRows.mockImplementation(async () => state.rows);
@@ -74,11 +82,97 @@ beforeEach(() => {
       delivery: { deliveredAt: "2026-10-01", filename: "old.txt" },
     },
   };
-  state.update.mockImplementation(async (_id, update) => ({ ...state.wizard, ...update }));
+  state.update.mockImplementation(async (_id, update) => {
+    state.wizard = { ...state.wizard, ...update };
+    return structuredClone(state.wizard);
+  });
 });
 const get = (path: string, authenticated = true) => fetch(`${base}${path}`, { headers: authenticated ? { authorization: "fixture" } : {} });
 
 describe("authorized, read-only Deliver exports", () => {
+  const postCoverage = (input: unknown) => fetch(`${base}/coverage/submit`, {
+    method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" },
+    body: JSON.stringify({ input }),
+  });
+  function conflictFixture() {
+    const candidate: EdiCoverageCandidate = {
+      id: "own", workerId: "fictional-person", benefitId: "benefit", year: 2026, month: 10,
+      employerId: "ordinary", employerSiriusId: "100", sourceRelationId: null,
+      personLabel: "Fictional Member", benefitLabel: "Fixture Benefit", employerLabel: "Fixture Employer",
+      subscriberLabel: "Fictional Member", subscriberWorkerId: "fictional-person", isCobra: false, familyIssue: null,
+    };
+    const conflict = reviewConflict([candidate, { ...candidate, id: "cobra", isCobra: true, employerSiriusId: "COBRA" }], "evidence", []);
+    vi.mocked(discoverCoverage).mockResolvedValue({ conflicts: [conflict], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "fixture" });
+    return { key: conflict.key, evidence: conflict.evidence, selectedId: "cobra", reason: "Reviewed fictional source evidence" };
+  }
+  it.each(["sitespecific-bao-kaiser", "sitespecific-smf-local11"])(
+    "allows Parameters → Coverage sources → Generate without conflicts for %s", async pluginId => {
+      state.wizard.data.config.pluginId = pluginId;
+      state.wizard.currentStep = "params";
+      const navigate = () => fetch(`${base}/navigate`, { method: "POST",
+        headers: { authorization: "fixture", "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: "next" }) });
+      expect((await navigate()).status).toBe(200);
+      expect(state.wizard.currentStep).toBe("coverage");
+      expect((await navigate()).status).toBe(400);
+      expect((await postCoverage({ action: "complete" })).status).toBe(200);
+      expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "coverage")!.getState!(state.wizard)).toBe("completed");
+      expect((await navigate()).status).toBe(200);
+      expect(state.wizard.currentStep).toBe("run");
+    });
+  it("gates coverage inspection and saving before evidence reads or writes", async () => {
+    const input = conflictFixture();
+    expect((await get("/coverage/data", false)).status).toBe(401);
+    state.allowed = false;
+    expect((await get("/coverage/data")).status).toBe(403);
+    expect((await postCoverage(input)).status).toBe(403);
+    expect(discoverCoverage).not.toHaveBeenCalled();
+    expect(state.update).not.toHaveBeenCalled();
+  });
+  it("saves only server-attributed decisions and invalidates all prior output", async () => {
+    const input = conflictFixture();
+    expect((await postCoverage({ ...input, decidedBy: "forged", decidedAt: "forged" })).status).toBe(200);
+    const [id, update, type, expected] = state.update.mock.calls[0];
+    expect(id).toBe("saved");
+    expect(type).toBe("trust_provider_edi");
+    expect(expected).toBeDefined();
+    expect(update.data).toMatchObject({ reportMeta: null, delivery: null, recordCount: null,
+      coverageDecisions: [expect.objectContaining({ selectedId: "cobra", decidedBy: "fixture-user", reason: input.reason })] });
+    expect(update.data.coverageDecisions[0].decidedAt).not.toBe("forged");
+    expect(update.data.coverageDecisions[0].candidates).toHaveLength(2);
+  });
+  it("rejects stale evidence and active generation without changing approvals", async () => {
+    const input = conflictFixture();
+    expect((await postCoverage({ ...input, evidence: "old" })).status).toBe(500);
+    expect(state.update).not.toHaveBeenCalled();
+    state.wizard.data.progress = { run: { status: "in_progress" } };
+    expect((await postCoverage(input)).status).toBe(500);
+    expect(state.update).not.toHaveBeenCalled();
+  });
+  it("rejects a decision when generation wins the concurrent save", async () => {
+    const input = conflictFixture();
+    state.update.mockImplementation(async (_id, _update, _type, expected) => {
+      expect(expected.progress?.run?.status).not.toBe("in_progress");
+      state.wizard.data.progress = { run: { status: "in_progress" } };
+      return undefined; // atomic storage predicate rejected the stale snapshot
+    });
+    expect((await postCoverage(input)).status).toBe(409);
+    expect(state.wizard.data.coverageDecisions).toBeUndefined();
+  });
+  it("checks source evidence again before publishing completed metadata", async () => {
+    const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
+    const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue([]);
+    vi.mocked(discoverCoverage).mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "before" })
+      .mockResolvedValueOnce({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "after" });
+    const { storage } = await import("../../server/storage");
+    try {
+      await expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!.run!({
+        wizard: state.wizard, wizardId: "saved", storage, input: {}, req: {}, reportProgress: async () => {},
+      } as any)).rejects.toThrow(/changed during generation/);
+      expect(state.wizard.data.reportMeta).toBeNull();
+      expect((await get("/deliver/export")).status).toBe(500);
+    } finally { keys.mockRestore(); }
+  });
   it("persists actionable mixed-overlap failures and refuses stale output", async () => {
     const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
     const keys = vi.spyOn(plugin, "getPrimaryKeys").mockImplementation(async () => {

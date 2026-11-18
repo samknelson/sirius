@@ -41,8 +41,8 @@ export const ediTerminationGuidance = `
   <p>A missing monthly record alone never creates a termination. Retained termination
   events need last-covered evidence and a reconstructible historical family.
   Coverage corrections and any later reinstatement suppress old endings. Mixed
-  COBRA/non-COBRA coverage and missing family evidence stop
-  generation visibly; correct the evidence rather than guessing. Coverage-inferred
+  COBRA/non-COBRA coverage requires an explicit run-only choice; missing family evidence stops
+  generation visibly and must be corrected rather than guessed. Coverage-inferred
   history describes accepted stored coverage, not proof of a failed scan or complete
   legacy import. Demographics use retained current contact records, not archived addresses.</p>
   <p><strong>Coverage segments</strong>: employer Sirius IDs COBRA and 13226164
@@ -53,13 +53,34 @@ export const ediTerminationGuidance = `
   classification. Ordinary employer changes do not restart dates, and equivalent
   same-family employer rows are selected deterministically without duplicate output.
   A true benefit ending uses the final classification's segment start and last-covered date.</p>
-  <p>If the same person has both classifications for the same benefit and month,
-  correction is required; neither wins automatically. This also applies to included
-  dependents and history needed for segment dates, even with termination settings off.
-  The saved Generate failure identifies the person, benefit, coverage month, WMB rows
-  and employers. Correct those conflicting records through your authorized coverage
-  correction process, then select <strong>Retry run</strong>. There is no separate
-  diagnostics report. Generation itself does not repair coverage records.</p>
+  <p><strong>Coverage sources</strong> lists competing COBRA/non-COBRA classifications
+  and subscriber/dependent family ownership for the selected membership run, including
+  historical months needed for segment starts and endings. Review the person, benefit,
+  month, subscriber, employer, classification and traceable WMB/source relation IDs.
+  Nothing is preselected. Explicitly select one source, enter a reason, and save each
+  decision. Then select <strong>Complete coverage review</strong> and <strong>Next</strong>
+  to reach Generate. Complete the review even when no conflicts are found or coverage
+  review is not applicable to an hours-only file.
+  Equivalent same-family/same-class duplicates need no intervention.</p>
+  <p>Only administrators with Providers EDI access can inspect or save these decisions.
+  Review shows selected and excluded sources, the effective administrator, timestamp
+  and reason. <strong>Decisions used in the completed report</strong> preserves the
+  actual generation choices. Choices apply only to this wizard run; they are not
+  inherited by another run and do not correct source data, authorize dual coverage,
+  change elections, billing, eligibility, lifecycle events or S1.</p>
+  <p>Unresolved or stale choices block generation. <strong>Refresh evidence</strong>
+  reloads the current candidates. Added, removed or changed candidate/family evidence
+  requires explicit review again, even if your chosen WMB still exists. If previously
+  approved evidence is no longer part of the run, review and save <strong>Parameters</strong>
+  to clear incompatible approvals. Saving Parameters or Configuration clears coverage
+  choices and prior output. Saving a source decision also clears prior output.
+  Choices cannot be edited during generation. Changed evidence during generation
+  fails the attempt; old or partial output is not downloadable.</p>
+  <p>A selected dependent needs a valid relationship and selected subscriber coverage
+  in the same benefit/month. Missing family context remains a refusal: correct the
+  source history or select a valid source, then regenerate. Excluding an alternative
+  does not create a termination or override later reinstatement or scan evidence.
+  Hours-only files do not use Coverage sources. No selection sends a carrier file.</p>
   <p>All nine membership carriers support generation with either, both or neither
   termination setting enabled: Delta, Hinge, MLK, Carelon, Dentwell (Dyntl/LADC),
   VSP, Kaiser, Health Net and Express Scripts. Enabled roles include qualifying

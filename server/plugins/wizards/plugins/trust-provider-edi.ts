@@ -13,6 +13,9 @@ import {
   readTerminationPolicy,
 } from "../../trust/provider-edi/termination-policy";
 import { validateAgainstSchema } from "../../../lib/json-schema-validator";
+import { discoverCoverage, coverageProjection } from "../../trust/provider-edi/coverage-review";
+import { approveConflict } from "../../trust/provider-edi/coverage-choices";
+import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
 
 /**
  * The single trust-provider EDI wizard. Generation, preview, and SFTP
@@ -112,6 +115,8 @@ function invalidatedData(wizard: Wizard) {
   if (data.progress?.run?.status === "in_progress") throw new Error("Generation is active. Wait before changing settings.");
   return {
     reportMeta: null, recordCount: null, delivery: null,
+    coverageDecisions: [],
+    coverageReviewed: false,
     previousGeneration: data.progress?.run ?? data.previousGeneration ?? null,
     progress: { ...data.progress, run: null, results: null, deliver: null },
   };
@@ -222,7 +227,52 @@ const paramsStep: WizardStepHandler = {
   },
 };
 
-/** Step 3 — generate: defer keys + batches to the EDI plugin. */
+const coverageStep: WizardStepHandler = {
+  id: "coverage",
+  name: "Coverage sources",
+  description: "Review competing coverage and select sources for this run only",
+  kind: "custom",
+  component: "CoverageSources",
+  requiredPolicy: "admin",
+  requiredComponent: COMPONENT,
+  getState: wizard => (wizard.data as any)?.coverageReviewed === true ? "completed" : "pending",
+  getData: async ctx => {
+    const selected = readSelectedConfig(ctx.wizard);
+    if (!selected) throw new Error("Pick Configuration and save Parameters first.");
+    const plugin = resolvePlugin(selected.pluginId);
+    if (!plugin.benefitSiriusIds?.length) return { applicable: false, conflicts: [], decisionsUsed: [] };
+    const blocker = generationBlocker(ctx.wizard);
+    if (blocker) throw new Error(blocker);
+    const data = ctx.wizard.data as any;
+    const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, data.coverageDecisions ?? []);
+    return { applicable: true, conflicts: review.conflicts,
+      decisionsUsed: hasGeneratedReport(ctx.wizard) ? data.reportMeta?.coverageDecisions ?? [] : [] };
+  },
+  submit: async ctx => {
+    const invalidated = invalidatedData(ctx.wizard);
+    const blocker = generationBlocker(ctx.wizard);
+    if (blocker) throw new Error(blocker);
+    const selected = readSelectedConfig(ctx.wizard)!;
+    const plugin = resolvePlugin(selected.pluginId);
+    if (ctx.input.action === "complete") {
+      if (plugin.benefitSiriusIds?.length) coverageProjection(await discoverCoverage(
+        buildEdiContext(ctx, selected), plugin, (ctx.wizard.data as any)?.coverageDecisions ?? []));
+      return { data: { coverageReviewed: true } };
+    }
+    if (!plugin.benefitSiriusIds?.length) throw new Error("Coverage sources apply only to membership EDI.");
+    const decisions: EdiCoverageDecision[] = (ctx.wizard.data as any)?.coverageDecisions ?? [];
+    const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, decisions);
+    const conflict = review.conflicts.find(c => c.key === ctx.input.key);
+    if (!conflict) throw new Error("This conflict no longer exists. Refresh Coverage sources.");
+    const { getEffectiveUser } = await import("../../../modules/masquerade");
+    const { dbUser } = await getEffectiveUser((ctx.req as any).session, (ctx.req as any).user);
+    const decision = approveConflict(conflict, ctx.input, dbUser?.id ?? "", new Date().toISOString());
+    return { status: "draft", data: { ...invalidated,
+      coverageDecisions: [...decisions.filter(d => d.key !== decision.key), decision] } };
+  },
+};
+
+/** Generate using one run-only projection across every membership reader. */
 const runStep: WizardStepHandler = {
   id: "run",
   name: "Generate",
@@ -255,6 +305,10 @@ const runStep: WizardStepHandler = {
     );
     if (!invalidated) throw new Error("EDI generation no longer owns this run");
 
+    if (plugin.benefitSiriusIds?.length) {
+      const review = await discoverCoverage(ediCtx, plugin, (ctx.wizard.data as any)?.coverageDecisions ?? []);
+      ediCtx.coverageProjection = coverageProjection(review);
+    }
     // The registry guarantees getPrimaryKeys (default filled at registration).
     const keys = await plugin.getPrimaryKeys!(ediCtx);
     const columns = plugin.getColumns();
@@ -284,6 +338,12 @@ const runStep: WizardStepHandler = {
       }
     }
 
+    if (ediCtx.coverageProjection) {
+      const fresh = await discoverCoverage(ediCtx, plugin, ediCtx.coverageProjection.decisions);
+      const checked = coverageProjection(fresh);
+      if (checked.fingerprint !== ediCtx.coverageProjection.fingerprint)
+        throw new Error("Coverage evidence changed during generation. Review Coverage sources and regenerate; these rows are not available for delivery.");
+    }
     return {
       status: "completed",
       data: {
@@ -293,6 +353,7 @@ const runStep: WizardStepHandler = {
           columns,
           primaryKeyField: "pk",
           terminationCounts,
+          coverageDecisions: ediCtx.coverageProjection?.decisions ?? [],
           terminationPolicy: plugin.benefitSiriusIds?.length ? ediCtx.terminationPolicy : null,
           generationContext: {
             input: ediCtx.input, configData: ediCtx.configData,
@@ -480,13 +541,13 @@ export const trustProviderEdiWizardPlugin: WizardPlugin = {
     wizard: await storage.wizards.create({
       ...input,
       status: String(input.status ?? "draft"),
-      data: { ...input.data, terminationPolicy: { ...newRunTerminationPolicy } },
+      data: { terminationPolicy: { ...newRunTerminationPolicy }, coverageDecisions: [] },
     } as InsertWizard),
   }),
   prepareUpdate: ({ incoming, merged }) => Object.keys(incoming).every(key => key === "retention")
     ? { data: merged }
     : { error: "Use the EDI wizard steps to change saved settings.", status: 400 },
-  steps: [configStep, paramsStep, runStep, resultsStep, deliverStep],
+  steps: [configStep, paramsStep, coverageStep, runStep, resultsStep, deliverStep],
 };
 
 registerWizardPlugin(trustProviderEdiWizardPlugin);

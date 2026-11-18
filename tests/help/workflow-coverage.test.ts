@@ -291,9 +291,9 @@ describe("audited authenticated workflow help", () => {
     expect(help.details).toMatch(/All nine membership carriers support generation/);
     expect(help.details).toContain("13226164");
     expect(help.details).toMatch(/Ordinary employer changes do not restart dates/);
-    expect(help.details).toMatch(/correction is required; neither wins automatically/);
-    expect(help.details).toMatch(/saved Generate failure identifies the person/);
-    expect(help.details).toMatch(/no separate\s+diagnostics report/);
+    expect(help.details).toMatch(/Nothing is preselected/);
+    expect(help.details).toMatch(/Coverage sources/);
+    expect(help.details).toMatch(/Choices apply only to this wizard run/);
     expect(help.details).toMatch(/does not establish carrier\s+acceptance/);
     expect(help.details).not.toMatch(/turn both flags off|contract.*blocker|unsupported carrier status/i);
     for (const path of ["/wizards/example", "/wizards/example/params", "/wizards/example/"]) {

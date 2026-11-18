@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { trustWmb, trustWmbEvents, trustWmbScanQueue, workerRelations, employers } from "@shared/schema";
 import { coverageSegments } from "./coverage-segments";
+import { projectCoverage } from "./coverage-choices";
 import type { TrustProviderEdiContext } from "./registry";
 import {
   monthIndex, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
@@ -177,7 +178,11 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
     const confirmed = confirmedTerminationIds(batch, scans);
     const contradicted = new Set([...terminationScanDecisions(batch, scans)]
       .filter(([, decision]) => !decision).map(([id]) => id));
-    result.push(...selectTerminationCandidates(batch, classifiedCoverage, relations, confirmed, asOf, policy, contradicted));
+    // Every resolved group retains one source: exclusions cannot erase a
+    // covered month or manufacture a termination/reinstatement gap.
+    result.push(...selectTerminationCandidates(batch,
+      projectCoverage(classifiedCoverage, ctx.coverageProjection, r => r.id),
+      relations, confirmed, asOf, policy, contradicted));
   }
   return result;
 }

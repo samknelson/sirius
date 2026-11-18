@@ -58,15 +58,40 @@ rows use the lowest WMB ID deterministically; distinct historical families remai
 subject to ownership checks. A genuine loss uses the final class's segment start
 and actual last-covered end date, with the existing event/scan evidence checks.
 
-Mixed COBRA/non-COBRA rows for one person/benefit/month require correction before
-successful generation. Validation precedes deduplication and includes active
-subscribers, included dependents, and historical months consulted to determine
-segment starts (including a classification boundary). Turning termination flags
-off does not bypass active-population validation. The existing saved Generate
-failure names person and benefit IDs, coverage month, WMB IDs, employer IDs and
-Sirius IDs. Correct the conflicting coverage through an authorized process, then
-Retry run. Neither class takes precedence, no separate diagnostics report is
-created, and EDI generation never changes eligibility or coverage history.
+Mixed COBRA/non-COBRA or distinct-family rows for one person/benefit/month require
+explicit administrator selection in **Coverage sources** before generation.
+No source is preselected. Each choice requires a reason and retains the effective
+administrator, timestamp, exact candidate evidence and selected/excluded WMB IDs.
+Equivalent same-family/same-class duplicates retain deterministic handling.
+This exception belongs only to the wizard run, not source coverage or S1.
+After saving choices, select **Complete coverage review**, then **Next** to reach
+Generate. Conflict-free and hours-only runs use the same explicit completion
+action; there is no requirement to manufacture a decision when none is needed.
+
+Discovery explores active membership, included historical families, contiguous
+segment history and its boundary months, and declared supplemental medical reads.
+Alternative families are explored before any choice, so choosing a different
+source cannot hide the evidence needed for that family. A selected dependent
+must have a valid relation and a selected subscriber in that benefit/month.
+Missing context remains an actionable refusal, never synthesized coverage.
+This check includes retained dependents without conflicts: selecting their
+parent as somebody else's dependent must not promote the child to subscriber.
+
+All readers filter the same run projection before deduplication or family assembly:
+subscriber keys, dependent attachment, segment dates, termination reconstruction
+and supplemental provider lookups. One source always survives a resolved month;
+excluding alternatives cannot erase benefit continuity or manufacture an ending.
+Existing retained-event, scan-evidence and reinstatement safeguards still apply.
+
+Saving Configuration or Parameters clears approvals and output. Saving a source
+choice clears output but retains other run choices. Authoritative candidate and
+family evidence is checked at save, generation admission and after row generation.
+Changed/added/removed evidence invalidates approval even if the selected ID survives.
+If approved evidence disappears from the run entirely, save Parameters to clear
+incompatible approvals and review again. Atomic wizard compare-and-set admission
+and save protections forbid changing choices during generation. Failed regeneration
+cannot expose old files as current. Completed metadata retains decisions used by
+both native output and QA CSV. Hours-only files are outside this workflow.
 
 | Carrier | End field / format | Explicit generation |
 | --- | --- | --- |
