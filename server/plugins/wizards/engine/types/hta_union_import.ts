@@ -5,21 +5,6 @@ import { createUnifiedOptionsStorage } from '../../../../storage/unified-options
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
-function preprocessSSN(value: any): string | null {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-  const digitsOnly = String(value).replace(/\D/g, '');
-  if (digitsOnly.length === 0) {
-    return null;
-  }
-  if (digitsOnly.length > 9) {
-    return null;
-  }
-  const paddedSSN = digitsOnly.padStart(9, '0');
-  return `${paddedSSN.substring(0, 3)}-${paddedSSN.substring(3, 5)}-${paddedSSN.substring(5, 9)}`;
-}
-
 function normalizeForComparison(value: string): string {
   return String(value).toLowerCase().replace(/\s+/g, '');
 }
@@ -292,13 +277,6 @@ export class HtaUnionImportWizard extends FeedWizard {
   }
 
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
-    if (row.ssn !== undefined && row.ssn !== null) {
-      const preprocessed = preprocessSSN(row.ssn);
-      if (preprocessed !== null) {
-        row.ssn = preprocessed;
-      }
-    }
-
     const errors = await super.validateRow(row, rowIndex, mode);
 
     if (row.employerName !== undefined && row.employerName !== null && row.employerName !== '') {
@@ -332,21 +310,6 @@ export class HtaUnionImportWizard extends FeedWizard {
             field: 'statusReason',
             message: `Work Status "${statusReason}" does not match any configured work status option`,
             value: row.statusReason
-          });
-        }
-      }
-    }
-
-    if (mode === 'update') {
-      const ssn = row.ssn;
-      if (ssn && !errors.some(e => e.field === 'ssn')) {
-        const existingWorker = await storage.workers.getWorkerBySSN(ssn);
-        if (!existingWorker) {
-          errors.push({
-            rowIndex,
-            field: 'ssn',
-            message: 'Worker with this SSN does not exist',
-            value: ssn
           });
         }
       }

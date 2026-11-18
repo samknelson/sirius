@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { ALTERNATE_TAX_ID } from "@shared/utils/worker-tax-identity";
 import { apiRequest } from "@/lib/queryClient";
 import { Worker, formatSSN, unformatSSN, validateSSN } from "@shared/schema";
 import { Loader2, Save, CreditCard, Plus, Edit, Trash2, X } from "lucide-react";
@@ -44,6 +46,8 @@ interface WorkerId {
 
 export default function IDsManagement({ workerId }: IDsManagementProps) {
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const canManageTaxIds = hasPermission("admin") || hasPermission("staff") && hasPermission("workers.ssn");
   const queryClient = useQueryClient();
   const [editedSSN, setEditedSSN] = useState<string>("");
   const [isEditingSSN, setIsEditingSSN] = useState(false);
@@ -69,13 +73,19 @@ export default function IDsManagement({ workerId }: IDsManagementProps) {
   });
 
   // Fetch worker ID types
-  const { data: workerIdTypes = [], isLoading: isLoadingTypes } = useQuery<WorkerIdType[]>({
+  const { data: allWorkerIdTypes = [], isLoading: isLoadingTypes } = useQuery<WorkerIdType[]>({
     queryKey: ["/api/options/worker-id-type"],
   });
+  const workerIdTypes = allWorkerIdTypes.filter(type => canManageTaxIds || type.id !== ALTERNATE_TAX_ID);
 
   // Fetch worker IDs
-  const { data: workerIds = [], isLoading: isLoadingIds } = useQuery<WorkerId[]>({
-    queryKey: ["/api/workers", workerId, "ids"],
+  const { data: workerIds = [], isLoading: isLoadingIds, isError: idsFailed } = useQuery<WorkerId[]>({
+    queryKey: ["/api/workers", workerId, "ids", canManageTaxIds],
+    queryFn: async () => {
+      const response = await fetch(`/api/workers/${workerId}/ids${canManageTaxIds ? "?includeSensitive=true" : ""}`);
+      if (!response.ok) throw new Error("Unable to load worker IDs. Staff and SSN access are required.");
+      return response.json();
+    },
     enabled: !!workerId,
   });
 
@@ -330,7 +340,7 @@ export default function IDsManagement({ workerId }: IDsManagementProps) {
       <Card>
         <CardHeader>
           <CardTitle>Worker IDs</CardTitle>
-          <CardDescription>Manage worker identification numbers</CardDescription>
+          <CardDescription>{idsFailed ? "Unable to load worker IDs. Please retry." : "Manage worker identification numbers"}</CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loading-spinner" />
@@ -347,7 +357,7 @@ export default function IDsManagement({ workerId }: IDsManagementProps) {
       <Card>
         <CardHeader>
           <CardTitle>Social Security Number</CardTitle>
-          <CardDescription>Manage worker's SSN</CardDescription>
+          <CardDescription>Manage worker's SSN. Entering a corrected SSN keeps existing Alternate Tax IDs.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {!isEditingSSN ? (
@@ -425,7 +435,7 @@ export default function IDsManagement({ workerId }: IDsManagementProps) {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle>Additional IDs</CardTitle>
-              <CardDescription>Manage worker identification numbers</CardDescription>
+              <CardDescription>{idsFailed ? "Unable to load worker IDs. Please retry." : "Manage worker identification numbers. Alternate Tax IDs are sensitive and never appear in ordinary lists or exports."}</CardDescription>
             </div>
             <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-worker-id">
               <Plus className="mr-2 h-4 w-4" />

@@ -1,4 +1,5 @@
 import { createNoopValidator } from './utils/validation';
+import { ALTERNATE_TAX_ID, ALTERNATE_TAX_NAME, TaxIdentityReviewError } from "@shared/utils/worker-tax-identity";
 import { getClient } from './transaction-context';
 import { eq, asc, getTableName, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
@@ -960,6 +961,10 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     },
 
     async create(type: OptionsTypeName, data: Record<string, any>): Promise<any> {
+      if (type === "worker-id-type" && (data.id === ALTERNATE_TAX_ID || data.siriusId === ALTERNATE_TAX_ID
+        || String(data.name).trim().toLowerCase() === ALTERNATE_TAX_NAME.toLowerCase())) {
+        throw new TaxIdentityReviewError("Alternate Tax ID is a system-managed worker ID type.");
+      }
       validate.validateOrThrow(type);
       const metadata = getTable(type) as any;
       
@@ -978,6 +983,10 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     },
 
     async update(type: OptionsTypeName, id: string, data: Record<string, any>): Promise<any | undefined> {
+      if (type === "worker-id-type" && (id === ALTERNATE_TAX_ID || data.id === ALTERNATE_TAX_ID || data.siriusId === ALTERNATE_TAX_ID
+        || String(data.name).trim().toLowerCase() === ALTERNATE_TAX_NAME.toLowerCase())) {
+        throw new TaxIdentityReviewError("Alternate Tax ID is a system-managed worker ID type.");
+      }
       validate.validateOrThrow(type);
       const metadata = getTable(type) as any;
       
@@ -1027,6 +1036,9 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     },
 
     async delete(type: OptionsTypeName, id: string): Promise<boolean> {
+      if (type === "worker-id-type" && id === ALTERNATE_TAX_ID) {
+        throw new TaxIdentityReviewError("The system Alternate Tax ID type cannot be deleted.");
+      }
       const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;

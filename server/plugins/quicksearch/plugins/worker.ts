@@ -1,3 +1,4 @@
+import { ALTERNATE_TAX_ID } from "@shared/utils/worker-tax-identity";
 import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { contacts, optionsWorkerIdType, phoneNumbers, workerIds, workers } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -104,7 +105,7 @@ export function planWorkerSearch(
  * so the form lists the site's own id types rather than free text.
  */
 async function settingsSchema(): Promise<JsonSchema> {
-  const types = await createUnifiedOptionsStorage().list("worker-id-type");
+  const types = (await createUnifiedOptionsStorage().list("worker-id-type")).filter(t => t.id !== ALTERNATE_TAX_ID);
   const idTypes = (Array.isArray(types) ? types : []) as Array<{ id: string; name: string }>;
   return {
     type: "object",
@@ -189,6 +190,7 @@ export function buildWorkerSearchQuery(
       ? sql<boolean>`EXISTS (
           SELECT 1 FROM ${workerIds} wi
           WHERE wi.worker_id = ${workerId}
+            AND wi.type_id <> ${ALTERNATE_TAX_ID}
             AND wi.type_id IN (${sql.join(
               plan.workerIdTypeIds.map((id) => sql`${id}`),
               sql`, `,
@@ -279,6 +281,7 @@ export const workerQuicksearchPlugin: QuicksearchPlugin = {
           .where(
             and(
               inArray(workerIds.workerId, rowIds),
+              sql`${workerIds.typeId} <> ${ALTERNATE_TAX_ID}`,
               inArray(workerIds.typeId, plan.workerIdTypeIds),
               eq(workerIds.value, matchedIdValue),
             ),

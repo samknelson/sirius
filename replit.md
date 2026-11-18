@@ -200,6 +200,11 @@ landing on a deployment branch is what causes the recurring merge conflicts.
 
 ## Gotchas
 
+- **Tax identifiers in worker uploads:** use the shared classifier/resolver on the
+  original SSN-column text, never the lossy SSN parser first. See
+  `docs/alternate-tax-ids.md` for normalization, placeholder rules and the
+  existing validation/IDs-editor correction workflow.
+
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.

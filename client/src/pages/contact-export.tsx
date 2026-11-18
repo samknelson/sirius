@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/queryClient";
+import { ALTERNATE_TAX_ID } from "@shared/utils/worker-tax-identity";
 
 interface ExportResult {
   matched: number;
@@ -24,9 +25,10 @@ export default function ContactExportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const { data: idTypes = [], isLoading: typesLoading } = useQuery<Array<{ id: string; name: string }>>({
+  const { data: allIdTypes = [], isLoading: typesLoading } = useQuery<Array<{ id: string; name: string }>>({
     queryKey: ["/api/options/worker-id-type"],
   });
+  const idTypes = allIdTypes.filter(type => type.id !== ALTERNATE_TAX_ID);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;

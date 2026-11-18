@@ -1,4 +1,6 @@
-import { FeedWizard, FeedField, FeedConfig, FeedData } from '../feed.js';
+import { claimTaxWorker, findTaxIdentityConflicts, resolveTaxIdentity } from "../../../../storage/workers/tax-identity";
+import { restoreSpreadsheetIdentityText } from "../spreadsheet-tax-text";
+import { FeedWizard, FeedField, FeedConfig, FeedData, normalizeColumnMapping } from '../feed.js';
 import { defaultBlankHours } from '../blank-hours';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../../../storage/index.js';
@@ -126,15 +128,6 @@ export function parseDateCell(value: unknown): string | null {
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
   return null;
-}
-
-/** Normalize an SSN-ish value to XXX-XX-XXXX, or null when unparseable. */
-export function preprocessSSN(value: unknown): string | null {
-  if (value === null || value === undefined || value === '') return null;
-  const digits = String(value).replace(/\D/g, '');
-  if (digits.length === 0 || digits.length > 9) return null;
-  const padded = digits.padStart(9, '0');
-  return `${padded.substring(0, 3)}-${padded.substring(3, 5)}-${padded.substring(5, 9)}`;
 }
 
 function truthyFlag(value: unknown): boolean {
@@ -572,6 +565,18 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' }) as any[][];
+      const format = this.getFormat(wizard);
+      const taxColumns: number[] = [];
+      if (format.usesColumnMapping) {
+        const mapping = normalizeColumnMapping(data.columnMapping ?? {});
+        for (const [column, field] of Object.entries(mapping)) if (field === "ssn" || field === "personNumber") taxColumns.push(Number(column.replace("col_", "")));
+      } else {
+        const header = rawRows.find(row => norm(row?.[0]) === "work location name");
+        header?.forEach((value, index) => {
+          if (["national identifier", "ssn", "person number"].includes(norm(value))) taxColumns.push(index);
+        });
+      }
+      rawRows = restoreSpreadsheetIdentityText(firstSheet, rawRows, taxColumns);
     } else {
       throw new Error('Unsupported file type');
     }
@@ -726,44 +731,29 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
       for (const w of row.weeks) if (this.weekHasData(w)) weeksNeedingDates.add(w.week);
     }
     const missingWeekDates = Array.from(weeksNeedingDates).filter((w) => !weekDates[w]);
+    const idTypes = await unifiedOptionsStorage.list("worker-id-type");
+    const payrollTypeId = idTypes.find((type: any) => {
+      const name = normKey(type.name);
+      return name.includes("personnumber") || name.includes("payroll");
+    })?.id ?? "__unprovisioned_person_number__";
+    const identityErrors = await findTaxIdentityConflicts(storage, parsed.rows, payrollTypeId);
 
     for (let i = 0; i < parsed.rows.length; i++) {
       const row = parsed.rows[i];
       const rowErrors: Local26ValidationResults['errors'] = [];
       let unmatchedOnly = true;
 
-      // SSN format (warning only, like the GBHE Legal wizards).
-      const ssn = preprocessSSN(row.ssn);
-      if (row.ssn && !ssn) {
-        ssnWarnings.push({ rowIndex: i, value: row.ssn, message: 'SSN could not be normalized' });
-      }
-
-      // Identity: need SSN or Person Number to match, or full create data.
-      const canMatch = !!ssn || !!row.personNumber;
-      let mayCreate = false;
-      if (!canMatch || !(ssn && (await storage.workers.getWorkerBySSN(ssn)))) {
-        // Row may end up creating a worker: check create requirements.
-        mayCreate = true;
-      }
-      if (!canMatch) {
-        if (!row.fullName) {
-          rowErrors.push({ rowIndex: i, field: 'identity', message: 'Row has no SSN, Person Number, or name to identify the worker' });
-          unmatchedOnly = false;
-        }
-      }
-      if (mayCreate && !canMatch) {
-        // Definitely a create — enforce required contact/address data now.
-        if (!row.fullName) {
-          // already flagged above
-        }
-      }
-      // Required address for creates: enforce when the worker cannot be
-      // matched by SSN (payroll-ID matches are resolved at process time; a
-      // row that matches neither will fail processing with a clear error).
-      if (!ssn && !row.personNumber) {
-        if (!row.addressLine1 || !row.city || !row.state || !row.postalCode) {
-          rowErrors.push({ rowIndex: i, field: 'address', message: 'New workers require street, city, state and zip' });
-          unmatchedOnly = false;
+      if (identityErrors.has(i)) {
+        rowErrors.push({ rowIndex: i, field: "identity", message: identityErrors.get(i)! });
+        unmatchedOnly = false;
+      } else {
+        const tax = row.ssn ? await resolveTaxIdentity(storage, row.ssn) : null;
+        const payroll = row.personNumber && await storage.workerIds.getWorkerIdByTypeAndValue(payrollTypeId, String(row.personNumber));
+        if (!tax?.worker && !payroll) {
+          if (!row.fullName || !row.addressLine1 || !row.city || !row.state || !row.postalCode) {
+            rowErrors.push({ rowIndex: i, field: "identity", message: "New workers require a name, street, city, state and zip." });
+            unmatchedOnly = false;
+          }
         }
       }
 
@@ -934,8 +924,8 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
         payrollTypeId = (created as any).id;
         warnings.push('Created a new "Person Number" worker ID type for payroll-ID matching.');
       }
-    } catch (err) {
-      warnings.push(`Payroll-ID matching disabled: ${err instanceof Error ? err.message : String(err)}`);
+    } catch {
+      throw new Error("Person Number matching is unavailable. Correct worker ID configuration before processing.");
     }
 
     // Default bargaining unit: Local 26.
@@ -961,10 +951,12 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
     const rowResults: Local26ProcessResults['rowResults'] = [];
 
     const { executeChargePlugins, TriggerType } = await import('../../../ledger/charge/index.js');
+    const identityErrors = await findTaxIdentityConflicts(storage, parsed.rows, payrollTypeId);
 
     for (let i = 0; i < parsed.rows.length; i++) {
       const row = parsed.rows[i];
       try {
+        if (identityErrors.has(i)) throw new Error(identityErrors.get(i)!);
         // Resolve employer for this row.
         const employerId = this.resolveWorkLocation(row.workLocationName, launchEmployerId, accessibleEmployers, locationMappings);
         if (!employerId) {
@@ -976,31 +968,20 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
         const status = this.resolveEmploymentStatus(row.employeeStatus, statusOptions, statusMappings);
         if (!status) throw new Error(`Employment status "${row.employeeStatus}" is not mapped`);
 
-        // Match worker: SSN first, then payroll ID.
-        const ssn = preprocessSSN(row.ssn);
-        let workerId: string | null = null;
-        let isNewWorker = false;
-        if (ssn) {
-          const existing = await storage.workers.getWorkerBySSN(ssn);
-          if (existing) workerId = existing.id;
-        }
-        if (!workerId && payrollTypeId && row.personNumber) {
-          const byPayroll = await storage.workerIds.getWorkerIdByTypeAndValue(payrollTypeId, String(row.personNumber));
-          if (byPayroll) workerId = byPayroll.workerId;
-        }
-
-        if (!workerId) {
-          // Create a new worker; contact + required address.
+        const tax = row.ssn ? await resolveTaxIdentity(storage, row.ssn) : null;
+        const payroll = payrollTypeId && row.personNumber
+          ? { typeId: payrollTypeId, value: String(row.personNumber) } : undefined;
+        const payrollMatch = payroll && await storage.workerIds.getWorkerIdByTypeAndValue(payroll.typeId, payroll.value);
+        if (!tax?.worker && !payrollMatch) {
           if (!row.fullName) throw new Error('Cannot create a worker without a name');
           if (!row.addressLine1 || !row.city || !row.state || !row.postalCode) {
             throw new Error('New workers require street, city, state and zip');
           }
-          const newWorker = await storage.workers.createWorker(row.fullName);
-          workerId = newWorker.id;
-          isNewWorker = true;
-          if (ssn) await storage.workers.updateWorkerSSN(workerId, ssn);
-          if (local26) await storage.workers.updateWorkerBargainingUnit(workerId, local26.id);
         }
+        const claimed = await claimTaxWorker(storage, row.ssn, row.fullName || "", "create", payroll);
+        const workerId = claimed.worker.id;
+        const isNewWorker = claimed.created;
+        if (isNewWorker && local26) await storage.workers.updateWorkerBargainingUnit(workerId, local26.id);
 
         // Name / birth date / gender / email / phone / address updates.
         if (row.firstName || row.lastName) {
@@ -1050,15 +1031,6 @@ export class GbheLocal26HourlyWizard extends FeedWizard {
               source: 'employer_feed',
               isPrimary: makePrimary,
             });
-          }
-        }
-
-        // Payroll ID (Person Number) — store when missing.
-        if (payrollTypeId && row.personNumber) {
-          const value = String(row.personNumber);
-          const existing = await storage.workerIds.getWorkerIdByTypeAndValue(payrollTypeId, value);
-          if (!existing) {
-            await storage.workerIds.createWorkerId({ workerId, typeId: payrollTypeId, value });
           }
         }
 

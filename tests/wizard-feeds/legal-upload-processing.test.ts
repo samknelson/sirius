@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({
   storage: {} as any, plugin: null as any,
+  upload: vi.fn(),
   csv: "SSN,First,Last,Status,Hours,Legal,Other\n123456789,Existing,Worker,Active,10,Yes,Yes\n234567891,New,Worker,Active,20,Yes,No\n234-56-7891,New,Worker,Active,20,Yes,No\n",
 }));
 vi.mock("../../server/storage", () => ({ storage: mock.storage }));
 vi.mock("../../server/storage/database", () => ({ storage: mock.storage }));
 vi.mock("../../server/services/files", () => ({ fileSystemService: {
   download: async () => Buffer.from(mock.csv),
-  upload: async () => ({ storagePath: "results", size: 1 }),
+  upload: mock.upload,
 } }));
 vi.mock("../../server/storage/unified-options", () => ({ createUnifiedOptionsStorage: () => ({
   list: async (kind: string) => kind === "employment-status" ? [{ id: "active", name: "Active", code: "A", employed: true }] : [],
@@ -25,13 +26,16 @@ import { forecastLegalUpload } from "../../server/plugins/wizards/gbhet-legal-fo
 import { gbhetLegalWorkersMonthly } from "../../server/plugins/wizards/engine/types/gbhet_legal_workers_monthly";
 import { gbhetLegalWorkersCorrections } from "../../server/plugins/wizards/engine/types/gbhet_legal_workers_corrections";
 const benefit = "11111111-1111-4111-8111-111111111111", other = "22222222-2222-4222-8222-222222222222";
-let wizard: any, workers: any[], grants: any[], entries: any[], accounts: any[];
+let wizard: any, workers: any[], grants: any[], entries: any[], accounts: any[], alternateIds: any[];
 function config(id: string, account: string, benefitId: string, rate: number, scope: string, offset = -3) {
   return { config: { id, enabled: true, pluginId: "gbhet-legal-benefit", data: {
     benefitId, rateHistory: [{ effectiveDate: "2020-01-01", rate }], billingOffsetMonths: offset,
   } }, subsidiary: { scope, account, employerId: scope === "employer" ? "employer" : null } };
 }
 beforeEach(() => {
+  mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n123456789,Existing,Worker,Active,10,Yes,Yes\n234567891,New,Worker,Active,20,Yes,No\n234-56-7891,New,Worker,Active,20,Yes,No\n";
+  mock.upload.mockReset().mockResolvedValue({ storagePath: "results", size: 1 });
+  alternateIds = [];
   workers = [{ id: "existing", contactId: "existing-contact", ssn: "123456789" }];
   grants = [{ id: "old-grant", workerId: "existing", benefitId: benefit, year: 2027, month: 2 }];
   entries = []; accounts = [];
@@ -60,6 +64,10 @@ beforeEach(() => {
       }),
       updateWorkerSSN: async (id: string, ssn: string) => Object.assign(workers.find(w => w.id === id), { ssn }),
       updateWorkerContactNameComponents: async () => {},
+    },
+    workerIds: {
+      getWorkerIdByTypeAndValue: async (typeId: string, value: string) => alternateIds.find(id => id.typeId === typeId && id.value === value),
+      createWorkerId: vi.fn(async data => { alternateIds.push(data); return data; }),
     },
     contacts: { getContact: async () => ({ displayName: "Worker" }) },
     workerHours: { upsertWorkerHours: async () => {} },
@@ -99,6 +107,81 @@ beforeEach(() => {
 });
 
 describe.each([gbhetLegalWorkersMonthly, gbhetLegalWorkersCorrections])("$name preview/processing parity", feed => {
+  it.each([false, true])("counts a worker once when submitted by both SSN and alternate ID (reversed: %s)", async reversed => {
+    const { ALTERNATE_TAX_ID } = await import("../../shared/utils/worker-tax-identity");
+    alternateIds.push({ workerId: "existing", typeId: ALTERNATE_TAX_ID, value: "000123456" });
+    wizard.type = feed.name;
+    const rows = [
+      "123456789,Existing,Worker,Active,10,Yes,Yes",
+      "000123456,Existing,Worker,Active,10,Yes,Yes",
+    ];
+    mock.csv = `SSN,First,Last,Status,Hours,Legal,Other\n${(reversed ? rows.reverse() : rows).join("\n")}\n`;
+    const preview = await forecastLegalUpload(feed, wizard);
+    expect(preview).toMatchObject({
+      newWorkers: 0, workersWithNewGrants: 1, newGrants: 1, existingGrantSkips: 1, knownChargeTotal: "5.00",
+    });
+    const fullCsv = mock.csv;
+    mock.csv = `SSN,First,Last,Status,Hours,Legal,Other\n${rows[0]}\n`;
+    const singleIdentifierPreview = await forecastLegalUpload(feed, wizard);
+    expect(singleIdentifierPreview.knownChargeTotal).toBe(preview.knownChargeTotal);
+    expect(singleIdentifierPreview.fingerprint).not.toBe(preview.fingerprint);
+    mock.csv = fullCsv;
+    wizard.data.legalPreviewApproval = preview.fingerprint;
+    expect(await feed.processFeedData("upload")).toMatchObject({ createdCount: 0, updatedCount: 2, failureCount: 0 });
+    expect(workers).toHaveLength(1);
+    expect(wizard.data.legalCompletion.totals).toMatchObject({
+      newWorkers: preview.newWorkers, workersWithNewGrants: preview.workersWithNewGrants,
+      newGrants: preview.newGrants, postedAmount: preview.knownChargeTotal, postedCharges: 1,
+    });
+    expect(JSON.stringify([preview, wizard.data.legalCompletion])).not.toContain("000123456");
+  });
+  it("binds approval to the alternate identity even when estimated totals stay identical", async () => {
+    wizard.type = feed.name;
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n900123456,New,Worker,Active,10,Yes,No\n";
+    const first = await forecastLegalUpload(feed, wizard);
+    mock.csv = mock.csv.replace("900123456", "901123456");
+    const second = await forecastLegalUpload(feed, wizard);
+    expect(second.newWorkers).toBe(first.newWorkers);
+    expect(second.knownChargeTotal).toBe(first.knownChargeTotal);
+    expect(second.fingerprint).not.toBe(first.fingerprint);
+    expect(JSON.stringify([first, second])).not.toMatch(/900123456|901123456/);
+  });
+  it("counts alternate matches and creations, masks results, and retains a corrected SSN on reimport", async () => {
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n000123456,Existing,Worker,Active,10,Yes,Yes\n900-12-3456,New,Worker,Active,20,Yes,No\n900123456,New,Worker,Active,20,Yes,No\n";
+    const { ALTERNATE_TAX_ID } = await import("../../shared/utils/worker-tax-identity");
+    alternateIds.push({ workerId: "existing", typeId: ALTERNATE_TAX_ID, value: "000123456" });
+    wizard.type = feed.name;
+    const preview = await forecastLegalUpload(feed, wizard);
+    expect(preview).toMatchObject({ newWorkers: 1, workersWithNewGrants: 2, newGrants: 2, knownChargeTotal: "35.00" });
+    wizard.data.legalPreviewApproval = preview.fingerprint;
+    const result = await feed.processFeedData("upload");
+    expect(result).toMatchObject({ createdCount: 1, updatedCount: 2, failureCount: 0 });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].ssn).toBe("123456789");
+    expect(workers[1].ssn).toBeUndefined();
+    expect(alternateIds).toHaveLength(2);
+    expect(wizard.data.legalCompletion.totals).toMatchObject({ newWorkers: 1, newGrants: 2, postedAmount: "35.00" });
+    const safeOutputs = JSON.stringify([result, wizard.data.legalCompletion, preview])
+      + mock.upload.mock.calls.map(call => call[0].fileContent.toString()).join("");
+    expect(safeOutputs).not.toMatch(/000123456|900-12-3456|900123456/);
+    wizard.data.legalPreviewApproval = (await forecastLegalUpload(feed, wizard)).fingerprint;
+    expect((await feed.processFeedData("upload")).createdCount).toBe(0);
+    expect(workers).toHaveLength(2);
+  });
+  it("requires correction for placeholders and conflicting rows before any worker or grant write", async () => {
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n999-99-9999,New,Worker,Active,10,Yes,No\n";
+    wizard.type = feed.name;
+    const validation = await feed.validateFeedData("upload");
+    expect(validation.invalidRows).toBe(1);
+    expect(validation.errors.some(error => error.message.includes("placeholder"))).toBe(true);
+    expect(JSON.stringify(validation)).not.toContain("999-99-9999");
+    await expect(forecastLegalUpload(feed, wizard)).rejects.toThrow("validate");
+    expect(mock.storage.workers.createWorker).not.toHaveBeenCalled();
+    expect(mock.storage.trust.wmb.createWorkerBenefit).not.toHaveBeenCalled();
+    mock.csv = "SSN,First,Last,Status,Hours,Legal,Other\n900123456,One,Worker,Active,10,Yes,No\n900-12-3456,Other,Worker,Active,10,Yes,No\n";
+    expect((await feed.validateFeedData("upload")).invalidRows).toBe(2);
+    expect(mock.storage.workers.createWorker).not.toHaveBeenCalled();
+  });
   it("performs no preview writes, then creates exactly the forecast workers/grants/charges and invoice periods", async () => {
     wizard.type = feed.name;
     const preview = await forecastLegalUpload(feed, wizard);

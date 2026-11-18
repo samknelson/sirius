@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import multer from "multer";
+import { ALTERNATE_TAX_ID } from "@shared/utils/worker-tax-identity";
 import { storage } from "./storage";
 import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
@@ -871,6 +872,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const file = (req as any).file;
       const typeId = typeof req.body.typeId === "string" ? req.body.typeId : null;
+      if (typeId === ALTERNATE_TAX_ID) return res.status(400).json({ message: "Alternate Tax IDs are not available for contact exports. Use another worker ID type." });
 
       if (!file) {
         return res.status(400).json({ message: "No file uploaded" });

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import { FeedWizard, FeedField, ValidationError, type ValidationResults, type ProcessResults, type SsnWarning } from '../feed.js';
+import { FeedWizard, FeedField, ValidationError, type ValidationResults, type ProcessResults } from '../feed.js';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
@@ -10,38 +10,6 @@ import { resolveLegalActuals } from "../../gbhet-legal-completion";
 import { captureChargeFailures } from "../../../ledger/charge/execution-observer";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
-
-/**
- * Preprocess SSN value to normalize format
- * - Removes all non-digit characters
- * - Prepends zeros if needed to make it 9 digits
- * - Formats as XXX-XX-XXXX
- * - Returns null if the result doesn't look like a valid SSN
- */
-function preprocessSSN(value: any): string | null {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  // Convert to string and remove all non-digit characters
-  const digitsOnly = String(value).replace(/\D/g, '');
-  
-  // If empty after removing non-digits, return null
-  if (digitsOnly.length === 0) {
-    return null;
-  }
-  
-  // If more than 9 digits, it's invalid
-  if (digitsOnly.length > 9) {
-    return null;
-  }
-  
-  // Prepend zeros to make it 9 digits
-  const paddedSSN = digitsOnly.padStart(9, '0');
-  
-  // Format as XXX-XX-XXXX
-  return `${paddedSSN.substring(0, 3)}-${paddedSSN.substring(3, 5)}-${paddedSSN.substring(5, 9)}`;
-}
 
 /**
  * Normalize a string for comparison (case-insensitive, whitespace removed)
@@ -55,7 +23,6 @@ interface RunContext {
   mappings: Array<{ sourceStatus: string; targetStatusId: string }> | null;
   unmappedValues: Set<string>;
   unmappedOnlyRows: Set<number>;
-  ssnWarnings: SsnWarning[];
   createdWorkerIds?: Set<string>;
   grantedWorkerIds?: Set<string>;
   createdWmbIds?: Set<string>;
@@ -70,7 +37,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   async assertForecastRows(wizard: { entityId: string | null; data: unknown }, rows: Record<string, any>[]) {
-    const ctx: RunContext = { employerId: wizard.entityId || "", mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    const ctx: RunContext = { employerId: wizard.entityId || "", mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
     await runContextStorage.run(ctx, async () => {
       for (let index = 0; index < rows.length; index++) {
         const errors = await this.validateRow({ ...rows[index] }, index, (wizard.data as any)?.mode || "create");
@@ -481,7 +448,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     const wizard = await storage.wizards.getById(wizardId);
     if (!wizard) throw new Error('Wizard not found');
     await assertGbhetBenefitConfiguration(storage, this.getFields(), (wizard.data ?? {}) as Record<string, any>);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
 
     return runContextStorage.run(ctx, async () => {
       const results = await super.validateFeedData(wizardId, batchSize, onProgress);
@@ -505,14 +472,6 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
           }
         }
 
-        needsResave = true;
-      }
-
-      // Bad-format SSN errors were demoted to warnings in validateRow (removed
-      // from the row's blocking errors), so those rows already count as valid.
-      // Surface the collected warnings on the results for the UI.
-      if (ctx.ssnWarnings.length > 0) {
-        results.ssnWarnings = ctx.ssnWarnings;
         needsResave = true;
       }
 
@@ -552,7 +511,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     if ((wizard.data as any)?.legalPreviewApproval !== forecast.fingerprint) {
       throw new Error("Review and approve the current Legal estimate before processing.");
     }
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
     ctx.createdWorkerIds = new Set();
     ctx.grantedWorkerIds = new Set();
     ctx.createdWmbIds = new Set();
@@ -583,16 +542,6 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
-    // Preprocess SSN if present
-    if (row.ssn !== undefined && row.ssn !== null) {
-      const preprocessed = preprocessSSN(row.ssn);
-      
-      // If preprocessing fails (returns null), keep original value so parent validation catches it
-      if (preprocessed !== null) {
-        row.ssn = preprocessed;
-      }
-    }
-
     // Treat a blank "Number of Hours" as 0 so it passes the required-field
     // check; it is recorded as zero hours during processing.
     row.numberOfHours = defaultBlankHours(row.numberOfHours);
@@ -600,21 +549,6 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // Call parent validation to get standard field validation errors
     const errors = await super.validateRow(row, rowIndex, mode);
 
-    // Demote bad-format SSN errors to warnings so they don't block the file.
-    // A completely missing SSN ("SSN is required") stays a blocking error.
-    const ssnCtx = runContextStorage.getStore();
-    let hasSsnWarning = false;
-    for (let i = errors.length - 1; i >= 0; i--) {
-      const e = errors[i];
-      if (e.field === 'ssn' && e.message !== 'SSN is required') {
-        hasSsnWarning = true;
-        if (ssnCtx) {
-          ssnCtx.ssnWarnings.push({ rowIndex, value: e.value, message: e.message });
-        }
-        errors.splice(i, 1);
-      }
-    }
-    
     if (row.employmentStatus !== undefined && row.employmentStatus !== null && row.employmentStatus !== '') {
       const employmentStatusOptions = await this.getEmploymentStatusOptions();
       const normalizedInput = normalizeForComparison(String(row.employmentStatus));
@@ -653,26 +587,6 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
             field: 'employmentStatus',
             message: 'unmapped_employment_status',
             value: row.employmentStatus
-          });
-        }
-      }
-    }
-    
-    // For update mode, verify that a worker with the given SSN exists
-    if (mode === 'update') {
-      const ssn = row.ssn;
-      
-      // Only check if SSN is present and passed format validation. A bad-format
-      // SSN was demoted to a warning above, so skip the existence check for it.
-      if (ssn && !hasSsnWarning && !errors.some(e => e.field === 'ssn')) {
-        const existingWorker = await storage.workers.getWorkerBySSN(ssn);
-        
-        if (!existingWorker) {
-          errors.push({
-            rowIndex,
-            field: 'ssn',
-            message: 'Worker with this SSN does not exist',
-            value: ssn
           });
         }
       }

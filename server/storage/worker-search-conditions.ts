@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { ALTERNATE_TAX_ID } from "@shared/utils/worker-tax-identity";
 
 function splitSearchTerms(searchText: string | undefined): string[] {
   return (searchText?.trim() ?? '').toLowerCase().split(/\s+/).filter(t => t.length > 0);
@@ -33,6 +34,7 @@ export function buildNameIdSearchCondition(searchText: string | undefined) {
         SELECT 1 FROM worker_ids wid
         INNER JOIN options_worker_id_type widt ON wid.type_id = widt.id
         WHERE wid.worker_id = w.id
+          AND wid.type_id <> ${ALTERNATE_TAX_ID}
           AND (widt.data->>'showOnLists')::boolean = true
           AND LOWER(wid.value) LIKE ${pattern}
       )

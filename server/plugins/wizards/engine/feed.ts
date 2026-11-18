@@ -5,6 +5,9 @@ import { parse as parseCSV } from 'csv-parse/sync';
 import { stringify as stringifyCSV } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
 import { fileSystemService } from '../../../services/files/index.js';
+import { resolveTaxIdentity, claimTaxWorker, findTaxIdentityConflicts } from "../../../storage/workers/tax-identity";
+import { classifyTaxIdentity } from "@shared/utils/worker-tax-identity";
+import { mappedSpreadsheetRows } from "./spreadsheet-tax-text";
 
 /**
  * Filter out completely empty columns from parsed rows
@@ -198,7 +201,7 @@ export abstract class FeedWizard extends BaseWizard {
       rows = parseCSV(buffer, { columns: false, skip_empty_lines: true, relax_column_count: true });
     } else if (file.mimeType?.includes("spreadsheet") || file.mimeType?.includes("excel")) {
       const workbook = XLSX.read(buffer, { type: "buffer" });
-      rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+      rows = mappedSpreadsheetRows(workbook.Sheets[workbook.SheetNames[0]], mapping);
     } else throw new Error("Unsupported file type");
     rows = filterEmptyColumns(rows);
     return (data.hasHeaders !== false ? rows.slice(1) : rows).map(row =>
@@ -258,31 +261,19 @@ export abstract class FeedWizard extends BaseWizard {
 
       // SSN validation using centralized utility
       if (field.format === 'ssn') {
-        const { parseSSN, validateSSN } = await import('@shared/utils/ssn');
         try {
-          // Parse SSN to normalize format
-          const parsed = parseSSN(String(value));
-          // Validate SSN according to SSA rules
-          const validation = validateSSN(parsed);
-          if (!validation.valid) {
-            errors.push({
-              rowIndex,
-              field: field.id,
-              message: validation.error || 'Invalid SSN',
-              value
-            });
-          } else {
-            // Store the normalized SSN back into the row for downstream processing
-            row[field.id] = parsed;
+          const resolved = await resolveTaxIdentity(storage, value);
+          if (mode === "update" && !resolved.worker) {
+            errors.push({ rowIndex, field: field.id, message: "No worker matches this identifier. Correct the row or ask staff to review it." });
           }
         } catch (error) {
           errors.push({
             rowIndex,
             field: field.id,
-            message: error instanceof Error ? error.message : 'Invalid SSN format',
-            value
+            message: error instanceof Error ? error.message : 'Identity lookup failed; retry validation'
           });
         }
+        continue; // Never echo an identifier in length/pattern validation errors.
       }
 
       // Max length validation
@@ -358,7 +349,7 @@ export abstract class FeedWizard extends BaseWizard {
     } else if (file.mimeType?.includes('spreadsheet') || file.mimeType?.includes('excel')) {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+      rawRows = mappedSpreadsheetRows(firstSheet, columnMapping);
     } else {
       throw new Error('Unsupported file type');
     }
@@ -379,6 +370,8 @@ export abstract class FeedWizard extends BaseWizard {
     });
 
     const totalRows = mappedRows.length;
+    const identityErrors = this.getFields?.().some(field => field.id === "ssn")
+      ? await findTaxIdentityConflicts(storage, mappedRows) : new Map<number, string>();
     let validRows = 0;
     let invalidRows = 0;
     const allErrors: ValidationError[] = [];
@@ -393,6 +386,7 @@ export abstract class FeedWizard extends BaseWizard {
         const rowIndex = i + j;
         const row = batch[j];
         const rowErrors = await this.validateRow(row, rowIndex, mode);
+        if (identityErrors.has(rowIndex)) rowErrors.push({ rowIndex, field: "ssn", message: identityErrors.get(rowIndex)! });
 
         if (rowErrors.length === 0) {
           validRows++;
@@ -603,7 +597,7 @@ export abstract class FeedWizard extends BaseWizard {
     } else if (file.mimeType?.includes('spreadsheet') || file.mimeType?.includes('excel')) {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+      rawRows = mappedSpreadsheetRows(firstSheet, columnMapping);
     } else {
       throw new Error('Unsupported file type');
     }
@@ -625,6 +619,7 @@ export abstract class FeedWizard extends BaseWizard {
 
     // Process in batches
     const totalRows = mappedRows.length;
+    const identityErrors = await findTaxIdentityConflicts(storage, mappedRows);
     let createdCount = 0;
     let updatedCount = 0;
     let failureCount = 0;
@@ -643,35 +638,23 @@ export abstract class FeedWizard extends BaseWizard {
         const row = batch[j];
         
         try {
+          if (identityErrors.has(rowIndex)) throw new Error(identityErrors.get(rowIndex)!);
           // Extract worker data from row
           const rawSSN = row.ssn?.toString().trim();
           const firstName = row.firstName?.toString().trim();
           const lastName = row.lastName?.toString().trim();
           const rawBirthDate = row.dateOfBirth?.toString().trim();
 
-          // Parse SSN early to normalize format (strips non-digits, pads with zeros)
-          const { parseSSN } = await import('@shared/utils/ssn');
-          let ssn: string | undefined;
-          if (rawSSN) {
-            try {
-              ssn = parseSSN(rawSSN);
-            } catch (error) {
-              throw new Error(`Invalid SSN format: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
-          }
+          // Resolve the ORIGINAL cell, before any lossy SSN preprocessing.
+          const resolvedIdentity = await resolveTaxIdentity(storage, rawSSN);
 
           // Parse birth date to YYYY-MM-DD format if provided
           const birthDate = rawBirthDate ? this.parseDate(rawBirthDate) : null;
 
           if (mode === 'update') {
-            // Update mode: find existing worker by SSN
-            if (!ssn) {
-              throw new Error('SSN is required for update mode');
-            }
-
-            const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+            const existingWorker = resolvedIdentity.worker;
             if (!existingWorker) {
-              throw new Error(`No worker found with SSN ${ssn}`);
+              throw new Error("No worker matches this identifier. Correct the row or ask staff to review it.");
             }
 
             // Update worker name components if provided
@@ -756,12 +739,6 @@ export abstract class FeedWizard extends BaseWizard {
             }
 
           } else {
-            // Create mode: upsert behavior (update if SSN exists, create if not)
-            // SSN is REQUIRED for all workers in feed
-            if (!ssn) {
-              throw new Error('SSN is required for all workers in the feed');
-            }
-
             if (!firstName && !lastName) {
               throw new Error('First name or last name is required');
             }
@@ -770,19 +747,17 @@ export abstract class FeedWizard extends BaseWizard {
             let isNewWorker = false;
             
             // Check if worker with this SSN already exists
-            const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+            const existingWorker = resolvedIdentity.worker;
             if (existingWorker) {
               // Worker exists, update it
               workerId = existingWorker.id;
             } else {
               // Worker doesn't exist, create new one
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
-              const newWorker = await storage.workers.createWorker(fullName);
-              workerId = newWorker.id;
-              await this.workerCreated(workerId);
-              // Set SSN for the new worker
-              await storage.workers.updateWorkerSSN(workerId, ssn);
-              isNewWorker = true;
+              const claimed = await claimTaxWorker(storage, rawSSN, fullName, "create");
+              workerId = claimed.worker.id;
+              isNewWorker = claimed.created;
+              if (claimed.created) await this.workerCreated(workerId);
             }
 
             // Update name components if provided
@@ -881,7 +856,7 @@ export abstract class FeedWizard extends BaseWizard {
           allErrors.push({
             rowIndex,
             message: errorMessage,
-            data: row
+            data: { ...row, ssn: "[REDACTED]" }
           });
           
           rowResults.push({
@@ -1002,6 +977,10 @@ export abstract class FeedWizard extends BaseWizard {
     hasHeaders: boolean,
     rowResults: RowResult[]
   ): Promise<string> {
+    const wizard = await storage.wizards.getById(wizardId);
+    const mapping = normalizeColumnMapping((wizard?.data as any)?.columnMapping ?? {});
+    const taxColumns = Object.entries(mapping).filter(([, field]) => field === "ssn")
+      .map(([column]) => parseInt(column.replace("col_", "")));
     // Create lookup map for row results (data rows are 0-indexed)
     const resultsMap = new Map<number, RowResult>();
     rowResults.forEach(result => {
@@ -1028,7 +1007,10 @@ export abstract class FeedWizard extends BaseWizard {
     const dataStartIndex = hasHeaders ? 1 : 0;
     for (let i = dataStartIndex; i < rawRows.length; i++) {
       const dataRowIndex = i - dataStartIndex; // 0-indexed data row
-      const originalRow = rawRows[i];
+      const originalRow = [...rawRows[i]];
+      for (const column of taxColumns) {
+        if (classifyTaxIdentity(originalRow[column]).kind !== "ssn") originalRow[column] = "[REDACTED]";
+      }
       const result = resultsMap.get(dataRowIndex);
       
       if (result) {

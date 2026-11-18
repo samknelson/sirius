@@ -1,3 +1,4 @@
+import { ALTERNATE_TAX_ID } from "@shared/utils/worker-tax-identity";
 import { and, asc, eq, gte, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   contacts,
@@ -90,7 +91,7 @@ export function planEdlsSheetSearch(
  * the worker searcher's equivalent, because it behaves the same way.
  */
 async function settingsSchema(): Promise<JsonSchema> {
-  const types = await createUnifiedOptionsStorage().list("worker-id-type");
+  const types = (await createUnifiedOptionsStorage().list("worker-id-type")).filter(t => t.id !== ALTERNATE_TAX_ID);
   const idTypes = (Array.isArray(types) ? types : []) as Array<{ id: string; name: string }>;
   return {
     type: "object",
@@ -188,6 +189,7 @@ export const edlsSheetQuicksearchPlugin: QuicksearchPlugin = {
             JOIN ${workerIds} wi ON wi.worker_id = a.worker_id
             WHERE c.sheet_id = ${edlsSheets.id}
               AND wi.type_id IN (${idTypeList})
+              AND wi.type_id <> ${ALTERNATE_TAX_ID}
               AND wi.value = ${plan.workerIdValue}
           )`
         : sql<boolean>`false`;
@@ -216,6 +218,7 @@ export const edlsSheetQuicksearchPlugin: QuicksearchPlugin = {
             JOIN ${optionsWorkerIdType} t ON t.id = wi.type_id
             WHERE c.sheet_id = ${edlsSheets.id}
               AND wi.type_id IN (${idTypeList})
+              AND wi.type_id <> ${ALTERNATE_TAX_ID}
               AND wi.value = ${plan.workerIdValue}
             ORDER BY t.name
             LIMIT 1

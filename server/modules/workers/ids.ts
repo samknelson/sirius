@@ -2,8 +2,17 @@ import type { Express } from "express";
 import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { requireAccess } from "../../services/access-policy-evaluator";
+import { getEffectiveUser } from "../masquerade";
+import { ALTERNATE_TAX_ID, TaxIdentityReviewError } from "@shared/utils/worker-tax-identity";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
+
+async function canManageTaxIds(req: any): Promise<boolean> {
+  const { dbUser } = await getEffectiveUser(req.session, req.user);
+  return !!dbUser && (await storage.users.userHasPermission(dbUser.id, "admin")
+    || await storage.users.userHasPermission(dbUser.id, "staff")
+      && await storage.users.userHasPermission(dbUser.id, "workers.ssn"));
+}
 
 export function registerWorkerIdsRoutes(
   app: Express,
@@ -14,7 +23,9 @@ export function registerWorkerIdsRoutes(
   app.get("/api/workers/:workerId/ids", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
+      const sensitive = req.query.includeSensitive === "true";
+      if (sensitive && !await canManageTaxIds(req)) return res.status(403).json({ message: "Staff and SSN access are required to manage Alternate Tax IDs." });
+      const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId, sensitive);
       res.json(workerIds);
     } catch (error) {
       console.error("Error fetching worker IDs:", error);
@@ -26,7 +37,8 @@ export function registerWorkerIdsRoutes(
   app.get("/api/worker-ids/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const workerId = await storage.workerIds.getWorkerId(id);
+      const workerId = await storage.workerIds.getWorkerId(id, true);
+      if (workerId?.typeId === ALTERNATE_TAX_ID && !await canManageTaxIds(req)) return res.status(403).json({ message: "SSN access is required." });
       
       if (!workerId) {
         res.status(404).json({ message: "Worker ID not found" });
@@ -44,6 +56,7 @@ export function registerWorkerIdsRoutes(
     try {
       const { workerId } = req.params;
       const { typeId, value } = req.body;
+      if (typeId === ALTERNATE_TAX_ID && !await canManageTaxIds(req)) return res.status(403).json({ message: "SSN access is required." });
       
       if (!typeId || typeof typeId !== 'string' || !typeId.trim()) {
         return res.status(400).json({ message: "Type ID is required" });
@@ -88,7 +101,8 @@ export function registerWorkerIdsRoutes(
       
       res.status(201).json(newWorkerId);
     } catch (error: any) {
-      console.error("Error creating worker ID:", error);
+      if (error instanceof TaxIdentityReviewError) return res.status(400).json({ message: error.message });
+      console.error("Error creating worker ID");
       
       // Check for unique constraint violation
       if (error.code === '23505' && error.constraint === 'worker_ids_type_id_value_unique') {
@@ -106,6 +120,10 @@ export function registerWorkerIdsRoutes(
     try {
       const { id } = req.params;
       const { typeId, value } = req.body;
+      const saved = await storage.workerIds.getWorkerId(id, true);
+      if ((saved?.typeId === ALTERNATE_TAX_ID || typeId === ALTERNATE_TAX_ID) && !await canManageTaxIds(req)) {
+        return res.status(403).json({ message: "SSN access is required." });
+      }
       
       const updates: any = {};
       
@@ -129,7 +147,7 @@ export function registerWorkerIdsRoutes(
         }
         
         // Get the worker ID to check its type
-        const existingWorkerId = await storage.workerIds.getWorkerId(id);
+        const existingWorkerId = await storage.workerIds.getWorkerId(id, true);
         if (!existingWorkerId) {
           return res.status(404).json({ message: "Worker ID not found" });
         }
@@ -164,7 +182,8 @@ export function registerWorkerIdsRoutes(
       
       res.json(updatedWorkerId);
     } catch (error: any) {
-      console.error("Error updating worker ID:", error);
+      if (error instanceof TaxIdentityReviewError) return res.status(400).json({ message: error.message });
+      console.error("Error updating worker ID");
       
       // Check for unique constraint violation
       if (error.code === '23505' && error.constraint === 'worker_ids_type_id_value_unique') {
@@ -181,6 +200,8 @@ export function registerWorkerIdsRoutes(
   app.delete("/api/worker-ids/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
+      const saved = await storage.workerIds.getWorkerId(id, true);
+      if (saved?.typeId === ALTERNATE_TAX_ID && !await canManageTaxIds(req)) return res.status(403).json({ message: "SSN access is required." });
       const deleted = await storage.workerIds.deleteWorkerId(id);
       
       if (!deleted) {

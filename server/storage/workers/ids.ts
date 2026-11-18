@@ -1,7 +1,8 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, runInTransaction } from '../transaction-context';
+import { ALTERNATE_TAX_ID, normalizeAlternateTaxId, redactTaxIdRecord, TaxIdentityReviewError } from "@shared/utils/worker-tax-identity";
 import { workerIds, optionsWorkerIdType, type WorkerId, type InsertWorkerId } from "@shared/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, ne, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 /**
@@ -26,8 +27,8 @@ export interface WorkerIdForList {
 }
 
 export interface WorkerIdStorage {
-  getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]>;
-  getWorkerId(id: string): Promise<WorkerId | undefined>;
+  getWorkerIdsByWorkerId(workerId: string, includeSensitive?: boolean): Promise<WorkerId[]>;
+  getWorkerId(id: string, includeSensitive?: boolean): Promise<WorkerId | undefined>;
   createWorkerId(workerId: InsertWorkerId): Promise<WorkerId>;
   updateWorkerId(id: string, workerId: Partial<InsertWorkerId>): Promise<WorkerId | undefined>;
   deleteWorkerId(id: string): Promise<boolean>;
@@ -48,36 +49,54 @@ export interface WorkerIdStorage {
 
 export function createWorkerIdStorage(): WorkerIdStorage {
   return {
-    async getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]> {
+    async getWorkerIdsByWorkerId(workerId: string, includeSensitive = false): Promise<WorkerId[]> {
       const client = getClient();
-      return client.select().from(workerIds).where(eq(workerIds.workerId, workerId));
+      return client.select().from(workerIds).where(and(eq(workerIds.workerId, workerId),
+        includeSensitive ? undefined : ne(workerIds.typeId, ALTERNATE_TAX_ID)));
     },
 
-    async getWorkerId(id: string): Promise<WorkerId | undefined> {
+    async getWorkerId(id: string, includeSensitive = false): Promise<WorkerId | undefined> {
       const client = getClient();
-      const [workerId] = await client.select().from(workerIds).where(eq(workerIds.id, id));
+      const [workerId] = await client.select().from(workerIds).where(and(eq(workerIds.id, id),
+        includeSensitive ? undefined : ne(workerIds.typeId, ALTERNATE_TAX_ID)));
       return workerId || undefined;
     },
 
     async createWorkerId(insertWorkerId: InsertWorkerId): Promise<WorkerId> {
       validate.validateOrThrow(insertWorkerId);
-      const client = getClient();
-      const [workerId] = await client
-        .insert(workerIds)
-        .values(insertWorkerId)
-        .returning();
-      return workerId;
+      const data = { ...insertWorkerId };
+      if (data.typeId === ALTERNATE_TAX_ID) data.value = normalizeAlternateTaxId(data.value);
+      try {
+        return await runInTransaction(async () => {
+          const [workerId] = await getClient().insert(workerIds).values(data).returning();
+          return workerId;
+        });
+      } catch (error) {
+        if (data.typeId === ALTERNATE_TAX_ID) throw new TaxIdentityReviewError("Alternate Tax ID could not be saved. It may already belong to another worker; review IDs before retrying.");
+        throw error;
+      }
     },
 
     async updateWorkerId(id: string, workerIdUpdate: Partial<InsertWorkerId>): Promise<WorkerId | undefined> {
       validate.validateOrThrow(id);
-      const client = getClient();
-      const [workerId] = await client
-        .update(workerIds)
-        .set(workerIdUpdate)
-        .where(eq(workerIds.id, id))
-        .returning();
-      return workerId || undefined;
+      const current = await this.getWorkerId(id, true);
+      if (!current) return undefined;
+      const data = { ...workerIdUpdate };
+      if ((current.typeId === ALTERNATE_TAX_ID || data.typeId === ALTERNATE_TAX_ID)
+        && (data.workerId && data.workerId !== current.workerId || data.typeId && data.typeId !== current.typeId)) {
+        throw new TaxIdentityReviewError("Do not reassign a tax identifier or change its type. Review and correct the worker's IDs instead.");
+      }
+      const sensitive = current.typeId === ALTERNATE_TAX_ID;
+      if (sensitive) data.value = normalizeAlternateTaxId(data.value ?? current.value);
+      try {
+        return await runInTransaction(async () => {
+          const [workerId] = await getClient().update(workerIds).set(data).where(eq(workerIds.id, id)).returning();
+          return workerId || undefined;
+        });
+      } catch (error) {
+        if (sensitive) throw new TaxIdentityReviewError("Alternate Tax ID could not be saved. Review conflicting worker IDs before retrying.");
+        throw error;
+      }
     },
 
     async deleteWorkerId(id: string): Promise<boolean> {
@@ -87,6 +106,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async getByTypeAndValues(typeId: string, values: string[]): Promise<Array<{ value: string; workerId: string }>> {
+      if (typeId === ALTERNATE_TAX_ID) return [];
       if (values.length === 0) return [];
       const client = getClient();
       const results = await client
@@ -107,6 +127,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined> {
+      if (typeId === ALTERNATE_TAX_ID) value = normalizeAlternateTaxId(value);
       const client = getClient();
       const [row] = await client
         .select()
@@ -117,6 +138,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async getWorkerIdsByTypeAndValueWithOptionalPrefix(typeId: string, value: string): Promise<WorkerId[]> {
+      if (typeId === ALTERNATE_TAX_ID) return [];
       const client = getClient();
       return client
         .select()
@@ -132,7 +154,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       const results = await client
         .select({ id: optionsWorkerIdType.id, name: optionsWorkerIdType.name })
         .from(optionsWorkerIdType)
-        .where(sql`(${optionsWorkerIdType.data}->>'showOnLists')::boolean = true`)
+        .where(and(ne(optionsWorkerIdType.id, ALTERNATE_TAX_ID), sql`(${optionsWorkerIdType.data}->>'showOnLists')::boolean = true`))
         .orderBy(optionsWorkerIdType.sequence);
       return results;
     },
@@ -160,6 +182,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]> {
+      if (typeId === ALTERNATE_TAX_ID) return [];
       if (workerIdsList.length === 0) return [];
       const client = getClient();
       const results = await client
@@ -191,10 +214,11 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
   methods: {
     createWorkerId: {
       enabled: true,
+      logArgs: args => [redactTaxIdRecord(args[0])],
       getEntityId: (args) => args[0]?.workerId || 'new worker ID',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId, // Worker ID is the host
       after: async (args, result, storage) => {
-        return result; // Capture created worker ID
+        return redactTaxIdRecord(result);
       },
       getDescription: async (args, result, beforeState, afterState, storage) => {
         const client = getClient();
@@ -209,20 +233,22 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
         }
         
         // Get the value
-        const value = workerId?.value || 'unknown';
+        const value = redactTaxIdRecord(workerId)?.value || 'unknown';
         
         return `Created ${typeName} with value "${value}"`;
       }
     },
     updateWorkerId: {
       enabled: true,
+      logArgs: args => [args[0], { ...args[1], value: args[1]?.value === undefined ? undefined : "[REDACTED]" }],
       getEntityId: (args) => args[0], // Worker ID record ID
       getHostEntityId: (args, result, beforeState) => result?.workerId || beforeState?.workerId, // Worker ID is the host
       before: async (args, storage) => {
-        return await storage.getWorkerId(args[0]); // Current state
+        const row = await storage.getWorkerId(args[0], true);
+        return row && redactTaxIdRecord(row);
       },
       after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
+        return redactTaxIdRecord(result);
       },
       getDescription: async (args, result, beforeState, afterState, storage) => {
         const client = getClient();
@@ -238,7 +264,7 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
         }
         
         // Get the new value
-        const newValue = updates?.value || workerId?.value || 'unknown';
+        const newValue = workerId?.typeId === ALTERNATE_TAX_ID ? "[REDACTED]" : updates?.value || workerId?.value || 'unknown';
         
         return `Updated ${typeName} to "${newValue}"`;
       }
@@ -248,7 +274,8 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
       getEntityId: (args) => args[0], // Worker ID record ID
       getHostEntityId: (args, result, beforeState) => beforeState?.workerId, // Worker ID is the host
       before: async (args, storage) => {
-        return await storage.getWorkerId(args[0]); // Capture what's being deleted
+        const row = await storage.getWorkerId(args[0], true);
+        return row && redactTaxIdRecord(row);
       },
       getDescription: async (args, result, beforeState, afterState, storage) => {
         const client = getClient();

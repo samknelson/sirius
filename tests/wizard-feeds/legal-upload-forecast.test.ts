@@ -52,10 +52,10 @@ describe.each(["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"]
     const result = await forecastLegalUpload(feed([
       { ssn: "123-45-6789", benefit_1: "yes", benefit_2: "x" },
       { ssn: "123456789", benefit_1: "1", benefit_2: "No" },
-      { ssn: "777-77-7777", benefit_1: "n", benefit_2: "" },
+      { ssn: "345-67-8912", benefit_1: "n", benefit_2: "" },
     ]), wizard(type));
     expect(result).toMatchObject({ newWorkers: 2, workersWithNewGrants: 1, newGrants: 2, knownChargeTotal: "20.00", unpriceableGrants: 1 });
-    expect(state.worker).toHaveBeenCalledTimes(2);
+    expect(new Set(state.worker.mock.calls.map(call => call[0]))).toEqual(new Set(["123456789", "345678912"]));
     expect(JSON.stringify(result)).not.toContain("123456789");
     // The storage double has no write functions. Any write would throw.
   });

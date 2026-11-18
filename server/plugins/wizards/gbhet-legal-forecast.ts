@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Wizard } from "@shared/schema";
-import { parseSSN } from "../../../shared/utils/ssn";
+import { resolveTaxIdentity, findTaxIdentityConflicts } from "../../storage/workers/tax-identity";
 import { storage } from "../../storage";
 import type { GbhetLegalWorkersWizard } from "./engine/types/gbhet_legal_workers";
 import { mergeEnabledChargeConfigs, toChargeConfig } from "../ledger/charge/charge-config-resolution";
@@ -31,6 +31,7 @@ export async function forecastLegalUpload(feed: GbhetLegalWorkersWizard, wizard:
   await assertGbhetBenefitConfiguration(storage, feed.getFields(), data);
   const rows = await feed.readMappedRows(wizard);
   await feed.assertForecastRows(wizard, rows);
+  if ((await findTaxIdentityConflicts(storage, rows)).size) throw new Error("Identity conflicts require correction. Run validation again.");
   const [globals, overrides] = await Promise.all([
     storage.pluginConfigs.search("charge", { pluginId: "gbhet-legal-benefit", enabled: true, scope: "global", employerId: null }),
     storage.pluginConfigs.search("charge", { pluginId: "gbhet-legal-benefit", enabled: true, scope: "employer", employerId: wizard.entityId }),
@@ -44,14 +45,17 @@ export async function forecastLegalUpload(feed: GbhetLegalWorkersWizard, wizard:
   let unpriceableGrants = 0, excludedRows = 0, cents = 0;
   const resolution: unknown[] = [];
   for (const row of rows) {
-    let identity: string;
-    try { identity = parseSSN(String(row.ssn ?? "")); }
-    catch { excludedRows++; continue; } // SSN-format warnings do not create workers.
-    if (!workers.has(identity)) workers.set(identity, await storage.workers.getWorkerBySSN(identity));
-    const worker = workers.get(identity);
+    const resolved = await resolveTaxIdentity(storage, row.ssn);
+    const submittedIdentity = resolved.key;
+    if (!workers.has(submittedIdentity)) workers.set(submittedIdentity, resolved.worker);
+    const worker = workers.get(submittedIdentity);
+    // Different submitted identifiers can resolve to the SAME persisted worker.
+    // Count grants/charges by that worker just as processing does, while keeping
+    // every submitted identity in the approval's private fingerprint input.
+    const identity = worker ? `worker:${worker.id}` : submittedIdentity;
     if (!worker && data.mode === "update") { excludedRows++; continue; }
     if (!worker) newWorkers.add(identity);
-    resolution.push([identity, worker?.id ?? null]);
+    resolution.push([submittedIdentity, worker?.id ?? null]);
     for (const association of data.benefitConfig) {
       if (!legalEligible(row[association.fieldId])) continue;
       const key = `${identity}:${association.benefitId}`;

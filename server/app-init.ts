@@ -56,25 +56,8 @@ import {
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
 // covers are a security boundary, not an implementation detail.
-export function redactSensitiveData(data: any): any {
-  if (!data || typeof data !== 'object') return data;
-
-  // `accesscode` / `accessuuid` are the worker.aat access-token pair: they are
-  // bearer-like credentials (a future link is authorized by the UUID alone),
-  // so they must never reach a response preview in the admin log viewer.
-  const sensitiveFields = ['ssn', 'password', 'token', 'secret', 'accesscode', 'accessuuid'];
-  const redacted = Array.isArray(data) ? [...data] : { ...data };
-
-  for (const key in redacted) {
-    if (sensitiveFields.includes(key.toLowerCase())) {
-      redacted[key] = '[REDACTED]';
-    } else if (typeof redacted[key] === 'object' && redacted[key] !== null) {
-      redacted[key] = redactSensitiveData(redacted[key]);
-    }
-  }
-
-  return redacted;
-}
+import { redactSensitiveData } from "./utils/response-redaction";
+export { redactSensitiveData } from "./utils/response-redaction";
 
 /**
  * Install the base Express middleware shared by every entry point:
@@ -503,6 +486,9 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
   await bootstrapSingletonPluginConfigs();
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
+
+  const { ensureAlternateTaxIdType } = await import("./storage/workers/tax-identity");
+  await ensureAlternateTaxIdType();
 
   // Guarantee the admin account described by LOCAL_AUTH_EMAIL /
   // LOCAL_AUTH_PASSWORD_HASH exists, is active, can administer and carries
