@@ -123,6 +123,7 @@ export default function AllEmployerContacts() {
     if (!employerContacts?.length) return;
 
     const csvData = employerContacts.map(ec => ({
+      "Contact ID": ec.contact.id,
       "Employer": ec.employer.name,
       "Contact Type": ec.contactType?.name || "",
       "Display Name": ec.contact.displayName || "",
@@ -165,6 +166,7 @@ export default function AllEmployerContacts() {
     }
 
     const csvData = Array.from(grouped.values()).map(({ contact, contactTypes, employers }) => ({
+      "Contact ID": contact.id,
       "Display Name": contact.displayName || "",
       "Title": contact.title || "",
       "First Name": contact.given || "",
