@@ -57,10 +57,17 @@ function formatTriggeredBy(run: CronJobRun): string {
   return run.triggeredBy;
 }
 
-function parseOutputData(output: string | null): CronJobOutputData | null {
+function parseOutputData(output: string | null) {
   if (!output) return null;
   try {
-    return JSON.parse(output);
+    const value: unknown = JSON.parse(output);
+    const seconds = value !== null && typeof value === "object" && "executionTimeSec" in value
+      ? value.executionTimeSec
+      : undefined;
+    return {
+      value,
+      executionTimeSec: typeof seconds === "string" || typeof seconds === "number" ? seconds : undefined,
+    };
   } catch {
     return null;
   }
@@ -91,29 +98,7 @@ function CronJobHistoryContent() {
     enabled: !!selectedRunId,
   });
 
-  const formatSummaryValue = (value: any): React.ReactNode => {
-    if (typeof value === 'object' && value !== null) {
-      if (Array.isArray(value)) {
-        return (
-          <div className="space-y-1">
-            {value.map((item, idx) => (
-              <div key={idx} className="text-xs">• {formatSummaryValue(item)}</div>
-            ))}
-          </div>
-        );
-      }
-      return (
-        <div className="space-y-1">
-          {Object.entries(value).map(([k, v]) => (
-            <div key={k} className="text-xs">
-              <span className="font-medium">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return String(value);
-  };
+  const selectedOutputData = parseOutputData(selectedRun?.output ?? null);
 
   return (
     <Card>
@@ -149,7 +134,7 @@ function CronJobHistoryContent() {
             </TableHeader>
             <TableBody>
               {runs.map((run) => {
-                const outputData = parseOutputData(run.output);
+                const outputData = parseOutputData(run.output)?.value as CronJobOutputData | null | undefined;
                 return (
                   <TableRow key={run.id} data-testid={`row-run-${run.id}`}>
                     <TableCell className="text-sm">
@@ -237,7 +222,7 @@ function CronJobHistoryContent() {
           {detailLoading && <p>Loading run details…</p>}
           {detailError && <div role="alert">Failed to load run details. <Button onClick={() => retryDetail()}>Retry</Button></div>}
           {selectedRun && (
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Status</p>
@@ -263,40 +248,25 @@ function CronJobHistoryContent() {
                       : "In Progress"}
                   </p>
                 </div>
-                {(() => {
-                  const outputData = parseOutputData(selectedRun.output);
-                  return outputData?.executionTimeSec && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
-                      <p className="text-sm mt-1">{outputData.executionTimeSec} seconds</p>
-                    </div>
-                  );
-                })()}
+                {selectedOutputData?.executionTimeSec !== undefined && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
+                    <p className="text-sm mt-1">{selectedOutputData.executionTimeSec} seconds</p>
+                  </div>
+                )}
               </div>
 
-              {(() => {
-                const outputData = parseOutputData(selectedRun.output);
-                return outputData?.summary && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground mb-3">Execution Summary</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        {Object.entries(outputData.summary).map(([key, value]) => (
-                          <div key={key}>
-                            <p className="text-sm font-medium text-muted-foreground capitalize">
-                              {key.replace(/([A-Z])/g, ' $1').trim()}
-                            </p>
-                            <div className="text-sm mt-1" data-testid={`detail-summary-${key}`}>
-                              {formatSummaryValue(value)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
+              {selectedRun.output && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Output</p>
+                    <pre className="text-sm bg-muted p-4 rounded-md max-h-[60vh] overflow-auto whitespace-pre" data-testid="detail-output">
+                      {selectedOutputData ? JSON.stringify(selectedOutputData.value, null, 2) : selectedRun.output}
+                    </pre>
+                  </div>
+                </>
+              )}
 
               {selectedRun.error && (
                 <>
@@ -305,18 +275,6 @@ function CronJobHistoryContent() {
                     <p className="text-sm font-medium text-muted-foreground mb-2">Error Details</p>
                     <pre className="text-sm bg-destructive/10 text-destructive p-4 rounded-md overflow-x-auto whitespace-pre-wrap">
                       {selectedRun.error}
-                    </pre>
-                  </div>
-                </>
-              )}
-
-              {!parseOutputData(selectedRun.output) && selectedRun.output && !selectedRun.error && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-2">Raw Output</p>
-                    <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto whitespace-pre-wrap">
-                      {selectedRun.output}
                     </pre>
                   </div>
                 </>

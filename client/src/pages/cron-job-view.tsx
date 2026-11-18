@@ -7,14 +7,6 @@ import { format } from "@/lib/date-format";
 import { CronJobLayout } from "@/components/layouts/CronJobLayout";
 import { CronJob, CronJobRun } from "@/lib/cron-types";
 
-interface CronJobOutputData {
-  executionTimeMs: number;
-  executionTimeSec: string;
-  summary: {
-    [key: string]: any;
-  };
-}
-
 function StatusBadge({ status }: { status: string }) {
   const variant = 
     status === 'success' ? 'default' : 
@@ -38,38 +30,20 @@ function formatTriggeredBy(run: CronJobRun): string {
   return run.triggeredBy;
 }
 
-function parseOutputData(output: string | null): CronJobOutputData | null {
+function parseOutputData(output: string | null) {
   if (!output) return null;
   try {
-    return JSON.parse(output);
+    const value: unknown = JSON.parse(output);
+    const seconds = value !== null && typeof value === "object" && "executionTimeSec" in value
+      ? value.executionTimeSec
+      : undefined;
+    return {
+      value,
+      executionTimeSec: typeof seconds === "string" || typeof seconds === "number" ? seconds : undefined,
+    };
   } catch {
     return null;
   }
-}
-
-function formatSummaryValue(value: any): React.ReactNode {
-  if (typeof value === 'object' && value !== null) {
-    if (Array.isArray(value)) {
-      return (
-        <div className="space-y-1">
-          {value.map((item, idx) => (
-            <div key={idx} className="text-xs">• {formatSummaryValue(item)}</div>
-          ))}
-        </div>
-      );
-    }
-    // For objects, show as key-value pairs
-    return (
-      <div className="space-y-1">
-        {Object.entries(value).map(([k, v]) => (
-          <div key={k} className="text-xs">
-            <span className="font-medium">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return String(value);
 }
 
 function CronJobViewContent() {
@@ -84,6 +58,7 @@ function CronJobViewContent() {
     },
     enabled: !!name,
   });
+  const outputData = parseOutputData(job?.latestRun?.output ?? null);
 
   if (isLoading) {
     return (
@@ -136,17 +111,14 @@ function CronJobViewContent() {
                   {formatTriggeredBy(job.latestRun)}
                 </p>
               </div>
-              {(() => {
-                const outputData = parseOutputData(job.latestRun.output);
-                return outputData && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
-                    <p className="text-sm mt-1" data-testid="text-execution-time">
-                      {outputData.executionTimeSec} seconds
-                    </p>
-                  </div>
-                );
-              })()}
+              {outputData?.executionTimeSec !== undefined && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
+                  <p className="text-sm mt-1" data-testid="text-execution-time">
+                    {outputData.executionTimeSec} seconds
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Started At</p>
                 <p className="text-sm mt-1" data-testid="text-started-at">
@@ -163,41 +135,20 @@ function CronJobViewContent() {
               </div>
             </div>
 
-            {(() => {
-              const outputData = parseOutputData(job.latestRun.output);
-              return outputData && outputData.summary && (
-                <div className="border-t pt-4">
-                  <p className="text-sm font-medium text-muted-foreground mb-3">Summary</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(outputData.summary).map(([key, value]) => (
-                      <div key={key}>
-                        <p className="text-sm font-medium text-muted-foreground capitalize">
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
-                        </p>
-                        <div className="text-sm mt-1" data-testid={`summary-${key}`}>
-                          {formatSummaryValue(value)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+            {job.latestRun.output && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Output</p>
+                <pre className="text-sm bg-muted p-4 rounded-md max-h-[60vh] overflow-auto whitespace-pre" data-testid="text-output">
+                  {outputData ? JSON.stringify(outputData.value, null, 2) : job.latestRun.output}
+                </pre>
+              </div>
+            )}
 
             {job.latestRun.error && (
               <div className="border-t pt-4">
                 <p className="text-sm font-medium text-muted-foreground mb-2">Error</p>
                 <pre className="text-sm bg-destructive/10 text-destructive p-4 rounded-md overflow-x-auto" data-testid="text-error">
                   {job.latestRun.error}
-                </pre>
-              </div>
-            )}
-
-            {!parseOutputData(job.latestRun.output) && job.latestRun.output && !job.latestRun.error && (
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium text-muted-foreground mb-2">Output</p>
-                <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto" data-testid="text-output">
-                  {job.latestRun.output}
                 </pre>
               </div>
             )}
