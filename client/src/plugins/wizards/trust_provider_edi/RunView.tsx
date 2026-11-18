@@ -5,12 +5,16 @@ import type { WizardStepComponentProps } from "@/components/wizards/framework/ty
 import { hasValidCoverageDecision, useCoverageReview } from "./use-coverage-review";
 
 export function RunView(props: WizardStepComponentProps) {
-  const { review, refresh } = useCoverageReview(props.wizardId);
+  const { review, refresh, ready, running, statusUnavailable } = useCoverageReview(props.wizardId, false);
   const unresolved = review.data?.applicable &&
     review.data.conflicts.some(conflict => !hasValidCoverageDecision(conflict));
-  const coverageBlocker = review.isError
+   const coverageBlocker = review.isError || statusUnavailable
     ? "Coverage evidence could not be checked. Refresh evidence before generating."
-    : review.isPending || review.isFetching
+    : running
+      ? "Coverage checking or generation is active."
+      : !ready
+        ? "Open Coverage sources and check the evidence before generating."
+        : review.isPending || review.isFetching
       ? "Checking coverage sources before generation."
       : unresolved
         ? "Ask an administrator to open the Coverage sources step, review every unresolved or stale conflict, and save each decision before generating."

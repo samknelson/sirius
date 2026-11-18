@@ -4,14 +4,26 @@ import type { EdiCoverageCandidate, EdiCoverageDecision } from "@shared/edi-cove
 import type { TrustProviderEdiContext, TrustProviderEdiPlugin } from "./registry";
 import { effectiveBenefitSiriusIds, readAsOfYmd, resolveBenefitIds } from "./base";
 import { isEdiCobra } from "./coverage-segments";
-import { approveConflict, competingSources, coverageKey, evidenceHash, reviewConflict, type CoverageProjection } from "./coverage-choices";
+import { approveConflict, competingSources, coverageKey, evidenceHash, evidenceHashRecords, reviewConflict, type CoverageProjection } from "./coverage-choices";
 import { monthEnd, monthIndex, monthStart, readTerminationPolicy, terminationWindow } from "./termination-policy";
 import { effectiveMedicalPlanGroupMap } from "./plugins/sitespecific-smf-shared";
+import { logger } from "../../../logger";
 
 /** Shared read-only infrastructure for the wizard's needsReadOnlyDb opt-in. */
 export async function discoverCoverage(
   ctx: TrustProviderEdiContext, plugin: TrustProviderEdiPlugin, decisions: readonly EdiCoverageDecision[] = [],
+  report: (percent: number | null, details: { phase: string; processed?: number; total?: number }) => Promise<void> = async () => {},
 ) {
+  let stageStart = performance.now();
+  let phase = "Resolving benefits";
+  const stage = async (next: string) => {
+    logger.info("EDI coverage stage", { service: "edi-coverage", phase, milliseconds: Math.round(performance.now() - stageStart) });
+    phase = next;
+    stageStart = performance.now();
+    await report(null, { phase, processed: 0, total: 0 });
+    await new Promise<void>(resolve => setImmediate(resolve));
+  };
+  await report(null, { phase });
   const benefitIds = await resolveBenefitIds(ctx, effectiveBenefitSiriusIds(ctx, plugin.benefitSiriusIds!));
   const supplemental = plugin.coverageLookup === "medical-groups"
     ? await ctx.storage.readOnly.query(db => db.select({ id: trustBenefits.id }).from(trustBenefits)
@@ -22,6 +34,7 @@ export async function discoverCoverage(
         .where(eq(optionsTrustBenefitType.name, String(ctx.configData.medicalBenefitTypeName || "Medical"))))
       : [];
   const allBenefits = [...new Set([...benefitIds, ...supplemental.map(r => r.id)])];
+  await stage("Reading coverage history");
   const rows = await ctx.storage.readOnly.query(db => db.select({
     id: trustWmb.id, workerId: trustWmb.workerId, benefitId: trustWmb.benefitId,
     year: trustWmb.year, month: trustWmb.month, employerId: trustWmb.employerId,
@@ -34,28 +47,40 @@ export async function discoverCoverage(
     .leftJoin(contacts, eq(workers.contactId, contacts.id))
     .where(inArray(trustWmb.benefitId, allBenefits)));
   const relationIds = [...new Set(rows.flatMap(r => r.sourceRelationId ? [r.sourceRelationId] : []))];
+  await stage("Reading family relationships");
   const relations = relationIds.length ? await ctx.storage.readOnly.query(db =>
     db.select().from(workerRelations).where(inArray(workerRelations.id, relationIds))) : [];
   const relationMap = new Map(relations.map(r => [r.id, r]));
+  await stage("Indexing coverage history");
   const groups = new Map<string, typeof rows>();
+  const latestByPersonBenefit = new Map<string, number>();
+  let indexed = 0;
   for (const row of rows) {
     const key = coverageKey(row);
-    groups.set(key, [...(groups.get(key) ?? []), row]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+    const historyKey = `${row.workerId}|${row.benefitId}`;
+    latestByPersonBenefit.set(historyKey, Math.max(latestByPersonBenefit.get(historyKey) ?? -Infinity, monthIndex(row.year, row.month)));
+    if (++indexed % 2000 === 0) await new Promise<void>(resolve => setImmediate(resolve));
   }
   const asOf = readAsOfYmd(ctx);
   const reportMonth = monthIndex(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)));
   const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
+  await stage("Reading termination evidence");
   const events = policy.subscribers || policy.dependents
     ? await ctx.storage.readOnly.query(db => db.select().from(trustWmbEvents).where(and(
       inArray(trustWmbEvents.benefitId, benefitIds), eq(trustWmbEvents.eventType, "terminate")))) : [];
   const window = terminationWindow(asOf, policy.months);
+  await stage("Building coverage families");
   const roots = rows.filter(r => benefitIds.includes(r.benefitId) && monthIndex(r.year, r.month) === reportMonth);
+  let scanned = 0;
   for (const event of events) {
+    if (++scanned % 2000 === 0) await new Promise<void>(resolve => setImmediate(resolve));
     const end = monthIndex(event.year, event.month) - 1;
     if (end < window.firstEnd || end > window.lastEnd) continue;
-    const history = rows.filter(r => r.workerId === event.workerId && r.benefitId === event.benefitId);
-    if (history.some(r => monthIndex(r.year, r.month) > end)) continue; // reinstatement wins
-    const previous = history.filter(r => monthIndex(r.year, r.month) === end);
+    if ((latestByPersonBenefit.get(`${event.workerId}|${event.benefitId}`) ?? -Infinity) > end) continue; // reinstatement wins
+    const previousMonth = monthStart(end);
+    const previous = groups.get(coverageKey({ ...event, year: +previousMonth.slice(0, 4), month: +previousMonth.slice(5, 7) })) ?? [];
     if (previous.some(r => r.sourceRelationId ? policy.dependents : policy.subscribers)) roots.push(...previous);
   }
   const needed = new Set<string>();
@@ -64,13 +89,16 @@ export async function discoverCoverage(
     const relation = row.sourceRelationId && relationMap.get(row.sourceRelationId);
     if (!relation) continue;
     const key = coverageKey({ ...row, workerId: relation.worker1 });
-    childrenByFamily.set(key, [...(childrenByFamily.get(key) ?? []), coverageKey(row)]);
+    if (!childrenByFamily.has(key)) childrenByFamily.set(key, []);
+    childrenByFamily.get(key)!.push(coverageKey(row));
   }
+  await stage("Tracing historical families");
   const queue = roots.map(r => ({ key: coverageKey(r), family: true, walk: true }));
   const visited = new Set<string>();
   // Explore all candidate families, not whichever source happens to sort first.
   // Historical segments can extend without a lookback cap; gaps stop traversal.
   for (let i = 0; i < queue.length; i++) {
+    if (i % 2000 === 0) await new Promise<void>(resolve => setImmediate(resolve));
     const { key, family, walk } = queue[i];
     const visit = `${key}|${family}|${walk}`;
     if (visited.has(visit)) continue;
@@ -97,9 +125,23 @@ export async function discoverCoverage(
   const relevant = rows.filter(r => needed.has(coverageKey(r)));
   const labels = new Map(rows.map(r => [r.workerId, [r.given, r.family].filter(Boolean).join(" ") || r.workerSiriusId || r.workerId]));
   const label = (id: string) => labels.get(id) ?? id;
-  const conflicts = [...needed].sort().flatMap(key => {
+  await stage("Reviewing competing sources");
+  await report(needed.size ? 0 : null, { phase, processed: 0, total: needed.size });
+  const decisionsByKey = new Map(decisions.map(d => [d.key, d]));
+  const conflicts = [];
+  let processed = 0;
+  let lastReport = performance.now();
+  for (const key of [...needed].sort()) {
+    processed++;
+    if (processed % 500 === 0) {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (performance.now() - lastReport > 500) {
+        await report(Math.round(processed / needed.size * 100), { phase, processed, total: needed.size });
+        lastReport = performance.now();
+      }
+    }
     const group = groups.get(key)!;
-    if (!competingSources(group) && !decisions.some(d => d.key === key)) return [];
+    if (!competingSources(group) && !decisionsByKey.has(key)) continue;
     const familyEvidence = group.map(r => {
       const relation = r.sourceRelationId ? relationMap.get(r.sourceRelationId) : null;
       const parents = relation ? groups.get(coverageKey({ ...r, workerId: relation.worker1 })) ?? [] : [];
@@ -121,20 +163,24 @@ export async function discoverCoverage(
         familyIssue: r.sourceRelationId && !validFamily
           ? `WMB ${r.id}: required family relation or subscriber coverage is missing/inconsistent for this month. Correct source history or select a valid source.` : null };
     });
-    return [reviewConflict(candidates, evidenceHash({
+    conflicts.push(reviewConflict(candidates, evidenceHash({
       context: { configId: ctx.configId, data: ctx.configData, input: ctx.input, policy },
       candidates, familyEvidence,
-    }), decisions)];
-  });
+    }), decisionsByKey.has(key) ? [decisionsByKey.get(key)!] : []));
+  }
   for (const saved of decisions) if (!needed.has(saved.key)) conflicts.push({
     key: saved.key, evidence: evidenceHash({ removed: saved.key }), candidates: [],
     decision: null, stale: true,
   });
-  return { conflicts, groups, relationMap, relevant, fingerprint: evidenceHash({
+  await stage("Validating evidence fingerprint");
+  const relevantRelations = new Set(relevant.map(r => r.sourceRelationId));
+  const fingerprint = await evidenceHashRecords({
     relevant: [...relevant].sort((a, b) => a.id.localeCompare(b.id)),
-    relations: [...relations].filter(r => relevant.some(w => w.sourceRelationId === r.id)).sort((a, b) => a.id.localeCompare(b.id)),
+    relations: relations.filter(r => relevantRelations.has(r.id)).sort((a, b) => a.id.localeCompare(b.id)),
     events: [...events].sort((a, b) => a.id.localeCompare(b.id)),
-  }) };
+  });
+  await stage("Evidence check finished");
+  return { conflicts, groups, relationMap, relevant, fingerprint };
 }
 
 export function coverageProjection(review: Awaited<ReturnType<typeof discoverCoverage>>): CoverageProjection {

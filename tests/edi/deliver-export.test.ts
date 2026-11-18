@@ -2,7 +2,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { discoverCoverage } from "../../server/plugins/trust/provider-edi/coverage-review";
-import { reviewConflict } from "../../server/plugins/trust/provider-edi/coverage-choices";
+import { reviewConflict, evidenceHash } from "../../server/plugins/trust/provider-edi/coverage-choices";
 import type { EdiCoverageCandidate } from "@shared/edi-coverage-choices";
 vi.mock("../../server/plugins/trust/provider-edi/coverage-review", async original => ({
   ...await original<any>(),
@@ -80,20 +80,40 @@ beforeEach(() => {
       input: { asOfDate: "2026-10-01" },
       reportMeta: { recordCount: 1 },
       delivery: { deliveredAt: "2026-10-01", filename: "old.txt" },
+      coverageSnapshot: { fingerprint: "fixture", conflicts: [] },
     },
   };
   state.update.mockImplementation(async (_id, update) => {
     state.wizard = { ...state.wizard, ...update };
     return structuredClone(state.wizard);
   });
+  state.wizard.data.coverageSnapshot.revision = revision();
+  state.writeProgress.mockImplementation(async (_id, step, runId, patch, start, dataPatch = {}, status, _lease, _type, _policy, expected) => {
+    const data = state.wizard.data;
+    const progress = data.progress?.[step];
+    if (start) {
+      if (Object.values(data.progress ?? {}).some((p: any) => p?.status === "in_progress") ||
+          JSON.stringify(expected) !== JSON.stringify(data)) return undefined;
+    } else if (progress?.runId !== runId || progress?.status !== "in_progress") return undefined;
+    state.wizard.data = { ...data, ...dataPatch,
+      progress: { ...data.progress, [step]: { ...progress, ...patch, runId } } };
+    if (status) state.wizard.status = status;
+    return structuredClone(state.wizard);
+  });
 });
 const get = (path: string, authenticated = true) => fetch(`${base}${path}`, { headers: authenticated ? { authorization: "fixture" } : {} });
+function revision() {
+  const data = state.wizard.data;
+  return evidenceHash({ config: data.config, input: data.input, terminationPolicy: data.terminationPolicy,
+    decisions: data.coverageDecisions ?? [] });
+}
 
 describe("authorized, read-only Deliver exports", () => {
-  const postCoverage = (input: unknown) => fetch(`${base}/coverage/submit`, {
+  const postCoverage = (input: Record<string, unknown>) => fetch(`${base}/coverage/run`, {
     method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
+    body: JSON.stringify({ input: { action: "decision", fingerprint: "fixture", revision: revision(), ...input } }),
   });
+  const finished = () => vi.waitFor(() => expect(state.wizard.data.progress?.coverage?.status).not.toBe("in_progress"));
   function conflictFixture() {
     const candidate: EdiCoverageCandidate = {
       id: "own", workerId: "fictional-person", benefitId: "benefit", year: 2026, month: 10,
@@ -108,6 +128,7 @@ describe("authorized, read-only Deliver exports", () => {
   it.each(["sitespecific-bao-kaiser", "sitespecific-smf-local11"])(
     "allows Parameters → Coverage sources → Generate without conflicts for %s", async pluginId => {
       state.wizard.data.config.pluginId = pluginId;
+      state.wizard.data.coverageSnapshot.revision = revision();
       state.wizard.currentStep = "params";
       const navigate = () => fetch(`${base}/navigate`, { method: "POST",
         headers: { authorization: "fixture", "Content-Type": "application/json" },
@@ -115,7 +136,8 @@ describe("authorized, read-only Deliver exports", () => {
       expect((await navigate()).status).toBe(200);
       expect(state.wizard.currentStep).toBe("coverage");
       expect((await navigate()).status).toBe(400);
-      expect((await postCoverage({ action: "complete" })).status).toBe(200);
+      expect((await postCoverage({ action: "complete" })).status).toBe(202);
+      await finished();
       expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "coverage")!.getState!(state.wizard)).toBe("completed");
       expect((await navigate()).status).toBe(200);
       expect(state.wizard.currentStep).toBe("run");
@@ -131,27 +153,30 @@ describe("authorized, read-only Deliver exports", () => {
   });
   it("saves only server-attributed decisions and invalidates all prior output", async () => {
     const input = conflictFixture();
-    expect((await postCoverage({ ...input, decidedBy: "forged", decidedAt: "forged" })).status).toBe(200);
-    const [id, update, type, expected] = state.update.mock.calls[0];
+    expect((await postCoverage({ ...input, actor: "forged", decidedBy: "forged", decidedAt: "forged" })).status).toBe(202);
+    await finished();
+    const [id, , , , , , , , type, , expected] = state.writeProgress.mock.calls[0];
     expect(id).toBe("saved");
     expect(type).toBe("trust_provider_edi");
     expect(expected).toBeDefined();
-    expect(update.data).toMatchObject({ reportMeta: null, delivery: null, recordCount: null,
+    expect(state.wizard.data).toMatchObject({ reportMeta: null, delivery: null, recordCount: null,
       coverageDecisions: [expect.objectContaining({ selectedId: "cobra", decidedBy: "fixture-user", reason: input.reason })] });
-    expect(update.data.coverageDecisions[0].decidedAt).not.toBe("forged");
-    expect(update.data.coverageDecisions[0].candidates).toHaveLength(2);
+    expect(state.wizard.data.coverageDecisions[0].decidedAt).not.toBe("forged");
+    expect(state.wizard.data.coverageDecisions[0].candidates).toHaveLength(2);
   });
   it("rejects stale evidence and active generation without changing approvals", async () => {
     const input = conflictFixture();
-    expect((await postCoverage({ ...input, evidence: "old" })).status).toBe(500);
+    expect((await postCoverage({ ...input, evidence: "old" })).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.progress.coverage.status).toBe("failed");
     expect(state.update).not.toHaveBeenCalled();
     state.wizard.data.progress = { run: { status: "in_progress" } };
-    expect((await postCoverage(input)).status).toBe(500);
+    expect((await postCoverage(input)).status).toBe(409);
     expect(state.update).not.toHaveBeenCalled();
   });
   it("rejects a decision when generation wins the concurrent save", async () => {
     const input = conflictFixture();
-    state.update.mockImplementation(async (_id, _update, _type, expected) => {
+    state.writeProgress.mockImplementation(async (_id, _step, _run, _patch, _start, _data, _status, _lease, _type, _policy, expected) => {
       expect(expected.progress?.run?.status).not.toBe("in_progress");
       state.wizard.data.progress = { run: { status: "in_progress" } };
       return undefined; // atomic storage predicate rejected the stale snapshot
@@ -172,6 +197,59 @@ describe("authorized, read-only Deliver exports", () => {
       expect(state.wizard.data.reportMeta).toBeNull();
       expect((await get("/deliver/export")).status).toBe(500);
     } finally { keys.mockRestore(); }
+  });
+  it("admits slow checks promptly, keeps reads cheap and excludes competing operations", async () => {
+    let release!: (value: any) => void;
+    const held = new Promise<any>(resolve => { release = resolve; });
+    vi.mocked(discoverCoverage).mockReturnValueOnce(held);
+    const admitted = await postCoverage({ action: "check" });
+    expect(admitted.status).toBe(202); // discovery is deliberately still unresolved
+    expect(state.wizard.data.progress.coverage.status).toBe("in_progress");
+    try {
+      for (let i = 0; i < 3; i++) {
+        const response = await get("/coverage/data");
+        expect(response.status).toBe(200);
+        expect((await response.json()).ready).toBe(false);
+      }
+      expect(discoverCoverage).toHaveBeenCalledTimes(1);
+      expect((await postCoverage({ action: "check" })).status).toBe(409);
+      expect((await fetch(`${base}/run/run`, { method: "POST",
+        headers: { authorization: "fixture", "Content-Type": "application/json" }, body: "{}" })).status).toBe(409);
+      expect((await fetch(`${base}/params/submit`, { method: "POST",
+        headers: { authorization: "fixture", "Content-Type": "application/json" },
+        body: JSON.stringify({ input: { asOfDate: "2026-10-01" } }) })).status).toBe(500);
+    } finally {
+      release({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "new" });
+      await finished();
+    }
+    expect((await (await get("/coverage/data")).json())).toMatchObject({ ready: true, conflicts: [], fingerprint: "new" });
+    expect(discoverCoverage).toHaveBeenCalledTimes(1);
+  });
+  it("rejects completion when submitted evidence changed and permits a fresh check", async () => {
+    expect((await postCoverage({ action: "complete", fingerprint: "old" })).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.progress.coverage).toMatchObject({ status: "failed" });
+    expect(state.wizard.data.coverageReviewed).not.toBe(true);
+    expect((await postCoverage({ action: "check" })).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.progress.coverage.status).toBe("completed");
+    expect(state.wizard.data.coverageReviewed).toBe(false);
+  });
+  it("refuses stale submitted settings or decision revisions before admission", async () => {
+    const input = conflictFixture();
+    expect((await postCoverage({ ...input, revision: "previous-settings" })).status).toBe(400);
+    expect(discoverCoverage).not.toHaveBeenCalled();
+    expect(state.writeProgress).not.toHaveBeenCalled();
+  });
+  it("never publishes late evidence from a replaced owner", async () => {
+    let release!: (value: any) => void;
+    vi.mocked(discoverCoverage).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+    expect((await postCoverage({ action: "check" })).status).toBe(202);
+    state.wizard.data.progress.coverage.runId = "different-owner";
+    release({ conflicts: [], groups: new Map(), relationMap: new Map(), relevant: [], fingerprint: "late" });
+    await vi.waitFor(() => expect(state.writeProgress.mock.calls.some(c => c[3].status === "completed")).toBe(true));
+    expect(state.wizard.data.coverageSnapshot.fingerprint).toBe("fixture");
+    expect(state.wizard.data.progress.coverage.runId).toBe("different-owner");
   });
   it("persists actionable mixed-overlap failures and refuses stale output", async () => {
     const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
@@ -379,7 +457,8 @@ describe("authorized, read-only Deliver exports", () => {
       const run = trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!;
       const ctx = {
         wizard: state.wizard, wizardId: "saved", runId: "fixture", storage,
-        input: {}, req: {}, reportProgress: async () => {
+        input: {}, req: {}, reportProgress: async (percent: number | null) => {
+          if (percent === null) return; // discovery / unknown-duration stages precede row batches
           expect(state.rows).toHaveLength(100);
           expect(state.wizard.data.reportMeta).toBeNull();
           for (const path of ["/results/data", "/results/export"]) {

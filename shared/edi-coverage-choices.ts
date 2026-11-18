@@ -33,6 +33,9 @@ export interface EdiCoverageConflict {
   stale: boolean;
 }
 export interface EdiCoverageReview {
+  ready?: boolean;
+  fingerprint?: string;
+  revision?: string;
   applicable: boolean;
   conflicts: EdiCoverageConflict[];
   decisionsUsed: EdiCoverageDecision[];

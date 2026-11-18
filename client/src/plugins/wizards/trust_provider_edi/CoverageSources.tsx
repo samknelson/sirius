@@ -125,35 +125,46 @@ function Snapshot({ decision }: { decision: EdiCoverageDecision }) {
 }
 
 export function CoverageSources({ wizardId, data }: WizardStepComponentProps) {
-  const { review, save, refresh, running, statusUnavailable } = useCoverageReview(wizardId);
-  const locked = running || data?.progress?.run?.status === "in_progress" || statusUnavailable || review.isFetching || review.isError;
+  const { review, save, refresh, running, generating, statusUnavailable, progress, start, ready } = useCoverageReview(wizardId);
+  const locked = running || start.isPending || !ready || data?.progress?.run?.status === "in_progress" || statusUnavailable || review.isFetching || review.isError;
   return <div className="space-y-5">
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>Coverage sources</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={review.isFetching || save.isPending}>
-            <RefreshCw className="mr-2 h-4 w-4" />Refresh evidence
+          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={(!statusUnavailable && running) || start.isPending || save.isPending}>
+            <RefreshCw className="mr-2 h-4 w-4" />{statusUnavailable ? "Refresh status" : "Refresh evidence"}
           </Button>
         </div>
         <CardDescription>Review competing coverage sources before generating the EDI file. No new choice is selected for you.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {running && <Alert><AlertDescription>Generation is active. Decisions are read-only until generation finishes.</AlertDescription></Alert>}
-        {statusUnavailable && <Alert variant="destructive"><AlertDescription>Current generation status is unavailable. Editing is disabled. Use Refresh evidence to retry.</AlertDescription></Alert>}
-        {review.isLoading && <div role="status" aria-label="Loading coverage sources" className="space-y-3"><Skeleton className="h-6 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
+        {generating && <Alert><AlertDescription>Generation is active. Decisions are read-only until generation finishes.</AlertDescription></Alert>}
+        {statusUnavailable && <Alert variant="destructive"><AlertDescription>Current status is unavailable. This does not mean the work failed. Editing is disabled; use Refresh status to reconnect.</AlertDescription></Alert>}
+        {!statusUnavailable && progress?.status === "in_progress" && <div role="status" className="space-y-2">
+          <progress className="h-4 w-full" max={100} value={progress.percentComplete ?? undefined} aria-label="Coverage evidence progress" />
+          <p>{progress.phase || "Checking coverage evidence"}{progress.total ? ` · ${progress.processed ?? 0}/${progress.total}` : ""}</p>
+          <p className="text-sm text-muted-foreground">Decisions, completion, settings and generation are blocked while checking. You may leave and return to this run.</p>
+          {(!Number.isFinite(Date.parse(progress.heartbeatAt ?? "")) || Date.now() - Date.parse(progress.heartbeatAt!) > 120000) &&
+            <p>Heartbeat is missing or stale. Work may be interrupted; do not start another check. Ask an administrator to investigate.</p>}
+        </div>}
+        {!statusUnavailable && progress?.status === "failed" && <Alert variant="destructive"><AlertDescription>
+          {progress.error || "The evidence check failed."} No pending decision or completion was accepted. Use Refresh evidence, review the result, then submit your action again.
+        </AlertDescription></Alert>}
+        {start.isError && <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(start.error, "Could not confirm evidence check admission.")}</AlertDescription></Alert>}
+        {review.isLoading && !running && <div role="status" aria-label="Loading coverage sources" className="space-y-3"><Skeleton className="h-6 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
         {review.isError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>
           {getApiErrorMessage(review.error, "Could not load coverage sources.")} Use Refresh evidence to retry.
         </AlertDescription></Alert>}
         {save.isError && <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(save.error, "Could not save the decision.")} Review the refreshed evidence before trying again.</AlertDescription></Alert>}
-        {save.isSuccess && <p role="status" className="flex items-center gap-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />
+        {save.isSuccess && save.data.runId === progress?.runId && progress?.status === "completed" && ready && <p role="status" className="flex items-center gap-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />
           {"action" in save.variables ? "Coverage review completed. Select Next to continue to Generate." : "Decision saved. Complete coverage review when all choices are ready."}
         </p>}
-        {review.data && (!review.data.applicable ? <p className="rounded-md bg-muted/50 p-4 text-sm">Not applicable. This hours-only configuration does not require coverage source decisions.</p> :
+        {review.data && ready && (!review.data.applicable ? <p className="rounded-md bg-muted/50 p-4 text-sm">Not applicable. This hours-only configuration does not require coverage source decisions.</p> :
           <p className="text-sm text-muted-foreground">{review.data.conflicts.length ? `${review.data.conflicts.filter(conflict => !hasValidCoverageDecision(conflict)).length} of ${review.data.conflicts.length} conflicts need review. Save each decision separately.` : "No competing coverage sources need review. You can continue to generation."}</p>)}
       </CardContent>
     </Card>
-    {review.data?.applicable && review.data.conflicts.map(conflict => <ConflictReview
+    {ready && review.data?.applicable && review.data.conflicts.map(conflict => <ConflictReview
       key={`${wizardId}:${conflict.key}:${conflict.evidence}:${JSON.stringify(conflict.decision)}:${conflict.stale}`}
       conflict={conflict} locked={locked} pending={save.isPending}
       onSave={input => save.mutate(input)} />)}

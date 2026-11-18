@@ -65,7 +65,7 @@ export interface WizardStepContext {
    * `wizard.data.progress[stepId]`, which the manifest surfaces so the
    * client can poll the load route (no bespoke poll route).
    */
-  reportProgress: (percentComplete: number) => Promise<void>;
+  reportProgress: (percentComplete: number | null, details?: { phase?: string; processed?: number; total?: number }) => Promise<void>;
 }
 
 export interface WizardStepResult {
@@ -110,6 +110,8 @@ export interface WizardStepHandler {
   getFormData?: (wizard: Wizard) => Record<string, unknown>;
   /** Admission check, also surfaced before starting the run. */
   getRunBlocker?: (wizard: Wizard) => string | undefined;
+  /** Cheap admission-time validation/actor capture, before background execution. */
+  prepareRun?: (ctx: WizardStepContext) => Promise<Record<string, unknown>>;
   /** Optional RJSF uiSchema companion to `schema`. */
   uiSchema?: Record<string, unknown>;
   /**

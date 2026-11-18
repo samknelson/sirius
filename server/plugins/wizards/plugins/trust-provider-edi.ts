@@ -14,7 +14,7 @@ import {
 } from "../../trust/provider-edi/termination-policy";
 import { validateAgainstSchema } from "../../../lib/json-schema-validator";
 import { discoverCoverage, coverageProjection } from "../../trust/provider-edi/coverage-review";
-import { approveConflict } from "../../trust/provider-edi/coverage-choices";
+import { approveConflict, evidenceHash } from "../../trust/provider-edi/coverage-choices";
 import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
 
 /**
@@ -32,6 +32,18 @@ import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
 
 const WIZARD_ID = "trust_provider_edi";
 const COMPONENT = "trust.providers.edi";
+
+function assertReviewSize(snapshot: unknown) {
+  if (Buffer.byteLength(JSON.stringify(snapshot)) > 2_000_000)
+    throw new Error("Coverage review is too large to display safely. Correct competing source records and refresh evidence.");
+}
+
+function coverageRevision(data: any) {
+  return evidenceHash({
+    config: data.config, input: data.input, terminationPolicy: data.terminationPolicy,
+    decisions: data.coverageDecisions ?? [],
+  });
+}
 
 function hasGeneratedReport(wizard: Wizard): boolean {
   const data = wizard.data as any;
@@ -113,12 +125,14 @@ function generationBlocker(wizard: Wizard): string | undefined {
 function invalidatedData(wizard: Wizard) {
   const data = (wizard.data as any) ?? {};
   if (data.progress?.run?.status === "in_progress") throw new Error("Generation is active. Wait before changing settings.");
+  if (data.progress?.coverage?.status === "in_progress") throw new Error("Coverage checking is active. Wait before changing settings.");
   return {
     reportMeta: null, recordCount: null, delivery: null,
     coverageDecisions: [],
     coverageReviewed: false,
+    coverageSnapshot: null,
     previousGeneration: data.progress?.run ?? data.previousGeneration ?? null,
-    progress: { ...data.progress, run: null, results: null, deliver: null },
+    progress: { ...data.progress, coverage: null, run: null, results: null, deliver: null },
   };
 }
 
@@ -235,6 +249,8 @@ const coverageStep: WizardStepHandler = {
   component: "CoverageSources",
   requiredPolicy: "admin",
   requiredComponent: COMPONENT,
+  retrySafe: true,
+  getRunBlocker: generationBlocker,
   getState: wizard => (wizard.data as any)?.coverageReviewed === true ? "completed" : "pending",
   getData: async ctx => {
     const selected = readSelectedConfig(ctx.wizard);
@@ -244,31 +260,62 @@ const coverageStep: WizardStepHandler = {
     const blocker = generationBlocker(ctx.wizard);
     if (blocker) throw new Error(blocker);
     const data = ctx.wizard.data as any;
-    const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, data.coverageDecisions ?? []);
-    return { applicable: true, conflicts: review.conflicts,
+    return { applicable: true, ...data.coverageSnapshot, conflicts: data.coverageSnapshot?.conflicts ?? [],
+      ready: !!data.coverageSnapshot && data.coverageSnapshot.revision === coverageRevision(data) &&
+        data.progress?.coverage?.status === "completed",
       decisionsUsed: hasGeneratedReport(ctx.wizard) ? data.reportMeta?.coverageDecisions ?? [] : [] };
   },
-  submit: async ctx => {
-    const invalidated = invalidatedData(ctx.wizard);
+  prepareRun: async ctx => {
+    const action = ctx.input.action ?? "check";
+    if (!["check", "complete", "decision"].includes(String(action))) throw new Error("Unknown coverage action.");
+    const { getEffectiveUser } = await import("../../../modules/masquerade");
+    const { dbUser } = await getEffectiveUser((ctx.req as any).session, (ctx.req as any).user);
+    if (!dbUser?.id) throw new Error("An effective administrator is required.");
+    const selected = readSelectedConfig(ctx.wizard);
+    if (action !== "check" && selected && resolvePlugin(selected.pluginId).benefitSiriusIds?.length) {
+      const data = ctx.wizard.data as any;
+      const revision = coverageRevision(data);
+      if (!data.coverageSnapshot) throw new Error("Check Coverage sources first.");
+      if (ctx.input.revision !== revision || data.coverageSnapshot.revision !== revision)
+        throw new Error("Settings or decisions changed. Refresh evidence before submitting this action.");
+    }
+    return { ...ctx.input, action, actor: dbUser.id };
+  },
+  run: async ctx => {
     const blocker = generationBlocker(ctx.wizard);
     if (blocker) throw new Error(blocker);
     const selected = readSelectedConfig(ctx.wizard)!;
     const plugin = resolvePlugin(selected.pluginId);
-    if (ctx.input.action === "complete") {
-      if (plugin.benefitSiriusIds?.length) coverageProjection(await discoverCoverage(
-        buildEdiContext(ctx, selected), plugin, (ctx.wizard.data as any)?.coverageDecisions ?? []));
-      return { data: { coverageReviewed: true } };
-    }
-    if (!plugin.benefitSiriusIds?.length) throw new Error("Coverage sources apply only to membership EDI.");
+    if (!plugin.benefitSiriusIds?.length) return { data: { coverageReviewed: true } };
     const decisions: EdiCoverageDecision[] = (ctx.wizard.data as any)?.coverageDecisions ?? [];
-    const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, decisions);
-    const conflict = review.conflicts.find(c => c.key === ctx.input.key);
-    if (!conflict) throw new Error("This conflict no longer exists. Refresh Coverage sources.");
-    const { getEffectiveUser } = await import("../../../modules/masquerade");
-    const { dbUser } = await getEffectiveUser((ctx.req as any).session, (ctx.req as any).user);
-    const decision = approveConflict(conflict, ctx.input, dbUser?.id ?? "", new Date().toISOString());
-    return { status: "draft", data: { ...invalidated,
-      coverageDecisions: [...decisions.filter(d => d.key !== decision.key), decision] } };
+    const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, decisions, ctx.reportProgress);
+    const snapshot = { conflicts: review.conflicts, fingerprint: review.fingerprint, revision: coverageRevision(ctx.wizard.data) };
+    // Bound the saved review, never the historical evidence used to establish it.
+    assertReviewSize(snapshot);
+    if (ctx.input.action === "complete") {
+      if (ctx.input.fingerprint !== review.fingerprint)
+        throw new Error("Coverage evidence changed. Refresh evidence before completing review.");
+      coverageProjection(review);
+      return { data: { coverageSnapshot: snapshot, coverageReviewed: true } };
+    }
+    if (ctx.input.action === "decision") {
+      if (ctx.input.fingerprint !== review.fingerprint)
+        throw new Error("Coverage evidence changed. Refresh evidence before saving a decision.");
+      const conflict = review.conflicts.find(c => c.key === ctx.input.key);
+      if (!conflict) throw new Error("This conflict no longer exists. Refresh Coverage sources.");
+      const decision = approveConflict(conflict, ctx.input, String(ctx.input.actor ?? ""), new Date().toISOString());
+      conflict.decision = decision;
+      conflict.stale = false;
+      const updatedDecisions = [...decisions.filter(d => d.key !== decision.key), decision];
+      snapshot.revision = coverageRevision({ ...(ctx.wizard.data as any), coverageDecisions: updatedDecisions });
+      assertReviewSize(snapshot);
+      return { status: "draft", data: {
+        reportMeta: null, recordCount: null, delivery: null, coverageReviewed: false,
+        coverageSnapshot: snapshot,
+        coverageDecisions: updatedDecisions,
+      } };
+    }
+    return { data: { coverageSnapshot: snapshot, coverageReviewed: false } };
   },
 };
 
@@ -306,11 +353,12 @@ const runStep: WizardStepHandler = {
     if (!invalidated) throw new Error("EDI generation no longer owns this run");
 
     if (plugin.benefitSiriusIds?.length) {
-      const review = await discoverCoverage(ediCtx, plugin, (ctx.wizard.data as any)?.coverageDecisions ?? []);
+      const review = await discoverCoverage(ediCtx, plugin, (ctx.wizard.data as any)?.coverageDecisions ?? [], ctx.reportProgress);
       ediCtx.coverageProjection = coverageProjection(review);
     }
     // The registry guarantees getPrimaryKeys (default filled at registration).
     const keys = await plugin.getPrimaryKeys!(ediCtx);
+    await ctx.reportProgress(null, { phase: "Generating file rows" });
     const columns = plugin.getColumns();
 
     await ctx.storage.wizards.deleteReportData(ctx.wizardId);
@@ -339,7 +387,8 @@ const runStep: WizardStepHandler = {
     }
 
     if (ediCtx.coverageProjection) {
-      const fresh = await discoverCoverage(ediCtx, plugin, ediCtx.coverageProjection.decisions);
+      const fresh = await discoverCoverage(ediCtx, plugin, ediCtx.coverageProjection.decisions,
+        (percent, details) => ctx.reportProgress(percent, { ...details, phase: `Final evidence validation: ${details?.phase ?? ""}` }));
       const checked = coverageProjection(fresh);
       if (checked.fingerprint !== ediCtx.coverageProjection.fingerprint)
         throw new Error("Coverage evidence changed during generation. Review Coverage sources and regenerate; these rows are not available for delivery.");

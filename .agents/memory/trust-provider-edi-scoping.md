@@ -16,3 +16,9 @@ Membership EDI classifies employer Sirius IDs `COBRA` and `13226164` as COBRA; n
 The config UI labels the provider field "Provider (label only — does not filter members)" so admins aren't misled. Layout risk is pinned by a registry-driven conformance suite (`tests/edi/`): provider-neutral behavior is asserted once for every registered provider, each provider declares its field table on the plugin and an independent transcription of the legacy PHP layout as a checked-in fixture, and a provider registered without that fixture fails the suite. Golden records and provider quirks (Kaiser overpunch, HealthNet member type) sit alongside as per-provider assertions.
 
 **How to apply:** New EDI file-type plugins should scope by benefit the same way; if a provider↔benefit relation is ever added, tighten `getPrimaryKeys` in each plugin and validate configs point at benefits owned by their provider.
+
+Background evidence checking is a responsiveness change, not a confirmed fix for the reported gateway failure or permission to weaken historical evidence.
+
+**Why:** The user identified synchronous discovery as a plausible cause of a 502, not an established cause. Historical continuity and later reinstatement must remain authoritative regardless of runtime cost.
+
+**How to apply:** Distinguish synthetic computation timings from live query latency. Do not claim the gateway cause was proven, impose an arbitrary history cutoff, or treat an unavailable/stale heartbeat as permission to retry interrupted work.

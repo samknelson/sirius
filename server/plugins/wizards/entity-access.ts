@@ -31,7 +31,7 @@ export async function checkWizardRecordAccess(
   check: (policy: string, entityId?: string) => Promise<boolean>,
   componentEnabled: (componentId: string) => Promise<boolean>,
 ): Promise<WizardAccessDecision> {
-  const wizard = await storage.wizards.getById(wizardId);
+  const wizard = await storage.wizards.getById(wizardId, true);
   if (!wizard) return { ok: false, status: 404, message: "Wizard not found" };
   const plugin = wizardPluginRegistry.get(wizard.type);
   if (!plugin) {

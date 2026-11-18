@@ -65,7 +65,10 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
     onError: (err: Error) => {
       toast({
         title: "Error",
-        description: bao ? "Process admission is not confirmed. Refresh status before taking any action; do not automatically resubmit." : err.message || "Failed to start run",
+        description: bao ? "Process admission is not confirmed. Refresh status before taking any action; do not automatically resubmit."
+          : wizardType === "trust_provider_edi" && /<[^>]+>|^50[234]:/.test(err.message)
+            ? "The server could not confirm this request. Refresh status before taking action."
+            : err.message || "Failed to start run",
         variant: "destructive",
       });
     },
@@ -117,10 +120,12 @@ export function RunProgressView({ wizardId, wizardType, step, data }: WizardStep
 
         {running && (
           <div className="space-y-2" data-testid="run-progress">
-            <Progress value={pct} />
+            {progress?.percentComplete == null
+              ? <progress className="h-4 w-full" aria-label="Run progress" />
+              : <Progress value={pct} />}
             <p className="text-sm text-muted-foreground">
-              Running… {pct}%
-              {bao && progress?.phase && ` · ${progress.phase}`}
+              Running… {progress?.percentComplete != null && `${pct}%`}
+              {progress?.phase && ` · ${progress.phase}`}
               {bao && progress?.total > 0 && ` · ${progress.processed ?? 0}/${progress.total} rows`}
             </p>
           </div>

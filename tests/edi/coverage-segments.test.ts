@@ -5,7 +5,7 @@ import { wmbPrimaryKeys, buildMemberUnits } from "../../server/plugins/trust/pro
 import { selectTerminationCandidates } from "../../server/plugins/trust/provider-edi/termination-population";
 import { carrierLayoutCsv } from "../../server/plugins/trust/provider-edi/carrier-csv";
 import { ediReadFixture, registeredEdiPlugins } from "./fixtures/harness";
-import { approveConflict, competingSources, coverageKey, projectCoverage } from "../../server/plugins/trust/provider-edi/coverage-choices";
+import { approveConflict, competingSources, coverageKey, projectCoverage, evidenceHash, evidenceHashRecords } from "../../server/plugins/trust/provider-edi/coverage-choices";
 import { discoverCoverage, coverageProjection } from "../../server/plugins/trust/provider-edi/coverage-review";
 import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
 
@@ -41,6 +41,13 @@ function memberReads(current: SegmentCoverage, history: SegmentCoverage[], depen
 }
 
 describe("membership EDI classification and segment authority", () => {
+  it("retains canonical evidence hashes while yielding through large collections", async () => {
+    const input = { relevant: Array.from({ length: 1500 }, (_, i) => ({ z: i, a: { second: 2, first: 1 } })), events: [] };
+    let yielded = false;
+    setImmediate(() => { yielded = true; });
+    expect(await evidenceHashRecords(input)).toBe(evidenceHash(input));
+    expect(yielded).toBe(true);
+  });
   it("uses only the two confirmed Sirius IDs", () => {
     expect(["COBRA", "13226164"].map(isEdiCobra)).toEqual([true, true]);
     expect([null, undefined, "cobra", "cobra-uuid", "100"].map(isEdiCobra)).toEqual([false, false, false, false, false]);

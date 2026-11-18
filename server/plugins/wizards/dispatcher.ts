@@ -144,8 +144,11 @@ function buildStepContext(
     file,
     req,
     storage,
-    reportProgress: async (percentComplete: number) => {
-      if (runId) await storage.wizards.writeStepProgress(wizard.id, stepId, runId, { percentComplete });
+    reportProgress: async (percentComplete, details) => {
+      if (runId) {
+        const written = await storage.wizards.writeStepProgress(wizard.id, stepId, runId, { percentComplete, ...details });
+        if (!written) throw new Error("This operation no longer owns the wizard.");
+      }
     },
   };
 }
@@ -367,9 +370,18 @@ export function registerWizardDispatcherRoutes(
       const runId = randomUUID();
       const blocker = step.getRunBlocker?.(loaded.wizard);
       if (blocker) return res.status(400).json({ message: blocker });
+      let input = (req.body?.input ?? {}) as Record<string, unknown>;
+      try {
+        if (step.prepareRun) input = await step.prepareRun(buildStepContext(loaded.wizard, step.id, input, req));
+      } catch (error) {
+        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid run request." });
+      }
       const started = await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
         status: "in_progress",
-        percentComplete: 0,
+        percentComplete: null,
+        phase: "Starting",
+        processed: 0,
+        total: 0,
         error: null,
         startedAt: new Date().toISOString(),
         heartbeatAt: new Date().toISOString(),
@@ -377,9 +389,8 @@ export function registerWizardDispatcherRoutes(
       loaded.plugin.id === "trust_provider_edi" ? loaded.wizard.data : undefined);
       if (!started) return res.status(409).json({ message: "This run changed before it could start. Refresh status; only explicitly safe steps can be retried after a confirmed terminal result." });
       // Kick off the work and respond immediately.
-      res.status(202).json({ started: true });
+      res.status(202).json({ started: true, runId });
 
-      const input = (req.body?.input ?? {}) as Record<string, unknown>;
       void (async () => {
         const heartbeat = setInterval(() => {
           void storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
@@ -414,7 +425,10 @@ export function registerWizardDispatcherRoutes(
         } finally {
           clearInterval(heartbeat);
         }
-      })();
+      })().catch(error => logger.error("Wizard terminal status could not be persisted", {
+        service: SERVICE, wizardId: loaded.wizard.id, step: step.id,
+        error: error instanceof Error ? error.message : String(error),
+      }));
     },
   );
 

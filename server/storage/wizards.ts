@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
-import { eq, and, desc, or, ne, sql } from "drizzle-orm";
+import { eq, and, desc, or, ne, sql, getTableColumns } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
@@ -27,8 +27,17 @@ async function wizardRegistry() {
 
 /** Evaluated by the mutating statement, including after a concurrent admission
  * commits while deletion was waiting on the row. Never trust a pre-delete read. */
+function ediMutationAllowed() {
+  return sql`NOT (${wizards.type} = 'trust_provider_edi' AND (
+    coalesce(${wizards.data} #>> '{progress,run,status}', '') NOT IN ('', 'completed', 'failed')
+    OR coalesce(${wizards.data} #>> '{progress,coverage,status}', '') NOT IN ('', 'completed', 'failed')
+    OR (coalesce(${wizards.data} #>> '{progress,run,status}', '') = ''
+      AND coalesce(${wizards.data} #>> '{progress,run,runId}', '') <> '')
+    OR (coalesce(${wizards.data} #>> '{progress,coverage,status}', '') = ''
+      AND coalesce(${wizards.data} #>> '{progress,coverage,runId}', '') <> '')))`;
+}
 function processDeletionAllowed() {
-  return sql`NOT (${wizards.type} = 'bao_monthly_hours' AND (
+  return sql`${ediMutationAllowed()} AND NOT (${wizards.type} = 'bao_monthly_hours' AND (
     coalesce(${wizards.data} #>> '{progress,process,status}', '') <> ''
     OR coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1'
     OR coalesce(${wizards.data}, '{}'::jsonb) ? 'processResults'))`;
@@ -44,7 +53,8 @@ export interface MonthlyWizardCreateParams {
 export interface WizardStorage {
   list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]>;
   listAll(): Promise<Pick<Wizard, 'id' | 'type' | 'data'>[]>;
-  getById(id: string): Promise<Wizard | undefined>;
+  /** Progress polling excludes EDI review payloads at the database boundary. */
+  getById(id: string, progressOnly?: boolean): Promise<Wizard | undefined>;
   create(wizard: InsertWizard): Promise<Wizard>;
   /**
    * Insert a wizard and its `wizard_employer_monthly` subsidiary row
@@ -124,9 +134,16 @@ export function createWizardStorage(): WizardStorage {
         .from(wizards);
     },
 
-    async getById(id: string): Promise<Wizard | undefined> {
+    async getById(id: string, progressOnly = false): Promise<Wizard | undefined> {
       const client = getClient();
-      const [wizard] = await client.select().from(wizards).where(eq(wizards.id, id));
+      const [wizard] = await client.select({
+        ...getTableColumns(wizards),
+        data: progressOnly
+          ? sql<Wizard["data"]>`CASE WHEN ${wizards.type} = 'trust_provider_edi'
+              THEN (${wizards.data} - 'coverageSnapshot' - 'coverageDecisions') #- '{reportMeta,coverageDecisions}'
+              ELSE ${wizards.data} END`
+          : wizards.data,
+      }).from(wizards).where(eq(wizards.id, id));
       return wizard || undefined;
     },
 
@@ -209,8 +226,7 @@ export function createWizardStorage(): WizardStorage {
         .set(updates)
         .where(and(
           expectedData !== undefined ? sql`${wizards.data} IS NOT DISTINCT FROM ${JSON.stringify(expectedData)}::jsonb` : undefined,
-          updates.data !== undefined ? sql`NOT (${wizards.type} = 'trust_provider_edi'
-            AND coalesce(${wizards.data} #>> '{progress,run,status}', '') = 'in_progress')` : undefined,
+          updates.data !== undefined ? ediMutationAllowed() : undefined,
           // A type-only PATCH must not turn admitted BAO evidence into an
           // unprotected wizard. This is checked against the stored row.
           updates.type !== undefined
@@ -242,6 +258,7 @@ export function createWizardStorage(): WizardStorage {
         .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
           sql`NOT (${wizards.type} = 'bao_monthly_hours'
             AND coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1')`,
+          !(activeStep && runId) ? ediMutationAllowed() : undefined,
           activeStep && runId
             ? sql`${wizards.data} #>> ARRAY['progress', ${activeStep}::text, 'runId']::text[] = ${runId}
                 AND ${wizards.data} #>> ARRAY['progress', ${activeStep}::text, 'status']::text[] = 'in_progress'`
@@ -274,6 +291,7 @@ export function createWizardStorage(): WizardStorage {
           start && expectedData !== undefined
             ? sql`${wizards.data} IS NOT DISTINCT FROM ${JSON.stringify(expectedData)}::jsonb` : undefined,
           start && expectedType ? eq(wizards.type, expectedType) : undefined,
+          start ? ediMutationAllowed() : undefined,
           leasePid !== undefined ? sql`exists (select 1 from pg_locks where locktype = 'advisory'
             and pid = ${leasePid} and granted and classid = 1350
             and objid = hashtext(${'wizard-validation:' + id})::oid and objsubid = 2)` : undefined,

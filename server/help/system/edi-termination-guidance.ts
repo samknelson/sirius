@@ -68,8 +68,21 @@ export const ediTerminationGuidance = `
   actual generation choices. Choices apply only to this wizard run; they are not
   inherited by another run and do not correct source data, authorize dual coverage,
   change elections, billing, eligibility, lifecycle events or S1.</p>
-  <p>Unresolved or stale choices block generation. <strong>Refresh evidence</strong>
-  reloads the current candidates. Added, removed or changed candidate/family evidence
+  <p>Opening <strong>Coverage sources</strong> starts an evidence check in the background
+  or reconnects to its existing work. Progress reports the current stage and, when known,
+  actual counts. Stages without a known total do not show a percentage. Reloading or
+  returning does not start duplicate work. Wait for the current conflicts or the
+  no-conflicts result before acting. <strong>Refresh evidence</strong> explicitly starts
+  a new check after the previous check has finished.</p>
+  <p>Saving a decision and completing review also validate current evidence in the
+  background. Admission is not success: wait for completion. Decisions, review completion,
+  settings changes and generation cannot overlap with an active check.
+  A failed check accepts no pending action. Use <strong>Refresh evidence</strong>,
+  review the result and submit the decision or completion again. An unavailable status
+  is not a failed or successful job: use <strong>Refresh status</strong> to reconnect.
+  A missing or stale heartbeat does not authorize another run; ask an administrator to
+  investigate interrupted work. Background work is not guaranteed to survive a server restart.</p>
+  <p>Unresolved or stale choices block generation. Added, removed or changed candidate/family evidence
   requires explicit review again, even if your chosen WMB still exists. If previously
   approved evidence is no longer part of the run, review and save <strong>Parameters</strong>
   to clear incompatible approvals. Saving Parameters or Configuration clears coverage

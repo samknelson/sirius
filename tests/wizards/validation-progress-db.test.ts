@@ -180,4 +180,40 @@ describe("wizard run progress (database)", () => {
       await storage.wizards.delete(wizard.id);
     }
   });
+  it("excludes coverage, generation and settings atomically and fences stale review publication", async () => {
+    const wizard = await storage.wizards.create({
+      type: "trust_provider_edi", status: "draft", data: { input: { fixture: true }, progress: { coverage: null, run: null } },
+    });
+    const admit = async (step: string, runId: string, data?: unknown) =>
+      storage.wizards.writeStepProgress(wizard.id, step, runId, { status: "in_progress" },
+        true, {}, undefined, undefined, wizard.type, "safe-retry", data);
+    try {
+      const [coverage, generation] = await Promise.all([
+        admit("coverage", "check", wizard.data), admit("run", "generate", wizard.data),
+      ]);
+      expect(Boolean(coverage) !== Boolean(generation)).toBe(true);
+      const winner = coverage ? "coverage" : "run";
+      const runId = coverage ? "check" : "generate";
+      expect(await storage.wizards.update(wizard.id, { data: {} }, wizard.type)).toBeUndefined();
+      expect(await storage.wizards.mergeData(wizard.id, { input: {} })).toBeUndefined();
+      expect(await storage.wizards.delete(wizard.id)).toBe(false);
+      expect(await admit("coverage", "duplicate")).toBeUndefined();
+      await storage.wizards.writeStepProgress(wizard.id, winner, runId, { status: "completed" });
+      const old = (await storage.wizards.getById(wizard.id))!;
+      const started = await admit("coverage", "new-check", old.data);
+      expect(started).toBeDefined();
+      expect(await storage.wizards.writeStepProgress(wizard.id, winner, runId,
+        { status: "completed" }, false, { coverageSnapshot: { fingerprint: "late" } })).toBeUndefined();
+      await storage.wizards.writeStepProgress(wizard.id, "coverage", "new-check",
+        { status: "completed" }, false, { coverageSnapshot: { fingerprint: "current" } });
+      expect((await storage.wizards.getById(wizard.id))?.data).toMatchObject({ coverageSnapshot: { fingerprint: "current" } });
+      expect((await storage.wizards.getById(wizard.id, true))?.data).not.toHaveProperty("coverageSnapshot");
+      expect(await admit("run", "stale-input", old.data)).toBeUndefined();
+    } finally {
+      const saved = (await storage.wizards.getById(wizard.id))?.data as any;
+      for (const step of ["coverage", "run"]) if (saved?.progress?.[step]?.status === "in_progress")
+        await storage.wizards.writeStepProgress(wizard.id, step, saved.progress[step].runId, { status: "failed" });
+      await storage.wizards.delete(wizard.id);
+    }
+  });
 });

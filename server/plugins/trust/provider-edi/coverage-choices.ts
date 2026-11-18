@@ -7,13 +7,31 @@ export const coverageKey = (r: Pick<SegmentCoverage, "workerId" | "benefitId" | 
 
 /** Stable across JSONB key order and query ordering. */
 export function evidenceHash(value: unknown): string {
-  function canonical(v: unknown): unknown {
+  return createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+}
+function canonical(v: unknown): unknown {
     if (Array.isArray(v)) return v.map(canonical);
     if (v && typeof v === "object") return Object.fromEntries(
       Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canonical(x)]));
     return v;
+}
+
+/** Same canonical bytes as evidenceHash, without one large synchronous copy. */
+export async function evidenceHashRecords(records: Record<string, readonly unknown[]>): Promise<string> {
+  const hash = createHash("sha256");
+  hash.update("{");
+  let first = true;
+  for (const key of Object.keys(records).sort()) {
+    hash.update(`${first ? "" : ","}${JSON.stringify(key)}:[`);
+    first = false;
+    const rows = records[key];
+    for (let i = 0; i < rows.length; i++) {
+      hash.update(`${i ? "," : ""}${JSON.stringify(canonical(rows[i]))}`);
+      if (i % 500 === 0) await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    hash.update("]");
   }
-  return createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+  return hash.update("}").digest("hex");
 }
 
 export function competingSources(rows: readonly SegmentCoverage[]): boolean {

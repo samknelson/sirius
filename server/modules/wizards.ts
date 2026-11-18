@@ -258,7 +258,7 @@ export function registerWizardRoutes(
   app.get("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const wizard = await storage.wizards.getById(id);
+      const wizard = await storage.wizards.getById(id, true);
       
       if (!wizard) {
         return res.status(404).json({ message: "Wizard not found" });
@@ -274,6 +274,12 @@ export function registerWizardRoutes(
       const plugin = wizardPluginRegistry.get(wizard.type);
       if (plugin) {
         const manifest = wizardPluginRegistry.computeManifest(plugin, wizard);
+        if (wizard.type === "trust_provider_edi") {
+          // Review evidence is fetched separately, never on heartbeat polls.
+          const { coverageSnapshot: _snapshot, ...data } = (wizard.data as any) ?? {};
+          res.setHeader("Cache-Control", "private, no-store");
+          return res.json({ ...wizard, data, manifest });
+        }
         return res.json({ ...wizard, manifest });
       }
 
