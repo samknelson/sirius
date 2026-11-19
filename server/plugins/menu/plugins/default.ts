@@ -450,7 +450,7 @@ export function buildEdlsMenuItems(): MenuItemDef[] {
       icon: "FileSpreadsheet",
       href: "/edls/sheets",
       testId: "menu-edls-sheets",
-      gate: { anyOf: [{ policy: "staff" }, { policy: "edls.reader" }] },
+      gate: { policy: "edls.any" },
     },
     {
       id: "edls-workers",
