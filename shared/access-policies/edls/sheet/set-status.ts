@@ -12,7 +12,8 @@ const policy = definePolicy({
   describeRequirements: () => [
     { permission: 'edls.manager' },
     { permission: 'edls.coordinator' },
-    { permission: 'edls.worker.advisor' }
+    { permission: 'edls.worker.advisor' },
+    { permission: 'edls.supervisor', condition: 'request scheduling for their assigned draft sheets' }
   ],
   
   async evaluate(ctx: PolicyContext) {
@@ -59,6 +60,17 @@ const policy = definePolicy({
       return { granted: true, reason: 'Worker advisor access' };
     }
     
+    if (targetStatus === 'request' && await ctx.hasPermission('edls.supervisor')) {
+      const sheet = await ctx.loadEntity('edls_sheet', ctx.entityId!);
+      if (
+        sheet &&
+        (sheet as any).status === 'draft' &&
+        (sheet as any).supervisor === ctx.user?.id
+      ) {
+        return { granted: true, reason: 'Supervisor can request scheduling for their assigned draft sheets' };
+      }
+    }
+
     return { granted: false, reason: 'No permission to change sheet status' };
   },
 });

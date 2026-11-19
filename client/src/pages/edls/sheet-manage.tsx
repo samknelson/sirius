@@ -72,7 +72,7 @@ function EdlsSheetManageContent() {
     queries: statusOptions.map(({ value }) => ({
       queryKey: [
         "/api/access/policies", "edls.sheet.set_status", sheetId,
-        { targetStatus: value, currentStatus, hasTrashLock, viewerId: user?.id },
+        { targetStatus: value, currentStatus, supervisor: sheet.supervisor, hasTrashLock, viewerId: user?.id },
       ],
       queryFn: async (): Promise<{ access: { granted: boolean } }> => {
         const params = new URLSearchParams({ entityId: sheetId, targetStatus: value });
@@ -83,6 +83,24 @@ function EdlsSheetManageContent() {
       retry: false,
     })),
   });
+  // Match the API gates rather than inferring permissions from tab access.
+  const actionAccess = useQueries({
+    queries: ["edls.sheet.assign", "edls.sheet.manage"].map(policyId => ({
+      queryKey: [
+        "/api/access/policies", policyId, sheetId,
+        { currentStatus, supervisor: sheet.supervisor, viewerId: user?.id },
+      ],
+      queryFn: async (): Promise<{ access: { granted: boolean } }> => {
+        const params = new URLSearchParams({ entityId: sheetId });
+        return apiRequest("GET", `/api/access/policies/${policyId}?${params}`);
+      },
+      enabled: !!user,
+      staleTime: 0,
+      retry: false,
+    })),
+  });
+  const canChangeSettings = actionAccess[0].data?.access.granted === true;
+  const canCopy = actionAccess[1].data?.access.granted === true;
   const isCheckingStatuses = statusAccess.some(result => result.isPending);
   const statusCheckFailed = statusAccess.some(result => result.isError);
   const availableStatuses = statusOptions.filter((status, index) => {
@@ -262,7 +280,6 @@ function EdlsSheetManageContent() {
   };
 
   const isPending = setStatusMutation.isPending || trashLockMutation.isPending || notificationsMutation.isPending || copySheetMutation.isPending;
-  const canEdit = currentStatus !== "lock" && currentStatus !== "trash";
 
   return (
     <div className="space-y-6">
@@ -342,7 +359,7 @@ function EdlsSheetManageContent() {
               </p>
             )}
 
-            {canEdit && (
+            {canChangeSettings && (
               <div className="pt-4 flex items-center gap-3">
                 <Button
                   variant="outline"
@@ -388,7 +405,7 @@ function EdlsSheetManageContent() {
         </CardContent>
       </Card>
 
-      <Card>
+      {canCopy && <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Copy className="h-5 w-5" />
@@ -426,7 +443,7 @@ function EdlsSheetManageContent() {
             </p>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <AlertDialog open={showTrashConfirm} onOpenChange={setShowTrashConfirm}>
         <AlertDialogContent>
