@@ -442,9 +442,12 @@ const runStep: WizardStepHandler = {
         throw new Error(`This file would leave out ${evidence.exclusions.length} coverage record group(s) that no administrator has acknowledged, or the list changed since it was acknowledged. Check Coverage sources, review the exclusion list and acknowledge it, then generate again.`);
       ediCtx.coverageEvidence = evidence;
     }
+    evidence?.budget.log("phase-start", "Reading generation keys");
     // The registry guarantees getPrimaryKeys (default filled at registration).
     const keys = await plugin.getPrimaryKeys!(ediCtx);
     evidence?.budget.check(keys.length);
+    evidence?.budget.log("phase-end", "Reading generation keys");
+    evidence?.budget.log("phase-start", "Generating file rows");
     await ctx.reportProgress(null, { phase: "Generating file rows" });
     const columns = plugin.getColumns();
 
@@ -456,8 +459,15 @@ const runStep: WizardStepHandler = {
     const started = performance.now();
     for (let i = 0; i < keys.length; i += BATCH) {
       const batch = keys.slice(i, i + BATCH);
+      const batchStarted = performance.now();
+      evidence?.budget.log("phase-start", "Materializing generation batch", { processed, batchKeys: batch.length });
       const rows = await plugin.processBatch(batch, ediCtx);
       for (const row of rows) evidence?.budget.retain(row, false);
+      evidence?.budget.log("phase-end", "Materializing generation batch", {
+        milliseconds: Math.round(performance.now() - batchStarted), batchRows: rows.length,
+      });
+      evidence?.budget.log("phase-start", "Saving generation batch", { processed, batchRows: rows.length });
+      const saveStarted = performance.now();
       for (const row of rows) {
         const pk = String(row.pk ?? "");
         if (!pk) continue;
@@ -468,6 +478,9 @@ const runStep: WizardStepHandler = {
         if (row.terminationEvidence === "coverage inferred") terminationCounts.inferred++;
       }
       for (const row of rows) evidence?.budget.release(row);
+      evidence?.budget.log("phase-end", "Saving generation batch", {
+        milliseconds: Math.round(performance.now() - saveStarted), batchRows: rows.length,
+      });
       processed += batch.length;
       if (keys.length > 0) {
         await ctx.reportProgress(
@@ -483,11 +496,19 @@ const runStep: WizardStepHandler = {
       const entries: EdiCoverageEntry[] = [...evidence.exclusions, ...evidence.warnings];
       for (let i = 0; i < entries.length; i++)
         await ctx.storage.wizards.saveReportData(ctx.wizardId, `${COVERAGE_ENTRY_PK}${String(i).padStart(7, "0")}`, { coverageEntry: entries[i] });
+      const expectedFingerprint = evidence.fingerprint;
+      coverage = coverageSummary(evidence, acknowledgement);
+      // No generation reader needs these maps after the rows and review list
+      // have been saved. Do not hold two full evidence snapshots during the
+      // final read; keep only the scalar fingerprint and summary.
+      entries.length = 0;
+      keys.length = 0;
+      ediCtx.coverageEvidence = undefined;
+      evidence = undefined;
       const fresh = await readCoverageEvidence(ediCtx, plugin,
         (percent, details) => ctx.reportProgress(percent, { ...details, phase: `Final evidence validation: ${details?.phase ?? ""}` }));
-      if (fresh.fingerprint !== evidence.fingerprint)
+      if (fresh.fingerprint !== expectedFingerprint)
         throw new Error("Coverage evidence changed during generation. Check Coverage sources and regenerate; these rows are not available for delivery.");
-      coverage = coverageSummary(evidence, acknowledgement);
     }
     return {
       status: "completed",

@@ -557,9 +557,23 @@ export async function buildMemberUnits(
       list.push(dep);
     }
 
-    async function primaryPostal(contactId: string): Promise<EdiPostal | null> {
-      const [postal] = await db
+    // Fetch demographics once per batch, never once per person. With remote
+    // Postgres the old subscriber/address/phone loop cost hundreds of network
+    // round trips before the first generated row reached the budget check.
+    const subscribers = workerIds.length ? boundedCoverageRows(await db
+      .select({ workerId: workers.id, ...personColumns })
+      .from(workers)
+      .innerJoin(contacts, eq(workers.contactId, contacts.id))
+      .leftJoin(optionsGender, eq(contacts.gender, optionsGender.id))
+      .where(inArray(workers.id, workerIds)).limit(COVERAGE_LIMITS.rows + 1)) : [];
+    const subscriberByWorker = new Map(subscribers.map(person => [person.workerId, person]));
+    const contactIds = [...new Set([
+      ...subscribers.map(person => person.contactId),
+      ...relevantDeps.map(person => person.contactId),
+    ])];
+    const postals = contactIds.length ? boundedCoverageRows(await db
         .select({
+          contactId: contactPostal.contactId,
           street: contactPostal.street,
           street2: contactPostal.street2,
           city: contactPostal.city,
@@ -569,39 +583,33 @@ export async function buildMemberUnits(
         .from(contactPostal)
         .where(
           and(
-            eq(contactPostal.contactId, contactId),
+            inArray(contactPostal.contactId, contactIds),
             eq(contactPostal.isActive, true),
             eq(contactPostal.isPrimary, true),
           ),
-        );
-      return postal ?? null;
-    }
-    async function primaryPhone(contactId: string): Promise<string | null> {
-      const [phone] = await db
-        .select({ phoneNumber: phoneNumbers.phoneNumber })
+        ).limit(COVERAGE_LIMITS.rows + 1)) : [];
+    const phones = contactIds.length ? boundedCoverageRows(await db
+        .select({ contactId: phoneNumbers.contactId, phoneNumber: phoneNumbers.phoneNumber })
         .from(phoneNumbers)
         .where(
           and(
-            eq(phoneNumbers.contactId, contactId),
+            inArray(phoneNumbers.contactId, contactIds),
             eq(phoneNumbers.isActive, true),
             eq(phoneNumbers.isPrimary, true),
           ),
-        );
-      return phone?.phoneNumber ?? null;
-    }
+        ).limit(COVERAGE_LIMITS.rows + 1)) : [];
+    // Match the previous first-primary behavior without accumulating duplicates.
+    const postalByContact = new Map<string, EdiPostal>();
+    for (const { contactId, ...postal } of postals)
+      if (!postalByContact.has(contactId)) postalByContact.set(contactId, postal);
+    const phoneByContact = new Map<string, string>();
+    for (const phone of phones)
+      if (!phoneByContact.has(phone.contactId)) phoneByContact.set(phone.contactId, phone.phoneNumber);
 
     const units: EdiMemberUnit[] = [];
     for (const wmb of wmbRows) {
-      const [subscriber] = await db
-        .select(personColumns)
-        .from(workers)
-        .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(optionsGender, eq(contacts.gender, optionsGender.id))
-        .where(eq(workers.id, wmb.workerId));
+      const subscriber = subscriberByWorker.get(wmb.workerId);
       if (!subscriber) continue;
-
-      const subscriberPostal = await primaryPostal(subscriber.contactId);
-      const subscriberPhone = await primaryPhone(subscriber.contactId);
 
       // Covered dependents: WMB rows for the same benefit and month whose
       // source relation points back at this subscriber. Deduped by
@@ -635,8 +643,8 @@ export async function buildMemberUnits(
           middleName: dep.middleName,
           birthDate: dep.birthDate,
           genderCode: dep.genderCode,
-          postal: await primaryPostal(dep.contactId),
-          phoneNumber: await primaryPhone(dep.contactId),
+          postal: postalByContact.get(dep.contactId) ?? null,
+          phoneNumber: phoneByContact.get(dep.contactId) ?? null,
         }));
       }
 
@@ -646,14 +654,14 @@ export async function buildMemberUnits(
         ...segmentFor(wmb.id),
         subscriber: normalizeEdiPerson({
           ...subscriber,
-          postal: subscriberPostal,
-          phoneNumber: subscriberPhone,
+          postal: postalByContact.get(subscriber.contactId) ?? null,
+          phoneNumber: phoneByContact.get(subscriber.contactId) ?? null,
         }),
         dependents,
       });
     }
     return units;
-  });
+  }, { statementTimeoutMs: COVERAGE_LIMITS.queryMs });
 }
 
 /** "Given Family" display name used in preview columns. */

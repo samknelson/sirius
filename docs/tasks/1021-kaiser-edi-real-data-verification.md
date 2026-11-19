@@ -318,6 +318,63 @@ final validation; the correlated phase logs are needed before attributing the
 failure or selecting a fix. Do not treat the small numerical excess as
 authorization to raise or disable the safety ceiling.
 
+### Correlated Generate logs supplied afterward
+
+The correlated phase sequence supersedes the uncertainty above. The initial
+evidence read **completed** in 16,762 ms, including successful fingerprinting
+in 705 ms. The refusal occurred at 282,448 ms with the **same** scan identity,
+only one additional retained record and no additional scanned source records.
+Generation had not updated the budget's phase label, so "Fingerprinting
+evidence" was stale. This was during generation after the completed evidence
+read, not a failed fingerprint or a second evidence scan.
+
+| Initial Generate evidence phase | Milliseconds |
+| --- | ---: |
+| Resolving benefits | 36 |
+| Checking lifecycle events | 3,295 |
+| Reading report-month coverage | 546 |
+| Reading termination evidence | 2,821 |
+| Reading ended families | 460 |
+| Reading supplemental coverage | 3,547 |
+| Reading coverage start events | 4,820 |
+| Describing exclusions | 300 |
+| Fingerprinting evidence | 705 |
+
+The run checked 23,189 people, read 22,528 report-month records, retained
+47,822 scanned records and reported 9 exclusion groups and 1,649 warnings.
+The start-date statement resolved 22,890 anchors, examined 531,919 coverage
+months within their runs, and recorded **monthsBeforeRunStart = 0**.
+This is real staging evidence for the initial Generate check, not final
+validation, output equivalence, or Kaiser-scale performance.
+
+The shared generator fetched subscriber demographics, postal addresses and
+phones one person at a time. A batch of 100 families could therefore issue
+hundreds of serial queries before returning its first file row. The code now
+fetches each category once per batch, with bounded results and statement
+timeouts; keyed maps preserve person/contact association independently of
+database ordering. The heap guard remains process-wide and unchanged; this
+does not prove all heap growth came from those reads.
+
+Generation now marks key lookup, batch materialization and batch saving in the
+resource logs, and drops the first evidence reference and consumed keys before
+the final validation read. Fingerprint comparison and exclusion acknowledgement
+are unchanged. No source coverage, relationships or employers are changed by
+these code edits.
+
+Verification: typechecking and diff whitespace checks passed. The EDI suite
+reported 471 passed, 11 skipped and seven failed checks for missing SMF legacy
+layout fixtures in this branch. The changed assembly, evidence and delivery
+tests passed, including a 100-family assembly using seven reads, correct
+contact association from reversed database results, release before final
+validation, and correct generation-phase attribution when the heap guard fires.
+The layout fixture file was not changed by this work. Built-in help needs no
+change: the workflow, safeguards and user actions remain the same; these edits
+reduce reads and correct diagnostic phase names.
+
+The implementation is local to this workspace; it has not been pushed to
+bao-stg or verified against the real Generate workload. Full task verification
+remains incomplete.
+
 | Item | Result |
 | --- | --- |
 | Database / date | — |

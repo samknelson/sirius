@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "csv-parse/sync";
 import { isEdiCobra, type SegmentCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
-import { wmbPrimaryKeys } from "../../server/plugins/trust/provider-edi/base";
+import { buildMemberUnits, wmbPrimaryKeys } from "../../server/plugins/trust/provider-edi/base";
 import { selectTerminationCandidates } from "../../server/plugins/trust/provider-edi/termination-population";
 import { carrierLayoutCsv } from "../../server/plugins/trust/provider-edi/carrier-csv";
 import { ediReadFixture, registeredEdiPlugins, segmentStartRow } from "./fixtures/harness";
@@ -46,8 +46,7 @@ function memberReads(current: SegmentCoverage, run: Run, dependent?: SegmentCove
       relationSiriusId: "SP", benefitId: "benefit", year: 2026, month: current.month,
     }] : [],
     [segmentStartRow(current, run), ...(dependent ? [segmentStartRow(dependent, dependentRun ?? run)] : [])],
-    [person], [], [],
-    ...(dependent ? [[], []] : []),
+    [{ ...person, workerId: current.workerId }], [], [],
   ];
 }
 const supplementalRead = (pluginId: string) =>
@@ -60,6 +59,40 @@ const starts = async (rows: Record<string, unknown>[]) => {
 };
 
 describe("membership EDI classification", () => {
+  it.each([1, 100])("materializes %i families with seven reads, not per-person queries", async count => {
+    const subscribers = Array.from({ length: count }, (_, i) =>
+      row(10, { id: `parent-row-${i}`, workerId: `parent-${i}` }));
+    const dependents = subscribers.map((parent, i) => ({
+      ...person, contactId: `dep-contact-${i}`, depWmbId: `child-row-${i}`, depWorkerId: `child-${i}`,
+      employerId: "ordinary-uuid", benefitId: "benefit", year: 2026, month: 10,
+      sourceRelationId: `relation-${i}`, relationId: `relation-${i}`, subscriberWorkerId: parent.workerId,
+      relationSiriusId: "CH",
+    }));
+    const people = subscribers.map((parent, i) => ({
+      ...person, workerId: parent.workerId, contactId: `parent-contact-${i}`,
+    }));
+    const fixture = ediReadFixture([
+      subscribers, [{ id: "benefit", siriusId: "D" }], dependents,
+      [...subscribers, ...dependents.map(dep => ({
+        id: dep.depWmbId, workerId: dep.depWorkerId, benefitId: dep.benefitId, year: dep.year, month: dep.month,
+      }))].map(anchor => segmentStartRow(anchor, { restart: 10 })),
+      [...people].reverse(),
+      [...people, ...dependents].reverse().map(p => ({
+        contactId: p.contactId, street: p.contactId, street2: null,
+        city: "Example", state: "CA", postalCode: "90001",
+      })),
+      people.map((p, i) => ({ contactId: p.contactId, phoneNumber: String(i) })),
+    ]);
+    const units = await buildMemberUnits(subscribers.map(p => p.id), fixture.ctx);
+    fixture.assertReadsConsumed();
+    expect(units).toHaveLength(count);
+    units.forEach((unit, i) => {
+      expect(unit.subscriber.postal?.street).toBe(`parent-contact-${i}`);
+      expect(unit.subscriber.phoneNumber).toBe(String(i));
+      expect(unit.dependents[0].postal?.street).toBe(`dep-contact-${i}`);
+      expect(unit.dependents[0].phoneNumber).toBeNull();
+    });
+  });
   it("retains canonical evidence hashes while yielding through large collections", async () => {
     const input = { relevant: Array.from({ length: 1500 }, (_, i) => ({ z: i, a: { second: 2, first: 1 } })), events: [] };
     let yielded = false;

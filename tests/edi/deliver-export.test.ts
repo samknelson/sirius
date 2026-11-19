@@ -20,6 +20,7 @@ import { registeredEdiPlugins } from "./fixtures/harness";
 import { assertUnmixedCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
 import { coverageDatabaseFailure } from "../../server/plugins/trust/provider-edi/coverage-database-error";
 import { DrizzleQueryError } from "drizzle-orm";
+import { CoverageBudget, CoverageBudgetError, COVERAGE_LIMITS } from "../../server/plugins/trust/provider-edi/coverage-budget";
 
 const state = vi.hoisted(() => ({
   wizard: {} as any,
@@ -215,13 +216,28 @@ describe("authorized, read-only Deliver exports", () => {
     const digest = excluding();
     const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
     const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue(["member"]);
-    const process = vi.spyOn(plugin, "processBatch").mockResolvedValue([{ pk: "member", firstName: "Fixture" }]);
+    const process = vi.spyOn(plugin, "processBatch").mockImplementation(async (_keys, context) => {
+      // Assert while the generation readers own the snapshot, not after its
+      // deliberate release before final validation.
+      expect(context.coverageEvidence?.excludedIds).toEqual(new Set(["cobra", "own"]));
+      return [{ pk: "member", firstName: "Fixture" }];
+    });
     state.wizard.data.coverageAcknowledgement = { acknowledgedBy: "fixture-user", acknowledgedAt: "2026-10-01T00:00:00.000Z",
       exclusionDigest: digest, exclusionCount: 1, rule: "exclude-conflicting" };
+    vi.mocked(readCoverageEvidence)
+      .mockResolvedValueOnce(evidence({
+        excludedIds: new Set(["cobra", "own"]), exclusions: [entry], exclusionDigest: digest,
+      }) as any)
+      .mockImplementationOnce(async context => {
+        expect(context.coverageEvidence).toBeUndefined();
+        return evidence({
+          excludedIds: new Set(["cobra", "own"]), exclusions: [entry], exclusionDigest: digest,
+        }) as any;
+      });
     try {
       const result = await runGenerate();
-      // Every membership reader worked from the one evidence read.
-      expect((process.mock.calls[0][1] as any).coverageEvidence.excludedIds).toEqual(new Set(["cobra", "own"]));
+      expect(process).toHaveBeenCalledOnce();
+      expect((process.mock.calls[0][1] as any).coverageEvidence).toBeUndefined();
       expect(result?.data?.reportMeta).toMatchObject({ recordCount: 1, coverage: {
         rule: "exclude-conflicting", exclusionCount: 1, warningCount: 0, exclusionDigest: digest,
         acknowledgement: { acknowledgedBy: "fixture-user" } } });
@@ -242,6 +258,36 @@ describe("authorized, read-only Deliver exports", () => {
     } finally {
       keys.mockRestore();
       process.mockRestore();
+    }
+  });
+  it("attributes a post-materialization heap refusal to the generation batch, not fingerprinting", async () => {
+    const budget = new CoverageBudget();
+    budget.log("phase-start", "Fingerprinting evidence");
+    vi.mocked(readCoverageEvidence).mockResolvedValueOnce(evidence({ budget }) as any);
+    const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
+    const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue(["member"]);
+    const usage = global.process.memoryUsage();
+    let materialized = false;
+    const memory = vi.spyOn(global.process, "memoryUsage").mockImplementation(() => ({
+      ...usage, rss: 0, heapUsed: materialized ? COVERAGE_LIMITS.heapBytes + 1 : 0,
+    }));
+    const batch = vi.spyOn(plugin, "processBatch").mockImplementation(async () => {
+      materialized = true;
+      return [{ pk: "member" }];
+    });
+    try {
+      const error = await runGenerate().catch(error => error);
+      expect(error).toBeInstanceOf(CoverageBudgetError);
+      expect(error.diagnostics).toMatchObject({
+        phase: "Materializing generation batch",
+        exceeded: [{ dimension: "heapBytes", limit: COVERAGE_LIMITS.heapBytes }],
+      });
+      expect(state.rows).toEqual([]);
+      expect(readCoverageEvidence).toHaveBeenCalledTimes(1);
+    } finally {
+      memory.mockRestore();
+      batch.mockRestore();
+      keys.mockRestore();
     }
   });
   it("checks source evidence again before publishing completed metadata", async () => {

@@ -204,7 +204,7 @@ describe("ended families are judged on every record a family member holds", () =
     const family = (retained: boolean) => {
       const assembly = ediReadFixture([[parent], [{ id: "benefit", siriusId: "H" }], [attachedDependent],
         ...(retained ? [[segmentStartRow(attached, { restart: 3 })]] : []),
-        [person], [], [], ...(retained ? [[], []] : []), []]);
+        [{ ...person, workerId: "parent" }], [], [], []]);
       assembly.ctx.input = { asOfDate: "2026-10-01" };
       return assembly;
     };

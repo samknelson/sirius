@@ -77,8 +77,9 @@ describe("EDI-only personal field casing through every registered feed", () => {
           [wmb],
           [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
           [dependent, missing, qmsco], history,
-          [subscriber], [postal], [{ phoneNumber: "2135550100" }],
-          [postal], [], [postal], [], [postal], [],
+          [{ ...subscriber, workerId: "sub-worker" }],
+          [subscriber, dependent, missing, qmsco].map(person => ({ ...postal, contactId: person.contactId })),
+          [{ contactId: subscriber.contactId, phoneNumber: "2135550100" }],
           ...(needsExtraRead ? [[]] : []),
         ]);
         // Check the shared model as well as the real provider mapper/serializer.
@@ -87,7 +88,9 @@ describe("EDI-only personal field casing through every registered feed", () => {
           const modelFixture = ediReadFixture([
             [wmb], [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],
             [dependent, missing, qmsco], history,
-            [subscriber], [postal], [], [postal], [], [postal], [], [postal], [],
+            [{ ...subscriber, workerId: "sub-worker" }],
+            [subscriber, dependent, missing, qmsco].map(person => ({ ...postal, contactId: person.contactId })),
+            [],
           ]);
           const [unit] = await buildMemberUnits(["wmb"], modelFixture.ctx);
           expect(unit.subscriber).toMatchObject({
