@@ -1,3 +1,4 @@
+- [Build tool peer resolution](build-tool-peer-resolution.md) — coordinated peer upgrades, stale lockfile conflicts, and clean-install verification during package security-block recovery.
 - [EDLS layoff feed terminology](edls-layoff-feed.md) — “layoff” sheet requests mean reserved, not the dispatch assignment status.
 - [Environment configuration](environment-configuration-index.md) — override precedence, PUBLIC_URL, registry, shared UI and reload rules; owner requires ALL registered variables remain overridable.
 - [Entity metadata eligibility](entity-metadata-eligibility.md) — record history is for directly maintained records; central policy rejects process families at writes, reads, registry, and cleanup.
