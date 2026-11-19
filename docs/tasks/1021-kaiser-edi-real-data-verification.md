@@ -299,6 +299,25 @@ Coverage sources check and, if it passes, Generate and final validation without
 delivery. Collect fresh phase timings and confirm monthsBeforeRunStart = 0.
 The migration-fleet correction remains separate and must precede the next import.
 
+### Generate memory refusal after Coverage sources passed
+
+The user subsequently reported that Carelon Coverage sources passed, but
+Generate refused in Fingerprinting evidence with heapBytes 403288456 greater
+than the 402653184-byte (384 MiB) ceiling. The excess was 635272 bytes
+(approximately 0.61 MiB). No completed generation or final-validation timing
+has been supplied.
+
+Code inspection shows this ceiling measures the entire Node process heap,
+not only the current scan's retained evidence. Generate reads evidence before
+row generation and again for final validation; the old evidence remains
+referenced during the second read. Fingerprinting also creates sorted arrays
+and projected records in addition to its per-row canonical serialization.
+These are concrete allocation paths, not proof of which caused this refusal.
+The reported phase alone cannot distinguish the pre-generation check from
+final validation; the correlated phase logs are needed before attributing the
+failure or selecting a fix. Do not treat the small numerical excess as
+authorization to raise or disable the safety ceiling.
+
 | Item | Result |
 | --- | --- |
 | Database / date | — |
