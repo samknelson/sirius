@@ -47,6 +47,12 @@ A bounded input batch is not a bounded database result. Charge result pages to t
 
 Timing taken on a local-socket database with synthetic rows hides per-round-trip latency. Report the number of read transactions alongside durations, and label such figures as local, never as production timing.
 
+Real-data verification must use an available carrier baseline, not assume Kaiser run history exists on bao-stg. Carelon is a candidate for checking the shared coverage engine when Kaiser history is unavailable.
+
+**Why:** The user reported no Kaiser EDI runs on the current bao-stg database/instance and suggested Carelon instead.
+
+**How to apply:** Confirm available history before prescribing a file comparison. Separate shared-rule correctness and remote-latency evidence from Kaiser-specific formatting and Kaiser-scale performance; another carrier does not automatically prove the latter.
+
 The config UI labels the provider field "Provider (label only — does not filter members)" so admins aren't misled. Layout risk is pinned by a registry-driven conformance suite (`tests/edi/`): provider-neutral behavior is asserted once for every registered provider, each provider declares its field table on the plugin and an independent transcription of the legacy PHP layout as a checked-in fixture, and a provider registered without that fixture fails the suite. Golden records and provider quirks (Kaiser overpunch, HealthNet member type) sit alongside as per-provider assertions.
 
 **How to apply:** New EDI file-type plugins should scope by benefit the same way; if a provider↔benefit relation is ever added, tighten `getPrimaryKeys` in each plugin and validate configs point at benefits owned by their provider.
