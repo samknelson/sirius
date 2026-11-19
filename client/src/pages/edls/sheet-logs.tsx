@@ -4,7 +4,7 @@ import { ActivityLogView } from "@/components/shared";
 function EdlsSheetLogsContent() {
   const { sheet } = useEdlsSheetLayout();
 
-  return <ActivityLogView hostEntityId={sheet.id} title="Activity Logs" />;
+  return <ActivityLogView hostEntityId={sheet.id} endpoint={`/api/edls/sheets/${sheet.id}/logs`} title="Activity Logs" />;
 }
 
 export default function EdlsSheetLogsPage() {

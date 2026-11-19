@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
 import { z } from "zod";
+import { requireComponent } from "../components";
 
 const logsQuerySchema = z.object({
   page: z.string().regex(/^\d+$/).transform(Number).optional().default("1"),
@@ -235,8 +236,8 @@ export function registerLogRoutes(
     }
   });
 
-  // GET /api/edls/sheets/:sheetId/logs - Get all logs related to an EDLS sheet (requires edls.coordinator permission)
-  app.get("/api/edls/sheets/:sheetId/logs", requireAuth, requireAccess('edls.coordinator'), async (req, res) => {
+  // Sheet-scoped activity is available to any EDLS role, not just coordinators.
+  app.get("/api/edls/sheets/:sheetId/logs", requireAuth, requireComponent('edls'), requireAccess('edls.any'), async (req, res) => {
     try {
       const { sheetId } = req.params;
       const { module, operation, startDate, endDate } = req.query;
