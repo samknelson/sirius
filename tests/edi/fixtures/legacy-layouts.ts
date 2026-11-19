@@ -1,16 +1,23 @@
 /**
- * The expected fixed-width layout of record for every trust-provider EDI
- * plugin, keyed by plugin id.
+ * The expected layout of record for every trust-provider EDI plugin, keyed by
+ * plugin id.
  *
- * Each entry is an INDEPENDENT transcription of the authoritative legacy PHP
- * `edi_fields()` for that provider — field name, order, and width, exactly as
- * the provider's parser expects them. It is deliberately NOT derived from the
+ * Each entry is an INDEPENDENT transcription of the authoritative source for
+ * that provider — the legacy PHP generator, or the carrier's own handbook
+ * where one has been adopted (Delta). It is deliberately NOT derived from the
  * plugin source: the conformance suite compares the live field table against
  * this list, so deriving it would prove nothing.
  *
- * Registering a new EDI plugin means adding its layout here. The conformance
- * suite fails a registered plugin that has no entry, rather than letting it
- * ship untested.
+ * A provider's file is either fixed-width or CSV, and is pinned in the
+ * matching map:
+ *  - `LEGACY_LAYOUTS` — fixed-width records: field name, order, and width,
+ *    exactly as the provider's parser expects them, plus the record width.
+ *  - `LEGACY_CSV_LAYOUTS` — CSV records: column name and order. A CSV cell
+ *    has no width, so none is pinned.
+ *
+ * Registering a new EDI plugin means adding its layout to one of the two
+ * maps. The conformance suite fails a registered plugin that has no entry,
+ * rather than letting it ship untested.
  */
 
 export interface LegacyLayout {
@@ -176,8 +183,169 @@ const SMF_DELTA: LegacyLayout = {
   ],
 };
 
+/**
+ * Legacy PHP `edi_fields()` (reports/edi_expressscripts.inc) — Express
+ * Scripts eligibility file, member detail ("M") record. The header ("H") and
+ * trailer ("T") records are the same 1,500 bytes wide but are not the record
+ * this suite measures.
+ */
+const SMF_EXPRESSSCRIPTS: LegacyLayout = {
+  totalWidth: 1500,
+  fields: [
+    ["Record Type", 1], ["Client Identifier", 3], ["Participant ID #1", 18],
+    ["Participant ID #2", 18], ["Participant Effective Date", 8],
+    ["Participant First Name", 12], ["Participant Last Name", 18],
+    ["Participant Middle Initial", 1], ["Address #1", 30], ["Address #2", 30],
+    ["Address #3", 30], ["Address #4", 30], ["City", 28], ["State", 2], ["Zip Code", 5],
+    ["Zip Reserve", 4], ["Date of Birth", 8], ["Gender Code", 1],
+    ["Contract or Family ID", 18], ["Dependent ID", 5], ["Relationship Code", 1],
+    ["Client Group ID", 18], ["PCP ID", 18], ["Reserved1", 8], ["Filler1", 18],
+    ["Reserved2", 8], ["Transaction Date", 8], ["Participant Expiration Date", 8],
+    ["Insurance Code", 20], ["Reserved3", 1], ["Reserved4", 7], ["Filler2", 1],
+    ["Medicare ID", 12], ["Reserved5", 1], ["Reserved6", 7], ["Copay Waiver Flag", 1],
+    ["Coverage Code Status", 1], ["Print ID Card Flag", 1], ["Admin Hold Eff Date", 8],
+    ["Admin Hold Exp Date", 8], ["COB Indicator/ Primary Carrier Flag", 1],
+    ["Client Specific Data", 62], ["Reserved7", 1], ["Member Level Address Type", 1],
+    ["Hospice Indicator", 1], ["Suspense Indicator", 1], ["COB Effective date", 8],
+    ["Contract Type", 2], ["Member SSN", 9], ["Subsidy/ESRD", 1], ["Phone Number", 10],
+    ["Demographic Level 1", 20], ["Demographic Level 2", 20], ["Demographic Level 3", 20],
+    ["Demographic Level 4", 20], ["Demographic Level 5", 20], ["Demographic Level 6", 20],
+    ["Participant ID #3", 18], ["Participant ID #4", 18], ["County Code", 3],
+    ["Subsidy Eff Date", 8], ["Subsidy Exp Date", 8], ["Application ID", 10],
+    ["Benefit Option ID", 20], ["Filler3", 14], ["Multi-Birth Indicator", 1],
+    ["Client Specific 2", 54], ["Record Sequence No.", 4], ["PDP Indicator", 1],
+    ["Secondary-Drug-Insurance-Flag", 1], ["Secondary-Rx-Group", 15],
+    ["Secondary-Rx-ID", 20], ["Election Type", 1], ["Part D Premium-Amt", 6],
+    ["Premium-Withhold-Option-C-D", 1], ["Disenrollment-Indicator", 1], ["Filler4", 87],
+    ["Last Name Expanded", 35], ["First Name Expanded", 25],
+    ["Middle Initial Expanded", 1], ["Address Line1 Expanded", 55],
+    ["Address Line2 Expanded", 55], ["Address Line3 Expanded", 55],
+    ["Address City Expanded", 30], ["Address State Expanded", 2],
+    ["Address Zip5 Expanded", 5], ["Address Zip4 Expanded", 4],
+    ["Address Country Code Expanded", 3], ["Primary Phone", 10],
+    ["Primary Phone Country Calling Code - Reserved for future.", 3],
+    ["Primary Phone Extension - Reserved for future.", 6], ["Primary Phone Type", 1],
+    ["Communication Preference", 1], ["Filler5", 9], ["Alternate Phone", 10],
+    ["Alternate Phone Country Calling Code - Reserved for future.", 3],
+    ["Alternate Phone Extension - Reserved for future.", 6], ["Alternate Phone Type", 1],
+    ["Filler6", 1], ["Primary Email", 80], ["Primary Email Type – Reserved for Future", 1],
+    ["Alternate Email – Reserved for Future", 80],
+    ["Alternate Email Type – Reserved for Future", 1],
+    ["Preferred Contact Method – Reserved for Future", 1], ["Preferred  Language -", 3],
+    ["Time Zone", 5], ["Filler7", 3], ["HCR Plan Indicator", 1],
+    ["Grace Period Logic Effective Date", 8], ["Ethnicity Indicator", 1], ["Filler8", 62],
+  ],
+};
+
+/** Legacy PHP `edi_fields()` (reports/edi_vsp.inc) — VSP vision eligibility file. */
+const SMF_VSP: LegacyLayout = {
+  totalWidth: 600,
+  fields: [
+    ["Subscriber Record ID", 3], ["Full Replacement Files", 1], ["Control Number", 5],
+    ["Subscriber ID", 30], ["Subscriber SSN", 9], ["Alternate Subscriber ID", 30],
+    ["Previous Subscriber ID", 30], ["Dependent SSN", 9], ["Subscriber Last Name", 18],
+    ["Subscriber First Name", 12], ["Subscriber Middle Initial", 1],
+    ["Subscriber Name-Suffix", 3], ["Gender", 1], ["Family-Indicator", 1],
+    ["Date of Birth", 8], ["Vision Coverage Begin Date", 8],
+    ["Vision Coverage End Date", 8], ["Family Indicator Change Effective Date", 8],
+    ["Division-Code", 30], ["Cross-Reference Code", 16],
+    ["Subscriber Residence Address Line 1", 30],
+    ["Subscriber Residence Address Line 2", 30], ["Subscriber Residence City", 19],
+    ["Subscriber Residence State Code", 2], ["Subscriber Residence ZIP Code", 10],
+    ["Subscriber Residence Phone Number", 10], ["Subscriber Residence Country", 3],
+    ["Subscriber Home Email Address", 50], ["Subscriber Work Email Address", 50],
+    ["Subscriber Mailing Address Line 1", 30], ["Subscriber Mailing Address Line 2", 30],
+    ["Subscriber Mailing City", 19], ["Subscriber Mailing State", 2],
+    ["Subscriber Mailing ZIP Code", 10], ["Subscriber Mailing Country", 3],
+    ["Subscriber Work Phone Number", 10], ["Subscriber Message Phone", 10],
+    ["Subscriber Native Language", 3], ["Subscriber Spoken Language", 3],
+    ["Subscriber Reading Language", 3], ["Subscriber Ethnicity", 1],
+    ["Subscriber Status Code", 1], ["Subscriber Citizenship Status Code", 2],
+    ["Subscriber Status", 2], ["Subscriber Marital Status Code", 1],
+    ["Subscriber Medicare Plan Code", 1], ["Filler2", 34],
+  ],
+};
+
 export const LEGACY_LAYOUTS: Readonly<Record<string, LegacyLayout>> = {
   "sitespecific-bao-kaiser": KAISER,
   "sitespecific-bao-healthnet": HEALTHNET,
   "sitespecific-smf-delta": SMF_DELTA,
+  "sitespecific-smf-expressscripts": SMF_EXPRESSSCRIPTS,
+  "sitespecific-smf-vsp": SMF_VSP,
+};
+
+/**
+ * The expected layout of one CSV detail record: its columns, in output order.
+ *
+ * The legacy generators for Carelon and Dentwell also list a `width` beside
+ * each column. Those widths are not pinned: both generators declare CSV
+ * output, and Dentwell declares width 1 for the header column that carries
+ * its eight-digit report date, so the legacy CSV output did not apply them.
+ */
+export interface LegacyCsvLayout {
+  /** Column names in output order. */
+  columns: ReadonlyArray<string>;
+}
+
+/** Legacy PHP `edi_fields()` (reports/edi_carelon.inc) — Carelon EAP eligibility CSV. */
+const SMF_CARELON: LegacyCsvLayout = {
+  columns: [
+    "MEMBNO", "SOCSEC", "LSTNAM", "FSTNAM", "MIDNAM", "ADRLN1", "ADRLN2", "CITYCD",
+    "STACOD", "ZIPCOD", "HOMPHN", "WRKPHN", "BTHDAT", "RELCOD", "SEXCOD", "GRPEFF",
+    "GRPEXP", "GRPNUM", "BENPKG", "TIERCD", "MSTACD", "ALTNUM", "CLIDEF",
+  ],
+};
+
+/**
+ * Legacy PHP `edi_fields()` (reports/edi_dentwell.inc) — Dentwell eligibility
+ * CSV, member detail ("E") record. The "H" header and "T" trailer records have
+ * their own three-column layouts and are not the record this suite measures.
+ */
+const SMF_DENTWELL: LegacyCsvLayout = {
+  columns: [
+    "Record Type", "SubscriberNumber", "MemberType", "EffectiveDate", "TerminationDate",
+    "Status", "LastName", "FirstName", "MiddleName", "DateOfBirth", "Address1",
+    "Address2", "City", "State", "Zip", "HomePhone", "Email", "Gender",
+    "RelationshipCode",
+  ],
+};
+
+/** Legacy PHP `fields()` (reports/edi_hinge.inc) — Hinge Health eligibility CSV. */
+const SMF_HINGE: LegacyCsvLayout = {
+  columns: [
+    "subscriber_id", "first_name", "last_name", "dob", "relationship", "sex",
+    "address1", "address2", "city", "state", "zip", "email", "start_date",
+    "term_date", "language",
+  ],
+};
+
+/**
+ * Legacy PHP (reports/edi_local11.inc) — Local 11 hours export CSV. The
+ * columns are the generator's `default_display_fields`, in that order, under
+ * the titles its `fields()` gives them. `fields()` also names Worker NID and
+ * Payperiod NID, which are link targets for the legacy preview and are not in
+ * the display list.
+ */
+const SMF_LOCAL11: LegacyCsvLayout = {
+  columns: [
+    "Worker SSN", "Worker Name", "Employer Name", "Employer Code", "Year", "Month",
+    "Hours", "Hours Type",
+  ],
+};
+
+/** Legacy PHP `edi_fields()` (reports/edi_mlk.inc) — MLK Community Healthcare eligibility CSV. */
+const SMF_MLK: LegacyCsvLayout = {
+  columns: [
+    "POLICY", "PLAN", "GROUP", "FILE DT", "MEM ACCT", "DEP ACCT", "MEM/DEP", "LN", "FN",
+    "MI", "DEP REL", "BD", "SEX", "SSN", "DEP SSN", "PHONE", "ADDR1", "ADDR2", "CITY",
+    "ST", "ZIP", "EFF DT", "TERM DT", "PCP", "LOB", "ERN", "EMPLOYER", "EMAIL",
+  ],
+};
+
+export const LEGACY_CSV_LAYOUTS: Readonly<Record<string, LegacyCsvLayout>> = {
+  "sitespecific-smf-carelon": SMF_CARELON,
+  "sitespecific-smf-dentwell": SMF_DENTWELL,
+  "sitespecific-smf-hinge": SMF_HINGE,
+  "sitespecific-smf-local11": SMF_LOCAL11,
+  "sitespecific-smf-mlk": SMF_MLK,
 };

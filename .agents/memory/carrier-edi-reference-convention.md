@@ -28,3 +28,11 @@ even though the handbook labels 13 "Non-Covered Subscriber" — recorded as
 an open carrier question, do not "fix" it unilaterally. The .doc handbook
 loses table rows under antiword/ReadFile; recover full field tables with
 `strings` on the raw file.
+
+CSV carriers are pinned separately from fixed-width ones: column names and
+order only. A legacy generator may list a `width` beside CSV columns; that
+is not evidence of truncation (Dentwell declares width 1 for an eight-digit
+date), so do not pin or enforce it. Local 11's legacy file is not an
+eligibility generator: its delivered columns are the legacy
+`default_display_fields` under the titles from `fields()`, not every entry
+`fields()` names.

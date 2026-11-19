@@ -12,13 +12,17 @@
  * suite down to what is genuinely its own (Kaiser's overpunch amounts,
  * HealthNet's member types).
  *
+ * A CSV provider has no byte offsets, but the same risks in another shape: a
+ * column out of order, a column added or dropped, a value holding a comma or
+ * a quote that splits one cell into two. Those are asserted once here too.
+ *
  * The expected layouts live in `fixtures/legacy-layouts.ts` and are
  * transcribed from the legacy PHP generators, not from the plugins.
  */
 import { describe, expect, it } from "vitest";
 import { parse } from "csv-parse/sync";
 import { buildMemberUnits } from "../../server/plugins/trust/provider-edi/base";
-import { LEGACY_LAYOUTS } from "./fixtures/legacy-layouts";
+import { LEGACY_CSV_LAYOUTS, LEGACY_LAYOUTS } from "./fixtures/legacy-layouts";
 import {
   encoderFor,
   ediReadFixture,
@@ -129,9 +133,9 @@ describe("EDI-only personal field casing through every registered feed", () => {
             expect(cells).toEqual(plugin.csvFields!.map(f => f.get?.(expectedRow) ?? ""));
             if (i === 0) expect(encoded).toContain('"ANA,""ANN""');
           } else {
-            // Legacy pins cover Kaiser, HealthNet and Delta. Other feeds still
-            // get casing/structural checks using their declared layout here;
-            // the separate fixture-inventory test continues to expose that gap.
+            // A fixed-width feed registered without a legacy pin still gets
+            // casing/structural checks from its declared layout here; the
+            // separate fixture-inventory test is what reports the missing pin.
             const layout = LEGACY_LAYOUTS[plugin.id] ?? {
               totalWidth: plugin.ediFields.reduce((sum, f) => sum + f.width, 0),
               fields: plugin.ediFields.map(f => [f.name, f.width] as const),
@@ -170,17 +174,33 @@ describe("every registered EDI provider has an expected layout", () => {
   for (const plugin of plugins) {
     it(`${plugin.id} has a layout fixture`, () => {
       expect(
-        LEGACY_LAYOUTS[plugin.id],
+        LEGACY_LAYOUTS[plugin.id] ?? LEGACY_CSV_LAYOUTS[plugin.id],
         `Trust-provider EDI plugin '${plugin.id}' has no expected layout, so nothing ` +
           `checks the file it produces. Add an entry keyed '${plugin.id}' to ` +
-          `tests/edi/fixtures/legacy-layouts.ts: its authoritative field names, ` +
-          `order, and widths (transcribed from the format spec, not copied from ` +
-          `the plugin), plus the total record width.`,
+          `tests/edi/fixtures/legacy-layouts.ts, transcribed from the format spec ` +
+          `and not copied from the plugin: for a fixed-width file, its authoritative ` +
+          `field names, order, and widths plus the total record width ` +
+          `(LEGACY_LAYOUTS); for a CSV file, its column names and order ` +
+          `(LEGACY_CSV_LAYOUTS).`,
       ).toBeDefined();
+    });
+
+    it(`${plugin.id} is pinned in the format it produces`, () => {
+      // A fixed-width pin for a CSV feed (or the reverse) would skip every
+      // check that applies to the file actually delivered.
+      const isCsv = plugin.csvFields !== undefined;
+      expect(
+        LEGACY_LAYOUTS[plugin.id] !== undefined && isCsv,
+        `'${plugin.id}' produces CSV but is pinned as fixed-width.`,
+      ).toBe(false);
+      expect(
+        LEGACY_CSV_LAYOUTS[plugin.id] !== undefined && !isCsv,
+        `'${plugin.id}' produces fixed-width records but is pinned as CSV.`,
+      ).toBe(false);
     });
   }
 
-  for (const id of Object.keys(LEGACY_LAYOUTS)) {
+  for (const id of [...Object.keys(LEGACY_LAYOUTS), ...Object.keys(LEGACY_CSV_LAYOUTS)]) {
     it(`layout fixture '${id}' still has a registered plugin`, () => {
       expect(
         plugins.some((p) => p.id === id),
@@ -328,6 +348,45 @@ for (const plugin of plugins) {
         })
         .filter(Boolean);
       expect(bad).toEqual([]);
+    });
+  });
+}
+
+for (const plugin of plugins) {
+  const layout = LEGACY_CSV_LAYOUTS[plugin.id];
+  if (!layout) continue;
+
+  describe(`${plugin.id} conformance (CSV)`, () => {
+    const encode = encoderFor(plugin);
+    const fields = plugin.csvFields ?? [];
+    // Read the record back with an independent CSV reader, not the plugin's
+    // own escaping, so a cell that splits or merges is seen as a carrier
+    // would see it.
+    const cellsOf = (record: string): string[][] =>
+      parse(record, { relax_column_count: true, skip_empty_lines: false });
+
+    const rows = {
+      absent: {} as Record<string, unknown>,
+      nulls: uniformRow(null),
+      short: uniformRow("7"),
+      delimiters: uniformRow('Éva, "Q"\r\nnext'),
+    };
+
+    it("declares the expected columns (names, order)", () => {
+      expect(fields.map((f) => f.name)).toEqual([...layout.columns]);
+    });
+
+    for (const [label, row] of Object.entries(rows)) {
+      it(`encodes a ${label} row as one record of ${layout.columns.length} cells, each in its column`, () => {
+        const records = cellsOf(encode(row));
+        expect(records).toHaveLength(1);
+        expect(records[0]).toEqual(fields.map((f) => (f.get ? f.get(row) : "")));
+        expect(records[0]).toHaveLength(layout.columns.length);
+      });
+    }
+
+    it("treats a null value the same as an absent one", () => {
+      expect(encode(rows.nulls)).toBe(encode(rows.absent));
     });
   });
 }

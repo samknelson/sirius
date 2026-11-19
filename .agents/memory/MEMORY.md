@@ -88,7 +88,7 @@
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Vendor put on a shared framework by its registrar](framework-wrapping-at-registration.md) — strip the runnable half into a private map at registration (lint the accessor's importers); the lexical per-file lint goes blind, so check "only handlers reach the vendor" BACKWARDS.
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
-- [Upstream merge playbook](upstream-merge-playbook.md) — renumber incoming migrations above the fork counter; verify check, lint, migration guard, restart, and targeted tests before committing.
+- [Upstream merge playbook](upstream-merge-playbook.md) — renumber migrations above the fork counter, verify before committing; [looped assertions](loop-assertion-hides-later-failures.md) report only the first dead route.
 - [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations are silently skipped after the shared counter; filenames and registration are both required.
 - [Entity-files adapter fork extension](entity-files-adapter-fork-extension.md) — BAO DC/case documents retain adapter-backed lifecycle semantics while upstream uses shared entity_files.
 - [Notifier postal templates](notifier-postal-template-channel.md) — postal is a first-class token-template channel; preserve its HTML letter wrapping when adopting shared delivery shaping.
@@ -169,10 +169,7 @@
 - [Comm vendor cutovers](comm-vendor-cutovers.md) — local plugins omit delivery operations; legacy migrations preserve effective env/override selections without copying credential values.
 - [Vendor cache cutovers](vendor-cache-cutovers.md) — keep legacy namespaces, but never reuse unscoped cache hashes when the originating config cannot be proven.
 - [Nullable usage attribution deletion](nullable-usage-attribution-deletion.md) — NULLS-NOT-DISTINCT counters need merge-before-delete and count-time locking or configuration deletion loses or blocks counts.
-- [One-time Freeman migration verification](freeman-migration-verification.md) — do not add permanent tests for Freeman migration; verify with checks, build, review, and startup because the feature is retired after cutover.
-- [Freeman passport response envelope](freeman-passport-response-envelope.md) — sheet pages live at success→data.success→data.data.sheets; Jan 1, 1970 is rejected because legacy PHP treats strtotime()=0 as false.
-- [Freeman migration count semantics](freeman-migration-count-semantics.md) — matched existing child records count as updated even when values did not change.
-- [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
+- Freeman migration — [verification](freeman-migration-verification.md) (one-time, no permanent tests), [passport envelope](freeman-passport-response-envelope.md), [count semantics](freeman-migration-count-semantics.md), [worker ID precedence](freeman-worker-id-precedence.md) (EIN first, T631 only when unmatched).
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
 - [Postgres sessions](postgres-sessions.md) — checkout initialization must finish before handoff; idle-status polling never renews the deadline.
 - [Configured external auth fails closed](configured-external-auth-fail-closed.md) — saved external-auth selection is the contract; disabled/unavailable verifier must refuse, never fall back to a default credential mode.

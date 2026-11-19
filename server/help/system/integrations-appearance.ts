@@ -55,13 +55,14 @@ export const integrationsAppearanceHelp: SystemHelpEntry[] = [
   },
   {
     id: "system:message-provider-configuration",
-    paths: ["/config/twilio", "/config/email", "/config/postal"],
-    summary: "Review delivery-provider settings and restrictions before changing shared sending behavior or invoking a real provider connection test.",
+    paths: ["/config/email", "/config/postal"],
+    summary: "Find where email and postal delivery connections are managed and maintain the postal return address before changing shared sending behavior.",
     details: `
-      <h3>Purpose</h3><p>Configure the provider used by SMS, email, or postal delivery. Existing defaults help separately explains automatic letterheads and postal layout.</p>
-      <h3>Before you start</h3><p>Administrator access and a supported provider are required. Keep credentials in approved secure settings, not help or template content. Provider mode, allowlists, sender identity, and consent remain relevant.</p>
-      <h3>How to use this page</h3><ol><li>Review the current provider and effective settings.</li><li>Check sender and destination restrictions before saving changes.</li><li>Before <strong>Test Connection</strong> or another test action, inspect its stated effects; provider calls may create records or incur costs.</li><li>Review actual test results and communication records rather than assuming a saved setting proves delivery.</li></ol>
-      <h3>Limitations and common problems</h3><p>A successful connection is not proof a message will reach every contact. Offline recording, provider acceptance, delivery, and reading are different outcomes. Do not weaken consent or destination controls to bypass a failure.</p>`,
+      <h3>Purpose</h3><p>Email Settings and Postal Settings hold message defaults that apply to every delivery connection, and Postal Settings also holds the default return address. Delivery connections, credentials, operation assignments, and provider tests are managed in <strong>Webclient vendor connections</strong>. Separate help on these pages explains the letterhead, footer, and postal layout defaults.</p>
+      <h3>Before you start</h3><p>Administrator access is required. Keep credentials in approved secure settings, not help, letterheads, or template content.</p>
+      <h3>How to use this page</h3><ol><li>Select <strong>Webclient vendor connections</strong> to review or change a delivery connection.</li><li>On Postal Settings, review <strong>Default return address</strong>; it applies to the selected postal delivery connection.</li><li>Complete the required address fields and select <strong>Save return address</strong>.</li></ol>
+      <h3>Results and status meanings</h3><p><strong>Return address saved</strong> confirms the change. <strong>Unable to save return address</strong> means the save was refused or failed; read the message shown with it.</p>
+      <h3>Limitations and common problems</h3><p>If the return address cannot be loaded, an error message replaces the form and nothing can be saved here. A saved setting is not proof a message will reach every contact: offline recording, provider acceptance, delivery, and reading are different outcomes. Do not weaken consent or destination controls to bypass a failure.</p>`,
   },
   {
     id: "system:ledger-authorization-settings",
@@ -73,16 +74,6 @@ export const integrationsAppearanceHelp: SystemHelpEntry[] = [
       <h3>How to use this page</h3><ol><li>Review the stored authorization format and any load or validation warning.</li><li>Check consumer and business Version and Approved authorization text separately.</li><li>Review default payment type and its direction before saving.</li></ol>
       <h3>Results and status meanings</h3><p>New wording configures subsequent payment authorization. It does not retroactively prove what a historical payer agreed to, identify an unknown payer, or authorize a new charge.</p>
       <h3>Limitations and common problems</h3><p>If stored authorization needs review, it is not silently replaced; resolve that warning before saving. Method management, payment-use grants, and actual consent are distinct prerequisites.</p>`,
-  },
-  {
-    id: "system:gateway-testing-payment-types",
-    paths: ["/config/ledger/payment-gateways/test", "/config/ledger/payment-gateways/payment-types"],
-    summary: "Review gateway capabilities and compatible payment types before tests or configuration changes affect provider requests and available payment methods.",
-    details: `
-      <h3>Purpose</h3><p>Inspect gateway account information and maintain offered gateway/payment-type compatibility.</p>
-      <h3>Before you start</h3><p>Administrator access, Ledger, and configured gateways are required. Confirm test versus live mode before any test call; not every operation labeled test is a simulation.</p>
-      <h3>How to use this page</h3><ol><li>Select the intended gateway.</li><li>Review capabilities and existing payment-type choices.</li><li>Before testing, read the operation's effects and provider mode.</li><li>Check the returned result before saving compatibility changes or investigating a failed payment.</li></ol>
-      <h3>Limitations and common problems</h3><p>A compatible type does not grant payer authority or guarantee sufficient funds. A connectivity result is not a settled payment. Do not use a live charge simply to verify configuration documentation.</p>`,
   },
   {
     id: "system:ledger-payment-types",
