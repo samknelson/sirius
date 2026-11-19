@@ -16,6 +16,7 @@ import { assertCoverageEventsReady, staleStartsError } from "./coverage-readines
 import { readSegmentConflicts, resolveSegmentStarts } from "./coverage-starts";
 import { readTerminationEvidence, type TerminationCandidate } from "./termination-population";
 import { monthIndex, monthParts, monthStart, readTerminationPolicy, terminationWindow } from "./termination-policy";
+import { coverageDatabaseFailure } from "./coverage-database-error";
 
 export type CoverageProgress = (
   percent: number | null, details?: { phase?: string; processed?: number; total?: number },
@@ -53,7 +54,12 @@ export async function readCoverageEvidence(
     const started = performance.now();
     budget.log("phase-start", name);
     await report(null, { phase: name, processed: 0, total: 0 });
-    const result = await work();
+    let result: T;
+    try {
+      result = await work();
+    } catch (error) {
+      throw coverageDatabaseFailure(error, name, Math.round(performance.now() - started), ctx.coverageCorrelation);
+    }
     const milliseconds = Math.round(performance.now() - started);
     timings.push({ phase: name, milliseconds });
     budget.log("phase-end", name, { milliseconds, ...extra() });

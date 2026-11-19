@@ -3,6 +3,9 @@ import { ediReadFixture, requireEdiPlugin, segmentStartRow } from "./fixtures/ha
 import { readCoverageEvidence } from "../../server/plugins/trust/provider-edi/coverage-evidence";
 import { CoverageBudget, CoverageBudgetError, COVERAGE_LIMITS } from "../../server/plugins/trust/provider-edi/coverage-budget";
 import type { EvidenceRow } from "../../server/plugins/trust/provider-edi/coverage-conflicts";
+import { CoverageDatabaseError } from "../../server/plugins/trust/provider-edi/coverage-database-error";
+import { logger } from "../../server/logger";
+import { DrizzleQueryError } from "drizzle-orm";
 
 // The REAL evidence reader over scripted database answers, in the order it
 // asks. Nothing in the reader is mocked; an unexpected read fails the fixture.
@@ -24,6 +27,40 @@ function evidenceFixture(reads: readonly (readonly unknown[])[], terminations: b
 const ready = (...configs: string[]) => configs.map(config_id => ({ config_id, population: 3, missing: 0, pending: 0, failed: 0 }));
 const variable = "EDI_EXCLUDE_CONFLICTING_COVERAGE";
 afterEach(() => { delete process.env[variable]; vi.restoreAllMocks(); });
+
+describe("coverage database failures", () => {
+  it.each(["57014", "42883", "42P01", "ECONNRESET", undefined])(
+    "reports the lifecycle phase safely for nested database code %s", async code => {
+      const fixture = evidenceFixture([[{ id: "benefit", siriusId: "K" }]], false);
+      const cause = Object.assign(new Error("private database detail canary"), {
+        code, severity: "ERROR", routine: "test_routine", detail: "private row canary",
+      });
+      const wrapped = new DrizzleQueryError("SELECT private_sql_canary", ["private_parameter_canary"], cause);
+      const log = vi.spyOn(logger, "error").mockImplementation(() => logger);
+      const read = fixture.ctx.storage.readOnly.query;
+      let calls = 0;
+      vi.spyOn(fixture.ctx.storage.readOnly, "query").mockImplementation((fn, options) => {
+        if (++calls === 2) return Promise.reject(wrapped);
+        return read(fn, options);
+      });
+      fixture.ctx.coverageCorrelation = { wizardId: "fictional-wizard", runId: "fictional-run" };
+      const error = await readCoverageEvidence(fixture.ctx, kaiser).catch(e => e);
+      expect(error).toBeInstanceOf(CoverageDatabaseError);
+      expect(error.diagnostics).toMatchObject({ phase: "Checking lifecycle events", code,
+        wizardId: "fictional-wizard", runId: "fictional-run" });
+      expect(error.message).toContain("Reference:");
+      expect(error.message).toContain("No partial review was accepted");
+      expect(error.cause).toBe(wrapped);
+      expect(log).toHaveBeenCalledWith("EDI coverage database operation failed", expect.objectContaining({
+        reference: error.diagnostics.reference, phase: "Checking lifecycle events", code,
+      }));
+      const publicAndLogged = error.message + JSON.stringify(log.mock.calls);
+      expect(publicAndLogged).not.toMatch(/private_|private database|private row|SELECT/);
+      if (code === "57014") expect(error.message).toContain("a statement timeout or another cancellation");
+      fixture.assertReadsConsumed();
+      expect(calls).toBe(2); // No coverage, exclusion or file processing follows a failed readiness read.
+    });
+});
 
 describe("historical family relationship authority", () => {
   const parent = coverage("parent-10", "parent", 10);
