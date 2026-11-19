@@ -17,7 +17,7 @@ export function registerEdlsTasksRoutes(
     return config;
   };
 
-  app.get("/api/edls/tasks/options", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.get("/api/edls/tasks/options", requireAuth, edlsComponent, async (req, res) => {
     try {
       const tasks = await getEdlsTaskOptions().getAll();
       res.json(tasks.map((t: any) => ({ id: t.id, name: t.name, departmentId: t.departmentId })));
