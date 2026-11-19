@@ -2,8 +2,10 @@
 
 ## Status
 
-**Not yet observed on real data.** Nothing in this document has been run
-against staging or production. The development workspace has no staging or
+**Not yet verified end-to-end on real data.** The user attempted the shared
+check with Carelon on bao-stg; it refused before the start-date phase (see
+Results). The original Kaiser instructions below have not been executed.
+The development workspace has no staging or
 production access, and its own database cannot run a Kaiser feed (the Kaiser
 benefit has no carrier identifier and no Kaiser run exists). Staging and
 production inspection stays inside the HIPAA boundary, so the steps below are
@@ -184,7 +186,46 @@ relationship or employer entries attributed to the operator.
 
 ## Results
 
-Not yet observed. To be completed from the operator's report.
+End-to-end verification remains incomplete. Partial real-data evidence follows.
+
+### Reported Carelon attempt
+
+The user supplied a failed bao-stg Carelon Coverage sources check on
+2026-11-19, for coverage month November 2026. There is no Kaiser run history on
+the current bao-stg instance; this is evidence for the shared flow, not a Kaiser
+file comparison. No member identifiers from the supplied logs are reproduced here.
+
+| Completed phase | Milliseconds |
+| --- | ---: |
+| Resolving benefits | 31 |
+| Checking lifecycle events | 3,288 |
+| Reading report-month coverage | 952 |
+| Reading termination evidence | 2,282 |
+
+The logs show 22,529 report-month records and 663 termination events.
+The check refused after approximately 6,556 milliseconds with 84
+`subscriber-missing` person-month groups. That reason covers missing or
+non-overlapping relationships, relationships naming a different dependent,
+and a subscriber lacking their own benefit coverage in the report month.
+The message does not distinguish those causes, and does not establish whether
+the underlying data or the matching logic is wrong.
+
+This refusal is raised after reading termination evidence but before reading
+coverage start events. It is **not a timeout**, and does not measure the
+optimized start-date phase. There is no observed `monthsBeforeRunStart` value,
+generated-file comparison, or completed Generate/final validation.
+Lifecycle readiness passed; this was not an event-readiness refusal.
+
+`scripts/tools/edi-kaiser-verification/4-carelon-family-refusal-counts.sql`
+provides a read-only, counts-only breakdown of the current report-month
+refusals for an authorized staging operator. It does not repair records or
+relax the exclusion policy. Do not change source records based only on the
+combined error message.
+
+The diagnostic was executed locally against disposable fictional PostgreSQL
+tables: a valid family was not refused, and five invalid families were counted
+under their respective causes (missing link, wrong dependent, future link,
+ended link and absent subscriber coverage). It has not been executed on staging.
 
 | Item | Result |
 | --- | --- |
