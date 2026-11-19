@@ -1,4 +1,5 @@
--- One-time November 2026 Carelon cleanup for bao-stg, Neon SQL Editor.
+-- One-time ALL-RELATIONSHIPS cleanup for bao-stg, Neon SQL Editor.
+-- No carrier, benefit, coverage-month or benefit-record requirement.
 -- First run ends in ROLLBACK: inspect/save the returned before/after rows.
 -- To persist the reviewed cleanup, rerun with the FINAL ROLLBACK changed to COMMIT.
 -- Only end_ymd changes. No source data, starts, metadata flags, fingerprints,
@@ -47,29 +48,17 @@ WITH raw_source AS (
   FROM normalized GROUP BY relation_id, source_relationship_nid
 )
 SELECT r.id AS relation_id, s.source_relationship_nid,
-  r.start_ymd AS retained_start, r.end_ymd AS previous_end,
-  (SELECT count(*) FROM public.trust_wmb w
-   JOIN public.trust_benefits b ON b.id = w.benefit_id
-   WHERE w.source_relation_id = r.id AND w.worker_id = r.worker_2
-     AND b.sirius_id = 'CARELONEAP' AND w.year = 2026 AND w.month = 11
-  ) AS affected_coverage_records
+  r.start_ymd AS retained_start, r.end_ymd AS previous_end
 FROM public.worker_relations r
 JOIN source s ON s.relation_id = r.id
 WHERE r.start_ymd = DATE '2000-01-01'
   AND r.end_ymd = DATE '2000-01-02'
   AND r.data->>'datesDefaulted' = 'true'
   AND lower(s.active) = 'yes'
-  AND s.source_start IS NULL AND s.source_end IS NULL
-  AND EXISTS (
-    SELECT 1 FROM public.trust_wmb w
-    JOIN public.trust_benefits b ON b.id = w.benefit_id
-    WHERE w.source_relation_id = r.id AND w.worker_id = r.worker_2
-      AND b.sirius_id = 'CARELONEAP' AND w.year = 2026 AND w.month = 11
-  );
+  AND s.source_start IS NULL AND s.source_end IS NULL;
 
 SELECT current_database() AS database_name,
-  count(*) AS relationships_to_reopen,
-  coalesce(sum(affected_coverage_records), 0) AS affected_coverage_records
+  count(*) AS relationships_to_reopen
 FROM relationship_end_cleanup;
 
 UPDATE public.worker_relations r

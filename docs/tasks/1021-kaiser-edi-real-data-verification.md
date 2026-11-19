@@ -276,7 +276,9 @@ has been opened; do not rerun migration before it is fixed.
 
 The Neon-editor cleanup is
 `scripts/tools/edi-kaiser-verification/5-clear-fabricated-relationship-ends.sql`.
-It targets November Carelon relationships with the importer marker, both exact
+The user subsequently broadened the cleanup to ALL matching relationships,
+regardless of carrier, benefit, month, or whether a benefit record exists.
+It targets relationships with the importer marker, both exact
 sentinel dates, an unambiguous source mapping, explicitly active source status
 and blank source start/end. It clears only end_ymd. The default final ROLLBACK
 is a preview; the operator must review and save the returned repair receipt,
