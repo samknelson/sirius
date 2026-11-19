@@ -45,6 +45,48 @@ Sources: `01-field-inventory.md`, `profile/fielddata_stats.tsv`,
 Field-row counts are not distinct-attempt counts. The old mapping's
 `complete/draft` wording is not a verified exhaustive status census.
 
+## Operator-supplied real-source inventory (2026-11-19)
+
+The operator ran Q1–Q8 in Beekeeper and supplied sanitized results. These
+establish a live-source inventory, **not yet a source-to-S2 comparison**:
+
+- MariaDB 10.6.25; session and system timezones UTC. This does not establish
+  the timezone of serialized date values or the intended reporting month.
+- 4,695 `sirius_feed` nodes and 18,945 `sirius_employer_payperiod` nodes.
+  All are published; publication is not processing completion.
+- All feeds have exactly one live type field and one live status field.
+  The observed statuses are `complete` and `draft`. Q4 totals reconcile to
+  the feed-node census (4,695).
+- Candidate `sirius_smf_feed_ehrs`: 2,591 nodes (2,563 complete, 28 draft);
+  2,453 valid shop targets, 2 missing references, 136 missing target nodes.
+- Candidate `sirius_smf_feed_ehrs_correction`: 1,725 nodes (1,437 complete,
+  288 draft); 1,565 valid shop targets, 158 missing references, 2 missing
+  target nodes. Neither source type is yet approved for an S2 type mapping.
+- The two candidates total 4,316 nodes, with 4,018 valid shop targets,
+  160 missing references, and 138 missing target nodes. Do not substitute
+  today's employer or infer a missing link from hours.
+- Other source types total 379 nodes. These include `feed_hours`,
+  `feed_employee`, worker/benefit/payment feeds, and anomalous types such as
+  `complete`. They require explicit classification, not blanket import.
+- The 4,176 employer-reference rows and all observed type/status/JSON rows
+  use `und`, delta 0. There are 4,536 JSON field rows, all objects, each
+  with exactly the top-level key `wizard`. 159 feeds lack that JSON field.
+- Q3 declares no direct reporting-period field on `sirius_feed`. It **does**
+  declare a JSON field on `sirius_employer_payperiod`, contrary to the old
+  N3 description of its shape. Declaration does not prove populated data;
+  this is another reason not to treat that old description as exhaustive.
+- Q8 reports 13 `feeds_source` rows and 92 `feeds_item` rows, all with
+  `feed_nid=0` and no matching node. The supplied current snapshot therefore
+  provides no linkage from these tables to `sirius_feed` attempts.
+
+Next run
+[`s1-employer-wizard-json-structure.sql`](../../scripts/oneoffs/s1-employer-wizard-json-structure.sql)
+for Q9–Q11: account for missing JSON by type/status and discover only key
+names/shapes under `wizard` and its immediate object children. No raw values
+or arrays of uploaded rows are returned. Review key names before sharing.
+The pack is not yet executed against S1 here. Period extraction, completion
+semantics, retry identity, and correction-type correspondence remain open.
+
 ## Reconciliation of previous DROP decisions
 
 The blanket `sirius_feed`/`feeds_*` DROP decision is **reopened for employer
@@ -115,6 +157,7 @@ repeat-run identity proof. No permanent conversion-test suite is requested.
 ### Current reconciliation results and limits
 
 - Current real-source comparisons: **not performed**.
+- Real-source inventory: Q1–Q8 supplied by the authorized operator; see above.
 - Approved type/status/period mapping: **not established**.
 - Dry run, imported records, rerun identity proof: **not performed**.
 - Compliance query/report correspondence: **not verified against real S1**.
