@@ -225,7 +225,24 @@ combined error message.
 The diagnostic was executed locally against disposable fictional PostgreSQL
 tables: a valid family was not refused, and five invalid families were counted
 under their respective causes (missing link, wrong dependent, future link,
-ended link and absent subscriber coverage). It has not been executed on staging.
+ended link and absent subscriber coverage).
+
+The user subsequently returned the staging diagnostic counts:
+
+| Refusal cause | Person-months |
+| --- | ---: |
+| Relationship ends before the coverage month | 78 |
+| Subscriber has no coverage for this benefit and month | 6 |
+| Total | 84 |
+
+This independently reproduces the refusal count from current staging records.
+It supports the reported matching conditions, not a conclusion that the
+coverage records are invalid: historical monthly benefit grants and current
+relationship end dates may need reconciliation under the intended business
+rule. No source correction or broader exclusion policy has been authorized.
+The next investigation is why those monthly dependent grants survive ended
+relationships or missing same-benefit subscriber coverage. Start-date
+performance and output equivalence remain unverified.
 
 | Item | Result |
 | --- | --- |
