@@ -293,13 +293,15 @@ const coverageStep: WizardStepHandler = {
     if (!plugin.benefitSiriusIds?.length) return { data: { coverageReviewed: true } };
     const decisions: EdiCoverageDecision[] = (ctx.wizard.data as any)?.coverageDecisions ?? [];
     const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, decisions, ctx.reportProgress);
+    try {
     const snapshot = { conflicts: review.conflicts, fingerprint: review.fingerprint, revision: coverageRevision(ctx.wizard.data) };
     // Bound the saved review, never the historical evidence used to establish it.
     assertReviewSize(snapshot);
     if (ctx.input.action === "complete") {
       if (ctx.input.fingerprint !== review.fingerprint)
         throw new Error("Coverage evidence changed. Refresh evidence before completing review.");
-      coverageProjection(review);
+      const projection = await coverageProjection(review);
+      releaseCoverageProjectionIndex(projection);
       return { data: { coverageSnapshot: snapshot, coverageReviewed: true } };
     }
     if (ctx.input.action === "decision") {
@@ -320,6 +322,7 @@ const coverageStep: WizardStepHandler = {
       } };
     }
     return { data: { coverageSnapshot: snapshot, coverageReviewed: false } };
+    } finally { review.dispose(); }
   },
 };
 
@@ -356,12 +359,16 @@ const runStep: WizardStepHandler = {
     );
     if (!invalidated) throw new Error("EDI generation no longer owns this run");
 
+    let evidence: Awaited<ReturnType<typeof discoverCoverage>> | undefined;
+    try {
     if (plugin.benefitSiriusIds?.length) {
       const review = await discoverCoverage(ediCtx, plugin, (ctx.wizard.data as any)?.coverageDecisions ?? [], ctx.reportProgress);
-      ediCtx.coverageProjection = coverageProjection(review);
+      evidence = review;
+      ediCtx.coverageProjection = await coverageProjection(review);
     }
     // The registry guarantees getPrimaryKeys (default filled at registration).
     const keys = await plugin.getPrimaryKeys!(ediCtx);
+    evidence?.budget.check(keys.length);
     await ctx.reportProgress(null, { phase: "Generating file rows" });
     const columns = plugin.getColumns();
 
@@ -373,6 +380,7 @@ const runStep: WizardStepHandler = {
     for (let i = 0; i < keys.length; i += BATCH) {
       const batch = keys.slice(i, i + BATCH);
       const rows = await plugin.processBatch(batch, ediCtx);
+      for (const row of rows) evidence?.budget.retain(row, false);
       for (const row of rows) {
         const pk = String(row.pk ?? "");
         if (!pk) continue;
@@ -382,6 +390,7 @@ const runStep: WizardStepHandler = {
         if (row.terminationRole === "dependent") terminationCounts.dependents++;
         if (row.terminationEvidence === "coverage inferred") terminationCounts.inferred++;
       }
+      for (const row of rows) evidence?.budget.release(row);
       processed += batch.length;
       if (keys.length > 0) {
         await ctx.reportProgress(
@@ -394,7 +403,9 @@ const runStep: WizardStepHandler = {
       releaseCoverageProjectionIndex(ediCtx.coverageProjection);
       const fresh = await discoverCoverage(ediCtx, plugin, ediCtx.coverageProjection.decisions,
         (percent, details) => ctx.reportProgress(percent, { ...details, phase: `Final evidence validation: ${details?.phase ?? ""}` }));
-      const checked = coverageProjection(fresh);
+      evidence = fresh;
+      const checked = await coverageProjection(fresh);
+      releaseCoverageProjectionIndex(checked);
       if (checked.fingerprint !== ediCtx.coverageProjection.fingerprint)
         throw new Error("Coverage evidence changed during generation. Review Coverage sources and regenerate; these rows are not available for delivery.");
     }
@@ -418,6 +429,10 @@ const runStep: WizardStepHandler = {
         delivery: null,
       },
     };
+    } finally {
+      if (ediCtx.coverageProjection) releaseCoverageProjectionIndex(ediCtx.coverageProjection);
+      evidence?.dispose();
+    }
   },
 };
 

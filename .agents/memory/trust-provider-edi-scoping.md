@@ -49,3 +49,16 @@ cost of many small queries. Narrowing a family lookup must not hide competing so
 Relation metadata may be represented by a database-computed cryptographic digest,
 but changes must still invalidate approvals and all family-authority fields remain
 available. Do not raise safety ceilings solely because the local scan is faster.
+
+Spill-backed evidence belongs to a disposable run, not the source database or a
+per-worker chunk. Stage traversal/cache state as well as row payloads.
+
+**Why:** A later incident reached the retained-record ceiling in 63 seconds
+despite bounded query pages; family authority crosses workers. Per-entry SQLite
+transactions also impose avoidable filesystem overhead, so disposable stores
+use one transaction with finite page cache and file quota.
+
+**How to apply:** Dispose at every owner boundary, serialize quota acquisition
+and scavenging, and never remove active or unknown owners. Distinguish source
+transfer totals, live working sets and physical staging size. Isolated timings
+do not establish native-runtime availability or headroom on a deployment.

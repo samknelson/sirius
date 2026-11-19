@@ -149,15 +149,25 @@ export async function loadTerminationCandidates(ctx: TrustProviderEdiContext, be
   for (let offset = 0; offset < events.length; offset += 100) {
     const batch = events.slice(offset, offset + 100);
     const workerIds = [...new Set(batch.map(e => e.workerId))];
-    const coverage: Coverage[] = sharedIndex ? workerIds.flatMap(id => sharedIndex.byPerson.get(id) ?? []).filter(r =>
+    const coverage: Coverage[] = sharedIndex?.rowsForMonth ? batch.flatMap(event => {
+      const date = monthStart(monthIndex(event.year, event.month) - 1);
+      return sharedIndex.rowsForMonth!(event.workerId, event.benefitId, +date.slice(0, 4), +date.slice(5, 7));
+    }) : sharedIndex ? workerIds.flatMap(id => sharedIndex.byPerson.get(id) ?? []).filter(r =>
       benefitIds.includes(r.benefitId)) : await ctx.storage.readOnly.query(db => db.select().from(trustWmb).where(and(
       inArray(trustWmb.workerId, workerIds), inArray(trustWmb.benefitId, benefitIds),
     )));
     const relationIds = [...new Set(coverage.map(r => r.sourceRelationId).filter((v): v is string => !!v))];
-    const relations = sharedIndex?.relations?.filter(r => relationIds.includes(r.id)) ?? (relationIds.length ? await ctx.storage.readOnly.query(db =>
+    const relations = sharedIndex?.relation ? relationIds.flatMap(id => {
+      const relation = sharedIndex.relation!(id); return relation ? [relation] : [];
+    }) : sharedIndex?.relations?.filter(r => relationIds.includes(r.id)) ?? (relationIds.length ? await ctx.storage.readOnly.query(db =>
       db.select().from(workerRelations).where(inArray(workerRelations.id, relationIds))) : []);
     const parentIds = [...new Set(relations.map(r => r.worker1).filter(id => !workerIds.includes(id)))];
-    if (parentIds.length) {
+    if (sharedIndex?.rowsForMonth) {
+      for (const member of [...coverage]) {
+        const relation = relations.find(r => r.id === member.sourceRelationId);
+        if (relation) coverage.push(...sharedIndex.rowsForMonth(relation.worker1, member.benefitId, member.year, member.month));
+      }
+    } else if (parentIds.length) {
       if (sharedIndex) {
         for (const id of parentIds) for (const row of sharedIndex.byPerson.get(id) ?? [])
           if (benefitIds.includes(row.benefitId)) coverage.push(row);
