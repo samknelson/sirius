@@ -69,6 +69,26 @@ export interface EdiCoverageEntry {
   month: string;
   records: EdiCoverageRecord[];
 }
+/**
+ * A conflict listed outside any feed run (the Conflicting Coverage report).
+ * No file is involved, so nothing was excluded and no reason applies.
+ */
+export type EdiCoverageConflict = Omit<EdiCoverageEntry, "kind" | "reason">;
+/** What the Conflicting Coverage report's Results step reads. */
+export type EdiCoverageConflictReport = { generated: false } | {
+  generated: true;
+  generatedAt: string;
+  /** yyyy-mm, inclusive. */
+  fromMonth: string;
+  toMonth: string;
+  conflictCount: number;
+  /** Coverage records named by the conflicts. */
+  recordCount: number;
+  peopleCount: number;
+  /** The feed rule in force when the list is viewed. */
+  rule: EdiCoverageRule;
+  conflicts: EdiCoverageConflict[];
+};
 export interface EdiCoverageAcknowledgement {
   acknowledgedBy: string;
   acknowledgedAt: string;
