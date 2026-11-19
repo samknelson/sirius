@@ -105,7 +105,7 @@ COPY package.json package-lock.json ./
 # That hostname is intentionally unavailable to external builders such as
 # Flight Control, so normalize only the copied lockfile before npm consumes it.
 # Integrity hashes still authenticate every downloaded tarball.
-RUN sed -i 's#http://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' package-lock.json \
+RUN sed -E -i 's#https?://package-firewall\.replit\.(local|internal)/npm/#https://registry.npmjs.org/#g' package-lock.json \
     && npm ci \
     && test -x node_modules/.bin/vite \
     && test -x node_modules/.bin/esbuild
@@ -165,7 +165,7 @@ RUN npm install -g npm@11
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN sed -i 's#http://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' package-lock.json \
+RUN sed -E -i 's#https?://package-firewall\.replit\.(local|internal)/npm/#https://registry.npmjs.org/#g' package-lock.json \
     && npm ci --omit=dev \
     && TSX_VERSION="$(node -p "require('./package-lock.json').packages['node_modules/tsx'].version")" \
     && npm install --prefix /opt/migration-tools --no-package-lock --omit=dev "tsx@${TSX_VERSION}" \

@@ -3,10 +3,10 @@ name: Replit lockfile firewall URLs break external CI
 description: Regenerating package-lock.json inside Replit writes internal proxy URLs that external CI (GitHub Actions) cannot reach.
 ---
 
-**Rule:** After running any `npm install` / `npm install --package-lock-only` inside the Replit workspace, check package-lock.json for `http://package-firewall.replit.local/npm/` in `resolved` fields before the lockfile is used by external CI. Rewrite with:
+**Rule:** After running any `npm install` / `npm install --package-lock-only` inside the Replit workspace, check package-lock.json for both `package-firewall.replit.local` and `package-firewall.replit.internal` in `resolved` fields before external CI uses it. Both HTTP and HTTPS variants must be normalized. Rewrite with:
 
 ```
-sed -i 's|http://package-firewall.replit.local/npm/|https://registry.npmjs.org/|g' package-lock.json
+sed -E -i 's#https?://package-firewall\.replit\.(local|internal)/npm/#https://registry.npmjs.org/#g' package-lock.json
 ```
 
 **Why:** Replit routes npm through an internal proxy and npm records that proxy host as the tarball `resolved` URL. GitHub Actions runners fail `npm ci` with `EAI_AGAIN package-firewall.replit.local`. Versions and integrity hashes are unaffected — only the URL host needs rewriting.

@@ -26,7 +26,7 @@ const LOCKFILE = "package-lock.json";
 
 /** The one-line repair for the known Replit-proxy poisoning. */
 const FIX_COMMAND =
-  "sed -i 's#https\\?://package-firewall\\.replit\\.local/npm/#https://registry.npmjs.org/#g' package-lock.json";
+  "sed -E -i 's#https?://package-firewall\\.replit\\.(local|internal)/npm/#https://registry.npmjs.org/#g' package-lock.json";
 
 interface Violation {
   /** The lockfile's package path, e.g. "node_modules/vite". */
