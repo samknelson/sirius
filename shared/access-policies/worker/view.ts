@@ -8,6 +8,7 @@ const policy = definePolicy({
   
   describeRequirements: () => [
     { permission: 'staff' },
+    { permission: 'workers.view' },
     { policy: 'worker.mine' },
     { any: [{ permission: 'provider' }, { permission: 'trust.provider' }, { permission: 'trustprovider' }] }
   ],
@@ -15,6 +16,10 @@ const policy = definePolicy({
   async evaluate(ctx: PolicyContext) {
     if (await ctx.hasPermission('staff')) {
       return { granted: true, reason: 'Staff access' };
+    }
+
+    if (await ctx.hasPermission('workers.view')) {
+      return { granted: true, reason: 'Read-only worker access' };
     }
     
     if (await ctx.checkPolicy('worker.mine', ctx.entityId)) {

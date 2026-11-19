@@ -176,6 +176,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'workers.view',
+      description: 'View workers and their profiles without granting edit access',
+      module: 'core'
+    },
+    {
       key: 'workers.comm',
       description: 'Access worker communication features (SMS, email, postal, in-app)',
       module: 'core'
