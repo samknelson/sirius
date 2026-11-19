@@ -25,7 +25,7 @@ async function main() {
   const b = defaultRelationshipDates("2010-05-01", "2011-01-01");
   check("N26 real start+end → untouched", b.startYmd === "2010-05-01" && b.endYmd === "2011-01-01" && !b.defaulted);
   const c = defaultRelationshipDates(null, null);
-  check("N26 missing both → 2000-01-01 / 2000-01-02", c.startYmd === "2000-01-01" && c.endYmd === "2000-01-02" && c.defaulted);
+  check("N26 missing both → 2000-01-01 / NULL", c.startYmd === "2000-01-01" && c.endYmd === null && c.defaulted);
   const d = defaultRelationshipDates(null, "2015-03-04");
   check("N26 missing start keeps real end", d.startYmd === "2000-01-01" && d.endYmd === "2015-03-04" && d.defaulted);
   const e = defaultRelationshipDates(null, "1999-01-01");
