@@ -292,6 +292,13 @@ end, real source start, missing active status and unrelated coverage were not.
 Preview persisted nothing; commit cleared only the two selected ends; a rerun
 selected zero rows.
 
+The user subsequently reported the all-relationships cleanup done on bao-stg.
+This is operator-reported completion, not independent database verification;
+no affected-row count was supplied. The next step is to rerun the Carelon
+Coverage sources check and, if it passes, Generate and final validation without
+delivery. Collect fresh phase timings and confirm monthsBeforeRunStart = 0.
+The migration-fleet correction remains separate and must precede the next import.
+
 | Item | Result |
 | --- | --- |
 | Database / date | — |
