@@ -1,5 +1,14 @@
 # N3 Ruling — `sirius_employer_payperiod` DROPs (nothing migrates)
 
+> **Employer-upload history qualification:** the original ruling below is
+> retained as historical evidence, not proof of upload status. Migrated hours
+> do not establish an upload attempt, its type, or its outcome. The approved
+> employer-wizard migration uses actual S2 records only when authoritative
+> upload evidence supports them; it must not blindly convert these envelopes.
+> See [Data Migration: Employer Wizards](s1-migration/employer-wizard-history.md)
+> for the reopened source-authority gate. The counted pipeline skip has not
+> changed pending that evidence.
+
 **Status: CLOSED 2026-08-06.** Sanitized tracked record of the N3 ruling. Aggregates only —
 no production row values. The record-level evidence appendix (per-nid checks, raw query
 output) stays in the untracked local `docs/s1-migration/` set (06-strategy-revision v5.2 §8,
