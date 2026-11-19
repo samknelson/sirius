@@ -58,6 +58,17 @@ unchanged until source evidence justifies a specific replacement.
 
 ## Required protected-environment source inspection
 
+For the first read-only Beekeeper pass, use
+[`s1-employer-wizard-source-inventory.sql`](../../scripts/oneoffs/s1-employer-wizard-source-inventory.sql).
+Run its labeled Q1–Q8 queries on one connection and review the results before
+sharing. It returns aggregates and field/key names, not raw payloads. Type,
+status, importer identifiers, and JSON key names are source-authored: redact
+unexpected sensitive strings. Q7 is capped at 100 keys; a full result at that
+limit is not proof that all keys were inventoried. This pack has been checked
+against the checked-in source schema but has not been executed against S1 here.
+It intentionally defers record-level/period queries until actual key names and
+types are known; it cannot establish status semantics without S1 behavior evidence.
+
 An authorized operator must inspect the real source read-only inside the
 HIPAA boundary. Do not copy raw JSON, file paths, names, credentials, or other
 personal data into this workspace. Return sanitized aggregate findings and
