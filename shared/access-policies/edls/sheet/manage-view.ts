@@ -1,7 +1,7 @@
 import { definePolicy, registerPolicy, type PolicyContext } from '../../index';
 
 // Viewing the management controls must not grant the broader manage capability
-// used by copying and supervisor reassignment.
+// used by supervisor reassignment.
 const policy = definePolicy({
   id: 'edls.sheet.manage_view',
   description: 'View EDLS sheet management actions',

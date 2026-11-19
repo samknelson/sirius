@@ -62,6 +62,7 @@ import './edls/sheet/edit';
 import './edls/sheet/assign';
 import './edls/sheet/create';
 import './edls/sheet/manage';
+import './edls/sheet/copy';
 import './edls/sheet/manage-view';
 import './edls/sheet/set-status';
 

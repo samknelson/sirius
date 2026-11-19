@@ -85,7 +85,7 @@ function EdlsSheetManageContent() {
   });
   // Match the API gates rather than inferring permissions from tab access.
   const actionAccess = useQueries({
-    queries: ["edls.sheet.assign", "edls.sheet.manage"].map(policyId => ({
+    queries: ["edls.sheet.assign", "edls.sheet.copy"].map(policyId => ({
       queryKey: [
         "/api/access/policies", policyId, sheetId,
         { currentStatus, supervisor: sheet.supervisor, viewerId: user?.id },

@@ -852,7 +852,7 @@ export function registerEdlsSheetsRoutes(
     "/api/edls/sheets/:id/copy",
     requireAuth,
     edlsComponent,
-    requireAccess('edls.sheet.manage', req => req.params.id),
+    requireAccess('edls.sheet.copy', req => req.params.id),
     async (req, res) => {
       try {
         const { id } = req.params;
