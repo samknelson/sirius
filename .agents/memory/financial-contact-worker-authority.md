@@ -27,3 +27,26 @@ and is not by itself a reason to restage or expand into a full sync.
 and live-source differences separate. Any change from common-checkpoint proof
 to staged-only acceptance needs explicit operator scope approval; remote reads
 and writes still need their respective approvals inside the HIPAA boundary.
+
+Real S1 financial discovery queries must be requested from the user/operator,
+not substituted with workspace fixtures.
+
+**Why:** The user explicitly reminded us that they must query the real data;
+workspace access and synthetic examples do not establish source charge semantics.
+
+**How to apply:** Prepare SELECT-only, aggregate-safe queries for the approved
+boundary, ask the user to run them, and keep mappings conditional until the
+returned evidence supports them. Never infer real key semantics from fixtures.
+
+Operator-run read-only queries still require a finite work budget. If a full
+inventory and a genuinely narrower formulation both time out, stop requesting
+full-population retries or removal of timeouts; record the evidence gap and scope
+a separate private plan/index investigation before asking for more execution.
+
+**Why:** Read-only charge-attribution inventory queries exceeded practical limits
+on the real staging target even after grouping and join work was reduced. An
+unbounded retry never returned and the operator had to abort it.
+
+**How to apply:** Distinguish a reviewed SQL statement from a proven execution
+plan; do not label a reformulation fast before it runs. Preserve successful
+aggregates and mark unreturned config/unit results as unavailable, not zero.

@@ -301,3 +301,17 @@ mtime_ms = 1793671407624
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/5573ba92-8562-4611-b8de-942e6aab8d1d/29ca0bda-9bea-4876-9307-a117fe64d3ec"
 storage_version_token = "1793671547930492"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "AcdgrBED5O0UbDUhtcLZp"
+uri = "file://docs/s1-migration/migrated-charge-attribution-design.md"
+type = "text"
+title = "Migrated charge attribution design"
+description = "Evidence-backed discovery report: real staged aggregates, ownership matrix, exact-cent scenarios, affected consumers, rollout gates and explicit source/config blockers. No billing changes authorized."
+logical_id = "d531446c-36e1-45d8-b015-56546ad92e7b"
+content_hash = "sha256:bdde1dd47404d1907e5e019be647017433f140a8b4cfe1f948621ff358fe637f"
+size = 50912
+mtime_ms = 1795108000837
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/d531446c-36e1-45d8-b015-56546ad92e7b/0d8e4099-f4a4-4991-b0aa-557c6a413cc8"
+storage_version_token = "1795108052901123"
+content_type = "text/markdown"

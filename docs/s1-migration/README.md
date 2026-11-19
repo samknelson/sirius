@@ -1,3 +1,10 @@
+# Charge attribution discovery
+
+See [migrated charge attribution design](migrated-charge-attribution-design.md)
+and its [aggregate-only read-only inventory](charge-attribution-inventory.sql).
+This is a design proposal awaiting real-source evidence and explicit approval;
+it does not supersede the current loader/runbook behavior or authorize repairs.
+
 # S1 → S2 Migration Mapping Spec
 
 Design spec for converting the legacy **S1** system — Drupal 7 on **MariaDB 10.6.25** (AWS RDS `smf-db-prod`, us-west-2) — into **S2** (this codebase). This is analysis/spec only — nothing here writes to S1 or S2.
