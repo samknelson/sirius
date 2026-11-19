@@ -295,6 +295,7 @@ import "./core/1206_lock_ledger_identity";
 import "./core/1207_normalize_trust_benefit_colors";
 import "./core/1208_worker_sirius_id_varchar";
 import "./core/1223_contact_postal_street2";
+import "./core/1224_edi_readiness_index";
 
 export {
   runMigrations,

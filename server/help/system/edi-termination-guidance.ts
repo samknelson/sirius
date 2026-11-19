@@ -139,6 +139,13 @@ ${REASON_ITEMS}
   reference. Give that reference and the wizard run to an administrator; the
   application server console logs contain matching EDI coverage resource entries, not
   the in-app log viewer. Do not repeatedly retry an unchanged oversized run.</p>
+  <p>A database failure names the phase and a diagnostic reference instead of showing
+  a database query. Give the reference and wizard run to an administrator; matching
+  EDI coverage database diagnostics are in the application server console, not the
+  in-app log viewer. Follow the message's guidance before selecting
+  <strong>Check coverage again</strong>. A cancelled query may be a statement timeout
+  or another cancellation; it does not prove lifecycle records are missing.
+  A failed database read accepts no partial review and generates no file.</p>
   <p>Older runs that saved manual source decisions show them under
   <strong>Earlier manual source decisions</strong>. They are read-only and are not
   applied when the run is generated again; regeneration uses the current rule. New

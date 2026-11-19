@@ -46,12 +46,23 @@ export async function assertCoverageEventsReady(
   // Whether THIS run's people are ready is a feed question, so it stays here.
   const benefits = sql.join(benefitIds.map(id => sql`${id}`), sql`, `);
   const configValues = sql.join(configs.map(c => sql`(${c.id})`), sql`, `);
+  // Keep the calendar columns bare: arithmetic on year/month forces a history
+  // scan even when the deployed WMB unique index starts with (month, year).
+  // Exact month values allow bounded index probes, including across New Year.
+  const months = [];
+  for (let year = Math.floor(firstMonth / 12); year <= Math.floor(lastMonth / 12); year++) {
+    const values = [];
+    for (let month = Math.max(firstMonth, year * 12); month <= Math.min(lastMonth, year * 12 + 11); month++) {
+      values.push(sql`${month % 12 + 1}`);
+    }
+    months.push(sql`(w.year = ${year} AND w.month IN (${sql.join(values, sql`, `)}))`);
+  }
+  const window = sql.join(months, sql` OR `);
   const result: unknown = await ctx.storage.readOnly.query(db => db.execute(sql`
     WITH population AS (
       SELECT DISTINCT w.worker_id FROM ${trustWmb} w
       WHERE w.benefit_id IN (${benefits})
-        AND w.year BETWEEN ${Math.floor(firstMonth / 12)} AND ${Math.floor(lastMonth / 12)}
-        AND w.year * 12 + w.month - 1 BETWEEN ${firstMonth} AND ${lastMonth}
+        AND (${window})
     )
     SELECT c.config_id,
            count(*)::int AS population,

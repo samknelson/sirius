@@ -6,6 +6,10 @@ import path from "node:path";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { readSegmentConflicts, readSegmentStarts } from "../../server/plugins/trust/provider-edi/coverage-starts";
+import { assertCoverageEventsReady, CoverageEventsNotReadyError } from "../../server/plugins/trust/provider-edi/coverage-readiness";
+import type { TrustProviderEdiContext } from "../../server/plugins/trust/provider-edi/registry";
+import { sql, type SQL } from "drizzle-orm";
+import { coverageDatabaseFailure, CoverageDatabaseError } from "../../server/plugins/trust/provider-edi/coverage-database-error";
 
 // Explicit opt-in (EDI_COVERAGE_STARTS_PG=1); starts an isolated local cluster
 // with no TCP listener and never reads DATABASE_URL. Requires PostgreSQL
@@ -42,8 +46,15 @@ describe.skipIf(process.env.EDI_COVERAGE_STARTS_PG !== "1")("segment start state
       CREATE TABLE employers (id varchar PRIMARY KEY, sirius_id varchar);
       CREATE TABLE trust_wmb (id varchar PRIMARY KEY, worker_id varchar NOT NULL, benefit_id varchar NOT NULL,
         year integer NOT NULL, month integer NOT NULL, employer_id varchar NOT NULL, source_relation_id varchar);
+      CREATE UNIQUE INDEX trust_wmb_worker_id_employer_id_benefit_id_month_year_unique
+        ON trust_wmb (month, year, worker_id, employer_id, benefit_id);
+      CREATE INDEX trust_wmb_benefit_calendar_worker_idx ON trust_wmb (benefit_id, year, month, worker_id);
       CREATE TABLE trust_wmb_events (id serial PRIMARY KEY, worker_id varchar NOT NULL, benefit_id varchar NOT NULL,
         year integer NOT NULL, month integer NOT NULL, event_type varchar NOT NULL);
+      CREATE TYPE denorm_status AS ENUM ('ok', 'stale', 'error');
+      CREATE TABLE denorm (id varchar PRIMARY KEY, entity_id varchar NOT NULL, config_id varchar NOT NULL,
+        status denorm_status NOT NULL);
+      CREATE UNIQUE INDEX denorm_entity_config_uniq ON denorm(entity_id, config_id);
       INSERT INTO employers VALUES ('ordinary', '100'), ('cobra', '13226164');`);
     for (const [person, { restarts, months }] of Object.entries(people)) {
       for (const [month, employer, source] of months)
@@ -57,6 +68,17 @@ describe.skipIf(process.env.EDI_COVERAGE_STARTS_PG !== "1")("segment start state
     // Coverage older than every run: read by no anchor.
     for (const person of Object.keys(people)) for (const month of [1, 2, 3, 4, 5, 6])
       await pool.query("INSERT INTO trust_wmb VALUES ($1, $2, 'benefit', 2024, $3, 'ordinary', NULL)", [`${person}-old-${month}`, person, month]);
+    await pool.query(`INSERT INTO trust_wmb VALUES
+      ('r-ready-feb', 'r-ready', 'readiness', 2026, 2, 'ordinary', NULL),
+      ('r-ready-mar', 'r-ready', 'readiness', 2026, 3, 'ordinary', NULL),
+      ('r-ready-duplicate', 'r-ready', 'readiness', 2026, 3, 'cobra', NULL),
+      ('r-missing', 'r-missing', 'readiness', 2026, 2, 'ordinary', NULL),
+      ('r-pending', 'r-pending', 'readiness', 2026, 3, 'ordinary', NULL),
+      ('r-failed', 'r-failed', 'readiness', 2026, 3, 'ordinary', NULL),
+      ('r-outside-jan', 'r-outside', 'readiness', 2026, 1, 'ordinary', NULL),
+      ('r-outside-apr', 'r-outside', 'readiness', 2026, 4, 'ordinary', NULL),
+      ('r-outside-year', 'r-outside', 'readiness', 2025, 3, 'ordinary', NULL),
+      ('r-outside-benefit', 'r-outside', 'other', 2026, 3, 'ordinary', NULL)`);
   }, 30_000);
   afterAll(async () => {
     await pool?.end();
@@ -68,6 +90,123 @@ describe.skipIf(process.env.EDI_COVERAGE_STARTS_PG !== "1")("segment start state
     const starts = await readSegmentStarts(drizzle(pool) as never, ids);
     return new Map(starts.map(start => [start.id, start]));
   };
+
+  const readinessContext = (plans?: string[]) => ({
+    storage: {
+      pluginConfigs: { getByKindAndPlugin: async (_kind: string, pluginId: string) =>
+        [{ id: pluginId, enabled: true }] },
+      denorm: { countByStatusForConfig: async () => ({ total: 1 }) },
+      readOnly: { query: async (fn: (db: ReturnType<typeof drizzle>) => Promise<unknown>, options: { statementTimeoutMs: number }) => {
+        return drizzle(pool).transaction(async tx => {
+          await tx.execute(sql`SET TRANSACTION READ ONLY`);
+          await tx.execute(sql`select set_config('statement_timeout', ${String(options.statementTimeoutMs)}, true)`);
+          return fn({ execute: async (statement: SQL) => {
+            if (plans) {
+              const result = await tx.execute(sql`EXPLAIN (ANALYZE, BUFFERS, TIMING OFF) ${statement}`);
+              plans.push(...result.rows.map(row => String(row["QUERY PLAN"])));
+            }
+            return tx.execute(statement);
+          } } as never);
+        });
+      } },
+    },
+  }) as unknown as TrustProviderEdiContext;
+
+  it.each([false, true])("executes February–March readiness (terminations=%s)", async terminations => {
+    await pool.query(`INSERT INTO denorm (id, entity_id, config_id, status)
+      SELECT p.worker_id || c.id, p.worker_id, c.id, 'ok'
+      FROM (SELECT DISTINCT worker_id FROM trust_wmb) p
+      CROSS JOIN (VALUES ('trust-wmb-restart'), ('trust-wmb-terminate')) c(id)
+      ON CONFLICT DO NOTHING`);
+    await expect(assertCoverageEventsReady(readinessContext(), ["benefit"], index(2), index(3), terminations))
+      .resolves.toEqual({ population: 8 });
+  });
+
+  it("classifies distinct missing, pending and failed people without admitting other months or benefits", async () => {
+    await pool.query(`DELETE FROM denorm WHERE entity_id LIKE 'r-%';
+      INSERT INTO denorm VALUES
+      ('r-ready-status', 'r-ready', 'trust-wmb-restart', 'ok'),
+      ('r-pending-status', 'r-pending', 'trust-wmb-restart', 'stale'),
+      ('r-failed-status', 'r-failed', 'trust-wmb-restart', 'error')`);
+    const error = await assertCoverageEventsReady(readinessContext(), ["readiness"], index(2), index(3), false).catch(e => e);
+    expect(error).toBeInstanceOf(CoverageEventsNotReadyError);
+    expect(error.message).toContain("of 4 people");
+    expect(error.message).toContain("coverage start (restart) events are missing for 1 person, pending for 1 person, failed for 1 person");
+    expect(error.message).not.toContain("terminate");
+    // Termination maintenance becomes required only when either termination role is enabled.
+    const both = await assertCoverageEventsReady(readinessContext(), ["readiness"], index(2), index(3), true).catch(e => e);
+    expect(both.message).toContain("coverage end (terminate) events are missing for 4 people");
+  });
+
+  it("refuses stale termination maintenance even when every restart is ready, then succeeds after maintenance", async () => {
+    await pool.query(`DELETE FROM denorm WHERE entity_id LIKE 'r-%';
+      INSERT INTO denorm
+      SELECT p.worker_id || c.id, p.worker_id, c.id,
+        CASE WHEN c.id = 'trust-wmb-terminate' THEN 'stale' ELSE 'ok' END::denorm_status
+      FROM (SELECT DISTINCT worker_id FROM trust_wmb WHERE benefit_id='readiness' AND year=2026 AND month IN (2,3)) p
+      CROSS JOIN (VALUES ('trust-wmb-restart'), ('trust-wmb-terminate')) c(id)`);
+    await expect(assertCoverageEventsReady(readinessContext(), ["readiness"], index(2), index(3), false))
+      .resolves.toEqual({ population: 4 });
+    await expect(assertCoverageEventsReady(readinessContext(), ["readiness"], index(2), index(3), true))
+      .rejects.toThrow("coverage end (terminate) events are pending for 4 people");
+    await pool.query("UPDATE denorm SET status='ok' WHERE entity_id LIKE 'r-%'");
+    await expect(assertCoverageEventsReady(readinessContext(), ["readiness"], index(2), index(3), true))
+      .resolves.toEqual({ population: 4 });
+  });
+
+  it.each([false, true])("accepts an empty population without inventing readiness rows (terminations=%s)", async terminations => {
+    await expect(assertCoverageEventsReady(readinessContext(), ["no-such-benefit"], index(2), index(3), terminations))
+      .resolves.toEqual({ population: 0 });
+  });
+
+  it("keeps December and January paired with their own years across New Year", async () => {
+    await pool.query(`INSERT INTO trust_wmb VALUES
+      ('ny-dec', 'ny-ready', 'new-year', 2025, 12, 'ordinary', NULL),
+      ('ny-jan', 'ny-ready', 'new-year', 2026, 1, 'ordinary', NULL),
+      ('ny-before', 'ny-unready', 'new-year', 2025, 1, 'ordinary', NULL),
+      ('ny-after', 'ny-unready', 'new-year', 2026, 12, 'ordinary', NULL);
+      INSERT INTO denorm VALUES ('ny-status', 'ny-ready', 'trust-wmb-restart', 'ok')`);
+    await expect(assertCoverageEventsReady(readinessContext(), ["new-year"], 2025 * 12 + 11, index(1), false))
+      .resolves.toEqual({ population: 1 });
+    await expect(assertCoverageEventsReady(readinessContext(), ["new-year"], index(1), index(1), false))
+      .resolves.toEqual({ population: 1 });
+  });
+
+  it("extracts a real PostgreSQL cause from Drizzle without relaying SQL to staff", async () => {
+    await pool.query("ALTER TABLE denorm RENAME TO denorm_unavailable");
+    try {
+      const raw = await assertCoverageEventsReady(readinessContext(), ["benefit"], index(2), index(3), true).catch(e => e);
+      expect(raw.cause.code).toBe("42P01");
+      const safe = coverageDatabaseFailure(raw, "Checking lifecycle events", 0) as CoverageDatabaseError;
+      expect(safe).toBeInstanceOf(CoverageDatabaseError);
+      expect(safe.diagnostics.code).toBe("42P01");
+      expect(safe.message).toContain("a required database table is unavailable");
+      expect(safe.message).not.toMatch(/SELECT|WITH population|params:|24313/);
+    } finally {
+      await pool.query("ALTER TABLE denorm_unavailable RENAME TO denorm");
+    }
+  });
+
+  it("measures the February–March aggregate with 60,000 people and unrelated history", async () => {
+    await pool.query(`INSERT INTO trust_wmb
+      SELECT 'scale-' || p || '-' || y || '-' || m, 'scale-' || p, 'scale-benefit', y, m, 'ordinary', NULL
+      FROM generate_series(1, 60000) p CROSS JOIN generate_series(2025, 2026) y CROSS JOIN generate_series(1, 12) m;
+      INSERT INTO denorm
+      SELECT 'scale-' || p || c, 'scale-' || p, c, 'ok'::denorm_status
+      FROM generate_series(1, 60000) p
+      CROSS JOIN (VALUES ('trust-wmb-restart'), ('trust-wmb-terminate')) configs(c);
+      ANALYZE trust_wmb; ANALYZE denorm;`);
+    for (const terminations of [false, true]) {
+      const plans: string[] = [];
+      const context = readinessContext(plans);
+      const started = performance.now();
+      await expect(assertCoverageEventsReady(context, ["scale-benefit"], index(2), index(3), terminations))
+        .resolves.toEqual({ population: 60000 });
+      expect(plans.join("\n")).toContain("trust_wmb_benefit_calendar_worker_idx");
+      expect(plans.join("\n")).not.toContain("Seq Scan on trust_wmb");
+      process.stdout.write(`Local synthetic readiness: people=60000 coverageRows=1440000 configs=${terminations ? 2 : 1} milliseconds=${Math.round(performance.now() - started)} (EXPLAIN ANALYZE plus query)\n${plans.join("\n")}\n`);
+    }
+  }, 60_000);
 
   it("applies the start-date rule to each kind of history", async () => {
     const anchors = {

@@ -18,6 +18,8 @@ vi.mock("../../server/plugins/trust/provider-edi/coverage-evidence", () => ({
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { registeredEdiPlugins } from "./fixtures/harness";
 import { assertUnmixedCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
+import { coverageDatabaseFailure } from "../../server/plugins/trust/provider-edi/coverage-database-error";
+import { DrizzleQueryError } from "drizzle-orm";
 
 const state = vi.hoisted(() => ({
   wizard: {} as any,
@@ -299,6 +301,28 @@ describe("authorized, read-only Deliver exports", () => {
     // Shown for the record; nothing reads them, and the evidence read never receives them.
     expect((await (await get("/coverage/data")).json()).legacyDecisions).toEqual([decision]);
     expect(state.wizard.data.coverageDecisions).toEqual([decision]);
+  });
+  it("persists a safe database failure, blocks acknowledgement and output, and admits a coverage retry", async () => {
+    const previous = structuredClone(state.wizard.data.coverageSnapshot);
+    const raw = new DrizzleQueryError("SELECT private_sql_canary", ["private_parameter_canary"],
+      Object.assign(new Error("cancelled query"), { code: "57014" }));
+    const failure = coverageDatabaseFailure(raw, "Checking lifecycle events", 10001);
+    vi.mocked(readCoverageEvidence).mockRejectedValue(failure);
+    expect((await postCoverage({})).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.progress.coverage.status).toBe("failed");
+    expect(state.wizard.data.progress.coverage.error).toMatch(/Checking lifecycle events.*cancelled.*Reference:/s);
+    expect(state.wizard.data.progress.coverage.error).not.toMatch(/SELECT|private_/);
+    expect((await (await get("/coverage/data")).json()).ready).toBe(false);
+    expect((await postCoverage({ action: "acknowledge", revision: revision(), exclusionDigest: previous.exclusionDigest })).status).toBe(400);
+    await expect(runGenerate()).rejects.toBe(failure);
+    expect(state.wizard.data.reportMeta).toBeNull();
+    expect((await get("/deliver/export")).status).toBe(500);
+    expect(state.upload).not.toHaveBeenCalled();
+    vi.mocked(readCoverageEvidence).mockResolvedValue(evidence() as any);
+    expect((await postCoverage({})).status).toBe(202);
+    await finished();
+    expect(coverageState()).toBe("completed");
   });
   it("never publishes late evidence from a replaced owner", async () => {
     let release!: (value: any) => void;

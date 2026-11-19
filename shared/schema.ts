@@ -585,6 +585,7 @@ export const trustWmb = pgTable("trust_wmb", {
   // drift gate compares column SETS (order-insensitive), so both orders are
   // accepted and no migration is needed. Do not "fix" this order back.
   uniqueWorkerEmployerBenefitMonthYear: unique("trust_wmb_worker_id_employer_id_benefit_id_month_year_unique").on(table.month, table.year, table.workerId, table.employerId, table.benefitId),
+  coverageReadiness: index("trust_wmb_benefit_calendar_worker_idx").on(table.benefitId, table.year, table.month, table.workerId),
 }));
 
 // WMB Scan Status - tracks scan runs. Multiple runs may coexist for the same

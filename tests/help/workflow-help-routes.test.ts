@@ -46,6 +46,8 @@ describe("backfilled guidance through existing authenticated read handlers", () 
     expect(help.details).toContain("exceeded dimension");
     expect(help.details).toContain("application server console");
     expect(help.details).toContain("Do not repeatedly retry");
+    expect(help.details).toContain("A database failure names the phase and a diagnostic reference");
+    expect(help.details).toContain("another cancellation");
     expect(help.details).toBe(sanitizeHtml(help.details, "rich-document"));
     for (const path of ["/wizards", "/config/wizards", "/workers/fictional-run"]) {
       expect(help.paths.some((pattern: string) => likePatternMatches(pattern, path))).toBe(false);
