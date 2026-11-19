@@ -7,6 +7,12 @@ Rule: File membership is defined solely by the configured benefit — workers wi
 
 **Why:** The legacy generators scoped by benefit. The provider field is an organizational label, not a membership filter.
 
+Eligibility plugins own coverage. A carrier feed must honor an existing monthly benefit; it must not independently impose a relationship-date eligibility requirement.
+
+**Why:** The user explicitly clarified: "no feed should have a 'relationship-date requirement' - coverage is OWNED by the eligiblity plugins. if the benefit exists, it must. be honored." A relationship ending before a coverage month is not feed authority to deny that recorded coverage.
+
+**How to apply:** Relationship links identify the subscriber and dependent for serialization, not entitlement. Investigate apparently stale grants through individual subscriber eligibility scans, starting in Test mode and inspecting before-state. Live scans can change coverage; they are not a prerequisite to making a feed obey existing grants.
+
 Membership EDI classifies employer Sirius IDs `COBRA` and `13226164` as COBRA; never infer this from names or database UUIDs. Ordinary employer identity changes preserve segment continuity. COBRA class changes start new EDI segments but do not terminate a continuing benefit.
 
 ## Conflicting coverage (supersedes run-scoped source selection)
@@ -33,11 +39,11 @@ Rule: decide whether a month conflicts only from EVERY record the person holds f
 
 **How to apply:** For any new month a feed uses (not only the report month), read the complete person-month groups before applying the conflict rule. Anything only counted by the database (for example earlier conflicts inside a run) is charged to the run's budget from the counts before its records are read, so an oversized list refuses without being loaded.
 
-Every dependent counted in a historical family needs relationship authority and change detection, even if the month has no competing coverage.
+Every dependent counted in a historical family needs relationship identity and change detection, even if the month has no competing coverage.
 
-**Why:** Conflict-free coverage does not prove that a relationship names that dependent or overlaps the covered month; these dependents change carrier family counts and tiers too.
+**Why:** Conflict-free coverage does not prove that a relationship names that dependent; these dependents change carrier family counts and tiers too. Relationship dates do not independently determine coverage eligibility in the feed.
 
-**How to apply:** Validate and fingerprint relationships for everyone contributing to the file, not only the anchor member or records described in an exclusion.
+**How to apply:** Validate relationship identity and fingerprint relationships for everyone contributing to the file, not only the anchor member or records described in an exclusion. Do not reject a granted month because of relationship start or end dates.
 
 A bounded input batch is not a bounded database result. Charge result pages to the shared row and byte budget before accumulating further pages or batches.
 

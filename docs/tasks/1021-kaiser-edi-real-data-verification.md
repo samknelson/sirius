@@ -244,6 +244,24 @@ The next investigation is why those monthly dependent grants survive ended
 relationships or missing same-benefit subscriber coverage. Start-date
 performance and output equivalence remain unverified.
 
+### Eligibility ownership clarification
+
+The user clarified that eligibility plugins own coverage: feeds must honor an
+existing monthly benefit and must not impose relationship-date requirements.
+Accordingly, the 78 ended-relationship findings identify an inappropriate
+feed guard, not proof that those grants should be removed. This supersedes the
+earlier uncertainty about whether the feed should enforce relationship dates.
+No application behavior has yet been changed in this investigation.
+
+Individual subscriber scans are a separate diagnostic for stale grants. The
+worker Benefits Scan route includes dependents, and its dependent enumeration
+includes prior/current attributed coverage even when the relationship is no
+longer active. Start with November 2026 in Test mode; inspect proposed changes
+and eligibility reasons for each affected dependent before any Live scan.
+Live mode can create/delete coverage and is not read-only verification.
+The six missing-subscriber cases also require inspection without assuming the
+dependent's grant is invalid or silently dropping it from the carrier file.
+
 | Item | Result |
 | --- | --- |
 | Database / date | — |
