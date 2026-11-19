@@ -70,7 +70,7 @@ function formatWorkerName(worker: AssignmentWithWorker["worker"]): string {
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return `Worker ${worker.id.slice(0, 8)}`;
+  return "Unknown Worker";
 }
 
 const statusColors: Record<EdlsSheetStatus, string> = {
@@ -113,9 +113,6 @@ export interface SheetDetailsViewProps {
   selectedCrewId?: string;
   /** Live mode only: crew filter change handler. */
   onSelectCrewId?: (id: string) => void;
-  /** Live mode only: worker display-id data. */
-  workerIdTypeConfigured?: boolean;
-  displayIdValues?: Record<string, string>;
   /** Live mode only: eligibility (out-of-population) data. */
   eligibleWorkerIds?: Set<string>;
   eligibleLoaded?: boolean;
@@ -129,8 +126,6 @@ export function SheetDetailsView({
   snapshotMode = false,
   selectedCrewId = "all",
   onSelectCrewId,
-  workerIdTypeConfigured = false,
-  displayIdValues = {},
   eligibleWorkerIds,
   eligibleLoaded = false,
 }: SheetDetailsViewProps) {
@@ -362,7 +357,6 @@ export function SheetDetailsView({
                     </div>
                     {crew.workerCount > 0 && (() => {
                       const leftCount = Math.ceil(crew.workerCount / 2);
-                      const showDisplayId = !snapshotMode && workerIdTypeConfigured;
                       const getExtras = (assignment: AssignmentWithWorker) => {
                         const data = (assignment.data as AssignmentExtra) || {};
                         const parts: string[] = [];
@@ -376,8 +370,7 @@ export function SheetDetailsView({
                       };
                       const showExtras = crewAssignments.some((assignment) => !!getExtras(assignment));
                       const slotStyle = {
-                        // Ten digits, plus the ID cell's horizontal padding and left border.
-                        gridTemplateColumns: `2rem 3rem ${showDisplayId ? "calc(10ch + 1rem + 1px) " : ""}minmax(0, 1fr)${showExtras ? " minmax(0, 0.65fr)" : ""}`,
+                        gridTemplateColumns: `2rem 3rem minmax(0, 1fr)${showExtras ? " minmax(0, 0.65fr)" : ""}`,
                       };
                       const slotClassName = "grid min-h-8 text-sm border-b last:border-b-0 [&>span]:min-w-0 [&>span]:border-l [&>span:first-child]:border-l-0 [&>span]:px-2 [&>span]:py-1";
                       const renderSlot = (idx: number) => {
@@ -393,7 +386,6 @@ export function SheetDetailsView({
                             >
                               <span className="text-right tabular-nums">{positionNumber}.</span>
                               <span />
-                              {showDisplayId && <span />}
                               <span>&nbsp;</span>
                               {showExtras && <span />}
                             </div>
@@ -419,15 +411,6 @@ export function SheetDetailsView({
                             >
                               {assignment.worker.memberStatusCode ?? "—"}
                             </span>
-                            {showDisplayId && (
-                              <span
-                                className="text-muted-foreground text-left tabular-nums truncate"
-                                title={displayIdValues[assignment.workerId]}
-                                data-testid={`text-assignment-display-id-${assignment.id}`}
-                              >
-                                {displayIdValues[assignment.workerId] ?? "—"}
-                              </span>
-                            )}
                             <span className="flex items-center gap-1.5 min-w-0">
                               {!snapshotMode && assignment.commId && assignment.commStatus && (
                                 <AssignmentCommStatusIcon

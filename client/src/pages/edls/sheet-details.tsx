@@ -43,14 +43,6 @@ function EdlsSheetDetailsContent() {
     },
   });
 
-  const { data: displayIdData } = useQuery<{ workerIdTypeConfigured: boolean; values: Record<string, string> }>({
-    queryKey: ["/api/edls/sheets", sheet.id, "worker-display-ids"],
-    queryFn: async () => {
-      const response = await fetch(`/api/edls/sheets/${sheet.id}/worker-display-ids`);
-      if (!response.ok) throw new Error("Failed to fetch worker display IDs");
-      return response.json();
-    },
-  });
 
   const { data: eligibleWorkers, isLoading: eligibleLoading } = useQuery<{ id: string }[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "available-workers"],
@@ -74,8 +66,6 @@ function EdlsSheetDetailsContent() {
       assignments={assignments}
       selectedCrewId={selectedCrewId}
       onSelectCrewId={setSelectedCrewId}
-      workerIdTypeConfigured={!!displayIdData?.workerIdTypeConfigured}
-      displayIdValues={displayIdData?.values ?? {}}
       eligibleWorkerIds={eligibleWorkerIds}
       eligibleLoaded={!eligibleLoading && !!eligibleWorkers}
     />

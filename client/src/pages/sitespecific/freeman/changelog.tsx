@@ -23,6 +23,7 @@ const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     changes: [
       "Fixed bug in sheet feed (ignoring status)",
       "Fixed bug in sheet create (empty task list)",
+      "Minor UX enhancements (remove worker ID display, fix horizontal scroll on sheet list)",
     ],
   },
   {

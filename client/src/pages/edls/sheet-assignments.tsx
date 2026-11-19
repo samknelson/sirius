@@ -75,8 +75,6 @@ interface AssignmentsContextValue {
   isLoadingWorkers: boolean;
   classifications: ClassificationOption[];
   classificationsMap: Map<string, ClassificationOption>;
-  workerIdTypeConfigured: boolean;
-  displayIdValues: Record<string, string>;
 }
 
 const AssignmentsContext = createContext<AssignmentsContextValue | null>(null);
@@ -183,7 +181,7 @@ function formatAssignedWorkerName(worker: AssignmentWithWorker["worker"]): strin
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
+  return "Unknown Worker";
 }
 
 function formatTime12h(time: string | null | undefined): string {
@@ -302,13 +300,10 @@ interface AssignedWorkerSlotProps {
 }
 
 function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: AssignedWorkerSlotProps) {
-  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap, workerIdTypeConfigured, displayIdValues } = useAssignments();
+  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap } = useAssignments();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
-  const displayIdLabel = workerIdTypeConfigured
-    ? (displayIdValues[assignment.workerId] ?? "—")
-    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—");
 
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -351,12 +346,6 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
             data-testid={`text-member-status-${assignment.id}`}
           >
             {assignment.worker.memberStatusCode ?? "—"}
-          </span>
-          <span
-            className="text-sm text-muted-foreground w-16 text-left tabular-nums"
-            data-testid={`text-assignment-display-id-${assignment.id}`}
-          >
-            {displayIdLabel}
           </span>
           <span className="text-sm truncate">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
@@ -649,7 +638,7 @@ function formatWorkerName(worker: AvailableWorker): string {
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
+  return "Unknown Worker";
 }
 
 function WorkerAssignmentModal({ 
@@ -702,8 +691,6 @@ function AvailableWorkersPanel() {
     hierarchicalRatings,
     availableWorkers: workers,
     isLoadingWorkers: isLoading,
-    workerIdTypeConfigured,
-    displayIdValues,
   } = useAssignments();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
@@ -915,9 +902,6 @@ function AvailableWorkersPanel() {
                 <div className="space-y-1">
                   {group.workers.map((worker) => {
                     const isAssigned = assignedWorkerIds.has(worker.id);
-                    const displayIdLabel = workerIdTypeConfigured
-                      ? (displayIdValues[worker.id] ?? "—")
-                      : (worker.siriusId ? `#${worker.siriusId}` : null);
                     return (
                       <div
                         key={worker.id}
@@ -932,15 +916,6 @@ function AvailableWorkersPanel() {
                         <StatusDots worker={worker} />
                         {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
                           <StarRating value={worker.ratingValue} />
-                        )}
-                        {displayIdLabel !== null && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs tabular-nums"
-                            data-testid={`badge-worker-display-id-${worker.id}`}
-                          >
-                            {displayIdLabel}
-                          </Badge>
                         )}
                         <span className="text-sm truncate">{formatWorkerName(worker)}</span>
                       </div>
@@ -971,16 +946,6 @@ function EdlsSheetAssignmentsContent() {
     },
   });
 
-  const { data: displayIdData } = useQuery<{ workerIdTypeConfigured: boolean; values: Record<string, string> }>({
-    queryKey: ["/api/edls/sheets", sheet.id, "worker-display-ids"],
-    queryFn: async () => {
-      const response = await fetch(`/api/edls/sheets/${sheet.id}/worker-display-ids`);
-      if (!response.ok) throw new Error("Failed to fetch worker display IDs");
-      return response.json();
-    },
-  });
-  const workerIdTypeConfigured = !!displayIdData?.workerIdTypeConfigured;
-  const displayIdValues = displayIdData?.values ?? {};
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -1095,8 +1060,6 @@ function EdlsSheetAssignmentsContent() {
     isLoadingWorkers,
     classifications,
     classificationsMap,
-    workerIdTypeConfigured,
-    displayIdValues,
   };
 
   return (

@@ -353,7 +353,7 @@ export default function EdlsSheetsPage() {
   return (
     <div className="container mx-auto py-8">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-4">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 space-y-0 pb-4">
           <div>
             <CardTitle data-testid="title-page" className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5" />
@@ -727,7 +727,10 @@ export default function EdlsSheetsPage() {
               <p className="text-sm" data-testid="text-sheets-empty-hint">{anyFilterActive ? "Try adjusting your filters or create a new sheet." : "Create a new sheet to get started."}</p>
             </div>
           ) : (
-            <Table>
+            <Table
+              className="table-fixed [&_th]:whitespace-normal [&_th]:[overflow-wrap:anywhere] [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere] [&_th]:px-1 [&_td]:px-1 sm:[&_th]:px-2 sm:[&_td]:px-2 [&_td_div]:flex-wrap [&_td_svg]:shrink-0"
+              data-testid="table-sheets"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead>Status</TableHead>
@@ -756,13 +759,13 @@ export default function EdlsSheetsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{sheet.title}</span>
+                        <span className="min-w-0 max-w-full font-medium">{sheet.title}</span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {formatYmd(sheet.ymd, 'long')}
+                        <span className="min-w-0 max-w-full">{formatYmd(sheet.ymd, 'long')}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -790,13 +793,13 @@ export default function EdlsSheetsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-muted-foreground" />
-                        <span data-testid={`text-workers-${sheet.id}`}>
+                        <span className="min-w-0 max-w-full" data-testid={`text-workers-${sheet.id}`}>
                           {sheet.assignedCount ?? 0}/{sheet.workerCount}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-1 [&>a]:max-w-full [&_button]:h-8 [&_button]:w-8 [&_button]:max-w-full">
                         <Link href={`/edls/sheet/${sheet.id}`}>
                           <Button size="icon" variant="ghost" data-testid={`button-view-${sheet.id}`} title="View">
                             <Eye className="h-4 w-4" />
