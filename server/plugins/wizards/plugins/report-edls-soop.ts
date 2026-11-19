@@ -18,7 +18,7 @@ export const reportEdlsSoopPlugin: WizardPlugin = {
   description:
     "Lists future (today and later) sheet assignments whose worker is no longer in the EDLS scheduling population",
   requiredComponent: "edls",
-  requiredPolicy: "admin",
+  requiredPolicy: "edls.reader",
   category: "EDLS",
   isReport: true,
   steps: [

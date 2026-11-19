@@ -9,6 +9,7 @@ import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, FileText } from "lucide
 import { format } from "@/lib/date-format";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAccessCheck } from "@/hooks/use-access-check";
 import { RetentionSettings } from "@/components/wizards/RetentionSettings";
 import { FrameworkWizardBody } from "@/components/wizards/framework/FrameworkWizardBody";
 import type { WizardManifest } from "@/components/wizards/framework/types";
@@ -21,6 +22,7 @@ export default function WizardView() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { canAccess: isAdmin } = useAccessCheck("admin", id);
 
   const { data: wizard, isLoading: wizardLoading, error: wizardError } = useQuery<Wizard>({
     queryKey: [`/api/wizards/${id}`],
@@ -43,6 +45,9 @@ export default function WizardView() {
   });
 
   const wizardType = allWizardTypes?.find(t => t.name === wizard?.type);
+  // Running a global report does not grant permission to edit retention
+  // or delete the wizard. Keep existing entity-wizard controls unchanged.
+  const canManageWizard = isAdmin || !!wizard?.entityId;
 
   const { data: employer } = useQuery<Employer>({
     queryKey: [`/api/employers/${wizard?.entityId}`],
@@ -170,16 +175,16 @@ export default function WizardView() {
             <Wand2 className="h-4 w-4 mr-2" />
             Wizard
           </TabsTrigger>
-          {wizardType?.isReport && (
+          {wizardType?.isReport && canManageWizard && (
             <TabsTrigger value="retention" data-testid="tab-retention">
               <Clock className="h-4 w-4 mr-2" />
               Retention
             </TabsTrigger>
           )}
-          <TabsTrigger value="delete" data-testid="tab-delete">
+          {canManageWizard && <TabsTrigger value="delete" data-testid="tab-delete">
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
-          </TabsTrigger>
+          </TabsTrigger>}
         </TabsList>
 
         <TabsContent value="wizard">
@@ -200,7 +205,7 @@ export default function WizardView() {
           )}
         </TabsContent>
 
-        {wizardType?.isReport && (
+        {wizardType?.isReport && canManageWizard && (
           <TabsContent value="retention">
             <RetentionSettings 
               wizardId={wizard.id} 
@@ -210,7 +215,7 @@ export default function WizardView() {
           </TabsContent>
         )}
 
-        <TabsContent value="delete">
+        {canManageWizard && <TabsContent value="delete">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-destructive">
@@ -271,7 +276,7 @@ export default function WizardView() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
     </div>
   );

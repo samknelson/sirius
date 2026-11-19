@@ -1520,7 +1520,7 @@ function Router() {
       </Route>
 
       <Route path="/reports/edls">
-        <ProtectedRoute permission="admin" component="edls">
+        <ProtectedRoute policy="edls.reader" component="edls">
           <AuthenticatedLayout>
             <Reports activeCategory="EDLS" />
           </AuthenticatedLayout>
@@ -1560,7 +1560,7 @@ function Router() {
       </Route>
 
       <Route path="/reports/:reportType">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute>
           <AuthenticatedLayout>
             <ReportType />
           </AuthenticatedLayout>
@@ -1568,7 +1568,7 @@ function Router() {
       </Route>
 
       <Route path="/reports">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute>
           <AuthenticatedLayout>
             <Reports />
           </AuthenticatedLayout>

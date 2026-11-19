@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
-import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
+import { requireAccess, buildContext, checkAccess } from "../services/access-policy-evaluator";
 import { wizardPluginRegistry } from "../plugins/wizards";
 import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
@@ -36,17 +36,6 @@ export function registerWizardRoutes(
 ) {
   app.get("/api/wizard-types", requireAuth, async (req, res) => {
     try {
-      const context = await buildContext(req as any);
-      const adminAccess = await checkAccess('admin', context.user);
-
-      if (!adminAccess.granted) {
-        const accessStorage = getAccessStorage();
-        if (!context.user || !accessStorage || !await accessStorage.hasPermission(context.user.id, 'employer')) {
-          res.status(403).json({ message: "Access denied" });
-          return;
-        }
-      }
-
       const filteredTypes: any[] = [];
 
       // Merge in framework (plugin-based) wizard kinds. `listVisibleTo`
@@ -78,13 +67,6 @@ export function registerWizardRoutes(
 
   app.get("/api/wizard-types/:typeName/fields", requireAuth, async (req, res) => {
     try {
-      const ctx = await buildContext(req as any);
-      const isAdmin = await checkAccess('admin', ctx.user);
-      if (!isAdmin.granted) {
-        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-      }
       const { typeName } = req.params;
       const plugin = wizardPluginRegistry.get(typeName);
       if (!plugin) {
@@ -112,15 +94,6 @@ export function registerWizardRoutes(
 
   app.get("/api/wizard-types/:typeName/launch-schema", requireAuth, async (req, res) => {
     try {
-      const laCtx = await buildContext(req as any);
-      const laAdmin = await checkAccess('admin', laCtx.user);
-      if (!laAdmin.granted) {
-        if (!laCtx.user || !await getAccessStorage()!.hasPermission(laCtx.user.id, 'employer')) {
-          res.status(403).json({ message: "Access denied" });
-          return;
-        }
-      }
-
       const { typeName } = req.params;
       // Framework (plugin-based) wizards declare their up-front launch
       // inputs as a JSON Schema on the plugin; serve that (after plugin
@@ -172,16 +145,23 @@ export function registerWizardRoutes(
       
       const context = await buildContext(req as any);
       const adminAccess = await checkAccess('admin', context.user);
+      let visibleReportTypes: Set<string> | undefined;
 
       if (!adminAccess.granted) {
         if (!entityId) {
-          res.status(403).json({ message: "Access denied" });
-          return;
-        }
-        const employerAccess = await checkAccess('employer.mine', context.user, entityId as string);
-        if (!employerAccess.granted) {
-          res.status(403).json({ message: "Access denied" });
-          return;
+          const visible = await wizardPluginRegistry.listVisibleTo(req as any);
+          visibleReportTypes = new Set(
+            visible.filter(plugin => plugin.isReport && !plugin.entityType).map(plugin => plugin.id),
+          );
+          if (!visibleReportTypes.size) {
+            return res.status(403).json({ message: "Access denied" });
+          }
+        } else {
+          const employerAccess = await checkAccess('employer.mine', context.user, entityId as string);
+          if (!employerAccess.granted) {
+            res.status(403).json({ message: "Access denied" });
+            return;
+          }
         }
       }
 
@@ -191,7 +171,9 @@ export function registerWizardRoutes(
       if (entityId) filters.entityId = entityId as string;
 
       const wizards = await storage.wizards.list(filters);
-      res.json(wizards);
+      res.json(visibleReportTypes
+        ? wizards.filter(wizard => !wizard.entityId && visibleReportTypes.has(wizard.type))
+        : wizards);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizards" });
     }
@@ -243,21 +225,28 @@ export function registerWizardRoutes(
 
       const context = await buildContext(req as any);
       const adminAccess = await checkAccess('admin', context.user);
+      const plugin = wizardPluginRegistry.get(wizard.type);
 
       if (!adminAccess.granted) {
-        if (!wizard.entityId) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
-        if (!employerAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
+        if (plugin?.isReport && !plugin.entityType && !wizard.entityId) {
+          const gate = await enforcePluginGating(wizardPluginRegistry.getMetadata(plugin), req as any);
+          if (!gate.ok) {
+            return res.status(gate.status).json({ message: gate.message });
+          }
+        } else {
+          if (!wizard.entityId) {
+            return res.status(403).json({ message: "Access denied" });
+          }
+          const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
+          if (!employerAccess.granted) {
+            return res.status(403).json({ message: "Access denied" });
+          }
         }
       }
 
       // Framework (plugin-based) wizards carry a computed manifest so the
       // client can render steps generically and poll progress off this
       // same load route (no bespoke poll route).
-      const plugin = wizardPluginRegistry.get(wizard.type);
       if (plugin) {
         const manifest = wizardPluginRegistry.computeManifest(plugin, wizard);
         return res.json({ ...wizard, manifest });
@@ -533,6 +522,15 @@ export function registerWizardRoutes(
       const adminResult = await checkAccess('admin', context.user);
       if (adminResult.granted) {
         req.wizard = wizard; // Attach wizard to request for use in handler
+        return next();
+      }
+
+      if (wizardType.isReport && !wizardType.entityType && !wizard.entityId) {
+        const gate = await enforcePluginGating(wizardPluginRegistry.getMetadata(wizardType), req);
+        if (!gate.ok) {
+          return res.status(gate.status).json({ message: gate.message });
+        }
+        req.wizard = wizard;
         return next();
       }
 

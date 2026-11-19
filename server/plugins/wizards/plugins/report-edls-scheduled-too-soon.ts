@@ -34,7 +34,7 @@ export const reportEdlsScheduledTooSoonPlugin: WizardPlugin = {
   description:
     "Finds workers whose consecutive EDLS shift start times are closer together than a minimum gap (default 24 hours)",
   requiredComponent: "edls",
-  requiredPolicy: "admin",
+  requiredPolicy: "edls.reader",
   category: "EDLS",
   isReport: true,
   needsReadOnlyDb: true,

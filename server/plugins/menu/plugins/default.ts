@@ -388,7 +388,7 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
       icon: "FileText",
       active: { type: "prefix", value: "/reports" },
       testId: "nav-reports",
-      gate: { anyOf: [{ permission: "admin" }, { permission: "staff" }] },
+      gate: { anyOf: [{ permission: "admin" }, { permission: "staff" }, { policy: "edls.reader" }] },
       children: [
         {
           id: "reports-all",
@@ -396,7 +396,7 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
           icon: "FileText",
           href: "/reports",
           testId: "menu-reports-all",
-          gate: { permission: "admin" },
+          gate: { anyOf: [{ permission: "admin" }, { policy: "edls.reader" }] },
         },
         {
           id: "cardcheck-report",
@@ -459,6 +459,14 @@ export function buildEdlsMenuItems(): MenuItemDef[] {
       href: "/edls/workers",
       testId: "menu-edls-workers",
       gate: { policy: "edls.any" },
+    },
+    {
+      id: "edls-reports",
+      label: "Reports",
+      icon: "FileText",
+      href: "/reports/edls",
+      testId: "menu-edls-reports",
+      gate: { policy: "edls.reader" },
     },
     {
       id: "edls-tos",
