@@ -262,6 +262,34 @@ Live mode can create/delete coverage and is not read-only verification.
 The six missing-subscriber cases also require inspection without assuming the
 dependent's grant is invalid or silently dropping it from the carrier file.
 
+### Source cause and cleanup
+
+The user reported that fresh subscriber benefit scans resolved the six
+missing-subscriber cases. The user traced the remaining cases to active source
+relationships with blank dates receiving invented dates on import. Source
+inspection confirmed that the missing-start transform manufactures start
+2000-01-01 and, absent a source end, end 2000-01-02 regardless of active status.
+
+The clarified rule retains the 2000-01-01 missing-start fallback but leaves a
+blank end NULL when source status is ACTIVE. A separate migration-fleet task
+has been opened; do not rerun migration before it is fixed.
+
+The Neon-editor cleanup is
+`scripts/tools/edi-kaiser-verification/5-clear-fabricated-relationship-ends.sql`.
+It targets November Carelon relationships with the importer marker, both exact
+sentinel dates, an unambiguous source mapping, explicitly active source status
+and blank source start/end. It clears only end_ymd. The default final ROLLBACK
+is a preview; the operator must review and save the returned repair receipt,
+then change the final statement to COMMIT to apply. SQL bypasses application
+audit/event hooks; it does not run eligibility scans or directly alter benefits.
+No staging cleanup has been executed by this agent.
+
+Verified on disposable PostgreSQL with fictional records: the two proven
+active/blank-date targets were selected; explicit inactive status, real source
+end, real source start, missing active status and unrelated coverage were not.
+Preview persisted nothing; commit cleared only the two selected ends; a rerun
+selected zero rows.
+
 | Item | Result |
 | --- | --- |
 | Database / date | — |

@@ -13,6 +13,14 @@ Eligibility plugins own coverage. A carrier feed must honor an existing monthly 
 
 **How to apply:** Relationship links identify the subscriber and dependent for serialization, not entitlement. Investigate apparently stale grants through individual subscriber eligibility scans, starting in Test mode and inspecting before-state. Live scans can change coverage; they are not a prerequisite to making a feed obey existing grants.
 
+## Source relationship date defaults
+
+Rule: if a source relationship has no start date, use 2000-01-01. If the source end is also blank and the source says ACTIVE, leave the end NULL.
+
+**Why:** The user explicitly retained the start fallback but rejected an invented end date that turned active, undated relationships into ended relationships. This supersedes the older convention of manufacturing both dates.
+
+**How to apply:** Preserve real source ends. Do not broaden this active-source rule to unspecified/inactive status without a separate decision. The one-time repair is end-date-only; the importer must be corrected before the next migration can overwrite that repair.
+
 Membership EDI classifies employer Sirius IDs `COBRA` and `13226164` as COBRA; never infer this from names or database UUIDs. Ordinary employer identity changes preserve segment continuity. COBRA class changes start new EDI segments but do not terminate a continuing benefit.
 
 ## Conflicting coverage (supersedes run-scoped source selection)
