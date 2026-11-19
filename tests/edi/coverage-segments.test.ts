@@ -1,24 +1,27 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parse } from "csv-parse/sync";
-import { coverageSegments, isEdiCobra, type SegmentCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
-import { wmbPrimaryKeys, buildMemberUnits } from "../../server/plugins/trust/provider-edi/base";
+import { isEdiCobra, type SegmentCoverage } from "../../server/plugins/trust/provider-edi/coverage-segments";
+import { wmbPrimaryKeys } from "../../server/plugins/trust/provider-edi/base";
 import { selectTerminationCandidates } from "../../server/plugins/trust/provider-edi/termination-population";
 import { carrierLayoutCsv } from "../../server/plugins/trust/provider-edi/carrier-csv";
-import { ediReadFixture, registeredEdiPlugins } from "./fixtures/harness";
-import { approveConflict, competingSources, coverageKey, projectCoverage, evidenceHash, evidenceHashRecords } from "../../server/plugins/trust/provider-edi/coverage-choices";
-import { discoverCoverage, coverageProjection } from "../../server/plugins/trust/provider-edi/coverage-review";
-import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
-import * as readerModule from "../../server/plugins/trust/provider-edi/coverage-reader";
+import { ediReadFixture, registeredEdiPlugins, segmentStartRow } from "./fixtures/harness";
+import {
+  applyConflictRule, competingSources, correctionRequired, evidenceHash, evidenceHashRecords, exclusionDigest,
+  type CoverageEvidence, type EvidenceRelation, type EvidenceRow,
+} from "../../server/plugins/trust/provider-edi/coverage-conflicts";
+import { readSegmentStarts, requireSegmentStart } from "../../server/plugins/trust/provider-edi/coverage-starts";
+import type { EdiCoverageEntry } from "@shared/edi-coverage-choices";
 
-const row = (month: number, extra: Partial<SegmentCoverage> = {}): SegmentCoverage => ({
+const row = (month: number, extra: Partial<EvidenceRow> = {}): EvidenceRow => ({
   id: `parent-${month}`, workerId: "parent", benefitId: "benefit",
   year: 2026, month, employerId: "ordinary-uuid", employerSiriusId: "100",
   sourceRelationId: null, ...extra,
 });
-const child = (month: number, extra: Partial<SegmentCoverage> = {}) =>
+const child = (month: number, extra: Partial<EvidenceRow> = {}) =>
   row(month, { id: `child-${month}`, workerId: "child", sourceRelationId: "relation", ...extra });
 const policy = { subscribers: true, dependents: true, months: 1 };
 const relation = { id: "relation", worker1: "parent", worker2: "child", startYmd: null, endYmd: null };
+const relations = (...list: EvidenceRelation[]) => new Map(list.map(r => [r.id, r]));
 const event = (workerId = "parent", month = 11) => ({
   id: `event-${workerId}`, workerId, benefitId: "benefit", year: 2026, month,
   data: { provenance: "coverage_inferred" },
@@ -28,20 +31,35 @@ const person = {
   givenName: "Fictional", familyName: "Example", middleName: null,
   email: "example@example.invalid", birthDate: "1980-01-01", genderCode: "F",
 };
-function memberReads(current: SegmentCoverage, history: SegmentCoverage[], dependent?: SegmentCoverage) {
+const cobraEmployer = { id: "cobra", employerId: "cobra-uuid", employerSiriusId: "13226164" };
+type Run = Parameters<typeof segmentStartRow>[1];
+/**
+ * Reads one batch makes, in order: the batch's coverage, benefits, covered
+ * dependents, ONE aggregated start row per anchor, then people.
+ */
+function memberReads(current: SegmentCoverage, run: Run, dependent?: SegmentCoverage, dependentRun?: Run) {
   return [
     [current], [{ id: "benefit", siriusId: "D" }],
     dependent ? [{
-      ...person, depWmbId: dependent.id, depWorkerId: dependent.workerId,
+      ...person, depWmbId: dependent.id, depWorkerId: dependent.workerId, employerId: dependent.employerId,
       sourceRelationId: "relation", relationId: "relation", subscriberWorkerId: "parent",
       relationSiriusId: "SP", benefitId: "benefit", year: 2026, month: current.month,
     }] : [],
-    history, [person], [], [],
+    [segmentStartRow(current, run), ...(dependent ? [segmentStartRow(dependent, dependentRun ?? run)] : [])],
+    [person], [], [],
     ...(dependent ? [[], []] : []),
   ];
 }
+const supplementalRead = (pluginId: string) =>
+  /-(healthnet|delta|expressscripts|carelon)$/.test(pluginId) ? [[]] : [];
+const starts = async (rows: Record<string, unknown>[]) => {
+  const fixture = ediReadFixture([rows]);
+  let result: Awaited<ReturnType<typeof readSegmentStarts>> = [];
+  await fixture.ctx.storage.readOnly.query(async db => { result = await readSegmentStarts(db, rows.map(r => String(r.id))); });
+  return result;
+};
 
-describe("membership EDI classification and segment authority", () => {
+describe("membership EDI classification", () => {
   it("retains canonical evidence hashes while yielding through large collections", async () => {
     const input = { relevant: Array.from({ length: 1500 }, (_, i) => ({ z: i, a: { second: 2, first: 1 } })), events: [] };
     let yielded = false;
@@ -52,108 +70,183 @@ describe("membership EDI classification and segment authority", () => {
   it("uses only the two confirmed Sirius IDs", () => {
     expect(["COBRA", "13226164"].map(isEdiCobra)).toEqual([true, true]);
     expect([null, undefined, "cobra", "cobra-uuid", "100"].map(isEdiCobra)).toEqual([false, false, false, false, false]);
-    expect(coverageSegments([row(9), row(10, { employerId: "COBRA" })]).start(row(10))).toBe("2026-09-01");
   });
-  it.each(["COBRA", "13226164"])("separates segments but not benefit continuity for %s", employerSiriusId => {
+  it.each(["COBRA", "13226164"])("never ends a benefit that continues across a %s change", employerSiriusId => {
     const rows = [row(10), row(11, { employerSiriusId }), row(12)];
-    const segments = coverageSegments(rows);
-    expect(rows.map(r => segments.start(r))).toEqual(["2026-10-01", "2026-11-01", "2026-12-01"]);
-    expect(selectTerminationCandidates([event()], rows, [], new Set(), "2026-11-01", policy)).toEqual([]);
-    expect(selectTerminationCandidates([event("parent", 12)], rows, [], new Set(), "2026-12-01", policy)).toEqual([]);
-    const final = selectTerminationCandidates([{ ...event("parent", 1), year: 2027 }], rows, [], new Set(), "2027-01-01", policy);
-    expect(final[0]).toMatchObject({ start: "2026-12-01", end: "2026-12-31" });
-    expect(selectTerminationCandidates([event("parent", 12)], rows.slice(0, 2), [], new Set(), "2026-12-01", policy)[0])
-      .toMatchObject({ start: "2026-11-01", end: "2026-11-30", familyWmbId: "parent-11" });
+    const select = (termEvent: ReturnType<typeof event>, coverage: EvidenceRow[], asOf: string) =>
+      selectTerminationCandidates([termEvent], coverage, [], new Set(), asOf, policy);
+    expect(select(event(), rows, "2026-11-01")).toEqual({ selected: [], excluded: [] });
+    expect(select(event("parent", 12), rows, "2026-12-01")).toEqual({ selected: [], excluded: [] });
+    // A true ending reports the final classification's last covered record.
+    expect(select({ ...event("parent", 1), year: 2027 }, rows, "2027-01-01").selected[0])
+      .toMatchObject({ end: "2026-12-31", familyWmbId: "parent-12", memberWmbId: "parent-12" });
+    expect(select(event("parent", 12), rows.slice(0, 2), "2026-12-01").selected[0])
+      .toMatchObject({ end: "2026-11-30", familyWmbId: "parent-11", role: "subscriber" });
   });
-  it("deduplicates ordinary employer rows deterministically without blocking ends", async () => {
-    const rows = [row(9), row(10), row(10, { id: "z-other", employerId: "other-uuid", employerSiriusId: "200" })];
+  it("treats same-class employer rows as one source, deterministically", async () => {
+    const rows = [row(10), row(10, { id: "z-other", employerId: "other-uuid", employerSiriusId: "200" })];
+    expect(competingSources(rows)).toBe(false);
+    expect(applyConflictRule(rows, relations()).excludedIds.size).toBe(0);
     const terms = selectTerminationCandidates([event()], rows, [], new Set(), "2026-11-01", policy);
-    expect(terms[0]).toMatchObject({ start: "2026-09-01", end: "2026-10-31", familyWmbId: "parent-10" });
+    expect(terms.selected[0]).toMatchObject({ end: "2026-10-31", familyWmbId: "parent-10" });
     expect(selectTerminationCandidates([event()], [...rows].reverse(), [], new Set(), "2026-11-01", policy)).toEqual(terms);
-    for (const current of [rows.slice(1), rows.slice(1).reverse()]) {
+    for (const current of [rows, [...rows].reverse()]) {
       const fixture = ediReadFixture([[{ id: "benefit", siriusId: "D" }], current]);
       expect(await wmbPrimaryKeys(fixture.ctx, ["D"])).toEqual(["parent-10"]);
       fixture.assertReadsConsumed();
     }
-    const children = [child(9), child(10), child(10, { id: "z-child", employerId: "other" })];
-    expect(selectTerminationCandidates([event("child")], [...rows, ...children], [relation], new Set(), "2026-11-01", policy)[0])
-      .toMatchObject({ start: "2026-09-01", rowKey: "parent-10:relation" });
+    const children = [child(10), child(10, { id: "z-child", employerId: "other" })];
+    expect(selectTerminationCandidates([event("child")], [...rows, ...children], [relation], new Set(), "2026-11-01", policy)
+      .selected[0]).toMatchObject({ rowKey: "parent-10:relation", memberWmbId: "child-10" });
   });
-  it("does not merge benefits, families, gaps or distinct family ownership", () => {
-    const current = child(10);
-    expect(coverageSegments([current, child(9, { sourceRelationId: "other" })]).start(current)).toBe("2026-10-01");
-    expect(coverageSegments([current, child(9, { benefitId: "other" })]).start(current)).toBe("2026-10-01");
-    expect(coverageSegments([current, child(8)]).start(current)).toBe("2026-10-01");
-    expect(() => selectTerminationCandidates([event("child")],
-      [row(10), current, child(10, { id: "other-child", sourceRelationId: "other" })],
-      [relation], new Set(), "2026-11-01", policy)).toThrow(/ownership/);
-  });
-  it.each(["parent", "child"])("refuses current and needed historical mixed classes for %s", workerId => {
-    const make = workerId === "parent" ? row : child;
-    const mixed = [make(9), make(9, { id: "conflict", employerId: "cobra-uuid", employerSiriusId: "13226164" })];
-    const current = make(10);
-    const message = /Correction required.*person (parent|child), benefit benefit, coverage month 2026-09.*WMB.*conflict.*cobra-uuid.*13226164/;
-    expect(() => coverageSegments([...mixed, current]).start(current)).toThrow(message);
-    expect(() => selectTerminationCandidates([event(workerId)], [...mixed, current, ...(workerId === "child" ? [row(10)] : [])],
-      [relation], new Set(), "2026-11-01", policy)).toThrow(message);
-  });
-  it("validates before active dependent suppression, even with termination flags off", async () => {
-    const fixture = ediReadFixture([[{ id: "benefit", siriusId: "D" }], [
+  it("refuses report-month conflicts for a caller that has no wizard evidence", async () => {
+    const mixed = ediReadFixture([[{ id: "benefit", siriusId: "D" }], [
       row(10), { ...child(10), subscriberWorkerId: "parent" },
       { ...child(10, { id: "conflict", employerSiriusId: "COBRA" }), subscriberWorkerId: "parent" },
     ]]);
-    await expect(wmbPrimaryKeys(fixture.ctx, ["D"])).rejects.toThrow(/Correction required.*person child/);
-  });
-  it("rejects a dependent in two covered families before either suppresses its standalone row", async () => {
-    const parent = row(10);
-    const otherParent = row(10, { id: "other-parent-wmb", workerId: "other-parent" });
-    const dep = child(10);
-    const otherDep = child(10, { id: "other-child-wmb", sourceRelationId: "other-relation" });
-    const rows = [parent, otherParent,
-      { ...dep, subscriberWorkerId: "parent" },
-      { ...otherDep, subscriberWorkerId: "other-parent" }];
-    for (const population of [rows, [...rows].reverse()]) {
+    await expect(wmbPrimaryKeys(mixed.ctx, ["D"])).rejects.toThrow(/Correction required.*person child/);
+    const families = [row(10), row(10, { id: "other-parent-wmb", workerId: "other-parent" }),
+      { ...child(10), subscriberWorkerId: "parent" },
+      { ...child(10, { id: "other-child-wmb", sourceRelationId: "other-relation" }), subscriberWorkerId: "other-parent" }];
+    for (const population of [families, [...families].reverse()]) {
       const fixture = ediReadFixture([[{ id: "benefit", siriusId: "D" }], population]);
       await expect(wmbPrimaryKeys(fixture.ctx, ["D"]))
         .rejects.toThrow(/Correction required.*ownership.*person child.*benefit benefit.*2026-10.*child-10.*other-child-wmb/);
     }
-    // Direct/reconstructed batches must not rely on getPrimaryKeys having run.
-    // Even with only one parent in this batch, the child's history includes
-    // both family sources and must refuse before returning member units.
-    const fixture = ediReadFixture(memberReads(parent, rows, dep));
-    await expect(buildMemberUnits([parent.id], fixture.ctx))
-      .rejects.toThrow(/Correction required.*ownership.*person child/);
+  });
+});
+
+// These decide who is missing from a replacement membership file.
+describe("exclusion cascade for conflicting coverage", () => {
+  const otherRelation = { id: "other-relation", worker1: "other-parent", worker2: "other-child", startYmd: null, endYmd: null };
+  const bystanders = [
+    row(10, { id: "other-parent-wmb", workerId: "other-parent" }),
+    row(10, { id: "other-child-wmb", workerId: "other-child", sourceRelationId: "other-relation" }),
+  ];
+  it("excludes every candidate of a conflicting month and the dependents left without a subscriber", () => {
+    const rows = [row(10), row(10, cobraEmployer), child(10), ...bystanders];
+    const result = applyConflictRule(rows, relations(relation, otherRelation));
+    expect([...result.excludedIds].sort()).toEqual(["child-10", "cobra", "parent-10"]);
+    expect(result.groups.map(g => [g.reason, g.rows.map(r => r.id)])).toEqual([
+      ["conflicting-coverage", ["cobra", "parent-10"]],
+      ["subscriber-excluded", ["child-10"]],
+    ]);
+    expect(result.refused).toEqual([]);
+    expect(applyConflictRule([...rows].reverse(), relations(relation, otherRelation)).excludedIds).toEqual(result.excludedIds);
+  });
+  it("treats a different subscriber or dependent source as a conflict without touching the family", () => {
+    const rows = [row(10), child(10), child(10, { id: "own-child", sourceRelationId: null }), ...bystanders];
+    const result = applyConflictRule(rows, relations(relation, otherRelation));
+    expect(result.groups.map(g => [g.reason, g.rows.map(r => r.id)]))
+      .toEqual([["conflicting-coverage", ["child-10", "own-child"]]]);
+    expect(result.excludedIds.has("parent-10")).toBe(false);
+  });
+  it("refuses, and never excludes, a dependent whose subscriber has no coverage of their own", () => {
+    for (const [rows, known] of [
+      [[child(10)], relations(relation)],
+      [[row(10), child(10)], relations()],
+      [[row(10), child(10)], relations({ ...relation, endYmd: "2026-09-30" })],
+    ] as const) {
+      const result = applyConflictRule(rows, known);
+      expect(result.excludedIds.size).toBe(0);
+      expect(result.refused).toMatchObject([{ reason: "subscriber-missing", rows: [{ id: "child-10" }] }]);
+      expect(correctionRequired(result.refused).message)
+        .toMatch(/Correction required.*person child, benefit benefit, coverage month 2026-10.*WMB child-10.*nothing was excluded/);
+    }
+  });
+  it("reports no termination from a conflicting last covered month", () => {
+    const own = selectTerminationCandidates([event()], [row(10), row(10, cobraEmployer)], [], new Set(), "2026-11-01", policy);
+    expect(own.selected).toEqual([]);
+    expect(own.excluded).toMatchObject([{ reason: "termination-conflict", rows: [{ id: "cobra" }, { id: "parent-10" }] }]);
+    const family = selectTerminationCandidates([event("child")], [row(10), row(10, cobraEmployer), child(10)],
+      [relation], new Set(), "2026-11-01", policy);
+    expect(family.selected).toEqual([]);
+    expect(family.excluded).toMatchObject([{ reason: "termination-subscriber-excluded", rows: [{ id: "child-10" }] }]);
+    expect(correctionRequired(own.excluded).message)
+      .toMatch(/Correction required.*conflicting last covered month for person parent.*WMB cobra \(employer cobra-uuid, Sirius ID 13226164, COBRA, subscriber\)/);
+  });
+  it("binds an acknowledgement to the exact list and rule, in any order", () => {
+    const entry = (workerId: string, ids: string[]): EdiCoverageEntry => ({
+      kind: "exclusion", reason: "conflicting-coverage", workerId, personLabel: workerId, benefitId: "benefit",
+      benefitLabel: "Fixture", month: "2026-10", records: ids.map(id => ({ id, employerId: "e", employerLabel: "E",
+        employerSiriusId: null, sourceRelationId: null, subscriberWorkerId: workerId, subscriberLabel: workerId, isCobra: false })),
+    });
+    const list = [entry("a", ["1", "2"]), entry("b", ["3", "4"])];
+    const digest = exclusionDigest("exclude-conflicting", list);
+    expect(exclusionDigest("exclude-conflicting", [entry("b", ["4", "3"]), entry("a", ["2", "1"])])).toBe(digest);
+    expect(exclusionDigest("exclude-conflicting", list.slice(0, 1))).not.toBe(digest);
+    expect(exclusionDigest("exclude-conflicting", [entry("a", ["1", "2"]), entry("b", ["3", "5"])])).not.toBe(digest);
+    expect(exclusionDigest("refuse-conflicting", list)).not.toBe(digest);
+  });
+});
+
+// The database returns one aggregated row per anchor; these are the decisions
+// taken from it. The SQL that aggregates is exercised by the opt-in
+// PostgreSQL suite beside this file.
+describe("coverage start from lifecycle events", () => {
+  it("starts at the restart event unless a later month lacks the member's own class", async () => {
+    const [continuous, gap, classChange] = await starts([
+      segmentStartRow(row(10), { restart: 3 }),
+      segmentStartRow(row(10, { id: "gap" }), { restart: 9 }),
+      segmentStartRow(row(10, { id: "class" }), { restart: 3, lastBreak: 7, cobra: true }),
+    ]);
+    expect(continuous).toMatchObject({ coverageStartYmd: "2026-03-01", isCobra: false, problem: null, monthsBeforeRunStart: 0 });
+    expect(gap.coverageStartYmd).toBe("2026-09-01");
+    expect(classChange).toMatchObject({ coverageStartYmd: "2026-08-01", isCobra: true });
+  });
+  it("reports earlier conflicts as counts and never moves the start for them", async () => {
+    const [start, behind] = await starts([
+      segmentStartRow(row(10), { restart: 3, lastBreak: 5, conflictMonths: 1, conflictRecords: 2 }),
+      segmentStartRow(row(10, { id: "behind" }), { restart: 3, covered: 6, conflictMonths: 4 }),
+    ]);
+    expect(start).toMatchObject({ coverageStartYmd: "2026-06-01", conflictMonths: 1, conflictRecords: 2 });
+    // No date, so nothing to warn about: the run refuses instead.
+    expect(behind).toMatchObject({ coverageStartYmd: null, conflictMonths: 0, conflictRecords: 0 });
+  });
+  it("never estimates a date when the event is missing or behind coverage", async () => {
+    const [missing, behind] = await starts([
+      segmentStartRow(row(10), { restart: null }),
+      segmentStartRow(row(10, { id: "behind" }), { restart: 3, covered: 6 }),
+    ]);
+    expect(missing).toMatchObject({ coverageStartYmd: null, problem: "missing-event" });
+    expect(behind).toMatchObject({ coverageStartYmd: null, problem: "inconsistent-event" });
+    expect(() => requireSegmentStart(missing, "parent-10")).toThrow(/no coverage lifecycle event/);
+    expect(() => requireSegmentStart(behind, "behind")).toThrow(/behind their coverage records/);
+    expect(() => requireSegmentStart(undefined, "gone")).toThrow(/coverage changed or is missing/);
   });
 });
 
 describe("real assembly and carrier date/qualifier fidelity", () => {
   for (const plugin of registeredEdiPlugins().filter(p => p.benefitSiriusIds?.length)) {
-    it(`${plugin.id} applies selected historical sources identically to native and QA output`, async () => {
-      const current = row(10, { employerSiriusId: "COBRA" });
-      const dep = child(10);
-      const excluded = row(10, { id: "excluded-subscriber" });
-      const history = [current, excluded, row(9, { employerSiriusId: "COBRA" }), dep,
-        child(9), child(9, { id: "excluded-history", sourceRelationId: null, employerSiriusId: "COBRA" })];
+    it(`${plugin.id} writes each person's own event-derived start to native and QA output`, async () => {
+      const current = row(12);
+      const dep = child(12);
       const fixture = ediReadFixture([
-        ...memberReads(current, history, dep),
-        ...(/-(healthnet|delta|expressscripts|carelon)$/.test(plugin.id) ? [[]] : []),
+        ...memberReads(current, { restart: 10, lastBreak: 11 }, dep, { restart: 10 }),
+        ...supplementalRead(plugin.id),
       ]);
-      fixture.ctx.coverageProjection = { excludedIds: new Set(["excluded-subscriber", "excluded-history"]), decisions: [], fingerprint: "fixture" };
+      fixture.ctx.input.asOfDate = "2026-12-01";
       const output = await plugin.processBatch([current.id], fixture.ctx);
-      expect(output).toHaveLength(2);
-      for (const record of output) {
-        expect(record.coverageStart).toBe("20260901");
-        expect(plugin.encodeRow(record, fixture.ctx)).toContain("20260901");
-        expect(parse(carrierLayoutCsv(plugin, [record], fixture.ctx), { relax_column_count: true }).flat()).toContain("20260901");
-      }
       fixture.assertReadsConsumed();
+      expect(output.map(r => r.coverageStart)).toEqual(["20261201", "20261001"]);
+      for (const outputRow of output) {
+        expect(outputRow.coverageEnd).toBe("");
+        const expected: Record<string, string> = {
+          divisionId: "00002", enrollmentUnit: "0000", memberStatus: "A", statusCode: "A",
+        };
+        for (const [key, value] of Object.entries(expected)) if (key in outputRow) expect(outputRow[key]).toBe(value);
+        if (plugin.id.endsWith("expressscripts")) expect(outputRow.contractType).toBe("AC");
+        const start = String(outputRow.coverageStart);
+        expect(plugin.encodeRow(outputRow, fixture.ctx)).toContain(start);
+        expect(parse(carrierLayoutCsv(plugin, [outputRow], fixture.ctx), { relax_column_count: true }).flat()).toContain(start);
+      }
     });
-    it.each(["COBRA", "13226164"])(`${plugin.id} serializes current subscriber and dependent segments for %s`, async employerSiriusId => {
-      const current = row(11, { employerSiriusId });
-      const dep = child(11, { employerSiriusId });
+    it(`${plugin.id} serializes the COBRA class the database reported`, async () => {
+      const current = row(11, { employerSiriusId: "COBRA" });
+      const dep = child(11, { employerSiriusId: "COBRA" });
       const fixture = ediReadFixture([
-        ...memberReads(current, [row(10), current, child(10), dep], dep),
-        ...(/-(healthnet|delta|expressscripts|carelon)$/.test(plugin.id) ? [[]] : []),
+        ...memberReads(current, { restart: 10, lastBreak: 10, cobra: true }, dep),
+        ...supplementalRead(plugin.id),
       ]);
       fixture.ctx.input.asOfDate = "2026-11-01";
       const output = await plugin.processBatch([current.id], fixture.ctx);
@@ -168,169 +261,22 @@ describe("real assembly and carrier date/qualifier fidelity", () => {
         for (const [key, value] of Object.entries(expected)) if (key in outputRow) expect(outputRow[key]).toBe(value);
         if (plugin.id.endsWith("expressscripts")) expect(outputRow.contractType).toBe("CB");
         if (plugin.id.endsWith("healthnet")) expect(outputRow.payStatusCode).toBe(outputRow.pk === current.id ? "CO" : "");
-        const native = plugin.encodeRow(outputRow, fixture.ctx);
-        expect(native).toContain("20261101");
-        const qa = parse(carrierLayoutCsv(plugin, [outputRow], fixture.ctx), { relax_column_count: true });
-        expect(qa.flat()).toContain("20261101");
       }
     });
-    it(`${plugin.id} uses each person's dates and final non-COBRA qualifiers`, async () => {
-      const current = row(12);
-      const dep = child(12);
-      const fixture = ediReadFixture([
-        ...memberReads(current, [row(10), row(11, { employerSiriusId: "13226164" }), current,
-          child(10), child(11, { employerId: "second-ordinary" }), dep], dep),
-        ...(/-(healthnet|delta|expressscripts|carelon)$/.test(plugin.id) ? [[]] : []),
-      ]);
-      fixture.ctx.input.asOfDate = "2026-12-01";
-      const output = await plugin.processBatch([current.id], fixture.ctx);
-      expect(output).toHaveLength(2);
-      expect(output[0].coverageStart).toBe("20261201");
-      expect(output[1].coverageStart).toBe("20261001");
-      for (const outputRow of output) {
-        expect(outputRow.coverageEnd).toBe("");
-        const expected: Record<string, string> = {
-          divisionId: "00002", enrollmentUnit: "0000", memberStatus: "A", statusCode: "A",
-        };
-        for (const [key, value] of Object.entries(expected)) if (key in outputRow) expect(outputRow[key]).toBe(value);
-        if (plugin.id.endsWith("expressscripts")) expect(outputRow.contractType).toBe("AC");
-      }
-      fixture.assertReadsConsumed();
-    });
-    it(`${plugin.id} refuses historical mixed dependent coverage with flags off`, async () => {
+    it(`${plugin.id} leaves out records the run excluded and refuses a missing event`, async () => {
       const current = row(10);
       const dep = child(10);
-      const fixture = ediReadFixture(memberReads(current, [
-        current, dep, child(9), child(9, { id: "conflict", employerSiriusId: "13226164" }),
-      ], dep));
-      await expect(plugin.processBatch([current.id], fixture.ctx)).rejects.toThrow(/Correction required.*person child.*2026-09/);
+      const excluded = ediReadFixture([
+        ...memberReads(current, { restart: 9 }, dep).filter((_, i) => i < 7).map((read, i) =>
+          i === 3 ? [segmentStartRow(current, { restart: 9 })] : read),
+        ...supplementalRead(plugin.id),
+      ]);
+      excluded.ctx.coverageEvidence = { excludedIds: new Set([dep.id]), starts: new Map() } as unknown as CoverageEvidence;
+      const output = await plugin.processBatch([current.id], excluded.ctx);
+      excluded.assertReadsConsumed();
+      expect(output.map(r => r.pk)).toEqual([current.id]);
+      const missing = ediReadFixture(memberReads(current, { restart: null }));
+      await expect(plugin.processBatch([current.id], missing.ctx)).rejects.toThrow(/no coverage lifecycle event/);
     });
   }
-});
-
-describe("run-only coverage approval evidence", () => {
-  let lastReview: Awaited<ReturnType<typeof discoverCoverage>> | undefined;
-  afterEach(() => lastReview?.dispose());
-  const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
-  async function review(rows: SegmentCoverage[], decisions: EdiCoverageDecision[] = [], rels = [relation], events: ReturnType<typeof event>[] = []) {
-    lastReview?.dispose();
-    const fixture = ediReadFixture([
-      [{ id: "benefit", siriusId: "K" }],
-      events.filter(event => !rows.some(r => r.workerId === event.workerId && r.benefitId === event.benefitId &&
-        r.year * 12 + r.month >= event.year * 12 + event.month)),
-    ]);
-    // Exercise the real closure algorithm with a demand-loaded reader. The
-    // companion PostgreSQL fixture verifies the reader's actual SQL separately.
-    const groups = new Map<string, any[]>();
-    const relationMap = new Map(rels.map(r => [r.id, { ...r, data: null, relationType: "fictional" }]));
-    const children = new Map<string, Set<string>>();
-    const add = (r: SegmentCoverage) => {
-      const key = coverageKey(r);
-      const group = groups.get(key) ?? [];
-      if (!group.some(other => other.id === r.id)) group.push(r);
-      groups.set(key, group);
-      const rel = r.sourceRelationId && relationMap.get(r.sourceRelationId);
-      if (rel) {
-        const parent = coverageKey({ ...r, workerId: rel.worker1 });
-        const list = children.get(parent) ?? new Set<string>();
-        list.add(key); children.set(parent, list);
-      }
-    };
-    const mock = vi.spyOn(readerModule, "coverageReader").mockReturnValue({
-      groups, relationMap, children,
-      read: async () => { rows.filter(r => r.year === 2026 && r.month === 10).forEach(add); },
-      ensure: async (coordinates: readonly readerModule.CoverageCoordinate[], family?: boolean) => {
-        for (const coordinate of coordinates) for (const r of rows) {
-          const rel = r.sourceRelationId && relationMap.get(r.sourceRelationId);
-          if (r.benefitId === coordinate.benefitId && r.year === coordinate.year && r.month === coordinate.month &&
-              (family ? rel && rel.worker1 === coordinate.workerId : r.workerId === coordinate.workerId)) add(r);
-        }
-      },
-    } as unknown as ReturnType<typeof readerModule.coverageReader>);
-    fixture.ctx.terminationPolicy = policy;
-    try {
-      const result = await discoverCoverage(fixture.ctx, plugin, decisions);
-      lastReview = result;
-      fixture.assertReadsConsumed();
-      return result;
-    } finally { mock.mockRestore(); }
-  }
-  const choose = (conflict: Awaited<ReturnType<typeof review>>["conflicts"][number], selectedId: string) =>
-    approveConflict(conflict, { evidence: conflict.evidence, selectedId, reason: "Reviewed fictional import sources" }, "effective-admin", "2026-10-01T10:00:00Z");
-  it("does not demand approval for equivalent duplicates", async () => {
-    const rows = [row(10), row(10, { id: "other", employerId: "other" })];
-    expect(competingSources(rows)).toBe(false);
-    expect((await review(rows)).conflicts).toEqual([]);
-  });
-  it("requires an explicit source and reason, preserves attribution, and isolates runs", async () => {
-    const rows = [row(10), row(10, { id: "cobra", employerSiriusId: "COBRA" })];
-    const initial = await review(rows);
-    const conflict = initial.conflicts[0];
-    expect(conflict.decision).toBeNull();
-    await expect(coverageProjection(initial)).rejects.toThrow(/unresolved/);
-    expect(() => approveConflict(conflict, { evidence: conflict.evidence, reason: "why" }, "admin", "now")).toThrow(/select/);
-    expect(() => approveConflict(conflict, { evidence: conflict.evidence, selectedId: "cobra", reason: " " }, "admin", "now")).toThrow(/reason/);
-    const decision = choose(conflict, "cobra");
-    expect(decision).toMatchObject({ decidedBy: "effective-admin", selectedId: "cobra" });
-    const projection = await coverageProjection(await review(rows, [decision]));
-    expect(projectCoverage(rows, projection, r => r.id).map(r => r.id)).toEqual(["cobra"]);
-    expect((await review(rows)).conflicts[0].decision).toBeNull();
-    expect(decision.candidates).toHaveLength(2);
-  });
-  it("invalidates edits, additions and removals even when the chosen row survives", async () => {
-    const rows = [row(10), row(10, { id: "cobra", employerSiriusId: "COBRA" })];
-    const decision = choose((await review(rows)).conflicts[0], "parent-10");
-    for (const changed of [
-      [rows[0], { ...rows[1], employerId: "changed" }],
-      [...rows, row(10, { id: "new-source" })], [rows[0]], [],
-    ]) {
-      const result = await review(changed, [decision]);
-      expect(result.conflicts[0].stale).toBe(true);
-      await expect(coverageProjection(result)).rejects.toThrow(/stale/);
-    }
-    const reordered = await review([...rows].reverse(), [decision]);
-    expect(reordered.conflicts[0].decision).toEqual(decision);
-  });
-  it("discovers historical boundaries but stops beyond gaps and class boundaries", async () => {
-    const rows = [row(10), row(9), row(9, { id: "historical-cobra", employerSiriusId: "COBRA" }),
-      row(7), row(7, { id: "old-unrelated", employerSiriusId: "COBRA" })];
-    expect((await review(rows)).conflicts.map(c => c.key)).toEqual([coverageKey(row(9))]);
-    const boundary = [row(10), row(9, { employerSiriusId: "COBRA" }), row(8), row(8, { id: "old-conflict", employerSiriusId: "COBRA" })];
-    expect((await review(boundary)).conflicts).toEqual([]);
-  });
-  it("selects dependent ownership without inventing a parent and invalidates family changes", async () => {
-    const rows = [row(10), child(10), child(10, { id: "own-child", sourceRelationId: null })];
-    const initial = await review(rows);
-    const decision = choose(initial.conflicts[0], "child-10");
-    const projection = await coverageProjection(await review(rows, [decision]));
-    const fixture = ediReadFixture([[{ id: "benefit", siriusId: "K" }],
-      rows.map(r => ({ ...r, subscriberWorkerId: r.sourceRelationId ? "parent" : null }))]);
-    fixture.ctx.coverageProjection = projection;
-    expect(await wmbPrimaryKeys(fixture.ctx, ["K"])).toEqual(["parent-10"]);
-    const missing = await review(rows.filter(r => r.workerId !== "parent"));
-    expect(() => choose(missing.conflicts[0], "child-10")).toThrow(/family/);
-    const changed = await review(rows, [decision], [{ ...relation, worker1: "different-parent" }]);
-    expect(changed.conflicts[0].stale).toBe(true);
-  });
-  it("uses selected termination history without erasing reinstatement or scan safeguards", async () => {
-    const rows = [row(9), row(9, { id: "term-cobra", employerSiriusId: "COBRA" })];
-    const initial = await review(rows, [], [], [event("parent", 10)]);
-    const projection = await coverageProjection(await review(rows, [choose(initial.conflicts[0], "term-cobra")], [], [event("parent", 10)]));
-    const selected = projectCoverage(rows, projection, r => r.id);
-    expect(selectTerminationCandidates([event("parent", 10)], selected, [], new Set(), "2026-10-01", policy)[0])
-      .toMatchObject({ familyWmbId: "term-cobra", start: "2026-09-01", end: "2026-09-30" });
-    expect(selectTerminationCandidates([event("parent", 10)], [...selected, row(11)], [], new Set(), "2026-10-01", policy)).toEqual([]);
-    expect(() => selectTerminationCandidates([{ ...event("parent", 10), data: {} }], selected, [], new Set(), "2026-10-01", policy)).toThrow(/scan/);
-  });
-  it("refuses an unambiguous child when the parent's own subscriber source is excluded", async () => {
-    const parentRelation = { ...relation, id: "parent-relation", worker1: "grandparent", worker2: "parent" };
-    const rows = [row(10), child(10),
-      row(10, { id: "parent-as-dependent", sourceRelationId: parentRelation.id }),
-      row(10, { id: "grandparent-row", workerId: "grandparent" })];
-    const initial = await review(rows, [], [relation, parentRelation]);
-    expect(initial.conflicts).toHaveLength(1);
-    const decision = choose(initial.conflicts[0], "parent-as-dependent");
-    const projected = await review(rows, [decision], [relation, parentRelation]);
-    await expect(coverageProjection(projected)).rejects.toThrow(/retained dependent child.*standalone subscriber coverage cannot be invented/);
-  });
 });

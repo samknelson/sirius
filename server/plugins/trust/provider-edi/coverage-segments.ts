@@ -34,45 +34,11 @@ function assertSingleFamily(rows: readonly SegmentCoverage[]): void {
   throw new Error(`Correction required: ambiguous subscriber/dependent ownership for person ${first.workerId}, benefit ${first.benefitId}, coverage month ${monthStart(monthIndex(first.year, first.month)).slice(0, 7)}. ${details.join("; ")}. Distinct families cannot be deduplicated.`);
 }
 
-export function coverageSegments(rows: readonly SegmentCoverage[]) {
-  const months = new Map<string, SegmentCoverage[]>();
-  const starts = new Map<string, number>();
-  const validated = new Set<string>();
-  for (const row of rows) {
-    const key = `${row.workerId}|${row.benefitId}|${monthIndex(row.year, row.month)}`;
-    const group = months.get(key) ?? [];
-    group.push(row);
-    months.set(key, group);
-  }
-  return {
-    start(member: SegmentCoverage): string {
-      let index = monthIndex(member.year, member.month);
-      const cobra = isEdiCobra(member.employerSiriusId);
-      const path: string[] = [];
-      for (;;) {
-        const key = `${member.workerId}|${member.benefitId}|${index}`;
-        const group = months.get(key) ?? [];
-        // Even a boundary month must be unambiguous before it can establish
-        // that the previous segment had a different classification.
-        if (!validated.has(key)) {
-          assertUnmixedCoverage(group);
-          assertSingleFamily(group);
-          validated.add(key);
-        }
-        if (!group.length || group[0].sourceRelationId !== member.sourceRelationId ||
-            isEdiCobra(group[0].employerSiriusId) !== cobra) break;
-        const cached = starts.get(key);
-        if (cached !== undefined) { index = cached - 1; break; }
-        path.push(key);
-        index--;
-      }
-      for (const key of path) starts.set(key, index + 1);
-      return monthStart(index + 1);
-    },
-    validateMonth(member: SegmentCoverage): void {
-      const group = months.get(`${member.workerId}|${member.benefitId}|${monthIndex(member.year, member.month)}`) ?? [];
-      assertUnmixedCoverage(group);
-      assertSingleFamily(group);
-    },
-  };
+/**
+ * Every record of one person, benefit and month. Used wherever a month reaches
+ * a file without the temporary exclusion rule having removed its conflicts.
+ */
+export function assertUnambiguousMonth(rows: readonly SegmentCoverage[]): void {
+  assertUnmixedCoverage(rows);
+  assertSingleFamily(rows);
 }

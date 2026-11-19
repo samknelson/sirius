@@ -25,6 +25,7 @@ import {
   fieldSpans,
   padCell,
   registeredEdiPlugins,
+  segmentStartRow,
   uniformRow,
 } from "./fixtures/harness";
 
@@ -68,10 +69,10 @@ describe("EDI-only personal field casing through every registered feed", () => {
         });
         const needsExtraRead = /-(healthnet|delta|expressscripts|carelon)$/.test(plugin.id);
         const wmb = { id: "wmb", workerId: "sub-worker", benefitId: "benefit", employerId: "employer", sourceRelationId: null, year: 2026, month: 10 };
+        // One coverage start per person, as the lifecycle-event read answers it.
         const history = [wmb, ...[dependent, missing, qmsco].map(dep => ({
-          id: dep.depWmbId, workerId: dep.depWorkerId, benefitId: dep.benefitId,
-          employerId: "employer", sourceRelationId: dep.sourceRelationId, year: dep.year, month: dep.month,
-        }))];
+          id: dep.depWmbId, workerId: dep.depWorkerId, benefitId: dep.benefitId, year: dep.year, month: dep.month,
+        }))].map(anchor => segmentStartRow(anchor, { restart: 10 }));
         const fixture = ediReadFixture(local11 ? [[hours]] : [
           [wmb],
           [{ id: "benefit", siriusId: plugin.benefitSiriusIds![0] }],

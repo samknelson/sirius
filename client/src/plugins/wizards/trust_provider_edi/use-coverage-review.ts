@@ -1,12 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { EdiCoverageConflict, EdiCoverageReview } from "@shared/edi-coverage-choices";
-
-export function hasValidCoverageDecision(conflict: EdiCoverageConflict) {
-  return !conflict.stale && !!conflict.decision &&
-    conflict.decision.evidence === conflict.evidence &&
-    conflict.candidates.some(candidate => candidate.id === conflict.decision?.selectedId && !candidate.familyIssue);
-}
+import type { EdiCoverageReview } from "@shared/edi-coverage-choices";
 
 // A gateway's HTML is never a useful status or a confirmed job failure.
 async function request<T>(url: string, input?: unknown): Promise<T> {
@@ -22,9 +16,30 @@ async function request<T>(url: string, input?: unknown): Promise<T> {
   return body as T;
 }
 
+/** Saves one of the wizard's existing step exports; nothing is generated or sent. */
+export async function downloadStepExport(wizardId: string, stepId: string, format: string) {
+  const response = await fetch(`/api/wizards/${wizardId}/dispatch/${stepId}/export?format=${format}`,
+    { credentials: "include", cache: "no-store" });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    throw new Error(problem?.message || "Could not prepare the download. Retry.");
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const filename = encodedName ? decodeURIComponent(encodedName) : /filename="([^"]+)"/i.exec(disposition)?.[1];
+  if (!filename) throw new Error("The export did not include a filename");
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 type Progress = { status?: string; runId?: string; phase?: string; percentComplete?: number | null;
   processed?: number; total?: number; error?: string; heartbeatAt?: string };
-type Action = { key: string; evidence: string; selectedId: string; reason: string } | { action: "complete" };
 
 export function useCoverageReview(wizardId: string, autoStart = true) {
   const queryClient = useQueryClient();
@@ -53,27 +68,34 @@ export function useCoverageReview(wizardId: string, autoStart = true) {
     mutationFn: (input: Record<string, unknown>) => request(`/api/wizards/${wizardId}/dispatch/coverage/run`, input),
     onSettled: reloadStatus,
   });
+  // Once per visit: a run with no check yet, or one whose saved check answers
+  // for other settings, another rule, or the retired source picker.
   const attempted = useRef("");
   useEffect(() => {
-    if (autoStart && !statusUnavailable && !running &&
-        (!progress?.status || (progress.status === "completed" && (!review.data?.fingerprint || !review.data?.revision))) &&
-        review.data?.applicable && attempted.current !== wizardId && !start.isPending) {
+    if (autoStart && !statusUnavailable && !running && progress?.status !== "failed" &&
+        review.data?.applicable && !review.data.ready && !review.isFetching &&
+        attempted.current !== wizardId && !start.isPending) {
       attempted.current = wizardId;
       start.mutate({ action: "check" });
     }
-  }, [autoStart, statusUnavailable, running, progress?.status, review.data?.applicable, wizardId, start.isPending]);
+  }, [autoStart, statusUnavailable, running, progress?.status, review.data?.applicable, review.data?.ready,
+    review.isFetching, wizardId, start.isPending]);
   const refresh = async () => {
     if (statusUnavailable || running) { await reloadStatus(); return; }
     start.mutate({ action: "check" });
   };
-  const save = useMutation({
-    mutationFn: (input: Action) => request<{ runId: string }>(`/api/wizards/${wizardId}/dispatch/coverage/run`,
-      { ...input, action: "action" in input ? "complete" : "decision",
-        fingerprint: review.data?.fingerprint, revision: review.data?.revision }),
+  // Binds to the list on screen: the server refuses if either value moved.
+  const acknowledge = useMutation({
+    mutationFn: () => request<{ runId: string }>(`/api/wizards/${wizardId}/dispatch/coverage/run`,
+      { action: "acknowledge", revision: review.data?.revision, exclusionDigest: review.data?.exclusionDigest }),
     onSettled: reloadStatus,
   });
-  return { review, save, refresh, running, generating, statusUnavailable, statusLoading: wizard.isPending, progress, start,
-    ready: !statusUnavailable && !running &&
-      (review.data?.applicable === false || (review.data?.ready === true && progress?.status === "completed")),
+  const ready = !statusUnavailable && !running &&
+    (review.data?.applicable === false || (review.data?.ready === true && progress?.status === "completed"));
+  return { review, acknowledge, refresh, running, generating, statusUnavailable, statusLoading: wizard.isPending,
+    progress, start, ready,
+    /** The current list leaves records out and no administrator has accepted it. */
+    needsAcknowledgement: ready && !!review.data?.applicable && (review.data.exclusionCount ?? 0) > 0 &&
+      !review.data.acknowledgement,
   };
 }

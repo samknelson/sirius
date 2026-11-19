@@ -13,12 +13,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Download, Send, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
+import type { EdiCoverageRunSummary } from "@shared/edi-coverage-choices";
+import { GeneratedExclusions } from "./CoverageEntries";
 
 interface DeliverStepData {
   ready: boolean;
   filename?: string;
   rowCount?: number;
   terminationCounts?: { subscribers: number; dependents: number; inferred: number } | null;
+  coverage?: EdiCoverageRunSummary | null;
   destinationId?: string | null;
   destinationName?: string | null;
   delivery?: {
@@ -158,6 +161,7 @@ function DeliverStepContent({ wizardId, step, generation }: Pick<WizardStepCompo
             not a failed eligibility scan. Review that historical evidence before delivery.
           </p>}
         </div>}
+        <GeneratedExclusions wizardId={wizardId} coverage={data.coverage} />
         <p className="text-sm text-muted-foreground">
           Downloads contain sensitive personal and coverage data. Store and share them securely.
           Carrier-layout CSV is for QA, not provider submission; unlike Results CSV, it shows

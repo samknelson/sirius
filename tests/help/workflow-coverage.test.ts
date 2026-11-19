@@ -291,9 +291,11 @@ describe("audited authenticated workflow help", () => {
     expect(help.details).toMatch(/All nine membership carriers support generation/);
     expect(help.details).toContain("13226164");
     expect(help.details).toMatch(/Ordinary employer changes do not restart dates/);
-    expect(help.details).toMatch(/Nothing is preselected/);
+    expect(help.details).toMatch(/Nothing is\s+chosen by hand/);
+    expect(help.details).toMatch(/Acknowledge exclusion list/);
+    expect(help.details).toMatch(/temporary rule/);
     expect(help.details).toMatch(/Coverage sources/);
-    expect(help.details).toMatch(/Choices apply only to this wizard run/);
+    expect(help.details).toMatch(/never change coverage,\s+relationship or employer records/);
     expect(help.details).toMatch(/does not establish carrier\s+acceptance/);
     expect(help.details).not.toMatch(/turn both flags off|contract.*blocker|unsupported carrier status/i);
     for (const path of ["/wizards/example", "/wizards/example/params", "/wizards/example/"]) {

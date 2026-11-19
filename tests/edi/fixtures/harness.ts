@@ -19,27 +19,38 @@ import type { LegacyLayout } from "./legacy-layouts";
  * Script only the read results, not buildMemberUnits or the provider mappers.
  * The real shared assembly and serializers run against mixed-case contacts.
  * No write API is offered, and unexpected/missing reads fail the fixture.
+ *
+ * `db.execute()` consumes the next scripted result as well. The one raw
+ * statement on this path is the segment-start read, which returns ONE
+ * aggregated row per anchor record: script those with `segmentStartRow`.
  */
 export function ediReadFixture(results: readonly (readonly unknown[])[]): {
   ctx: TrustProviderEdiContext;
   assertReadsConsumed(): void;
+  readLimits: (number | undefined)[];
 } {
   let next = 0;
+  const readLimits: (number | undefined)[] = [];
   const db = {
     select() {
       if (next >= results.length) throw new Error("Unexpected EDI fixture read");
       const rows = results[next++];
+      const index = readLimits.push(undefined) - 1;
       const chain = {
         from: () => chain,
         where: () => chain,
         innerJoin: () => chain,
         leftJoin: () => chain,
         orderBy: () => chain,
-        limit: () => chain,
+        limit: (limit: number) => { readLimits[index] = limit; return chain; },
         then: (resolve: (value: readonly unknown[]) => unknown) =>
           Promise.resolve(rows).then(resolve),
       };
       return chain;
+    },
+    async execute() {
+      if (next >= results.length) throw new Error("Unexpected EDI fixture read");
+      return { rows: results[next++] };
     },
   };
   const ctx = {
@@ -52,9 +63,43 @@ export function ediReadFixture(results: readonly (readonly unknown[])[]): {
   } as unknown as TrustProviderEdiContext;
   return {
     ctx,
+    readLimits,
     assertReadsConsumed() {
       if (next !== results.length) throw new Error(`EDI fixture used ${next}/${results.length} reads`);
     },
+  };
+}
+
+/**
+ * What the database answers for one anchor coverage record: the `restart`
+ * event month, how many months of the run are covered, and the latest month
+ * in the run without a record of the anchor's own class.
+ */
+export function segmentStartRow(
+  anchor: { id: string; workerId: string; benefitId: string; year: number; month: number },
+  run: {
+    cobra?: boolean;
+    /** Calendar month (same year as the anchor) of the `restart` event; null = no event. */
+    restart: number | null;
+    /** Latest month of the run with no record of the anchor's class. */
+    lastBreak?: number;
+    /** Covered months found in the run, when that is not every month. */
+    covered?: number;
+    /** Conflicting months inside the segment before the anchor month, and the records they hold. */
+    conflictMonths?: number;
+    conflictRecords?: number;
+  },
+): Record<string, unknown> {
+  const index = (month: number) => anchor.year * 12 + month - 1;
+  const restart = run.restart == null ? null : index(run.restart);
+  return {
+    id: anchor.id, worker_id: anchor.workerId, benefit_id: anchor.benefitId, cobra: run.cobra ?? false,
+    anchor_idx: index(anchor.month), restart_idx: restart,
+    last_break: run.lastBreak == null ? null : index(run.lastBreak),
+    covered: restart == null ? null : run.covered ?? index(anchor.month) - restart + 1,
+    first_idx: restart,
+    conflict_months: run.conflictMonths ?? 0,
+    conflict_records: run.conflictRecords ?? (run.conflictMonths ?? 0) * 2,
   };
 }
 

@@ -17,8 +17,9 @@ import type {
   EdiBatchAggregates,
 } from "./registry";
 import { logger } from "../../../logger";
-import { coverageSegments, isEdiCobra } from "./coverage-segments";
-import { projectCoverage, coverageProjectionIndex } from "./coverage-choices";
+import { assertUnambiguousMonth } from "./coverage-segments";
+import { coverageKey, retainCoverage } from "./coverage-conflicts";
+import { readSegmentStarts, requireSegmentStart } from "./coverage-starts";
 import { COVERAGE_LIMITS } from "./coverage-budget";
 
 function boundedCoverageRows<T>(rows: T[]): T[] {
@@ -260,7 +261,7 @@ export async function wmbPrimaryKeys(
   const asOfYmd = readAsOfYmd(ctx);
   const asOfYear = Number(asOfYmd.slice(0, 4));
   const asOfMonth = Number(asOfYmd.slice(5, 7));
-  const wmbRows = projectCoverage(boundedCoverageRows(await ctx.storage.readOnly.query(async (db) =>
+  const wmbRows = retainCoverage(boundedCoverageRows(await ctx.storage.readOnly.query(async (db) =>
     db
       .select({
         id: trustWmb.id,
@@ -287,9 +288,16 @@ export async function wmbPrimaryKeys(
         ),
       ).limit(COVERAGE_LIMITS.rows + 1),
     { statementTimeoutMs: COVERAGE_LIMITS.queryMs },
-  )), ctx.coverageProjection, r => r.id);
-  const segments = coverageSegments(wmbRows);
-  for (const row of wmbRows) segments.validateMonth(row);
+  )), ctx.coverageEvidence, r => r.id);
+  // A wizard run has already set conflicting months aside (or refused them).
+  // Any other caller reaches this guard with every record still present.
+  const months = new Map<string, typeof wmbRows>();
+  for (const row of wmbRows) {
+    const key = coverageKey(row);
+    const group = months.get(key);
+    if (group) group.push(row); else months.set(key, [row]);
+  }
+  for (const group of months.values()) assertUnambiguousMonth(group);
   // Subscribers on this file: workers holding their own (null-source) row
   // for a benefit. Keyed per benefit so multi-benefit runs don't cross-mask.
   const subscriberKeys = new Set(
@@ -449,14 +457,11 @@ export async function buildMemberUnits(
   ctx: TrustProviderEdiContext,
 ): Promise<EdiMemberUnit[]> {
   return ctx.storage.readOnly.query(async (db) => {
-    const wmbRows = projectCoverage(await db
+    const wmbRows = retainCoverage(await db
       .select()
       .from(trustWmb)
-      .where(inArray(trustWmb.id, keys)), ctx.coverageProjection, r => r.id);
+      .where(inArray(trustWmb.id, keys)), ctx.coverageEvidence, r => r.id);
 
-    // Coverage start = first month of the worker's CONTIGUOUS run of
-    // monthly records for this benefit ending at the wmb month. Load all
-    // (worker, year, month) pairs for the batch's workers + benefits once.
     const workerIds = Array.from(new Set(wmbRows.map((r) => r.workerId)));
     const benefitIds = Array.from(new Set(wmbRows.map((r) => r.benefitId)));
 
@@ -516,25 +521,19 @@ export async function buildMemberUnits(
             ).limit(COVERAGE_LIMITS.rows + 1)
         : [];
     if (depWmbRows.length > COVERAGE_LIMITS.rows) throw new Error("Dependent coverage exceeded its safe resource budget. No partial generation is available.");
-    const relevantDeps = projectCoverage(depWmbRows, ctx.coverageProjection, r => r.depWmbId).filter(dep => wmbRows.some(wmb =>
+    const relevantDeps = retainCoverage(depWmbRows, ctx.coverageEvidence, r => r.depWmbId).filter(dep => wmbRows.some(wmb =>
       dep.subscriberWorkerId === wmb.workerId && dep.benefitId === wmb.benefitId &&
       dep.year === wmb.year && dep.month === wmb.month));
-    const historyWorkerIds = [...new Set([...workerIds, ...relevantDeps.map(r => r.depWorkerId)])];
-    const sharedIndex = coverageProjectionIndex(ctx.coverageProjection);
-    const history = projectCoverage(boundedCoverageRows(!sharedIndex && historyWorkerIds.length ? await db.select({
-      id: trustWmb.id, workerId: trustWmb.workerId, benefitId: trustWmb.benefitId,
-      year: trustWmb.year, month: trustWmb.month, employerId: trustWmb.employerId,
-      sourceRelationId: trustWmb.sourceRelationId, employerSiriusId: employers.siriusId,
-    }).from(trustWmb).leftJoin(employers, eq(trustWmb.employerId, employers.id))
-      .where(and(inArray(trustWmb.workerId, historyWorkerIds), inArray(trustWmb.benefitId, benefitIds)))
-      .limit(COVERAGE_LIMITS.rows + 1) : []), ctx.coverageProjection, r => r.id);
-    const historyById = sharedIndex?.byId ?? new Map(history.map(r => [r.id, r]));
-    const segments = sharedIndex?.segments ?? coverageSegments(history);
-    function segmentFor(id: string) {
-      const row = historyById.get(id);
-      if (!row) throw new Error(`WMB ${id}: coverage history changed or is missing. Regenerate after correcting history.`);
-      return { isCobra: isEdiCobra(row.employerSiriusId), coverageStartYmd: segments.start(row) };
-    }
+    // Coverage start and COBRA class come from lifecycle events (see
+    // coverage-starts.ts): each record below is an anchor, and the database
+    // returns one row per anchor from that person's current coverage run.
+    // A wizard run resolved them with its evidence; anything it did not
+    // anchor (and every caller outside a wizard) is read here, once per batch.
+    const known = ctx.coverageEvidence?.starts;
+    const anchorIds = [...new Set([...wmbRows.map(r => r.id), ...relevantDeps.map(r => r.depWmbId)])];
+    const unresolved = anchorIds.filter(id => !known?.has(id));
+    const batchStarts = new Map((unresolved.length ? await readSegmentStarts(db, unresolved) : []).map(start => [start.id, start]));
+    const segmentFor = (id: string) => requireSegmentStart(known?.get(id) ?? batchStarts.get(id), id);
     // subscriberWorkerId|benefitId|year-month → dependent rows.
     const depsBySubscriber = new Map<string, typeof depWmbRows>();
     for (const dep of relevantDeps) {
@@ -618,6 +617,10 @@ export async function buildMemberUnits(
           throw new Error(`Correction required: ambiguous dependent ownership for person ${dep.depWorkerId}, benefit ${dep.benefitId}, coverage month ${dep.year}-${String(dep.month).padStart(2, "0")}. WMB rows ${depRows.filter(other => other.depWorkerId === dep.depWorkerId).map(other => other.depWmbId).join(", ")} belong to distinct family relations.`);
         }
         if (seenDepWorkers.has(dep.depWorkerId)) continue;
+        const sameSource = depRows.filter(other => other.depWorkerId === dep.depWorkerId);
+        if (new Set(sameSource.map(other => segmentFor(other.depWmbId).isCobra)).size > 1) {
+          throw new Error(`Correction required: mixed COBRA/non-COBRA coverage for person ${dep.depWorkerId}, benefit ${dep.benefitId}, coverage month ${dep.year}-${String(dep.month).padStart(2, "0")}. WMB rows ${sameSource.map(other => other.depWmbId).join(", ")}. Correct the conflicting coverage records before regenerating; neither classification takes precedence.`);
+        }
         seenDepWorkers.add(dep.depWorkerId);
         dependents.push(normalizeEdiPerson({
           ...segmentFor(dep.depWmbId),

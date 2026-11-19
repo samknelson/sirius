@@ -1,18 +1,19 @@
 import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { discoverCoverage } from "../../server/plugins/trust/provider-edi/coverage-review";
-import { CoverageBudgetError } from "../../server/plugins/trust/provider-edi/coverage-budget";
-import { reviewConflict, evidenceHash } from "../../server/plugins/trust/provider-edi/coverage-choices";
-import type { EdiCoverageCandidate } from "@shared/edi-coverage-choices";
-const ephemeral = vi.hoisted(() => ({
-  dispose: () => {},
-  budget: { yield: async () => {}, check: () => {}, retain: () => {}, release: () => {} },
-  store: { map: () => new Map(), check: () => {} },
+import { readCoverageEvidence } from "../../server/plugins/trust/provider-edi/coverage-evidence";
+import { evidenceHash } from "../../server/plugins/trust/provider-edi/coverage-conflicts";
+import type { EdiCoverageEntry } from "@shared/edi-coverage-choices";
+/** One bounded evidence read: nothing excluded unless a case says so. */
+const evidence = vi.hoisted(() => (over: Record<string, unknown> = {}) => ({
+  rule: "exclude-conflicting", excludedIds: new Set<string>(), starts: new Map(), terminationCandidates: null,
+  exclusions: [] as unknown[], warnings: [] as unknown[], exclusionDigest: "nothing-excluded", fingerprint: "fixture",
+  population: 1, timings: [{ phase: "Reading report-month coverage", milliseconds: 1 }],
+  budget: { check: () => {}, retain: () => {}, release: () => {}, log: () => {} },
+  ...over,
 }));
-vi.mock("../../server/plugins/trust/provider-edi/coverage-review", async original => ({
-  ...await original<any>(),
-  discoverCoverage: vi.fn(async () => ({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "fixture" })),
+vi.mock("../../server/plugins/trust/provider-edi/coverage-evidence", () => ({
+  readCoverageEvidence: vi.fn(async () => evidence()),
 }));
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { registeredEdiPlugins } from "./fixtures/harness";
@@ -39,7 +40,7 @@ vi.mock("../../server/storage", () => ({ storage: {
       return state.wizard;
     },
     deleteReportData: async () => { state.rows = []; },
-    saveReportData: async (_id: string, _pk: string, data: unknown) => { state.rows.push({ data }); },
+    saveReportData: async (_id: string, pk: string, data: unknown) => { state.rows.push({ pk, data }); },
   },
   sftpClientDestinations: { getById: async () => ({
     id: "destination", name: "Fixture", data: { protocol: "sftp", host: "fixture.invalid", port: 22, username: "fixture", password: "fixture" },
@@ -80,9 +81,9 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(discoverCoverage).mockResolvedValue({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "fixture", events: [] } as any);
+  vi.mocked(readCoverageEvidence).mockImplementation(async () => evidence() as any);
   state.allowed = true;
-  state.rows = [{ data: { pk: "saved", firstName: "Fixture", memberSsn: "000123456" } }];
+  state.rows = [{ pk: "saved", data: { pk: "saved", firstName: "Fixture", memberSsn: "000123456" } }];
   state.getRows.mockImplementation(async () => state.rows);
   state.wizard = {
     id: "saved", type: "trust_provider_edi", currentStep: "deliver", status: "completed",
@@ -91,7 +92,8 @@ beforeEach(() => {
       input: { asOfDate: "2026-10-01" },
       reportMeta: { recordCount: 1 },
       delivery: { deliveredAt: "2026-10-01", filename: "old.txt" },
-      coverageSnapshot: { fingerprint: "fixture", conflicts: [] },
+      coverageSnapshot: { fingerprint: "fixture", rule: "exclude-conflicting", exclusionDigest: "nothing-excluded",
+        exclusionCount: 0, warningCount: 0, exclusions: [], warnings: [] },
       progress: { coverage: { status: "completed", runId: "previous-check" } },
     },
   };
@@ -117,95 +119,136 @@ const get = (path: string, authenticated = true) => fetch(`${base}${path}`, { he
 function revision() {
   const data = state.wizard.data;
   return evidenceHash({ config: data.config, input: data.input, terminationPolicy: data.terminationPolicy,
-    decisions: data.coverageDecisions ?? [] });
+    rule: "exclude-conflicting" });
 }
 
 describe("authorized, read-only Deliver exports", () => {
   const postCoverage = (input: Record<string, unknown>) => fetch(`${base}/coverage/run`, {
     method: "POST", headers: { authorization: "fixture", "Content-Type": "application/json" },
-    body: JSON.stringify({ input: { action: "decision", fingerprint: "fixture", revision: revision(), ...input } }),
+    body: JSON.stringify({ input: { action: "check", ...input } }),
   });
   const finished = () => vi.waitFor(() => expect(state.wizard.data.progress?.coverage?.status).not.toBe("in_progress"));
-  function conflictFixture() {
-    const candidate: EdiCoverageCandidate = {
-      id: "own", workerId: "fictional-person", benefitId: "benefit", year: 2026, month: 10,
-      employerId: "ordinary", employerSiriusId: "100", sourceRelationId: null,
-      personLabel: "Fictional Member", benefitLabel: "Fixture Benefit", employerLabel: "Fixture Employer",
-      subscriberLabel: "Fictional Member", subscriberWorkerId: "fictional-person", isCobra: false, familyIssue: null,
-    };
-    const conflict = reviewConflict([candidate, { ...candidate, id: "cobra", isCobra: true, employerSiriusId: "COBRA" }], "evidence", []);
-    vi.mocked(discoverCoverage).mockResolvedValue({ ...ephemeral, conflicts: [conflict], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "fixture", events: [] } as any);
-    return { key: conflict.key, evidence: conflict.evidence, selectedId: "cobra", reason: "Reviewed fictional source evidence" };
+  const navigate = () => fetch(`${base}/navigate`, { method: "POST",
+    headers: { authorization: "fixture", "Content-Type": "application/json" },
+    body: JSON.stringify({ direction: "next" }) });
+  const coverageState = () => trustProviderEdiWizardPlugin.steps.find(s => s.id === "coverage")!.getState!(state.wizard);
+  const entry: EdiCoverageEntry = {
+    kind: "exclusion", reason: "conflicting-coverage", workerId: "fictional-person", personLabel: "Fictional Member",
+    benefitId: "benefit", benefitLabel: "Fixture Benefit", month: "2026-10",
+    records: ["cobra", "own"].map(id => ({ id, employerId: id, employerLabel: "Fixture Employer",
+      employerSiriusId: id === "cobra" ? "COBRA" : "100", sourceRelationId: null,
+      subscriberWorkerId: "fictional-person", subscriberLabel: "Fictional Member", isCobra: id === "cobra" })),
+  };
+  /** Every later read reports the same one conflicting month left out. */
+  function excluding(digest = "one-excluded") {
+    vi.mocked(readCoverageEvidence).mockImplementation(async () =>
+      evidence({ excludedIds: new Set(["cobra", "own"]), exclusions: [entry], exclusionDigest: digest }) as any);
+    return digest;
   }
+  const runGenerate = async () => {
+    const { storage } = await import("../../server/storage");
+    return trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!.run!({
+      wizard: state.wizard, wizardId: "saved", storage, input: {}, req: {}, reportProgress: async () => {},
+    } as any);
+  };
   it.each(["sitespecific-bao-kaiser", "sitespecific-smf-local11"])(
-    "allows Parameters → Coverage sources → Generate without conflicts for %s", async pluginId => {
+    "allows Parameters → Coverage sources → Generate when nothing is excluded for %s", async pluginId => {
       state.wizard.data.config.pluginId = pluginId;
-      state.wizard.data.coverageSnapshot.revision = revision();
       state.wizard.currentStep = "params";
-      const navigate = () => fetch(`${base}/navigate`, { method: "POST",
-        headers: { authorization: "fixture", "Content-Type": "application/json" },
-        body: JSON.stringify({ direction: "next" }) });
       expect((await navigate()).status).toBe(200);
       expect(state.wizard.currentStep).toBe("coverage");
-      expect((await navigate()).status).toBe(400);
-      expect((await postCoverage({ action: "complete" })).status).toBe(202);
-      await finished();
-      expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "coverage")!.getState!(state.wizard)).toBe("completed");
+      // An hours-only file reads no coverage, so there is no check to run:
+      // the step is complete as soon as Parameters are saved.
+      if (pluginId === "sitespecific-bao-kaiser") {
+        expect((await navigate()).status).toBe(400);
+        expect((await postCoverage({})).status).toBe(202);
+        await finished();
+      }
+      expect(coverageState()).toBe("completed");
       expect((await navigate()).status).toBe(200);
       expect(state.wizard.currentStep).toBe("run");
     });
-  it("gates coverage inspection and saving before evidence reads or writes", async () => {
-    const input = conflictFixture();
+  it("gates coverage inspection and checking before evidence reads or writes", async () => {
     expect((await get("/coverage/data", false)).status).toBe(401);
     state.allowed = false;
     expect((await get("/coverage/data")).status).toBe(403);
-    expect((await postCoverage(input)).status).toBe(403);
-    expect(discoverCoverage).not.toHaveBeenCalled();
+    expect((await postCoverage({})).status).toBe(403);
+    expect(readCoverageEvidence).not.toHaveBeenCalled();
     expect(state.update).not.toHaveBeenCalled();
   });
-  it("saves only server-attributed decisions and invalidates all prior output", async () => {
-    const input = conflictFixture();
-    expect((await postCoverage({ ...input, actor: "forged", decidedBy: "forged", decidedAt: "forged" })).status).toBe(202);
-    await finished();
-    const [id, , , , , , , , type, , expected] = state.writeProgress.mock.calls[0];
-    expect(id).toBe("saved");
-    expect(type).toBe("trust_provider_edi");
-    expect(expected).toBeDefined();
-    expect(state.wizard.data).toMatchObject({ reportMeta: null, delivery: null, recordCount: null,
-      coverageDecisions: [expect.objectContaining({ selectedId: "cobra", decidedBy: "fixture-user", reason: input.reason })] });
-    expect(state.wizard.data.coverageDecisions[0].decidedAt).not.toBe("forged");
-    expect(state.wizard.data.coverageDecisions[0].candidates).toHaveLength(2);
-  });
-  it("rejects stale evidence and active generation without changing approvals", async () => {
-    const input = conflictFixture();
-    expect((await postCoverage({ ...input, evidence: "old" })).status).toBe(202);
-    await finished();
-    expect(state.wizard.data.progress.coverage.status).toBe("failed");
-    expect(state.update).not.toHaveBeenCalled();
-    state.wizard.data.progress = { coverage: { status: "completed" }, run: { status: "in_progress" } };
-    expect((await postCoverage(input)).status).toBe(409);
-    expect(state.update).not.toHaveBeenCalled();
-  });
-  it("rejects a decision when generation wins the concurrent save", async () => {
-    const input = conflictFixture();
-    state.writeProgress.mockImplementation(async (_id, _step, _run, _patch, _start, _data, _status, _lease, _type, _policy, expected) => {
-      expect(expected.progress?.run?.status).not.toBe("in_progress");
-      state.wizard.data.progress = { run: { status: "in_progress" } };
-      return undefined; // atomic storage predicate rejected the stale snapshot
-    });
-    expect((await postCoverage(input)).status).toBe(409);
+  it("no longer accepts a manual source decision", async () => {
+    for (const action of ["decision", "complete"]) {
+      const response = await postCoverage({ action, key: "any", selectedId: "cobra", reason: "Reviewed" });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("no longer accepted");
+    }
+    expect(readCoverageEvidence).not.toHaveBeenCalled();
+    expect(state.writeProgress).not.toHaveBeenCalled();
     expect(state.wizard.data.coverageDecisions).toBeUndefined();
+  });
+  it("holds Generate until an administrator acknowledges exactly the list on screen", async () => {
+    const digest = excluding();
+    state.wizard.currentStep = "coverage";
+    expect((await postCoverage({})).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.coverageSnapshot).toMatchObject({ rule: "exclude-conflicting", exclusionCount: 1,
+      exclusionDigest: digest, byReason: { "conflicting-coverage": 1 }, exclusions: [entry] });
+    expect(coverageState()).toBe("pending");
+    expect((await navigate()).status).toBe(400);
+    await expect(runGenerate()).rejects.toThrow(/no administrator has acknowledged/);
+    // A list other than the one checked, or other settings, is never acknowledged.
+    expect((await postCoverage({ action: "acknowledge", revision: revision(), exclusionDigest: "another-list" })).status).toBe(400);
+    expect((await postCoverage({ action: "acknowledge", revision: "previous-settings", exclusionDigest: digest })).status).toBe(400);
+    expect(state.wizard.data.coverageAcknowledgement).toBeUndefined();
+    expect((await postCoverage({ action: "acknowledge", revision: revision(), exclusionDigest: digest,
+      actor: "forged", acknowledgedBy: "forged", acknowledgedAt: "forged" })).status).toBe(202);
+    await finished();
+    expect(state.wizard.data.coverageAcknowledgement).toMatchObject({
+      acknowledgedBy: "fixture-user", exclusionDigest: digest, exclusionCount: 1, rule: "exclude-conflicting" });
+    expect(state.wizard.data.coverageAcknowledgement.acknowledgedAt).not.toBe("forged");
+    expect(coverageState()).toBe("completed");
+    expect((await navigate()).status).toBe(200);
+  });
+  it("saves the exclusion list with the generated run and refuses a list that changed since", async () => {
+    const digest = excluding();
+    const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
+    const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue(["member"]);
+    const process = vi.spyOn(plugin, "processBatch").mockResolvedValue([{ pk: "member", firstName: "Fixture" }]);
+    state.wizard.data.coverageAcknowledgement = { acknowledgedBy: "fixture-user", acknowledgedAt: "2026-10-01T00:00:00.000Z",
+      exclusionDigest: digest, exclusionCount: 1, rule: "exclude-conflicting" };
+    try {
+      const result = await runGenerate();
+      // Every membership reader worked from the one evidence read.
+      expect((process.mock.calls[0][1] as any).coverageEvidence.excludedIds).toEqual(new Set(["cobra", "own"]));
+      expect(result?.data?.reportMeta).toMatchObject({ recordCount: 1, coverage: {
+        rule: "exclude-conflicting", exclusionCount: 1, warningCount: 0, exclusionDigest: digest,
+        acknowledgement: { acknowledgedBy: "fixture-user" } } });
+      state.wizard.data = { ...state.wizard.data, ...result!.data, progress: { run: { status: "completed" } } };
+      expect(await (await get("/deliver/data")).json()).toMatchObject({ ready: true, rowCount: 1, coverage: { exclusionCount: 1 } });
+      // The list travels beside the rows, and is never a file row.
+      expect(await (await get("/deliver/export?format=provider")).text()).not.toContain("Fictional Member");
+      expect((await (await get("/results/data")).json()).records).toEqual([{ pk: "member", firstName: "Fixture" }]);
+      const download = await get("/deliver/export?format=coverage-exclusions");
+      expect(download.status).toBe(200);
+      expect(download.headers.get("content-disposition")).toContain("-coverage-exclusions.csv");
+      const csv = await download.text();
+      for (const detail of ["Excluded", "Fictional Member", "fictional-person", "Fixture Benefit", "2026-10",
+        "cobra", "own", "Fixture Employer", "COBRA", "Non-COBRA", "Subscriber"]) expect(csv).toContain(detail);
+      // Coverage changed after acknowledgement: the earlier acknowledgement is of another list.
+      excluding("a-different-list");
+      await expect(runGenerate()).rejects.toThrow(/list changed since it was acknowledged/);
+    } finally {
+      keys.mockRestore();
+      process.mockRestore();
+    }
   });
   it("checks source evidence again before publishing completed metadata", async () => {
     const plugin = registeredEdiPlugins().find(p => p.id === "sitespecific-bao-kaiser")!;
     const keys = vi.spyOn(plugin, "getPrimaryKeys").mockResolvedValue([]);
-    vi.mocked(discoverCoverage).mockResolvedValueOnce({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "before", events: [] } as any)
-      .mockResolvedValueOnce({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "after", events: [] } as any);
-    const { storage } = await import("../../server/storage");
+    vi.mocked(readCoverageEvidence).mockResolvedValueOnce(evidence({ fingerprint: "before" }) as any)
+      .mockResolvedValueOnce(evidence({ fingerprint: "after" }) as any);
     try {
-      await expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "run")!.run!({
-        wizard: state.wizard, wizardId: "saved", storage, input: {}, req: {}, reportProgress: async () => {},
-      } as any)).rejects.toThrow(/changed during generation/);
+      await expect(runGenerate()).rejects.toThrow(/changed during generation/);
       expect(state.wizard.data.reportMeta).toBeNull();
       expect((await get("/deliver/export")).status).toBe(500);
     } finally { keys.mockRestore(); }
@@ -213,9 +256,9 @@ describe("authorized, read-only Deliver exports", () => {
   it("admits slow checks promptly, keeps reads cheap and excludes competing operations", async () => {
     let release!: (value: any) => void;
     const held = new Promise<any>(resolve => { release = resolve; });
-    vi.mocked(discoverCoverage).mockReturnValueOnce(held);
-    const admitted = await postCoverage({ action: "check" });
-    expect(admitted.status).toBe(202); // discovery is deliberately still unresolved
+    vi.mocked(readCoverageEvidence).mockReturnValueOnce(held);
+    const admitted = await postCoverage({});
+    expect(admitted.status).toBe(202); // the evidence read is deliberately still unresolved
     expect(state.wizard.data.progress.coverage.status).toBe("in_progress");
     try {
       for (let i = 0; i < 3; i++) {
@@ -223,68 +266,46 @@ describe("authorized, read-only Deliver exports", () => {
         expect(response.status).toBe(200);
         expect((await response.json()).ready).toBe(false);
       }
-      expect(discoverCoverage).toHaveBeenCalledTimes(1);
-      expect((await postCoverage({ action: "check" })).status).toBe(409);
+      expect(readCoverageEvidence).toHaveBeenCalledTimes(1);
+      expect((await postCoverage({})).status).toBe(409);
       expect((await fetch(`${base}/run/run`, { method: "POST",
         headers: { authorization: "fixture", "Content-Type": "application/json" }, body: "{}" })).status).toBe(409);
       expect((await fetch(`${base}/params/submit`, { method: "POST",
         headers: { authorization: "fixture", "Content-Type": "application/json" },
         body: JSON.stringify({ input: { asOfDate: "2026-10-01" } }) })).status).toBe(500);
     } finally {
-      release({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "new" });
+      release(evidence({ fingerprint: "new" }));
       await finished();
     }
-    expect((await (await get("/coverage/data")).json())).toMatchObject({ ready: true, conflicts: [], fingerprint: "new" });
-    expect(discoverCoverage).toHaveBeenCalledTimes(1);
+    expect((await (await get("/coverage/data")).json())).toMatchObject({
+      ready: true, rule: "exclude-conflicting", exclusions: [], warnings: [], fingerprint: "new", legacyDecisions: [] });
+    expect(readCoverageEvidence).toHaveBeenCalledTimes(1);
   });
-  it("rejects completion when submitted evidence changed and permits a fresh check", async () => {
-    expect((await postCoverage({ action: "complete", fingerprint: "old" })).status).toBe(202);
-    await finished();
-    expect(state.wizard.data.progress.coverage).toMatchObject({ status: "failed" });
-    expect(state.wizard.data.coverageReviewed).not.toBe(true);
-    expect((await postCoverage({ action: "check" })).status).toBe(202);
-    await finished();
-    expect(state.wizard.data.progress.coverage.status).toBe("completed");
-    expect(state.wizard.data.coverageReviewed).toBe(false);
-  });
-  it("persists budget diagnostics and requires a fresh check without replaying the refused decision", async () => {
-    const input = conflictFixture();
+  it("keeps the previous check when a check is refused, and shows older source decisions read-only", async () => {
     const previous = structuredClone(state.wizard.data.coverageSnapshot);
-    state.wizard.data.coverageReviewed = true;
-    vi.mocked(discoverCoverage).mockRejectedValueOnce(new CoverageBudgetError({
-      scanId: "fictional-scan", wizardId: "saved", runId: "fixture-run", phase: "Tracing historical families",
-      exceeded: [{ dimension: "retainedRecords", observed: 125001, limit: 125000 }],
-    }));
-    expect((await postCoverage(input)).status).toBe(202);
+    const decision = { key: "old", selectedId: "cobra", reason: "Reviewed before exclusion was automatic", decidedBy: "earlier-user" };
+    state.wizard.data.coverageDecisions = [decision];
+    vi.mocked(readCoverageEvidence).mockRejectedValueOnce(
+      new Error("Coverage lifecycle events are not ready for 3 people in this run. Wait for maintenance to finish, then check again."));
+    expect((await postCoverage({})).status).toBe(202);
     await finished();
-    expect(state.wizard.data.progress.coverage).toMatchObject({
-      status: "failed", phase: "Tracing historical families",
-      coverageBudget: { scanId: "fictional-scan" },
-    });
+    expect(state.wizard.data.progress.coverage).toMatchObject({ status: "failed", error: expect.stringContaining("3 people") });
     expect(state.wizard.data.coverageSnapshot).toEqual(previous);
-    expect(state.wizard.data.coverageDecisions).toBeUndefined();
-    expect(trustProviderEdiWizardPlugin.steps.find(s => s.id === "coverage")!.getState!(state.wizard)).toBe("pending");
-    expect((await postCoverage(input)).status).toBe(400);
-    expect((await postCoverage({ action: "complete" })).status).toBe(400);
-    expect((await postCoverage({ action: "check" })).status).toBe(202);
+    expect(coverageState()).toBe("pending");
+    expect((await postCoverage({ action: "acknowledge", revision: revision(), exclusionDigest: previous.exclusionDigest })).status).toBe(400);
+    expect((await postCoverage({})).status).toBe(202);
     await finished();
-    expect(state.wizard.data.progress.coverage.status).toBe("completed");
-    expect(state.wizard.data.progress.coverage.coverageBudget).toBeNull();
-    expect(state.wizard.data.coverageReviewed).toBe(false);
-    expect(state.wizard.data.coverageDecisions).toBeUndefined();
-  });
-  it("refuses stale submitted settings or decision revisions before admission", async () => {
-    const input = conflictFixture();
-    expect((await postCoverage({ ...input, revision: "previous-settings" })).status).toBe(400);
-    expect(discoverCoverage).not.toHaveBeenCalled();
-    expect(state.writeProgress).not.toHaveBeenCalled();
+    expect(coverageState()).toBe("completed");
+    // Shown for the record; nothing reads them, and the evidence read never receives them.
+    expect((await (await get("/coverage/data")).json()).legacyDecisions).toEqual([decision]);
+    expect(state.wizard.data.coverageDecisions).toEqual([decision]);
   });
   it("never publishes late evidence from a replaced owner", async () => {
     let release!: (value: any) => void;
-    vi.mocked(discoverCoverage).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
-    expect((await postCoverage({ action: "check" })).status).toBe(202);
+    vi.mocked(readCoverageEvidence).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+    expect((await postCoverage({})).status).toBe(202);
     state.wizard.data.progress.coverage.runId = "different-owner";
-    release({ ...ephemeral, conflicts: [], groups: new Map(), relationMap: new Map(), relevant: new Map(), fingerprint: "late" });
+    release(evidence({ fingerprint: "late" }));
     await vi.waitFor(() => expect(state.writeProgress.mock.calls.some(c => c[3].status === "completed")).toBe(true));
     expect(state.wizard.data.coverageSnapshot.fingerprint).toBe("fixture");
     expect(state.wizard.data.progress.coverage.runId).toBe("different-owner");

@@ -66,58 +66,52 @@ describe("per-person termination evidence", () => {
       const policy = readTerminationPolicy({
         explicitSubscriberTerminations: subscribers, explicitDependentTerminations: dependents,
       });
-      expect(select(undefined, undefined, policy).map(c => c.role).sort()).toEqual(expected);
+      expect(select(undefined, undefined, policy).selected.map(c => c.role).sort()).toEqual(expected);
     });
   it("dependent-only loss preserves historical parent and surviving siblings", () => {
     const rows = [coverage("parent"), coverage("parent", 11),
       coverage("child", 10, { sourceRelationId: relation.id }), coverage("sibling", 11)];
-    const terms = select([event("child")], rows);
-    expect(terms).toMatchObject([{ role: "dependent", familyWmbId: "parent-10",
-      rowKey: "parent-10:old-family", end: "2026-10-31" }]);
+    expect(select([event("child")], rows).selected).toMatchObject([{ role: "dependent", familyWmbId: "parent-10",
+      memberWmbId: "child-10", rowKey: "parent-10:old-family", end: "2026-10-31" }]);
   });
   it("does not manufacture events from missing/unprocessed months", () => {
-    expect(select([], [coverage("parent")])).toEqual([]);
+    expect(select([], [coverage("parent")]).selected).toEqual([]);
   });
   it.each([11, 12])("suppresses stale endings with coverage in month %s", month => {
-    expect(select([event("parent")], [coverage("parent"), coverage("parent", month)])).toEqual([]);
+    expect(select([event("parent")], [coverage("parent"), coverage("parent", month)]).selected).toEqual([]);
   });
   it("requires previous coverage and valid provenance for confirmed events", () => {
     expect(() => select([event("parent")], [])).toThrow(/last-covered/);
     expect(() => select([event("parent", { data: {} })], [coverage("parent")])).toThrow(/failed continuation/);
     expect(selectTerminationCandidates([event("parent", { data: {} })], [coverage("parent")],
-      [], new Set(["event-parent"]), "2026-11-01", both)[0].evidence).toBe("confirmed scan");
+      [], new Set(["event-parent"]), "2026-11-01", both).selected[0].evidence).toBe("confirmed scan");
     expect(() => selectTerminationCandidates([event("parent")], [coverage("parent")], [],
       new Set(), "2026-11-01", both, new Set(["event-parent"]))).toThrow(/contradicts/);
   });
-  it("does not bridge benefits or historical families in coverage start", () => {
-    const terms = select([event("child")], [coverage("parent"),
-      coverage("child", 10, { sourceRelationId: relation.id }),
-      coverage("child", 9, { sourceRelationId: "different-family" }),
-      coverage("child", 8, { benefitId: "medical", sourceRelationId: relation.id })]);
-    expect(terms[0].start).toBe("2026-10-01");
-    expect(select([event("parent")], [coverage("parent"),
-      coverage("parent", 11, { benefitId: "medical" })])).toHaveLength(1);
-  });
   it("keeps distinct benefits, COBRA identity and stable family keys", () => {
+    expect(select([event("parent")], [coverage("parent"),
+      coverage("parent", 11, { benefitId: "medical" })]).selected).toHaveLength(1);
     const events = [event("parent"), event("parent", { id: "medical-event", benefitId: "medical" })];
     const rows = [coverage("parent", 10, { employerId: "COBRA" }),
       coverage("parent", 10, { id: "medical-row", benefitId: "medical" })];
     const a = select(events, rows);
-    expect(a).toHaveLength(2);
+    expect(a.selected).toHaveLength(2);
     expect(select([...events].reverse(), [...rows].reverse())).toEqual(a);
-    expect(new Set(a.map(c => c.familyWmbId)).size).toBe(2);
+    expect(new Set(a.selected.map(c => c.familyWmbId)).size).toBe(2);
   });
-  it("rejects mixed classes and broken historical families", () => {
-    expect(() => select([event("parent")], [coverage("parent"),
-      coverage("parent", 10, { id: "other", employerId: "cobra-employer", employerSiriusId: "13226164" })])).toThrow(/Correction required.*mixed COBRA/);
+  it("sets a conflicting last month aside and still refuses broken historical families", () => {
+    const mixed = select([event("parent")], [coverage("parent"),
+      coverage("parent", 10, { id: "other", employerId: "cobra-employer", employerSiriusId: "13226164" })]);
+    expect(mixed.selected).toEqual([]);
+    expect(mixed.excluded).toMatchObject([{ reason: "termination-conflict", rows: [{ id: "other" }, { id: "parent-10" }] }]);
     expect(() => select(undefined, undefined, both, [])).toThrow(/historical family/);
     expect(() => select([event("child")], [coverage("child", 10, { sourceRelationId: relation.id })])).toThrow(/historical subscriber/);
   });
   it("only selects ends in the configured window", () => {
     const events = [event("parent", { month: 10 })];
     const rows = [coverage("parent", 9)];
-    expect(select(events, rows)).toEqual([]);
-    expect(select(events, rows, { ...both, months: 2 })[0].end).toBe("2026-09-30");
+    expect(select(events, rows).selected).toEqual([]);
+    expect(select(events, rows, { ...both, months: 2 }).selected[0].end).toBe("2026-09-30");
     expect(monthIndex(2026, 10) - monthIndex(2026, 9)).toBe(1);
   });
 });

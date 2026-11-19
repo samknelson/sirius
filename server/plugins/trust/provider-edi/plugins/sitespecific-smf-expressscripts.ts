@@ -15,7 +15,7 @@ import {
   displayName,
   isQmscoRelation,
 } from "../base";
-import { clientGroupIdsByWorker, readModeIndicator } from "./sitespecific-smf-shared";
+import { clientGroupIdsByWorker, medicalGroupCoverage, readModeIndicator } from "./sitespecific-smf-shared";
 
 /**
  * SMF — Express Scripts pharmacy eligibility EDI file.
@@ -249,7 +249,7 @@ registerTrustProviderEdiPlugin({
     "dependent, with the medical-plan-derived client group ID and a QMSCO " +
     "include/exclude feed split.",
   benefitSiriusIds: ["EXPRESSSCRIPTS"],
-  coverageLookup: "medical-groups",
+  supplementalCoverage: medicalGroupCoverage,
   ediFields: DETAIL_FIELDS,
   fileHeaderLayouts: [{ format: "fixed-width", fields: HEADER_FIELDS }],
   fileTrailerLayouts: [{ format: "fixed-width", fields: TRAILER_FIELDS }],

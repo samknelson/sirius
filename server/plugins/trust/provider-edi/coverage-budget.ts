@@ -1,12 +1,39 @@
 import { logger } from "../../../logger";
 import { randomUUID } from "node:crypto";
 
-/** Safety ceilings, not historical cutoffs. Crossing one refuses the whole run. */
+/**
+ * Safety ceilings, not historical cutoffs. Crossing one refuses the whole run.
+ * There is deliberately no whole-check elapsed-time ceiling: a check reads a
+ * bounded population, and every statement carries its own `queryMs` limit.
+ */
 export const COVERAGE_LIMITS = {
+  /** People or coverage records sent to the database in one statement. */
   page: 1000, keys: 400_000, rows: 125_000, bytes: 64 * 1024 * 1024,
-  durationMs: 120_000, queryMs: 10_000,
+  queryMs: 10_000,
   rssBytes: 768 * 1024 * 1024, heapBytes: 384 * 1024 * 1024,
 } as const;
+
+/**
+ * Keyset pages are charged before they enter a caller's accumulated evidence.
+ * A population batch is not a result bound: one person can hold many records.
+ */
+export async function readBudgetedPages<T extends { id: string }>(
+  budget: CoverageBudget,
+  read: (after: string | undefined, limit: number) => Promise<T[]>,
+): Promise<T[]> {
+  const result: T[] = [];
+  let after: string | undefined;
+  for (;;) {
+    const page = await read(after, COVERAGE_LIMITS.page);
+    for (const row of page) {
+      budget.retain(row);
+      result.push(row);
+    }
+    await budget.yield();
+    if (page.length < COVERAGE_LIMITS.page) return result;
+    after = page[page.length - 1].id;
+  }
+}
 
 export type CoverageCorrelation = { wizardId?: string; runId?: string };
 export class CoverageBudgetError extends Error {
@@ -20,6 +47,7 @@ export class CoverageBudgetError extends Error {
   }
 }
 
+/** Population ceiling plus the resource log every evidence phase writes to. */
 export class CoverageBudget {
   private readonly started = performance.now();
   private readonly scanId = randomUUID();
@@ -27,15 +55,12 @@ export class CoverageBudget {
   private rows = 0;
   private keys = 0;
   private scanned = 0;
-  private spillBytes = 0;
-  private spillIndexEntries = 0;
   private phase = "Starting evidence check";
   constructor(private readonly correlation: CoverageCorrelation = {}) {}
   check(keys = 0) {
     this.keys = Math.max(this.keys, keys);
     const memory = process.memoryUsage();
     const exceeded = [
-      { dimension: "elapsedMs", observed: Math.floor(performance.now() - this.started), limit: COVERAGE_LIMITS.durationMs },
       { dimension: "coordinateKeys", observed: this.keys, limit: COVERAGE_LIMITS.keys },
       { dimension: "retainedRecords", observed: this.rows, limit: COVERAGE_LIMITS.rows },
       { dimension: "evidenceBytes", observed: this.bytes, limit: COVERAGE_LIMITS.bytes },
@@ -56,19 +81,23 @@ export class CoverageBudget {
     this.bytes += Buffer.byteLength(JSON.stringify(row));
     this.check();
   }
+  /**
+   * Evidence the database has only counted so far. Charging it before it is
+   * read means an oversized list is refused without ever being loaded.
+   */
+  reserve(records: number, bytes = 0) {
+    this.rows += records;
+    this.bytes += bytes;
+    this.check();
+  }
+  /** Bytes of something already counted as a record (see `reserve`). */
+  weigh(value: unknown) {
+    this.bytes += Buffer.byteLength(JSON.stringify(value));
+    this.check();
+  }
   release(row: unknown) {
     this.rows--;
     this.bytes -= Buffer.byteLength(JSON.stringify(row));
-  }
-  spill(bytes: number) { this.spillBytes = bytes; }
-  indexEntry(delta: number) { this.spillIndexEntries += delta; }
-  refuseStorage(): never {
-    const diagnostics = { scanId: this.scanId, ...this.correlation, phase: this.phase,
-      exceeded: [{ dimension: "stagingStorageUnavailable", observed: 1, limit: 0 }] };
-    logger.warn("EDI coverage resources", {
-      service: "edi-coverage", event: "budget-exceeded", ...this.snapshot(), ...diagnostics,
-    });
-    throw new CoverageBudgetError(diagnostics);
   }
   log(event: string, phase: string, extra: Record<string, number> = {}) {
     if (event === "phase-start") this.phase = phase;
@@ -79,20 +108,11 @@ export class CoverageBudget {
   private snapshot() {
     const { rss, heapUsed, external } = process.memoryUsage();
     return { scanId: this.scanId, ...this.correlation, rows: this.rows, scannedRecords: this.scanned,
-      spillBytes: this.spillBytes, spillIndexEntries: this.spillIndexEntries, evidenceBytes: this.bytes,
-      keys: this.keys, elapsedMs: Math.round(performance.now() - this.started), rss, heapUsed, external };
+      evidenceBytes: this.bytes, keys: this.keys,
+      elapsedMs: Math.round(performance.now() - this.started), rss, heapUsed, external };
   }
   async yield(keys = 0) {
     this.check(keys);
     await new Promise<void>(resolve => setImmediate(resolve));
-    this.check(keys);
   }
-}
-
-let admitted = false;
-/** Hold through generation too: its projected history remains resident after discovery. */
-export function tryAdmitCoverageRun(): (() => void) | null {
-  if (admitted) return null;
-  admitted = true;
-  return () => { admitted = false; };
 }

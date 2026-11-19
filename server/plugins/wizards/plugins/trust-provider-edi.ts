@@ -13,9 +13,15 @@ import {
   readTerminationPolicy,
 } from "../../trust/provider-edi/termination-policy";
 import { validateAgainstSchema } from "../../../lib/json-schema-validator";
-import { discoverCoverage, coverageProjection } from "../../trust/provider-edi/coverage-review";
-import { approveConflict, evidenceHash, releaseCoverageProjectionIndex } from "../../trust/provider-edi/coverage-choices";
-import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
+import { readCoverageEvidence } from "../../trust/provider-edi/coverage-evidence";
+import { evidenceHash, type CoverageEvidence } from "../../trust/provider-edi/coverage-conflicts";
+import { conflictRuleInForce } from "../../trust/provider-edi/coverage-settings";
+import {
+  COVERAGE_ENTRY_PK, coverageEntriesCsv, coverageSummary, savedCoverageEntries, snapshotLists,
+} from "../../trust/provider-edi/coverage-report";
+import type {
+  EdiCoverageAcknowledgement, EdiCoverageEntry, EdiCoverageReview, EdiCoverageRunSummary,
+} from "@shared/edi-coverage-choices";
 
 /**
  * The single trust-provider EDI wizard. Generation, preview, and SFTP
@@ -26,23 +32,44 @@ import type { EdiCoverageDecision } from "@shared/edi-coverage-choices";
  * Wizard data shape:
  * - `config`  — { configId, pluginId, name, providerId, sftpClientId, data }
  * - `input`   — parameter-step values (validated against plugin.inputSchema)
- * - `reportMeta` / rows in wizard_report_data — standard report machinery
+ * - `coverageSnapshot` — the last Coverage sources check: rule, counts, lists
+ * - `coverageAcknowledgement` — who accepted which exclusion list, and when
+ * - `reportMeta` / rows in wizard_report_data — standard report machinery;
+ *   `reportMeta.coverage` records the rule and exclusion counts of that run,
+ *   and the run's exclusion list is saved beside its rows
  * - `delivery`— { deliveredAt, deliveredBy, filename, rowCount, destinationId, destinationName }
  */
 
 const WIZARD_ID = "trust_provider_edi";
 const COMPONENT = "trust.providers.edi";
 
-function assertReviewSize(snapshot: unknown) {
-  if (Buffer.byteLength(JSON.stringify(snapshot)) > 2_000_000)
-    throw new Error("Coverage review is too large to display safely. Correct competing source records and refresh evidence.");
-}
-
+/** A check answers for these settings under this rule, and nothing else. */
 function coverageRevision(data: any) {
   return evidenceHash({
     config: data.config, input: data.input, terminationPolicy: data.terminationPolicy,
-    decisions: data.coverageDecisions ?? [],
+    rule: conflictRuleInForce(),
   });
+}
+
+/** Only an acknowledgement of exactly this list under this rule counts. */
+function acknowledgementFor(data: any, exclusionDigest: string, rule: string): EdiCoverageAcknowledgement | null {
+  const saved = data?.coverageAcknowledgement as EdiCoverageAcknowledgement | null | undefined;
+  return saved && saved.exclusionDigest === exclusionDigest && saved.rule === rule ? saved : null;
+}
+
+function coverageSnapshot(evidence: CoverageEvidence, data: any) {
+  return {
+    rule: evidence.rule, fingerprint: evidence.fingerprint, revision: coverageRevision(data),
+    exclusionDigest: evidence.exclusionDigest, checkedAt: new Date().toISOString(),
+    population: evidence.population, timings: evidence.timings,
+    ...coverageSummaryCounts(evidence),
+    // Bound what is saved for the screen, never what a run excludes or reports.
+    ...snapshotLists(evidence.exclusions, evidence.warnings),
+  };
+}
+function coverageSummaryCounts(evidence: CoverageEvidence) {
+  const { exclusionCount, warningCount, byReason } = coverageSummary(evidence, null);
+  return { exclusionCount, warningCount, byReason };
 }
 
 function hasGeneratedReport(wizard: Wizard): boolean {
@@ -63,6 +90,8 @@ async function completedRows(ctx: WizardStepContext) {
   }
   return rows;
 }
+/** The run's exclusion list is saved beside its rows; it is never a file row. */
+const fileRows = <T extends { pk: string }>(rows: T[]) => rows.filter(row => !row.pk.startsWith(COVERAGE_ENTRY_PK));
 
 interface SelectedConfig {
   configId: string;
@@ -128,9 +157,10 @@ function invalidatedData(wizard: Wizard) {
   if (data.progress?.coverage?.status === "in_progress") throw new Error("Coverage checking is active. Wait before changing settings.");
   return {
     reportMeta: null, recordCount: null, delivery: null,
-    coverageDecisions: [],
+    // Source choices saved by older runs stay on the record, read-only.
     coverageReviewed: false,
     coverageSnapshot: null,
+    coverageAcknowledgement: null,
     previousGeneration: data.progress?.run ?? data.previousGeneration ?? null,
     progress: { ...data.progress, coverage: null, run: null, results: null, deliver: null },
   };
@@ -245,43 +275,96 @@ const paramsStep: WizardStepHandler = {
 const coverageStep: WizardStepHandler = {
   id: "coverage",
   name: "Coverage sources",
-  description: "Review competing coverage and select sources for this run only",
+  description: "Review the coverage records this run leaves out, and acknowledge them",
   kind: "custom",
   component: "CoverageSources",
   requiredPolicy: "admin",
   requiredComponent: COMPONENT,
   retrySafe: true,
   getRunBlocker: generationBlocker,
-   getState: wizard => (wizard.data as any)?.coverageReviewed === true &&
-     (wizard.data as any)?.progress?.coverage?.status === "completed" ? "completed" : "pending",
-  getData: async ctx => {
+  getState: wizard => {
+    const data = wizard.data as any;
+    // An hours-only file reads no coverage: saved Parameters complete the
+    // step, with nothing for an administrator to run.
+    const selected = readSelectedConfig(wizard);
+    if (selected && data?.input && !trustProviderEdiPluginRegistry.get(selected.pluginId)?.benefitSiriusIds?.length)
+      return "completed";
+    return data?.coverageReviewed === true && data?.progress?.coverage?.status === "completed" ? "completed" : "pending";
+  },
+  getData: async (ctx): Promise<EdiCoverageReview & Record<string, unknown>> => {
     const selected = readSelectedConfig(ctx.wizard);
     if (!selected) throw new Error("Pick Configuration and save Parameters first.");
     const plugin = resolvePlugin(selected.pluginId);
-    if (!plugin.benefitSiriusIds?.length) return { applicable: false, conflicts: [], decisionsUsed: [] };
+    const none = { exclusions: [], warnings: [], acknowledgement: null, generated: null, legacyDecisions: [] };
+    if (!plugin.benefitSiriusIds?.length) return { applicable: false, ...none };
     const blocker = generationBlocker(ctx.wizard);
     if (blocker) throw new Error(blocker);
     const data = ctx.wizard.data as any;
-    return { applicable: true, ...data.coverageSnapshot, conflicts: data.coverageSnapshot?.conflicts ?? [],
-      ready: !!data.coverageSnapshot && data.coverageSnapshot.revision === coverageRevision(data) &&
-        data.progress?.coverage?.status === "completed",
-      decisionsUsed: hasGeneratedReport(ctx.wizard) ? data.reportMeta?.coverageDecisions ?? [] : [] };
+    const revision = coverageRevision(data);
+    // A check saved under other settings, the other rule, or by the retired
+    // source picker is not shown as this run's list.
+    const saved = data.coverageSnapshot;
+    const snapshot = saved?.revision === revision && saved.exclusionDigest ? saved : null;
+    const generated = hasGeneratedReport(ctx.wizard);
+    return {
+      applicable: true, ...none,
+      // Always the rule in force NOW.
+      rule: conflictRuleInForce(), revision,
+      ready: !!snapshot && data.progress?.coverage?.status === "completed",
+      ...(snapshot ? {
+        fingerprint: snapshot.fingerprint, checkedAt: snapshot.checkedAt, population: snapshot.population,
+        timings: snapshot.timings, exclusionDigest: snapshot.exclusionDigest,
+        exclusionCount: snapshot.exclusionCount, warningCount: snapshot.warningCount, byReason: snapshot.byReason,
+        shown: snapshot.shown, exclusions: snapshot.exclusions, warnings: snapshot.warnings,
+        acknowledgement: acknowledgementFor(data, snapshot.exclusionDigest, snapshot.rule),
+      } : {}),
+      generated: generated ? (data.reportMeta?.coverage as EdiCoverageRunSummary | undefined) ?? null : null,
+      // Source choices saved before exclusion became automatic. Read-only:
+      // they are shown for the record and applied to nothing.
+      legacyDecisions: (generated ? data.reportMeta?.coverageDecisions : null) ?? data.coverageDecisions ?? [],
+    };
+  },
+  exportFile: async (ctx, format) => {
+    if (format !== "coverage-exclusions") throw new Error("Unknown EDI download format");
+    const data = ctx.wizard.data as any;
+    const snapshot = data?.coverageSnapshot;
+    const selected = readSelectedConfig(ctx.wizard);
+    if (!selected || !snapshot?.exclusionDigest || snapshot.revision !== coverageRevision(data))
+      throw new Error("Check Coverage sources before downloading the exclusion list.");
+    let entries: EdiCoverageEntry[] = [...snapshot.exclusions, ...snapshot.warnings];
+    if (entries.length < snapshot.exclusionCount + snapshot.warningCount) {
+      // The saved check kept only what the screen shows. The download is
+      // always complete, so read the list again and prove it is the same one.
+      const evidence = await readCoverageEvidence(buildEdiContext(ctx, selected), resolvePlugin(selected.pluginId));
+      if (evidence.exclusionDigest !== snapshot.exclusionDigest || evidence.warnings.length !== snapshot.warningCount)
+        throw new Error("Coverage changed since it was checked. Check Coverage sources again, then download the list.");
+      entries = [...evidence.exclusions, ...evidence.warnings];
+    }
+    return {
+      content: coverageEntriesCsv(entries, snapshot.rule),
+      filename: `edi-coverage-exclusions-${String(snapshot.checkedAt ?? "").slice(0, 10) || "check"}.csv`,
+      mimeType: "text/csv; charset=utf-8",
+    };
   },
   prepareRun: async ctx => {
-    const action = ctx.input.action ?? "check";
-    if (!["check", "complete", "decision"].includes(String(action))) throw new Error("Unknown coverage action.");
+    const action = String(ctx.input.action ?? "check");
+    if (action === "decision" || action === "complete")
+      throw new Error("Manual source decisions are no longer accepted. Conflicting coverage is left out automatically: check Coverage sources and acknowledge the exclusion list.");
+    if (action !== "check" && action !== "acknowledge") throw new Error("Unknown coverage action.");
     const { getEffectiveUser } = await import("../../../modules/masquerade");
     const { dbUser } = await getEffectiveUser((ctx.req as any).session, (ctx.req as any).user);
     if (!dbUser?.id) throw new Error("An effective administrator is required.");
     const selected = readSelectedConfig(ctx.wizard);
-    if (action !== "check" && selected && resolvePlugin(selected.pluginId).benefitSiriusIds?.length) {
+    if (action === "acknowledge" && selected && resolvePlugin(selected.pluginId).benefitSiriusIds?.length) {
       const data = ctx.wizard.data as any;
       const revision = coverageRevision(data);
-       if (data.progress?.coverage?.status !== "completed")
-         throw new Error("Refresh evidence and wait for a completed check before submitting this action.");
-      if (!data.coverageSnapshot) throw new Error("Check Coverage sources first.");
+      if (data.progress?.coverage?.status !== "completed")
+        throw new Error("Check coverage and wait for the check to finish before acknowledging.");
+      if (!data.coverageSnapshot?.exclusionDigest) throw new Error("Check Coverage sources first.");
       if (ctx.input.revision !== revision || data.coverageSnapshot.revision !== revision)
-        throw new Error("Settings or decisions changed. Refresh evidence before submitting this action.");
+        throw new Error("Settings or the exclusion rule changed. Check coverage again before acknowledging.");
+      if (ctx.input.exclusionDigest !== data.coverageSnapshot.exclusionDigest)
+        throw new Error("The exclusion list changed. Reload Coverage sources and review it again.");
     }
     return { ...ctx.input, action, actor: dbUser.id };
   },
@@ -291,42 +374,31 @@ const coverageStep: WizardStepHandler = {
     const selected = readSelectedConfig(ctx.wizard)!;
     const plugin = resolvePlugin(selected.pluginId);
     if (!plugin.benefitSiriusIds?.length) return { data: { coverageReviewed: true } };
-    const decisions: EdiCoverageDecision[] = (ctx.wizard.data as any)?.coverageDecisions ?? [];
-    const review = await discoverCoverage(buildEdiContext(ctx, selected), plugin, decisions, ctx.reportProgress);
-    try {
-    const snapshot = { conflicts: review.conflicts, fingerprint: review.fingerprint, revision: coverageRevision(ctx.wizard.data) };
-    // Bound the saved review, never the historical evidence used to establish it.
-    assertReviewSize(snapshot);
-    if (ctx.input.action === "complete") {
-      if (ctx.input.fingerprint !== review.fingerprint)
-        throw new Error("Coverage evidence changed. Refresh evidence before completing review.");
-      const projection = await coverageProjection(review);
-      releaseCoverageProjectionIndex(projection);
-      return { data: { coverageSnapshot: snapshot, coverageReviewed: true } };
+    const data = ctx.wizard.data as any;
+    if (ctx.input.action === "acknowledge") {
+      // Binds to the list on screen. Generate reads coverage again and
+      // refuses unless what it would exclude is exactly this list.
+      const snapshot = data.coverageSnapshot;
+      if (!snapshot || snapshot.exclusionDigest !== ctx.input.exclusionDigest)
+        throw new Error("The exclusion list changed. Check coverage again before acknowledging.");
+      const acknowledgement: EdiCoverageAcknowledgement = {
+        acknowledgedBy: String(ctx.input.actor ?? ""), acknowledgedAt: new Date().toISOString(),
+        exclusionDigest: snapshot.exclusionDigest, exclusionCount: snapshot.exclusionCount, rule: snapshot.rule,
+      };
+      return { data: { coverageAcknowledgement: acknowledgement, coverageReviewed: true } };
     }
-    if (ctx.input.action === "decision") {
-      if (ctx.input.fingerprint !== review.fingerprint)
-        throw new Error("Coverage evidence changed. Refresh evidence before saving a decision.");
-      const conflict = review.conflicts.find(c => c.key === ctx.input.key);
-      if (!conflict) throw new Error("This conflict no longer exists. Refresh Coverage sources.");
-      const decision = approveConflict(conflict, ctx.input, String(ctx.input.actor ?? ""), new Date().toISOString());
-      conflict.decision = decision;
-      conflict.stale = false;
-      const updatedDecisions = [...decisions.filter(d => d.key !== decision.key), decision];
-      snapshot.revision = coverageRevision({ ...(ctx.wizard.data as any), coverageDecisions: updatedDecisions });
-      assertReviewSize(snapshot);
-      return { status: "draft", data: {
-        reportMeta: null, recordCount: null, delivery: null, coverageReviewed: false,
-        coverageSnapshot: snapshot,
-        coverageDecisions: updatedDecisions,
-      } };
-    }
-    return { data: { coverageSnapshot: snapshot, coverageReviewed: false } };
-    } finally { review.dispose(); }
+    const evidence = await readCoverageEvidence(buildEdiContext(ctx, selected), plugin, ctx.reportProgress);
+    // Nothing excluded needs no acknowledgement; an earlier acknowledgement
+    // of this exact list still stands.
+    return { data: {
+      coverageSnapshot: coverageSnapshot(evidence, data),
+      coverageReviewed: !evidence.exclusions.length ||
+        !!acknowledgementFor(data, evidence.exclusionDigest, evidence.rule),
+    } };
   },
 };
 
-/** Generate using one run-only projection across every membership reader. */
+/** Generate from one bounded evidence read shared by every membership reader. */
 const runStep: WizardStepHandler = {
   id: "run",
   name: "Generate",
@@ -359,12 +431,16 @@ const runStep: WizardStepHandler = {
     );
     if (!invalidated) throw new Error("EDI generation no longer owns this run");
 
-    let evidence: Awaited<ReturnType<typeof discoverCoverage>> | undefined;
-    try {
+    let evidence: CoverageEvidence | undefined;
+    let acknowledgement: EdiCoverageAcknowledgement | null = null;
     if (plugin.benefitSiriusIds?.length) {
-      const review = await discoverCoverage(ediCtx, plugin, (ctx.wizard.data as any)?.coverageDecisions ?? [], ctx.reportProgress);
-      evidence = review;
-      ediCtx.coverageProjection = await coverageProjection(review);
+      evidence = await readCoverageEvidence(ediCtx, plugin, ctx.reportProgress);
+      acknowledgement = acknowledgementFor(ctx.wizard.data, evidence.exclusionDigest, evidence.rule);
+      // Leaving a member out of a replacement membership file can make the
+      // carrier end their coverage, so an administrator accepts the exact list.
+      if (evidence.exclusions.length && !acknowledgement)
+        throw new Error(`This file would leave out ${evidence.exclusions.length} coverage record group(s) that no administrator has acknowledged, or the list changed since it was acknowledged. Check Coverage sources, review the exclusion list and acknowledge it, then generate again.`);
+      ediCtx.coverageEvidence = evidence;
     }
     // The registry guarantees getPrimaryKeys (default filled at registration).
     const keys = await plugin.getPrimaryKeys!(ediCtx);
@@ -377,6 +453,7 @@ const runStep: WizardStepHandler = {
     let processed = 0;
     let saved = 0;
     const terminationCounts = { subscribers: 0, dependents: 0, inferred: 0 };
+    const started = performance.now();
     for (let i = 0; i < keys.length; i += BATCH) {
       const batch = keys.slice(i, i + BATCH);
       const rows = await plugin.processBatch(batch, ediCtx);
@@ -398,16 +475,19 @@ const runStep: WizardStepHandler = {
         );
       }
     }
+    evidence?.budget.log("phase-end", "Generating file rows", { milliseconds: Math.round(performance.now() - started), rowsSaved: saved });
 
-    if (ediCtx.coverageProjection) {
-      releaseCoverageProjectionIndex(ediCtx.coverageProjection);
-      const fresh = await discoverCoverage(ediCtx, plugin, ediCtx.coverageProjection.decisions,
+    let coverage: EdiCoverageRunSummary | null = null;
+    if (evidence) {
+      // The complete list travels with the run, however long it is.
+      const entries: EdiCoverageEntry[] = [...evidence.exclusions, ...evidence.warnings];
+      for (let i = 0; i < entries.length; i++)
+        await ctx.storage.wizards.saveReportData(ctx.wizardId, `${COVERAGE_ENTRY_PK}${String(i).padStart(7, "0")}`, { coverageEntry: entries[i] });
+      const fresh = await readCoverageEvidence(ediCtx, plugin,
         (percent, details) => ctx.reportProgress(percent, { ...details, phase: `Final evidence validation: ${details?.phase ?? ""}` }));
-      evidence = fresh;
-      const checked = await coverageProjection(fresh);
-      releaseCoverageProjectionIndex(checked);
-      if (checked.fingerprint !== ediCtx.coverageProjection.fingerprint)
-        throw new Error("Coverage evidence changed during generation. Review Coverage sources and regenerate; these rows are not available for delivery.");
+      if (fresh.fingerprint !== evidence.fingerprint)
+        throw new Error("Coverage evidence changed during generation. Check Coverage sources and regenerate; these rows are not available for delivery.");
+      coverage = coverageSummary(evidence, acknowledgement);
     }
     return {
       status: "completed",
@@ -418,7 +498,7 @@ const runStep: WizardStepHandler = {
           columns,
           primaryKeyField: "pk",
           terminationCounts,
-          coverageDecisions: ediCtx.coverageProjection?.decisions ?? [],
+          coverage,
           terminationPolicy: plugin.benefitSiriusIds?.length ? ediCtx.terminationPolicy : null,
           generationContext: {
             input: ediCtx.input, configData: ediCtx.configData,
@@ -429,10 +509,6 @@ const runStep: WizardStepHandler = {
         delivery: null,
       },
     };
-    } finally {
-      if (ediCtx.coverageProjection) releaseCoverageProjectionIndex(ediCtx.coverageProjection);
-      evidence?.dispose();
-    }
   },
 };
 
@@ -450,7 +526,7 @@ const resultsStep: WizardStepHandler = {
       throw new Error("Complete EDI generation before viewing or exporting Results");
     }
     const reportMeta = (ctx.wizard.data as any).reportMeta;
-    const rows = await completedRows(ctx);
+    const rows = fileRows(await completedRows(ctx));
     return {
       reportMeta, columns: reportMeta.columns ?? [],
       records: rows.map(row => row.data),
@@ -467,7 +543,7 @@ async function encodeAllRows(
   plugin: TrustProviderEdiPlugin,
   ediCtx: TrustProviderEdiContext,
 ): Promise<{ content: string; rowCount: number }> {
-  const rows = await completedRows(ctx);
+  const rows = fileRows(await completedRows(ctx));
   const lines = assembleEdiFileLines(
     plugin,
     rows.map((r) => (r.data ?? {}) as Record<string, unknown>),
@@ -487,7 +563,8 @@ const deliverStep: WizardStepHandler = {
   kind: "custom",
   component: "DeliverStep",
   exportFile: async (ctx, format) => {
-    if (format !== "provider" && format !== "carrier-csv") throw new Error("Unknown EDI download format");
+    if (format !== "provider" && format !== "carrier-csv" && format !== "coverage-exclusions")
+      throw new Error("Unknown EDI download format");
     const selected = readSelectedConfig(ctx.wizard);
     if (!selected || !hasGeneratedReport(ctx.wizard)) {
       throw new Error("Generate the file before downloading it");
@@ -499,7 +576,17 @@ const deliverStep: WizardStepHandler = {
       const { content } = await encodeAllRows(ctx, plugin, ediCtx);
       return { content, filename, mimeType: "text/plain; charset=utf-8" };
     }
-    const rows = await completedRows(ctx);
+    if (format === "coverage-exclusions") {
+      // Built on request from what this generated run saved; never stored as a file.
+      const summary = (ctx.wizard.data as any).reportMeta?.coverage as EdiCoverageRunSummary | null | undefined;
+      if (!summary) throw new Error("This run was generated before exclusion lists were saved. Regenerate it to produce one.");
+      return {
+        content: coverageEntriesCsv(savedCoverageEntries(await completedRows(ctx)), summary.rule),
+        filename: `${filename.replace(/\.[^.]+$/, "")}-coverage-exclusions.csv`,
+        mimeType: "text/csv; charset=utf-8",
+      };
+    }
+    const rows = fileRows(await completedRows(ctx));
     return {
       content: carrierLayoutCsv(plugin, rows.map(r => (r.data ?? {}) as Record<string, unknown>), ediCtx),
       filename: `${filename.replace(/\.[^.]+$/, "")}-carrier-layout-qa.csv`,
@@ -529,6 +616,8 @@ const deliverStep: WizardStepHandler = {
       filename: plugin.buildFilename(ediCtx),
       rowCount: data.reportMeta.recordCount,
       terminationCounts: data.reportMeta.terminationCounts ?? null,
+      // What this file leaves out, shown before anyone sends it.
+      coverage: (data.reportMeta.coverage as EdiCoverageRunSummary | undefined) ?? null,
       destinationId: selected.sftpClientId,
       destinationName,
       delivery: data.delivery ?? null,
@@ -610,7 +699,7 @@ export const trustProviderEdiWizardPlugin: WizardPlugin = {
     wizard: await storage.wizards.create({
       ...input,
       status: String(input.status ?? "draft"),
-      data: { terminationPolicy: { ...newRunTerminationPolicy }, coverageDecisions: [] },
+      data: { terminationPolicy: { ...newRunTerminationPolicy } },
     } as InsertWizard),
   }),
   prepareUpdate: ({ incoming, merged }) => Object.keys(incoming).every(key => key === "retention")

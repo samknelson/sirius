@@ -24,7 +24,12 @@ export interface EdiBatchAggregates {
 
 export interface TrustProviderEdiContext {
   coverageCorrelation?: import("./coverage-budget").CoverageCorrelation;
-  coverageProjection?: import("./coverage-choices").CoverageProjection;
+  /**
+   * The bounded evidence one wizard check or generation works from: which
+   * coverage records the run must not read, and each member's coverage start.
+   * Absent for callers outside the wizard, which then refuse conflicts.
+   */
+  coverageEvidence?: import("./coverage-conflicts").CoverageEvidence;
   /** Base plugin_configs row id of the selected EDI configuration. */
   configId: string;
   /** The config's `data` blob (per-type variables, e.g. region code). */
@@ -55,8 +60,13 @@ export interface TrustProviderEdiContext {
  * the selected configuration.
  */
 export interface TrustProviderEdiPlugin extends BasePluginMetadata {
-  /** Supplemental WMB readers participate in the same run-only projection. */
-  coverageLookup?: "medical-groups" | "medical-type";
+  /**
+   * Coverage for OTHER benefits this carrier reads to fill plan or tier
+   * fields. Declared by the carrier so the shared evidence check applies the
+   * conflict rule to it without knowing any carrier's mapping. Name benefits
+   * by Sirius ID, by benefit type name, or both.
+   */
+  supplementalCoverage?(ctx: TrustProviderEdiContext): { benefitSiriusIds?: readonly string[]; benefitTypeName?: string };
   /** JSON Schema for per-config variables stored in the config `data` blob. */
   configSchema?: JsonSchema;
   /** JSON Schema for wizard run parameters (e.g. as-of date). */

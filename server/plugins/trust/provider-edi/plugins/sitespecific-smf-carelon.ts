@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { projectCoverage } from "../coverage-choices";
+import { retainCoverage } from "../coverage-conflicts";
 import {
   trustWmb,
   trustBenefits,
@@ -188,7 +188,7 @@ export async function medicalCoverageByWorker(
   );
   rows.sort((a, b) => (a.wmbId < b.wmbId ? -1 : 1));
   const out = new Map<string, string>();
-  for (const r of projectCoverage(rows, ctx.coverageProjection, r => r.wmbId)) {
+  for (const r of retainCoverage(rows, ctx.coverageEvidence, r => r.wmbId)) {
     if (!out.has(r.workerId) && r.benefitSiriusId) {
       out.set(r.workerId, r.benefitSiriusId);
     }
@@ -204,7 +204,7 @@ registerTrustProviderEdiPlugin({
     "covered dependent with a Carelon monthly benefit record in the as-of " +
     "month; premium tier is mlk/other from the member's medical coverage.",
   benefitSiriusIds: ["CARELONEAP"],
-  coverageLookup: "medical-type",
+  supplementalCoverage: ctx => ({ benefitTypeName: readConfig(ctx).medicalBenefitTypeName }),
   // Bespoke wmb → medical-coverage join for premium tiers runs its own
   // read-only queries.
   needsReadOnlyDb: true,

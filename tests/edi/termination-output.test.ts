@@ -17,11 +17,27 @@ vi.mock("../../server/plugins/trust/provider-edi/base", async importOriginal => 
 });
 vi.mock("../../server/plugins/trust/provider-edi/termination-population", async importOriginal => {
   const actual = await importOriginal<typeof import("../../server/plugins/trust/provider-edi/termination-population")>();
+  // Selection is real. The coverage start is read from lifecycle events in
+  // production; here every fixture person has one unbroken run, so it is
+  // their first fixture month.
   return { ...actual, loadTerminationCandidates: async (ctx: TrustProviderEdiContext) =>
     actual.selectTerminationCandidates(fixture.events, fixture.coverage, fixture.relations,
-      new Set(), String(ctx.input.asOfDate), ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData)),
+      new Set(), String(ctx.input.asOfDate), ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData),
+    ).selected.map(({ memberWmbId, ...candidate }) => {
+      const first = Math.min(...fixture.coverage.filter(r => r.workerId === candidate.workerId).map(r => r.month));
+      return { ...candidate, start: `2026-${String(first).padStart(2, "0")}-01` };
+    }),
   };
 });
+// Generation works from one evidence read. This file is about lifecycle rows,
+// so the read reports nothing excluded and leaves candidates to the fixture.
+vi.mock("../../server/plugins/trust/provider-edi/coverage-evidence", () => ({
+  readCoverageEvidence: async () => ({
+    rule: "exclude-conflicting", excludedIds: new Set(), starts: new Map(), terminationCandidates: null,
+    exclusions: [], warnings: [], exclusionDigest: "none", fingerprint: "fixture", population: 2, timings: [],
+    budget: { check: () => {}, retain: () => {}, release: () => {}, log: () => {} },
+  }),
+}));
 import { registeredEdiPlugins, requireEdiPlugin } from "./fixtures/harness";
 import { assembleEdiFileLines } from "../../server/plugins/trust/provider-edi/base";
 import { carrierLayoutCsv } from "../../server/plugins/trust/provider-edi/carrier-csv";

@@ -1,4 +1,9 @@
 import type { SystemHelpEntry } from "./index";
+import { EDI_COVERAGE_REASONS } from "@shared/edi-coverage-choices";
+
+/** The reasons use the same wording as the screen and the download. */
+const REASON_ITEMS = Object.values(EDI_COVERAGE_REASONS)
+  .map(({ label, meaning }) => `    <li><strong>${label}</strong>: ${meaning}</li>`).join("\n");
 
 /** Shared built-in prose only; local database help is never changed. */
 export const ediTerminationGuidance = `
@@ -39,9 +44,9 @@ export const ediTerminationGuidance = `
   Results show Termination role, Last covered date and Termination evidence. Deliver
   shows subscriber/dependent termination counts and warns about inferred history.</p>
   <p>A missing monthly record alone never creates a termination. Retained termination
-  events need last-covered evidence and a reconstructible historical family.
-  Coverage corrections and any later reinstatement suppress old endings. Mixed
-  COBRA/non-COBRA coverage requires an explicit run-only choice; missing family evidence stops
+  events need last-covered evidence and the person's family for that last covered month.
+  Coverage corrections and any later reinstatement suppress old endings. Conflicting
+  coverage is never resolved by a manual choice; missing family evidence stops
   generation visibly and must be corrected rather than guessed. Coverage-inferred
   history describes accepted stored coverage, not proof of a failed scan or complete
   legacy import. Demographics use retained current contact records, not archived addresses.</p>
@@ -53,60 +58,91 @@ export const ediTerminationGuidance = `
   classification. Ordinary employer changes do not restart dates, and equivalent
   same-family employer rows are selected deterministically without duplicate output.
   A true benefit ending uses the final classification's segment start and last-covered date.</p>
-  <p><strong>Coverage sources</strong> lists competing COBRA/non-COBRA classifications
-  and subscriber/dependent family ownership for the selected membership run, including
-  historical months needed for segment starts and endings. Review the person, benefit,
-  month, subscriber, employer, classification and traceable WMB/source relation IDs.
-  Nothing is preselected. Explicitly select one source, enter a reason, and save each
-  decision. Then select <strong>Complete coverage review</strong> and <strong>Next</strong>
-  to reach Generate. Complete the review even when no conflicts are found or coverage
-  review is not applicable to an hours-only file.
-  Equivalent same-family/same-class duplicates need no intervention.</p>
-  <p>Only administrators with Providers EDI access can inspect or save these decisions.
-  Review shows selected and excluded sources, the effective administrator, timestamp
-  and reason. <strong>Decisions used in the completed report</strong> preserves the
-  actual generation choices. Choices apply only to this wizard run; they are not
-  inherited by another run and do not correct source data, authorize dual coverage,
-  change elections, billing, eligibility, lifecycle events or S1.</p>
-  <p>Opening <strong>Coverage sources</strong> starts an evidence check in the background
-  or reconnects to its existing work. Progress reports the current stage and, when known,
-  actual counts. Stages without a known total do not show a percentage. Reloading or
-  returning does not start duplicate work. Wait for the current conflicts or the
-  no-conflicts result before acting. <strong>Refresh evidence</strong> explicitly starts
-  a new check after the previous check has finished.</p>
-  <p>Saving a decision and completing review also validate current evidence in the
-  background. Admission is not success: wait for completion. Decisions, review completion,
-  settings changes and generation cannot overlap with an active check.
-  A failed check accepts no pending action. Use <strong>Refresh evidence</strong>,
-  review the result and submit the decision or completion again. An unavailable status
-  is not a failed or successful job: use <strong>Refresh status</strong> to reconnect.
-  A missing or stale heartbeat does not authorize another run; ask an administrator to
-  investigate interrupted work. Background work is not guaranteed to survive a server restart.</p>
+  <p><strong>Coverage start dates</strong> come from each person's coverage lifecycle
+  events: the start of their current continuous coverage run, moved later when the
+  subscriber or dependent source or the COBRA classification changed inside that run.
+  A file reads the reporting month, the last covered month of people whose coverage
+  ended inside the termination window, and each person's current coverage run. It does
+  not read older history. If lifecycle events are switched off, missing, pending or
+  failed for anyone in the run, the check stops and says how many people are affected.
+  No date is estimated. Wait for lifecycle event maintenance to finish, or ask an
+  administrator to review failed records, then select <strong>Check coverage again</strong>.</p>
+  <p><strong>Coverage sources</strong> shows which coverage records a membership file
+  leaves out, and why, before you generate it. Coverage conflicts when one person has
+  more than one coverage record for the same benefit and month with a different
+  subscriber or dependent source, or a different COBRA classification. Nothing is
+  chosen by hand: you no longer pick a winning source. Equivalent same-family,
+  same-class duplicates are not conflicts and need no action.</p>
+  <p><strong>Warning:</strong> a member left out of a replacement membership file may
+  have their coverage ended by the carrier. Review every entry under
+  <strong>Excluded from this file</strong> before you continue. To keep a person in the
+  file, correct their coverage records, then select <strong>Check coverage again</strong>.</p>
+  <ol>
+    <li>Open <strong>Coverage sources</strong>. A coverage check starts in the background
+    or reconnects to a check that is already running.</li>
+    <li>Wait for the check to finish. Progress names the current stage; stages without a
+    known total do not show a percentage.</li>
+    <li>Review <strong>Excluded from this file</strong> and <strong>Warnings (not excluded)</strong>.
+    Each entry names the person, benefit, coverage month, coverage record IDs, employer,
+    subscriber or relationship source, COBRA classification and the reason.</li>
+    <li>Select <strong>Download exclusion list</strong> if you need the complete list as a
+    CSV file. The file contains personal information; handle it as you handle the carrier file.</li>
+    <li>When anything is excluded, tick the confirmation and select
+    <strong>Acknowledge exclusion list</strong>. An administrator must do this before Generate.</li>
+    <li>Select <strong>Next</strong> to reach Generate. When nothing is excluded, no
+    acknowledgement is needed.</li>
+  </ol>
+  <p><strong>What each reason means</strong></p>
+  <ul>
+${REASON_ITEMS}
+  </ul>
+  <p>Warnings do not remove anyone from the file. Long lists show the first entries on
+  screen with a search box, a reason filter and pages; the download always contains
+  every entry. An hours-only file shows <strong>Not applicable</strong> and does not
+  read coverage sources.</p>
+  <p>Dependents whose family relationship or subscriber coverage is missing for the
+  month are not excluded. They stop the check with a correction-required message that
+  names the records, because the file cannot invent a subscriber for them.</p>
+  <p>Excluding records is a <strong>temporary rule</strong> while existing dual coverage
+  is corrected. It is controlled by one site-wide setting,
+  <strong>EDI_EXCLUDE_CONFLICTING_COVERAGE</strong>, on the
+  <a href="/config/env">environment variables</a> page, and is on unless an administrator
+  turns it off. With the rule off, any conflict in the months a file uses, or earlier in
+  a person's current coverage run, stops the check with a correction-required message
+  naming the records, and nothing is excluded. The step states which rule applies, and
+  each generated file records the rule it used.</p>
+  <p>The check, the acknowledgement and the generated file never change coverage,
+  relationship or employer records. They do not authorize dual coverage or change
+  elections, billing, eligibility, lifecycle events or S1. An exclusion applies only
+  to this wizard run.</p>
+  <p>The acknowledgement names the exact list on screen and records the administrator
+  and the time. A changed list, changed settings or a changed rule need a new check and
+  a new acknowledgement. Generation reads coverage again: it stops if the list differs
+  from the acknowledged one, and it fails the attempt if coverage changes while the
+  file is being generated. Old or partial output is not downloadable.</p>
+  <p>The exclusion list is saved with the generated file. <strong>Results</strong> and
+  <strong>Deliver</strong> show how many coverage record groups were left out, the
+  count for each reason, the rule and the acknowledgement, with
+  <strong>Download exclusion list</strong>. Review the count before sending.</p>
+  <p>Only administrators with Providers EDI access can open this step or acknowledge a
+  list. Acknowledgement, settings changes and generation cannot overlap with an active
+  check. A failed check excludes and acknowledges nothing: resolve what the message
+  names, then select <strong>Check coverage again</strong>. An unavailable status is not
+  a failed or successful job: use <strong>Refresh status</strong> to reconnect. A missing
+  or stale heartbeat does not authorize another run; ask an administrator to investigate
+  interrupted work. Background work is not guaranteed to survive a server restart.
+  Saving Parameters or Configuration clears the check, the acknowledgement and prior output.</p>
   <p>Coverage checks have resource and database-wait limits to protect other users.
-   Historical evidence is processed using private temporary server storage rather
-   than keeping the whole reached history in memory. Temporary storage also has a
-   finite limit; it is not a durable review or a restart-recovery mechanism.
-  Exceeding a limit fails the whole check; it never accepts shortened history or
-  partial evidence. Another EDI operation on the same server may temporarily block
-  starting a check. After a confirmed failure, ask an administrator to inspect the
-   scan diagnostics before retrying a resource-limit error. The refusal includes the
-   exceeded dimension, measured amount, limit, last phase and a reference. Give that
-   reference and the wizard run to the administrator; the application server console
-   logs contain matching EDI coverage resource entries, not the in-app log viewer.
-   Do not repeatedly retry
-  unchanged oversized evidence. An unavailable status still does not prove work stopped.</p>
-  <p>Unresolved or stale choices block generation. Added, removed or changed candidate/family evidence
-  requires explicit review again, even if your chosen WMB still exists. If previously
-  approved evidence is no longer part of the run, review and save <strong>Parameters</strong>
-  to clear incompatible approvals. Saving Parameters or Configuration clears coverage
-  choices and prior output. Saving a source decision also clears prior output.
-  Choices cannot be edited during generation. Changed evidence during generation
-  fails the attempt; old or partial output is not downloadable.</p>
-  <p>A selected dependent needs a valid relationship and selected subscriber coverage
-  in the same benefit/month. Missing family context remains a refusal: correct the
-  source history or select a valid source, then regenerate. Excluding an alternative
-  does not create a termination or override later reinstatement or scan evidence.
-  Hours-only files do not use Coverage sources. No selection sends a carrier file.</p>
+  There is no limit on how long a whole check may take. Exceeding a limit fails the
+  whole check; it never accepts a shortened population or partial evidence. The
+  refusal includes the exceeded dimension, measured amount, limit, last phase and a
+  reference. Give that reference and the wizard run to an administrator; the
+  application server console logs contain matching EDI coverage resource entries, not
+  the in-app log viewer. Do not repeatedly retry an unchanged oversized run.</p>
+  <p>Older runs that saved manual source decisions show them under
+  <strong>Earlier manual source decisions</strong>. They are read-only and are not
+  applied when the run is generated again; regeneration uses the current rule. New
+  manual decisions are refused. No step on this page sends a carrier file except Deliver.</p>
   <p>All nine membership carriers support generation with either, both or neither
   termination setting enabled: Delta, Hinge, MLK, Carelon, Dentwell (Dyntl/LADC),
   VSP, Kaiser, Health Net and Express Scripts. Enabled roles include qualifying
@@ -121,7 +157,7 @@ export const ediTerminationGuidance = `
 export const ediWizardTerminationHelp: SystemHelpEntry = {
   id: "system:edi-wizard-terminations",
   paths: ["/wizards/%"],
-  summary: "For Trust Provider EDI wizards, review saved termination settings, historical evidence and generated records before downloading or delivering files.",
+  summary: "For Trust Provider EDI wizards, review saved termination settings, coverage left out of the file and generated records before downloading or delivering files.",
   details: `<h3>Purpose</h3><p>This guidance applies only to the Trust Provider EDI wizard, not enrollment or upload wizards.</p>
     <h3>Before you start</h3><p>Administrator access and Providers EDI are required. Delivery sends sensitive records to the configured carrier destination.</p>
     <h3>How to use this page</h3>

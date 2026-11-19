@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { trustBenefits, trustWmb } from "@shared/schema";
 import type { TrustProviderEdiContext } from "../registry";
 import type { EdiMemberUnit } from "../base";
-import { projectCoverage } from "../coverage-choices";
+import { retainCoverage } from "../coverage-conflicts";
 
 /**
  * Shared SMF helpers for the fixed-width EDI plugins (Delta, Express
@@ -42,6 +42,10 @@ export function effectiveMedicalPlanGroupMap(
   return { ...DEFAULT_MEDICAL_PLAN_GROUP_MAP };
 }
 
+/** What the Delta and Express Scripts feeds declare as supplemental coverage. */
+export const medicalGroupCoverage = (ctx: TrustProviderEdiContext) =>
+  ({ benefitSiriusIds: Object.keys(effectiveMedicalPlanGroupMap(ctx)) });
+
 /**
  * Resolve each unit's subscriber to a client group ID (medical-plan
  * lookup). Returns a map keyed by subscriber worker id; workers with no
@@ -80,7 +84,7 @@ export async function clientGroupIdsByWorker(
   );
   // Exact (worker, year, month) match per unit; first mapping-order hit wins.
   const held = new Map<string, Set<string>>();
-  for (const r of projectCoverage(rows, ctx.coverageProjection, r => r.id)) {
+  for (const r of retainCoverage(rows, ctx.coverageEvidence, r => r.id)) {
     const key = `${r.workerId}|${r.year}-${r.month}`;
     let set = held.get(key);
     if (!set) held.set(key, (set = new Set()));
