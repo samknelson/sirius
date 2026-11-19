@@ -1,7 +1,7 @@
 /**
  * Freeman passport export query.
  *
- * One page of "Scheduled" (status `lock`) EDLS sheets with everything the
+ * One page of status-filtered EDLS sheets (default `lock`) with everything the
  * legacy Freeman passport export response needs: sheet relations, crews in
  * sequence order, assignments with worker identity, industry-scoped member
  * status, the `freeman_ein` worker id value, classification names, the
@@ -28,6 +28,7 @@ import {
   facilities,
   entityMetadata,
 } from "@shared/schema";
+import type { EdlsSheetStatus } from "@shared/schema/edls/schema";
 import { and, asc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getClient } from "../transaction-context";
@@ -38,7 +39,7 @@ import { logger } from "../../logger";
 
 const SERVICE_NAME = "edls-passport-export";
 
-/** Only sheets in this status are exported; they display as "Scheduled". */
+/** Default export status when the caller does not supply a filter. */
 const SCHEDULED_STATUS = "lock";
 
 /** Entity type used by the snapshot capture service for EDLS sheets. */
@@ -60,6 +61,7 @@ function jobGroupsEnabled(): boolean {
 }
 
 export interface EdlsPassportExportQuery {
+  status?: EdlsSheetStatus;
   /** Only sheets whose `changed` timestamp is at or after this instant. */
   changedSince?: Date | null;
   /** Zero-based page index. */
@@ -106,6 +108,7 @@ export interface EdlsPassportCrew {
 
 export interface EdlsPassportSheet {
   id: string;
+  status: EdlsSheetStatus;
   title: string;
   ymd: string;
   notes: string | null;
@@ -205,7 +208,7 @@ export async function getEdlsPassportExportPage(
   const creatorUsers = alias(users, "sheet_creator_user");
   const crewSupervisorUsers = alias(users, "crew_supervisor_user");
 
-  const conditions: SQL[] = [eq(edlsSheets.status, SCHEDULED_STATUS)];
+  const conditions: SQL[] = [eq(edlsSheets.status, query.status ?? SCHEDULED_STATUS)];
   if (query.changedSince) {
     conditions.push(gte(edlsSheets.changed, query.changedSince));
   }
@@ -227,6 +230,7 @@ export async function getEdlsPassportExportPage(
   const baseQuery = client
     .select({
       id: edlsSheets.id,
+      status: edlsSheets.status,
       title: edlsSheets.title,
       ymd: edlsSheets.ymd,
       notes: edlsSheets.notes,
@@ -427,6 +431,8 @@ export async function getEdlsPassportExportPage(
 
   const sheets: EdlsPassportSheet[] = sheetRows.map((row) => ({
     id: row.id,
+    // The SQL predicate restricts every row to the validated status above.
+    status: row.status as EdlsSheetStatus,
     title: row.title,
     ymd: row.ymd,
     notes: row.notes,

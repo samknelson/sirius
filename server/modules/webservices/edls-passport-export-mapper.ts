@@ -11,8 +11,7 @@
  * - a sheet's `count` is the string `"<assigned> / <planned>"`;
  * - `version` is `<sheet id>::<latest snapshot id>`, with an empty second
  *   half when the sheet has never been snapshotted;
- * - `status` is always the literal `"Scheduled"` (only `lock` sheets are
- *   exported) and `hall` is always null.
+ * - `status` is the sheet's display label and `hall` is always null.
  *
  * No database access, no request handling — this module only formats.
  */
@@ -64,8 +63,13 @@ const MONTHS_SHORT = [
   "Dec",
 ];
 
-/** The one status the export emits — only `lock` sheets are exported. */
-const SCHEDULED_STATUS_LABEL = "Scheduled";
+const STATUS_LABELS: Record<EdlsPassportSheet["status"], string> = {
+  draft: "Draft",
+  request: "Requested",
+  lock: "Scheduled",
+  reserved: "Reserved",
+  trash: "Trash",
+};
 
 export interface PassportExportPaging {
   /** String, not a number — legacy quirk. */
@@ -220,7 +224,7 @@ function mapSheet(sheet: EdlsPassportSheet): PassportExportSheet {
     nid: sheet.id,
     title: sheet.title,
     version: `${sheet.id}::${sheet.latestSnapshotId ?? ""}`,
-    status: SCHEDULED_STATUS_LABEL,
+    status: STATUS_LABELS[sheet.status],
     employer: sheet.employerName,
     supervisor: formatUserReference(sheet.supervisorUser),
     creator: formatUserReference(sheet.creatorUser),

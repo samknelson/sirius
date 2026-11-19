@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { edlsSheetStatusEnum } from "@shared/schema/edls/schema";
 import { storage } from "../../../storage";
 import { buildPassportExportEnvelope } from "../../../modules/webservices/edls-passport-export-mapper";
 import { registerWebServicePlugin } from "../registry";
@@ -30,6 +31,7 @@ const genericBodySchema = z.tuple([z.string(), z.string(), z.string(), z.string(
 
 /** Every supported filter value arrives as a string, legacy-style. */
 const passportExportFilterSchema = z.object({
+  status: z.enum(edlsSheetStatusEnum).optional(),
   start_date: z.string().optional(),
   page: z.string().optional(),
   limit: z.string().optional(),
@@ -70,7 +72,7 @@ async function runPassportExport({ req, res }: WebServiceOperationContext): Prom
   const filterResult = passportExportFilterSchema.safeParse(filterRaw);
   if (!filterResult.success) {
     res.status(400).json({
-      error: 'Invalid filter: start_date, page and limit must be strings',
+      error: 'Invalid filter: status must be a valid EDLS sheet status; start_date, page and limit must be strings',
       code: 'INVALID_FILTER',
       details: filterResult.error.issues.map(i => ({
         field: i.path.join('.'),
@@ -115,7 +117,7 @@ async function runPassportExport({ req, res }: WebServiceOperationContext): Prom
   const limit = Math.min(requestedLimit, MAX_EXPORT_LIMIT);
 
   try {
-    const result = await storage.edlsSheets.getPassportExportPage({ changedSince, page, limit });
+    const result = await storage.edlsSheets.getPassportExportPage({ changedSince, page, limit, status: filter.status });
     res.json(buildPassportExportEnvelope(result, { page, limit }));
   } catch {
     res.status(500).json({
@@ -144,7 +146,7 @@ registerWebServicePlugin({
       description:
         "Passport export. POST the legacy positional body " +
         "[operation, ignored, ignored, JSON filter] where the filter may carry " +
-        "start_date, page and limit as strings.",
+        "status, start_date, page and limit as strings. Status defaults to lock (Scheduled).",
       // The legacy shape is the contract, quirks and all: a four-string array
       // whose last element is itself JSON, a string-valued total_records, and
       // a double-wrapped payload. Documented as it IS, not as it should be.
@@ -162,7 +164,7 @@ registerWebServicePlugin({
           {
             type: "string",
             description:
-              'JSON-encoded filter object. Every value is a string. Supported keys: start_date (any parseable date; only sheets changed since then), page (zero-based, default "0"), limit (default "100", capped at 500). Example: {"start_date":"2026-01-01","page":"0","limit":"100"}',
+              'JSON-encoded filter object. Every value is a string. Supported keys: status (draft, request, lock, reserved, trash; default "lock"; use "reserved" for layoff sheets), start_date (any parseable date; only sheets changed since then), page (zero-based, default "0"), limit (default "100", capped at 500). Example: {"status":"reserved","start_date":"2026-01-01","page":"0","limit":"100"}',
           },
         ],
       },
@@ -210,7 +212,7 @@ registerWebServicePlugin({
                           description:
                             "'<sheet id>::<latest snapshot id>'; the second half is empty when the sheet has never been snapshotted.",
                         },
-                        status: { type: "string", const: "Scheduled", description: "Only locked sheets are exported." },
+                        status: { type: "string", enum: ["Draft", "Requested", "Scheduled", "Reserved", "Trash"], description: "Display label of the sheet's actual status." },
                         employer: { type: ["string", "null"] },
                         supervisor: { type: ["string", "null"], description: "User email, falling back to name; null when neither is available." },
                         creator: { type: ["string", "null"], description: "User email, falling back to name; null when neither is available." },

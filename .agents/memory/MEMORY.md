@@ -1,3 +1,4 @@
+- [EDLS layoff feed terminology](edls-layoff-feed.md) — “layoff” sheet requests mean reserved, not the dispatch assignment status.
 - [Environment configuration](environment-configuration-index.md) — override precedence, PUBLIC_URL, registry, shared UI and reload rules; owner requires ALL registered variables remain overridable.
 - [Entity metadata eligibility](entity-metadata-eligibility.md) — record history is for directly maintained records; central policy rejects process families at writes, reads, registry, and cleanup.
 - [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
