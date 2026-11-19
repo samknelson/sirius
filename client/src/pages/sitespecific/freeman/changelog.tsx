@@ -18,6 +18,14 @@ interface ChangelogEntry {
 // the TOP of this array.
 const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: "11/19/2026",
+    version: "1.0.0",
+    changes: [
+      "Fixed bug in sheet feed (ignoring status)",
+      "Fixed bug in sheet create (empty task list)",
+    ],
+  },
+  {
     date: "7/17/2026",
     version: "1.0.0-a2",
     changes: ["Fixed display bug in rating labels on modal popup"],
