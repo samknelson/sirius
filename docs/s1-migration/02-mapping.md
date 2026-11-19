@@ -321,7 +321,7 @@ Production has the full grievance table set (290 tables: 145 `field_data_*` + 14
 |---|---|---|
 | `node/sirius_domain` (+`field_sirius_tz`, `field_sirius_name_short`) | S1 multi-domain config — S2 is single-tenant per deployment | DROP (record tz in `variables` if needed) |
 | `node/sirius_json_definition` (+`field_sirius_public`) | public JSON/API definitions → S2 `ws_bundles`/`ws_clients` *(inferred)* | AMBIGUOUS-SOURCE Q31 |
-| `node/sirius_feed` (`field_sirius_feed_status` complete/draft) + `feeds_*` core tables | S1 import bookkeeping → S2 `wizards` history | DROP |
+| `node/sirius_feed` (`field_sirius_feed_status`; full vocabulary unverified) + `feeds_*` core tables | Eligible employer-upload attempts → actual S2 `wizards` + `wizard_employer_monthly`; unrelated feeds excluded | REOPENED — source authority blocked; see [Employer Wizards](employer-wizard-history.md). No completed status may be inferred from hours or period envelopes. |
 | `node/sirius_term_proxy` (`field_sirius_term_proxy/_term_source`) | taxonomy indirection layer | DROP (resolve through it during term remap, T4) |
 | `node/member` bundle (1 node) | vestigial — **Q32 CLOSED (06 §4.1)** | DROP |
 

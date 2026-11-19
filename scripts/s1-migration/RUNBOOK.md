@@ -1,3 +1,17 @@
+## Data Migration: Employer Wizards
+
+**Blocked at source authority; no importer is available yet.** The approved
+representation is actual S2 employer-upload wizards, not placeholders. Historical
+file bytes are unavailable in S2; do not imply retrieval, resume, or rerun support.
+Do not backfill completed upload status from hours or auto-created period trackers.
+
+The source inventory, reopened DROP decisions, required protected-environment
+inspection, intended run order, and outstanding reconciliation evidence are in
+[Data Migration: Employer Wizards](../../docs/s1-migration/employer-wizard-history.md).
+Resolve that gate before implementing or executing the conversion. Existing fleet
+commands do not import this history. Real S1 comparisons and an authorized rehearsal
+remain acceptance requirements; lack of source access is not a pass.
+
 ## Read-only dashboard and internal operation ownership
 
 Open **One-off Jobs → S1 Migration** at `/admin/oneoff/s1-migration`.
