@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { LegalPayerOptions } from "./LegalPayerOptions";
 
 const amountLabel = (value: string, currency: string) => {
   const number = Number(value);
@@ -36,8 +37,13 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
   const { toast } = useToast();
   const dataUrl = `/api/wizards/${wizardId}/dispatch/confirmation/data`;
   const wizardUrl = `/api/wizards/${wizardId}`;
-  const { data, error, isLoading, isError, isFetching, refetch } = useQuery<LegalConfirmationData>({ queryKey: [dataUrl], staleTime: 0 });
+  const { data, error, isLoading, isError, isFetching, refetch } = useQuery<LegalConfirmationData>({
+    queryKey: [dataUrl], staleTime: 0,
+    refetchInterval: query => query.state.data?.accounts.some(account =>
+      account.payerHandoff?.status === "queued" && Date.now() - Date.parse(account.payerHandoff.requestedAt) < 120_000) ? 2000 : false,
+  });
   const [forms, setForms] = useState<Record<string, LegalRemittance>>({});
+  const [delegations, setDelegations] = useState<Record<string, boolean>>({});
   const formFor = (id: string, fallback: LegalRemittance) => forms[id] ?? fallback;
   const patchForm = (id: string, patch: Partial<LegalRemittance>, fallback: LegalRemittance) =>
     setForms(current => ({ ...current, [id]: { ...(current[id] ?? fallback), ...patch } }));
@@ -151,6 +157,7 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
         const choices = account.methods.filter(method => !value.method || method.method === value.method);
         const typeValid = choices.some(method => method.id === value.paymentType);
         const editable = !account.payment || account.payment.status === EMPLOYER_SUBMITTED;
+        const delegated = !account.payment && (delegations[account.eaId] ?? !!account.payerHandoff);
         let projection: string | null = null;
         let projectionLabel: string | null = null;
         let outcome = "";
@@ -158,7 +165,7 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
           const amount = legalPaymentMinor(value.amount || "0", account.currency);
           const balance = account.balance === null ? null : legalPaymentMinor(account.balance, account.currency);
           const charge = legalPaymentMinor(account.amount, account.currency);
-          if (editable && amount > 0n) {
+          if (editable && !delegated && amount > 0n) {
             if (balance !== null) {
               projection = ledgerDecimal(balance - amount);
               const projectedMinor = balance - amount;
@@ -175,7 +182,7 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
         } catch { /* Incomplete or invalid form values have no projection. */ }
         const partialBalance = (() => {
           try {
-            if (!editable || account.balance === null) return null;
+            if (!editable || delegated || account.balance === null) return null;
             const amount = legalPaymentMinor(value.amount || "0", account.currency);
             const charge = legalPaymentMinor(account.amount, account.currency);
             const balance = legalPaymentMinor(account.balance, account.currency);
@@ -188,7 +195,7 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
             <div className="grid gap-3 sm:grid-cols-3">
               <Metric label="Upload charges" value={amountLabel(account.amount, account.currency)} />
               <Metric label="Current account balance" value={account.balance === null ? "Unavailable" : amountLabel(account.balance, account.currency)} />
-              <Metric label={editable ? "Projected after receipt clears" : "Current balance"} value={editable ? projectionLabel ?? "Enter a valid amount" : account.balance === null ? "Unavailable" : amountLabel(account.balance, account.currency)} note={editable ? "Projection only; pending payment does not reduce current balance." : "No pending amount is subtracted again."} />
+              <Metric label={delegated ? "Payment responsibility" : editable ? "Projected after receipt clears" : "Current balance"} value={delegated ? "Another payer" : editable ? projectionLabel ?? "Enter a valid amount" : account.balance === null ? "Unavailable" : amountLabel(account.balance, account.currency)} note={delegated ? "Notifying a payer does not submit or credit a payment." : editable ? "Projection only; pending payment does not reduce current balance." : "No pending amount is subtracted again."} />
             </div>
             {account.error && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertDescription>{account.error}</AlertDescription></Alert>}
             {data.completed && !historical && editable && !account.methods.length && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>No valid check or wire payment type is configured</AlertTitle><AlertDescription>Ask ledger staff to configure a financial payment type for {account.currency}. This account cannot be submitted until the matching type is available.</AlertDescription></Alert>}
@@ -196,7 +203,13 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
             {account.payment && <Alert className="border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20"><AlertTriangle className="h-4 w-4" /><AlertTitle>{account.payment.status === EMPLOYER_SUBMITTED ? "Employer submitted — not credited" : `Payment ${paymentStatusLabel(account.payment.status)}`}</AlertTitle><AlertDescription>{amountLabel(account.payment.amount, account.currency)} · {paymentType?.name ?? account.payment.paymentType}{typeof details.merchant === "string" && ` · ${details.merchant}`}{typeof details.checkTransactionNumber === "string" && ` · Reference ${details.checkTransactionNumber}`}{typeof details.paymentDate === "string" && ` · ${details.paymentDate}`}{typeof details.notes === "string" && <span className="block mt-1">{details.notes}</span>}{account.payment.status === EMPLOYER_SUBMITTED && <span className="block mt-1 font-medium">Staff must verify receipt and clear this payment before it is credited.</span>}</AlertDescription></Alert>}
             {partialBalance !== null && <Alert><Info className="h-4 w-4" /><AlertDescription>This payment covers this upload, but you will still have an outstanding balance of {amountLabel(partialBalance, account.currency)}.</AlertDescription></Alert>}
             {outcome && partialBalance === null && <p className="text-sm text-muted-foreground">{outcome}</p>}
-            {data.completed && !historical && editable ? <div className="space-y-4 border-t pt-4">
+            {data.completed && !historical && !account.payment && <LegalPayerOptions
+              wizardId={wizardId} eaId={account.eaId}
+              contacts={data.payerContacts ?? []} canSaveContact={!!data.canSavePayerContact}
+              handoff={account.payerHandoff} delegated={delegated}
+              onDelegate={value => setDelegations(current => ({ ...current, [account.eaId]: value }))}
+            />}
+            {data.completed && !historical && editable && !delegated ? <div className="space-y-4 border-t pt-4">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2"><Label htmlFor={`amount-${account.eaId}`}>Amount ({account.currency})</Label><Input id={`amount-${account.eaId}`} inputMode="decimal" placeholder="Amount you know" value={value.amount} onChange={event => patchForm(account.eaId, { amount: event.target.value }, fallback)} /></div>
                 <div className="space-y-2"><Label htmlFor={`method-${account.eaId}`}>Method</Label><Select value={value.method ?? ""} onValueChange={method => patchForm(account.eaId, { method: method as "check" | "wire", paymentType: undefined }, fallback)} disabled={!account.methods.length}><SelectTrigger id={`method-${account.eaId}`}><SelectValue placeholder="Choose check or wire" /></SelectTrigger><SelectContent>{Array.from(new Set(account.methods.map(method => method.method))).map(method => <SelectItem key={method} value={method}>{method === "check" ? "Check" : "Wire"}</SelectItem>)}</SelectContent></Select></div>
@@ -213,7 +226,7 @@ export function LegalConfirmation({ wizardId }: WizardStepComponentProps) {
                 <Button type="button" variant="outline" disabled={submitMutation.isPending} onClick={() => submitMutation.mutate({ eaId: account.eaId, action: "save", remittance: value })}><Save className="mr-2 h-4 w-4" />Save incomplete draft</Button>
                 <Button type="button" disabled={submitMutation.isPending || !value.amount.trim() || !value.method || !typeValid || (() => { try { return legalPaymentMinor(value.amount, account.currency) <= 0n; } catch { return true; } })()} onClick={() => submitMutation.mutate({ eaId: account.eaId, action: "submit", remittance: value })}><Send className="mr-2 h-4 w-4" />Submit for review</Button>
               </div>
-            </div> : account.payment ? <p className="text-sm text-muted-foreground">This payment is no longer editable from the upload. Staff can review it in Ledger.</p> : <p className="text-sm text-muted-foreground">{historical ? "This historical upload has no retroactive payment requirement." : data.completed ? "No payment is required for this account." : "Payment details become available after processing is complete."}</p>}
+            </div> : delegated ? null : account.payment ? <p className="text-sm text-muted-foreground">This payment is no longer editable from the upload. Staff can review it in Ledger.</p> : <p className="text-sm text-muted-foreground">{historical ? "This historical upload has no retroactive payment requirement." : data.completed ? "No payment is required for this account." : "Payment details become available after processing is complete."}</p>}
             {!account.payment && !account.draft && <p className="text-sm text-muted-foreground">No receipt is submitted. Pending details never reduce the authoritative balance.</p>}
           </CardContent>
         </Card>;

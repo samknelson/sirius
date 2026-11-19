@@ -24,6 +24,10 @@ vi.mock("../../server/storage", () => ({ storage: {
 vi.mock("../../server/storage/unified-options", () => ({ createUnifiedOptionsStorage: () => ({ list: async () => state.types }) }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({ checkAccessInline: async () => ({ granted: state.access }) }));
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: async () => ({ dbUser: { id: "effective-user" } }) }));
+vi.mock("../../server/plugins/wizards/gbhet-legal-payer", () => ({
+  getLegalPayerOptions: async () => ({ payerContacts: [], canSavePayerContact: false }),
+  queueLegalPayer: vi.fn(async () => ({ data: { legalPayerHandoffs: { ea: { status: "queued" } } } })),
+}));
 import { buildLegalConfirmationStep } from "../../server/plugins/wizards/gbhet-legal-payment";
 import { legalRemittanceSchema, legalPaymentMinor, ledgerMinor, ledgerDecimal, EMPLOYER_SUBMITTED } from "@shared/legal-payment";
 const step = buildLegalConfirmationStep();
@@ -54,6 +58,14 @@ async function submit() {
   return out;
 }
 describe("Scoped Legal remittances", () => {
+  it("hands off payment without creating a receipt, and refuses handoff after a receipt was submitted", async () => {
+    ctx.input = { eaId: "ea", action: "notify_payer", payer: { source: "contact", contactId: "employer-contact" } };
+    await submit();
+    expect(state.creates).not.toHaveBeenCalled();
+    expect(ctx.wizard.data.legalPayerHandoffs.ea.status).toBe("queued");
+    state.payments = [{ ledgerEaId: "ea", status: EMPLOYER_SUBMITTED }];
+    await expect(submit()).rejects.toThrow(/payment has already been submitted/);
+  });
   it.each(["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"])("submits and edits one uncredited receipt for %s", async type => {
     ctx.wizard.type = type;
     await submit(); await submit();

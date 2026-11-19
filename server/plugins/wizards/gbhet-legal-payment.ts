@@ -4,7 +4,8 @@ import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { checkAccessInline } from "../../services/access-policy-evaluator";
 import { getEffectiveUser } from "../../modules/masquerade";
 import { isValidYmd } from "@shared/utils/date";
-import { EMPLOYER_SUBMITTED, ledgerMinor, ledgerDecimal, legalPaymentMinor, legalRemittanceSchema, type LegalConfirmationData, type LegalChargeGroup } from "@shared/legal-payment";
+import { EMPLOYER_SUBMITTED, ledgerMinor, ledgerDecimal, legalPaymentMinor, legalRemittanceSchema, legalPayerSchema, type LegalConfirmationData, type LegalChargeGroup } from "@shared/legal-payment";
+import { getLegalPayerOptions, queueLegalPayer } from "./gbhet-legal-payer";
 import type { WizardStepContext, WizardStepHandler } from "./types";
 
 const options = createUnifiedOptionsStorage();
@@ -53,10 +54,12 @@ async function getConfirmation(ctx: WizardStepContext): Promise<LegalConfirmatio
           ? [{ id: type.id, name: type.name, method }] : [];
       }),
       draft: data.legalRemittances?.[group.eaId] ?? null,
+      payerHandoff: data.legalPayerHandoffs?.[group.eaId] ?? null,
       payment: payment ? { id: payment.id, status: payment.status, amount: payment.amount, paymentType: payment.paymentType, details: payment.details } : null,
     });
   }
   return {
+    ...await getLegalPayerOptions(ctx),
     completed: isCompleted(ctx.wizard), historical: isCompleted(ctx.wizard) && snapshot?.version !== 2,
     population: snapshot?.population ?? null, totals: snapshot?.totals ?? null, accounts,
   };
@@ -79,14 +82,21 @@ export function buildLegalConfirmationStep(): WizardStepHandler {
         !Array.isArray(data.legalCompletion?.chargeGroups)) {
         throw new Error("Actual account charges are unavailable for this upload. Ask staff to record payment through Ledger.");
       }
-      const input = z.object({
+      const input = z.union([z.object({
         eaId: z.string().min(1), action: z.enum(["save", "submit"]), remittance: legalRemittanceSchema,
-      }).strict().parse(ctx.input);
+      }).strict(), z.object({
+        eaId: z.string().min(1), action: z.literal("notify_payer"), payer: legalPayerSchema,
+      }).strict()]).parse(ctx.input);
       const group = (data.legalCompletion.chargeGroups as LegalChargeGroup[]).find(g => g.eaId === input.eaId);
       if (!group) throw new Error("Select an account charged by this upload.");
       const ea = await assertAccountAccess(ctx, input.eaId);
       const account = await storage.ledger.accounts.get(ea.accountId);
       if (!account || !account.isActive || account.currencyCode !== group.currency) throw new Error("The account configuration changed. Ask staff to review its currency and availability.");
+      if (input.action === "notify_payer") {
+        const receipt = (await storage.ledger.payments.getByUpload(ctx.wizardId)).find(p => p.ledgerEaId === ea.id);
+        if (receipt) throw new Error("A payment has already been submitted for this upload/account. Contact staff before asking someone else to pay.");
+        return queueLegalPayer(ctx, group, input.payer);
+      }
       const remittance = input.remittance;
       if (remittance.amount) {
         try {

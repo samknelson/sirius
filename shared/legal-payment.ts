@@ -36,6 +36,28 @@ export const legalRemittanceSchema = z.object({
 }).strict();
 export type LegalRemittance = z.infer<typeof legalRemittanceSchema>;
 
+export const legalPayerSchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("contact"), contactId: z.string().min(1).max(100) }).strict(),
+  z.object({
+    source: z.literal("new"), name: z.string().trim().min(1).max(200),
+    email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
+    saveContact: z.boolean(),
+  }).strict(),
+]);
+export type LegalPayer = z.infer<typeof legalPayerSchema>;
+
+export interface LegalPayerHandoff {
+  attemptId: string;
+  name: string;
+  email: string;
+  contactId: string | null;
+  savedContact: boolean;
+  status: "queued" | "sent" | "blocked" | "failed";
+  message: string;
+  requestedAt: string;
+  commId?: string;
+}
+
 export interface LegalChargeGroup {
   eaId: string;
   accountId: string;
@@ -62,6 +84,8 @@ export interface LegalPopulation {
 }
 
 export interface LegalConfirmationData {
+  payerContacts?: Array<{ contactId: string; name: string; email: string | null; optedIn: boolean }>;
+  canSavePayerContact?: boolean;
   completed: boolean;
   historical: boolean;
   population: LegalPopulation | null;
@@ -72,6 +96,7 @@ export interface LegalConfirmationData {
     invoiceSummaryPath: string;
     methods: Array<{ id: string; name: string; method: "check" | "wire" }>;
     draft: LegalRemittance | null;
+    payerHandoff?: LegalPayerHandoff | null;
     payment: { id: string; status: string; amount: string; paymentType: string; details: unknown } | null;
   }>;
 }

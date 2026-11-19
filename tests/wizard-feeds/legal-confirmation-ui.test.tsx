@@ -69,6 +69,24 @@ it("keeps payment entry available after processing, even when population measure
   expect(html).toContain('href="/ea/ea-us/invoices"');
 });
 
+it("offers a disabled online option alongside delegated payment and preserves opt-in guidance", () => {
+  const data = response();
+  data.accounts[0].payerHandoff = {
+    attemptId: "handoff", name: "Example Payer", email: "payer@example.org", contactId: "contact",
+    savedContact: true, status: "blocked", requestedAt: "2026-11-18T12:00:00Z",
+    message: "Email not sent: this address has not opted in.",
+  };
+  const html = render(data);
+  expect(html).toContain("Pay Online"); expect(html).toContain("Coming soon");
+  expect(html).toMatch(/<button[^>]*disabled=""[^>]*><span>Pay Online<\/span>/);
+  expect(html).toContain("Someone else will pay");
+  expect(html).toContain("Notify the person who will pay");
+  expect(html).toContain("Existing email opt-in rules apply");
+  expect(html).toContain("Payer notification needs attention");
+  expect(html).not.toContain("Submit for review");
+  expect(html).not.toContain("Projected after receipt clears");
+});
+
 it("projects an underpayment below upload charges without blocking submission", () => {
   const data = response();
   data.accounts[0].draft = { amount: "60.00", method: "check", paymentType: "check-usd" };
