@@ -17,7 +17,8 @@ export interface EnrichedEdlsTask extends EdlsTask {
 
 export function useEdlsTasks() {
   const tasksQuery = useQuery<EdlsTask[]>({
-    queryKey: ["/api/edls/tasks/options"],
+    queryKey: ["/api/edls/tasks", "options"],
+    staleTime: 0,
   });
 
   const departmentsQuery = useQuery<Department[]>({

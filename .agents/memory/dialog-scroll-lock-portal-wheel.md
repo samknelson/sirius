@@ -10,10 +10,23 @@ registers a **bubble-phase, non-passive `wheel`/`touchmove` listener on
 `document`** and calls `preventDefault()` for any event that did not originate
 inside the dialog's own subtree (or one of its declared `shards`).
 
-`Popover`/`Select`/`Command` panels render through a portal on `document.body`,
+`Popover`/`Command` panels render through a portal on `document.body`,
 i.e. *outside* that subtree. So the option list looks scrollable, has overflow,
 and the wheel does nothing. The exact same component on a plain page scrolls
 fine — no lock is mounted there.
+
+Do not generalize this failure to Radix Select without measuring it. Select
+mounts its own scroll-lock boundary. In a scrollable EDLS create dialog,
+the unmodified Select displayed all offered options and wheel scrolling moved
+the viewport normally, just as on the standalone edit form. Its trigger-height
+viewport class alone was not evidence of a one-row dropdown.
+
+**Why:** A reported empty Select was reproducible with an indefinitely fresh
+empty query cache, while a fresh response rendered and scrolled correctly.
+Changing shared portal or sizing behavior would not have repaired that cause.
+
+**How to apply:** Compare response data, rendered option count, viewport height,
+scrollHeight and wheel-driven scrollTop before changing a shared dropdown.
 
 **Fix:** put `onWheel`/`onTouchMove` handlers that only call
 `event.stopPropagation()` on the scrollable element inside the portal (the

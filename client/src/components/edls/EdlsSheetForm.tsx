@@ -142,8 +142,17 @@ export function EdlsSheetForm({
     queryKey: ["/api/options/department"],
   });
   
-  const { data: allTasks = [] } = useQuery<TaskOption[]>({
-    queryKey: ["/api/edls/tasks/options"],
+  const {
+    data: allTasks = [],
+    isLoading: tasksLoading,
+    isFetching: tasksFetching,
+    isError: tasksError,
+    refetch: refetchTasks,
+  } = useQuery<TaskOption[]>({
+    // Task configuration invalidates the /api/edls/tasks query family.
+    queryKey: ["/api/edls/tasks", "options"],
+    // Reopening a form also picks up changes made in another tab/session.
+    staleTime: 0,
   });
 
   const { data: showStatusOptions = [], isLoading: showStatusesLoading } = useQuery<ShowStatusOption[]>({
@@ -725,9 +734,18 @@ export function EdlsSheetForm({
                             onValueChange={(value) =>
                               handleCrewChange(index, "taskId", value === "__none__" ? null : value)
                             }
+                            disabled={!formData.departmentId || tasksLoading}
                           >
-                            <SelectTrigger data-testid={`select-crew-task-${index}`}>
-                              <SelectValue placeholder="None" />
+                            <SelectTrigger
+                              data-testid={`select-crew-task-${index}`}
+                              aria-label={`Task for crew ${index + 1}`}
+                              aria-describedby={`crew-task-status-${index}`}
+                            >
+                              <SelectValue placeholder="None">
+                                {!formData.departmentId
+                                  ? "Select a department first"
+                                  : tasksLoading ? "Loading tasks…" : undefined}
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__none__">None</SelectItem>
@@ -738,6 +756,30 @@ export function EdlsSheetForm({
                               ))}
                             </SelectContent>
                           </Select>
+                          <div id={`crew-task-status-${index}`} className="text-xs" aria-live="polite">
+                            {formData.departmentId && (
+                              tasksError ? (
+                                <div role="alert" className="space-y-1 text-destructive">
+                                  <p>Could not load tasks. {allTasks.length > 0 && "Previously loaded tasks are shown."}</p>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void refetchTasks()}
+                                    disabled={tasksFetching}
+                                  >
+                                    {tasksFetching ? "Retrying…" : "Retry tasks"}
+                                  </Button>
+                                </div>
+                              ) : tasksFetching ? (
+                                <p className="text-muted-foreground">
+                                  {tasksLoading ? "Loading tasks…" : "Refreshing tasks…"}
+                                </p>
+                              ) : filteredTasks.length === 0 ? (
+                                <p className="text-muted-foreground">No tasks configured for this department.</p>
+                              ) : null
+                            )}
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs flex items-center gap-1">
