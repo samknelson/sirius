@@ -187,7 +187,7 @@ export const FLEET: FleetStep[] = [
     id: "relationships",
     script: "load-relationships.ts",
     loader: "t15-relationships",
-    logicVersion: 2,
+    logicVersion: 3,
     supportsForceReconcile: true,
     supportsAllowFindings: true,
     supportsAllowRejects: true,

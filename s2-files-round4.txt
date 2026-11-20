@@ -1,0 +1,569 @@
+== which S1 logs become notes
+/**
+ * Workbook-approved sirius_log classification for the S1→S2 worker-notes
+ * migration. Keep this transform independent from the retired communications
+ * importer: the source labels are provenance, never option names.
+ */
+
+export type ImportedNoteType =
+  | "Comment"
+  | "Legacy Notes"
+  | "Member Inbound"
+  | "Member Outreach"
+  | "Provider Communication"
+  | "Document Detail";
+
+export interface LogNoteClassification {
+  noteType: ImportedNoteType;
+  medium: "Call" | "In-Person" | "Email" | "Letter" | null;
+  issues: string[];
+  category: string;
+  type: string;
+}
+
+export interface S1LogCreator {
+  s1Uid: number | null;
+  s2UserId: string | null;
+  displayName: string | null;
+}
+
+/** Keep the source identity even when no migrated S2 account exists. */
+export function resolveS1LogCreator(input: {
+  s1Uid: number | null;
+  mappedS2UserId?: string | null;
+  displayName?: string | null;
+}): S1LogCreator {
+  return {
+    s1Uid: input.s1Uid,
+    s2UserId: input.mappedS2UserId ?? null,
+    displayName: input.displayName?.trim() || null,
+  };
+}
+
+export function deriveS1LogNoteSubject(input: {
+  displayName: string | null;
+  s1Uid: number | null;
+}): string {
+  const displayName = input.displayName?.trim() ||
+    (input.s1Uid == null ? "Unknown S1 user" : `S1 user ${input.s1Uid}`);
+  return `Imported Note [user: ${displayName}]`;
+}
+
+/**
+ * Read text fields after the generic S1 extractor has represented Drupal
+ * cardinality and data columns as scalars, arrays, or `{ value, format }`
+ * objects. Only the content value is text; format metadata must never become
+ * note body content.
+ */
+function textParts(value: unknown): string[] {
+  if (value == null) return [];
+  if (typeof value === "string" || typeof value === "number") {
+    return [String(value)];
+  }
+  if (Array.isArray(value)) return value.flatMap(textParts);
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    for (const key of ["value", "text", "message", "body", "content"]) {
+      if (key in object) return textParts(object[key]);
+    }
+    return Object.values(object).flatMap(textParts);
+  }
+  return [];
+}
+
+function firstTextField(fields: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const parts = textParts(fields[key]);
+    if (parts.length > 0) return parts.join("\n\n");
+  }
+  return null;
+}
+
+/** Preserve every summary and notes delta in the imported note body. */
+export function extractS1LogNoteBody(fields: Record<string, unknown>, title: string | null = null): {
+  title: string | null;
+  summary: string | null;
+  notes: string | null;
+  body: string | null;
+} {
+  const sourceTitle = title?.trim() || null;
+  const summary = firstTextField(fields, ["field_sirius_log_summary", "field_sirius_summary"]);
+  const notes = firstTextField(fields, [
+    "field_sirius_log_notes",
+    "field_sirius_notes",
+    "field_sirius_log_message",
+    "field_sirius_message",
+  ]);
+  return {
+    title: sourceTitle,
+    summary,
+    notes,
+    body: [sourceTitle, summary, notes].filter((part): part is string => part != null).join("\n\n") || null,
+  };
+}
+
+const norm = (value: unknown): string | null => {
+  if (value == null) return null;
+  const normalized = String(value).trim().toLowerCase().replace(/\s+/g, " ");
+  return normalized || null;
+};
+
+type Mapping = Omit<LogNoteClassification, "category" | "type">;
+const m = (
+  noteType: ImportedNoteType,
+  medium: LogNoteClassification["medium"] = null,
+  issues: string[] = [],
+): Mapping => ({ noteType, medium, issues });
+
+/*
+ * This is deliberately an explicit allowlist rather than a family matcher.
+ * The workbook has a few intentionally similar-looking exclusions (for
+ * example system email beside the one approved member email).
+ *
+ * Approved workbook-to-S2 vocabulary translations:
+ * - "Internal Comment" becomes the S2 "Comment" note type.
+ * - "Legacy" becomes the S2 "Legacy Notes" note type.
+ * - The legacy "Dyntl" issue spelling is normalized to the "Dental" tag.
+ */
+const APPROVED: Record<string, Mapping> = {
+  ":manual\u0000comment": m("Comment"),
+  "call\u0000comment": m("Member Inbound", "Call"),
+  "call\u0000incoming": m("Member Inbound", "Call"),
+  "call\u0000hotline": m("Member Inbound", "Call"),
+  "call\u0000outgoing": m("Member Outreach", "Call"),
+  "call from member\u0000enrollment": m("Member Inbound", "Call", ["Enrollment"]),
+  "call from member\u0000enrrolment": m("Member Inbound", "Call", ["Enrollment"]),
+  "call from member\u0000private": m("Member Inbound", "Call"),
+  "call from member\u0000public": m("Member Inbound", "Call"),
+  "call from member\u0000eligibility": m("Member Inbound", "Call", ["Enrollment"]),
+  "call to member\u0000enrollment followup": m("Member Outreach", "Call", ["Enrollment"]),
+  "call to member\u0000enrollment": m("Member Outreach", "Call", ["Enrollment"]),
+  "call to member\u0000private": m("Member Outreach", "Call"),
+  "call to member\u0000disability/fmla": m("Member Outreach", "Call", ["Disability"]),
+  "call to member\u0000public": m("Member Outreach", "Call"),
+  "comment\u0000private": m("Comment"),
+  "comment\u0000public": m("Comment"),
+  "comment\u0000comment": m("Comment"),
+  "email from member\u0000eligibility": m("Member Inbound", "Email", ["Enrollment"]),
+  "helpline call from member\u0000mlk issues": m("Member Inbound", "Call", ["MLK"]),
+  "helpline call from member\u0000disney issues": m("Member Inbound", "Call", ["Employer"]),
+  "helpline call from member\u0000life insurance": m("Member Inbound", "Call", ["Life Insurance"]),
+  "helpline call from member\u0000": m("Member Inbound", "Call"),
+== entity-files context registry and config
+import type { Request } from "express";
+import type { File, InsertFile } from "@shared/schema";
+import type { PolicyContext } from "@shared/access-policies";
+
+/**
+ * Generic entity file attachments framework — context registry.
+ *
+ * A "context" (an "area" in the admin UI) is a code-level registration that
+ * plugs one entity type into the generic /api/entity-files routes. The
+ * framework supplies everything that used to be per-context boilerplate:
+ * attachment rows all live in the shared `entity_files` table keyed by the
+ * context id (see server/storage/entity-files.ts), and the one directory
+ * token `:entity-id` is expanded by the framework (see ./config.ts).
+ *
+ * So a context declares only what is genuinely its own:
+ * - its id and label (and an optional component gate),
+ * - whether one of its entities exists,
+ * - the two access callbacks (API and file download).
+ *
+ * Registering a new area is therefore a registration here plus operator
+ * configuration — no table, no migration, no storage namespace.
+ *
+ * WHERE files land (which filesystem, which directory, which extensions are
+ * allowed) is NOT code — it is operator configuration stored in the
+ * `entity_files_config` variable (see ./config.ts). A context with no config
+ * entry is visible but reports itself as unconfigured; uploads are rejected
+ * until an admin configures it.
+ */
+
+export type EntityFilesVerb = "view" | "manage";
+
+/**
+ * One attachment as the generic routes present it. The shared-table path
+ * (storage.entityFiles) returns a superset of this; an adapter-backed context
+ * (see `EntityFilesAdapter`) builds it from its own rows.
+ */
+export interface EntityFileRecord {
+  id: string;
+  entityId: string;
+  fileId: string;
+  /** User-editable display name. */
+  name: string;
+  data: unknown;
+  file: File;
+  /** File-type name; adapter-backed contexts carry no file type. */
+  typeName?: string | null;
+}
+
+/**
+ * FORK EXTENSION (BAO): join-table adapter for a context whose attachment
+ * rows live in the ENTITY'S OWN tables rather than the shared `entity_files`
+ * table — BAO Disability Credit and BAO case documents, which carry their
+ * own lifecycle (supersession, never-delete, dedicated reclassify routes).
+ * Upstream retired this model in favour of the shared table; it is kept
+ * here as an OPT-IN so those contexts keep their semantics and data.
+ *
+ * Contract: `attach` and `remove` are transactional over BOTH the join row
+ * and the files row; bytes are uploaded by the route BEFORE `attach` (a
+ * failed insert leaves a sweepable orphan object, never a row without
+ * bytes). An adapter context takes no part in the shared-table orphan sweep
+ * or delete cleanup — its FKs own that.
+ */
+export interface EntityFilesAdapter {
+  list(entityId: string): Promise<EntityFileRecord[]>;
+  get(entityId: string, attachmentId: string): Promise<EntityFileRecord | undefined>;
+  /** Used by /api/files/:id/download to serve the display name. */
+  getByFileId(entityId: string, fileId: string): Promise<EntityFileRecord | undefined>;
+  attach(entityId: string, file: InsertFile, name: string): Promise<EntityFileRecord>;
+  update(
+    entityId: string,
+    attachmentId: string,
+    updates: { name?: string; data?: unknown },
+  ): Promise<EntityFileRecord | undefined>;
+  remove(entityId: string, attachmentId: string): Promise<{ file: File } | undefined>;
+}
+
+export interface EntityFileContext {
+  /** Stable id used in URLs and as the key in entity_files_config. */
+  id: string;
+  /** Human label for the admin config page (plural: "Workers"). */
+  label: string;
+  /** Human label for ONE record of this area ("Worker"), used wherever a
+   * single record kind is named — the file-type "Applies To" list. */
+  recordLabel: string;
+  /** Optional component gate; when set the context 404s while disabled. */
+  component?: string;
+  /** Whether the entity exists (drives 404s before any file work). */
+  entityExists(entityId: string): Promise<boolean>;
+  /** Access callback: may this request view/manage this entity's files? */
+  checkAccess(verb: EntityFilesVerb, entityId: string, req: Request): Promise<boolean>;
+  /**
+   * Request-free twin of `checkAccess` used by the `file.read` access
+   * policy (see server/services/entity-files/file-read-access.ts): may the
+   * policy-context user view this entity's files? Must be exactly as
+   * strict as `checkAccess("view", ...)`.
+   */
+  checkPolicyAccess(
+    verb: EntityFilesVerb,
+    entityId: string,
+    ctx: PolicyContext,
+  ): Promise<boolean>;
+  /**
+   * FORK EXTENSION (BAO): extra directory-template tokens this context can
+   * resolve beyond the framework's `:entity-id` (e.g. ":worker-id"). Config
+   * validation accepts them for this context only; `resolveTokens` supplies
+   * their values at upload time. Both optional; absent = framework token only.
+   */
+  tokens?: string[];
+  resolveTokens?(entityId: string): Promise<Record<string, string>>;
+  /** FORK EXTENSION (BAO): see `EntityFilesAdapter`. Absent = shared table. */
+  adapter?: EntityFilesAdapter;
+  /** Published reusable assets: public storage, raster-only uploads, no mutations. */
+  publishedAsset?: boolean;
+}
+
+const contexts = new Map<string, EntityFileContext>();
+
+export function registerEntityFileContext(context: EntityFileContext): void {
+  if (contexts.has(context.id)) {
+    throw new Error(`Entity file context "${context.id}" is already registered`);
+  }
+  contexts.set(context.id, context);
+}
+
+export function getEntityFileContext(id: string): EntityFileContext | undefined {
+  return contexts.get(id);
+}
+
+export function listEntityFileContexts(): EntityFileContext[] {
+  return Array.from(contexts.values());
+}
+import { z } from "zod";
+import { storage } from "../../storage";
+import { isFileSystemConfigured, listFileSystemConfigs, getFileSystemConfig } from "../files";
+import { getEntityFileContext, listEntityFileContexts } from "./registry";
+
+/**
+ * Operator configuration for the entity-files framework: ONE variable
+ * (`entity_files_config`) holding a per-context map:
+ *
+ *   { "<contextId>": { file_system, directory, allowed? } }
+ *
+ * - `file_system`: id of a filesystem from the FILESYSTEMS env config.
+ * - `directory`: directory template; may embed the single framework token
+ *   `:entity-id` (e.g. "employers/:entity-id"). Leading/trailing slashes are
+ *   ignored.
+ * - `allowed`: optional list of allowed file extensions (no dot, case
+ *   insensitive, e.g. ["pdf","docx"]). Absent/empty = all extensions.
+ *
+ * The variable is edited through the generic variable routes; the schema
+ * below is enforced there via the variable registry.
+ */
+
+export const ENTITY_FILES_CONFIG_VARIABLE = "entity_files_config";
+
+/**
+ * The ONE directory token, supplied by the framework and offered for every
+ * area: the id of the record the files hang off. A context does not declare
+ * tokens and cannot add one — validation below rejects any other `:token`,
+ * and expansion refuses to hand back a path that still contains one.
+ */
+export const ENTITY_FILES_DIRECTORY_TOKEN = ":entity-id";
+
+const contextConfigSchema = z.object({
+  file_system: z.string().min(1),
+  directory: z
+    .string()
+    .min(1)
+    .refine((d) => !d.includes(".."), { message: "directory must not contain '..'" }),
+  allowed: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .transform((e) => e.replace(/^\./, "").toLowerCase()),
+    )
+    .optional(),
+});
+
+export type EntityFilesContextConfig = z.infer<typeof contextConfigSchema>;
+
+/**
+ * Full value schema. Rejects unknown context ids and directory templates
+ * that name anything other than the one framework token, so a typo cannot
+ * be saved and silently break uploads later.
+ */
+export const entityFilesConfigSchema = z
+  .record(z.string(), contextConfigSchema)
+  .superRefine((value, ctx) => {
+    for (const [contextId, config] of Object.entries(value)) {
+      const context = getEntityFileContext(contextId);
+== upload path convention and files.entity_type
+17:  uploadedBy: string;
+21:  const { context, entityId, file, uploadedBy, typeId } = input;
+53:      mimeType: file.mimetype, uploadedBy, displayName,
+65:    fileSystemId: usable.config.file_system, fileName: file.originalname,
+72:      fileName: file.originalname, storagePath: uploaded.storagePath,
+73:      mimeType: file.mimetype.toLowerCase(), size: uploaded.size, uploadedBy,
+74:      entityType: `entity-files:${context.id}`, entityId,
+75:      fileSystemId: usable.config.file_system, metadata: null,
+83:        ? `${publicOrigin.replace(/\/$/, "")}/public-files/${encodeURIComponent(record.file.fileSystemId)}/${record.file.storagePath.split("/").map(encodeURIComponent).join("/")}`
+87:    try { await fileSystemService.remove(usable.config.file_system, uploaded.storagePath); }
+== wizard attachment context
+import { insertFileSchema, type File } from "@shared/schema";
+import { storage } from "../../storage";
+import { fileSystemService } from "../../services/files";
+import { logger } from "../../logger";
+import { BAO_PROCESS_DELETE_REFUSAL, isBaoProcessAdmitted } from "@shared/wizard-process-lifecycle";
+import {
+  expandDirectoryTemplate,
+  isExtensionAllowed,
+  resolveUsableContextConfig,
+} from "../../services/entity-files/config";
+
+const CONTEXT = "wizard";
+
+export class WizardAttachmentConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WizardAttachmentConfigurationError";
+  }
+}
+
+/**
+ * Persist wizard-owned bytes through the configured Entity Files area. Bytes
+ * are deliberately written before the transaction so an interrupted insert
+ * leaves only a sweepable provider orphan.
+ */
+export async function createWizardAttachment(input: {
+  wizardId: string;
+  fileName: string;
+  bytes: Buffer | Uint8Array;
+  mimeType?: string | null;
+  uploadedBy: string;
+  metadata?: unknown;
+}): Promise<File> {
+  return (await createWizardAttachmentRecord(input)).file;
+}
+
+export async function createWizardAttachmentRecord(input: {
+  wizardId: string;
+  fileName: string;
+  bytes: Buffer | Uint8Array;
+  mimeType?: string | null;
+  uploadedBy: string;
+  metadata?: unknown;
+  displayName?: string;
+}) {
+  const usable = await resolveUsableContextConfig(CONTEXT);
+  if (!usable.config) throw new WizardAttachmentConfigurationError(usable.reason);
+  if (!isExtensionAllowed(input.fileName, usable.config.allowed)) {
+    throw new Error(
+      `File type not allowed. Allowed extensions: ${usable.config.allowed?.join(", ") || "(all)"}`,
+    );
+  }
+  const directory = expandDirectoryTemplate(usable.config.directory, input.wizardId);
+  const safeName = (input.fileName.split(/[/\\]/).pop() || "file")
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(0, 200);
+  const uploaded = await fileSystemService.upload({
+    fileSystemId: usable.config.file_system,
+    fileName: input.fileName,
+    fileContent: Buffer.from(input.bytes),
+== how raw S1 tables are staged, and how S1 is reached
+scripts/s1-migration/lib/staging.ts:665:    CREATE TABLE IF NOT EXISTS s1_staging.raw_ledger_ar (
+scripts/s1-migration/lib/staging.ts:680:  await db.execute(sql`ALTER TABLE s1_staging.raw_ledger_ar ADD COLUMN IF NOT EXISTS content_hash text`);
+scripts/s1-migration/lib/staging.ts:717:      INSERT INTO s1_staging.raw_ledger_ar
+scripts/s1-migration/lib/staging.ts:746:    sql`DELETE FROM s1_staging.raw_ledger_ar WHERE extracted_at < ${watermark}::timestamptz`,
+scripts/s1-migration/lib/staging.ts:752:  const res = await db.execute(sql`SELECT count(*)::int AS n FROM s1_staging.raw_ledger_ar`);
+scripts/s1-migration/lib/staging.ts:762:      FROM s1_staging.raw_ledger_ar ORDER BY ledger_id
+scripts/s1-migration/lib/staging.ts:794:        FROM s1_staging.raw_ledger_ar WHERE ledger_id > ${last}
+scripts/s1-migration/lib/staging.ts:922:// are core tables, not node bundles, so (like raw_ledger_ar) they get their
+scripts/s1-migration/lib/staging.ts:969:export async function ensureRawUserTables(): Promise<void> {
+scripts/s1-migration/lib/staging.ts:971:    CREATE TABLE IF NOT EXISTS s1_staging.raw_users (
+scripts/s1-migration/lib/staging.ts:986:    CREATE TABLE IF NOT EXISTS s1_staging.raw_users_roles (
+scripts/s1-migration/lib/staging.ts:1070:      INSERT INTO s1_staging.raw_users (uid, name, mail, created, access, login, status, timezone, data, content_hash, extracted_at)
+scripts/s1-migration/lib/staging.ts:1087:      INSERT INTO s1_staging.raw_users_roles (uid, rid, content_hash, extracted_at)
+scripts/s1-migration/lib/staging.ts:1143:const RAW_USER_TABLES = ["raw_users", "raw_users_roles", "raw_roles", "raw_authmap", "raw_user_contact"] as const;
+scripts/s1-migration/lib/staging.ts:1164:        FROM s1_staging.raw_users WHERE uid > ${last}
+scripts/s1-migration/lib/staging.ts:1186:  const res = await db.execute(sql`SELECT uid, rid FROM s1_staging.raw_users_roles ORDER BY uid, rid`);
+scripts/s1-migration/lib/staging.ts:1217:  const res = await db.execute(sql`SELECT uid, mail, status FROM s1_staging.raw_users ORDER BY uid`);
+scripts/s1-migration/stage.ts:48:  ensureRawUserTables,
+scripts/s1-migration/stage.ts:283:  await ensureRawUserTables();
+scripts/s1-migration/stage.ts:330:    const staleRemoved = await deleteStaleRawUserTable("raw_users", watermark);
+scripts/s1-migration/stage.ts:336:      staged: await stagedRawUserTableCount("raw_users"),
+scripts/s1-migration/stage.ts:352:      raw: "raw_users_roles",
+/**
+ * S1 (Drupal 7 / MariaDB) source connection + field-metadata discovery.
+ *
+ * Spec: docs/s1-migration/ (local-only). Key rules honored here:
+ * - `deleted` is an integer — compare unquoted (06 ETL traps).
+ * - `entity_type` filter is load-bearing (field tables are shared across
+ *   node/term/user/comment entities).
+ * - Do NOT assume `language='und'` — we read all rows and count anomalies.
+ * - Multi-value fields must never be flat-joined; callers aggregate by delta.
+ */
+import mysql from "mysql2/promise";
+import { getEnvironmentVariable } from "./script-env";
+import type { Pool, RowDataPacket } from "mysql2/promise";
+
+export function getS1Url(): string {
+  const url = getEnvironmentVariable("S1_DATABASE_URL");
+  if (!url) {
+    throw new Error(
+      "S1_DATABASE_URL is not set. It must point at the synthetic S1 MariaDB (never production from this workspace).",
+    );
+  }
+  return url;
+}
+
+export function createS1Pool(): Pool {
+  return mysql.createPool({
+    uri: getS1Url(),
+    waitForConnections: true,
+    connectionLimit: 4,
+    // Verbatim staging: D7 DATE/DATETIME columns are wall-time STRINGS with
+    // per-field timezone conventions (06 §5). Without this, mysql2 converts
+    // them to JS Dates (an extract-time transform) and the staged value picks
+    // up a spurious UTC marker. All timezone interpretation is load-time.
+    dateStrings: true,
+    // Dev (Railway synthetic DB) has no TLS; the production run inside the
+    // HIPAA boundary must set ?ssl parameters on the URL itself.
+  });
+}
+
+/** Meta columns present on every field_data_* table — everything else is payload. */
+const FIELD_META_COLUMNS = new Set([
+  "entity_type",
+  "bundle",
+  "deleted",
+  "entity_id",
+  "revision_id",
+  "language",
+  "delta",
+]);
+
+export interface S1FieldInstance {
+  fieldName: string; // e.g. "field_sirius_ssn"
+  fieldType: string; // Drupal field type, or "unknown" when inferred
+  cardinality: number; // 1 = single, -1 = unlimited, n = capped multi
+  tableName: string; // field_data_<fieldName>
+  /** Payload columns, in ordinal order, e.g. ["field_sirius_ssn_value"]. */
+  dataColumns: string[];
+  /** dataColumns with the `<fieldName>_` prefix stripped, e.g. ["value"]. */
+  shortColumns: string[];
+}
+
+/** All field instances for one entity type, keyed by bundle. */
+export type FieldCatalog = Map<string, S1FieldInstance[]>;
+
+async function fetchDataColumns(
+  pool: Pool,
+  tableName: string,
+): Promise<string[] | null> {
+  const [cols] = await pool.query<RowDataPacket[]>(
+    `SELECT column_name AS name
+== where the migration runs
+#!/usr/bin/env bash
+# Configure the Phase 2 production S1 daily sync. This script never reads or
+# prints database secrets. Run from an authenticated AWS CloudShell session.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Required environment:
+  AWS_REGION                    e.g. us-west-2
+  ECS_CLUSTER_ARN               production cluster ARN
+  MIGRATION_TASK_DEFINITION     proven migration task definition ARN:revision
+  MIGRATION_CONTAINER_NAME      normally migration
+  PRIVATE_SUBNET_IDS            comma-separated production task subnet IDs
+  SECURITY_GROUP_IDS            comma-separated production migration SG IDs
+  SCHEDULER_ROLE_ARN            role allowed to ecs:RunTask and iam:PassRole
+  S1_SYNC_ALERT_TOPIC_ARN       SNS topic for the operator distribution list
+  SCHEDULER_DLQ_ARN             SQS queue ARN for failed Scheduler deliveries
+
+Optional:
+  SCHEDULE_GROUP                default sirius-migration
+  DAILY_SCHEDULE_NAME           default sirius-s1-daily
+  LATE_SCHEDULE_NAME            default sirius-s1-daily-late-check
+
+Usage:
+  configure-daily-sync.sh validate
+  configure-daily-sync.sh apply
+  configure-daily-sync.sh disable
+  configure-daily-sync.sh enable
+
+The task definition must already contain the two existing database secret
+mappings and a task role allowed to sns:Publish to S1_SYNC_ALERT_TOPIC_ARN.
+EOF
+}
+
+ACTION="${1:-}"
+[[ "$ACTION" =~ ^(validate|apply|disable|enable)$ ]] || { usage >&2; exit 2; }
+
+# The Phase 3 kill switch must keep working even if task/topic/network
+# configuration is unavailable or stale.
+if [[ "$ACTION" == "disable" ]]; then
+  : "${AWS_REGION:?AWS_REGION is required}"
+  command -v aws >/dev/null || { echo "aws CLI is required" >&2; exit 2; }
+  command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
+  GROUP="${SCHEDULE_GROUP:-sirius-migration}"
+  DAILY="${DAILY_SCHEDULE_NAME:-sirius-s1-daily}"
+  LATE="${LATE_SCHEDULE_NAME:-sirius-s1-daily-late-check}"
+  for schedule in "$DAILY" "$LATE"; do
+    CURRENT="$(aws scheduler get-schedule --region "$AWS_REGION" --group-name "$GROUP" --name "$schedule" --output json)"
+    aws scheduler update-schedule \
+      --region "$AWS_REGION" \
+      --group-name "$GROUP" \
+      --name "$schedule" \
+      --state DISABLED \
+      --schedule-expression "$(jq -r .ScheduleExpression <<<"$CURRENT")" \
+      --schedule-expression-timezone "$(jq -r .ScheduleExpressionTimezone <<<"$CURRENT")" \
+      --flexible-time-window "$(jq -c .FlexibleTimeWindow <<<"$CURRENT")" \
+      --target "$(jq -c .Target <<<"$CURRENT")" >/dev/null
+  done
+  echo "disable complete for $DAILY and $LATE"
+  exit 0

@@ -55,17 +55,18 @@ export const administrationHelp: SystemHelpEntry[] = [
   },
   {
     id: "system:contact-field-configuration",
-    paths: ["/config/addresses", "/config/phone-numbers"],
-    summary: "Review shared contact-field settings before changes affect address or phone entry and validation across linked records.",
+    paths: ["/config/addresses"],
+    summary: "Choose how postal addresses are checked across the application, by local pattern rules or Google Places; a new selection applies as soon as you pick it.",
     details: `
-      <h3>Purpose</h3><p>Maintain the contact settings offered for postal addresses and phone numbers.</p>
-      <h3>Before you start</h3><p>Administrator access is required. These are shared settings, not an editor for one worker's contact details.</p>
-      <h3>How to use this page</h3><ol><li>Read the current settings and their field descriptions.</li><li>Review the population affected before saving a shared change.</li><li>Use an entity's contact tabs for individual corrections.</li></ol>
-      <h3>Limitations and common problems</h3><p>Configuration does not verify every existing contact or establish communication consent. Address or phone validation failures should be checked against the actual input and supported formats.</p>`,
+      <h3>Purpose</h3><p>Set the one validation mode used wherever a postal address is entered or checked.</p>
+      <h3>Before you start</h3><p>Administrator access is required. This is a shared setting, not an editor for one person's address.</p>
+      <h3>How to use this page</h3><ol><li>Read <strong>Current Mode</strong> to see which mode is in use.</li><li>Open <strong>Validation Mode</strong>.</li><li>Select <strong>Local Validation</strong> or <strong>Google Places</strong>. There is no separate save step: the selection is saved when you make it.</li><li>Use a record's Addresses tab to correct an individual address.</li></ol>
+      <h3>Results and status meanings</h3><p><strong>Configuration Updated</strong> confirms the new mode. <strong>Update Failed</strong> means nothing changed, and the selection returns to the mode that was in use.</p>
+      <h3>Limitations and common problems</h3><p>Changing the mode does not re-check addresses that are already saved. Phone number validation is not set on this page.</p>`,
   },
   {
     id: "system:users-roles-policies",
-    paths: ["/admin/users/list", "/admin/users/roles", "/admin/users/policies", "/admin/roles", "/admin/permissions", "/config/users/list", "/config/users/roles", "/config/users/policies", "/config/users/permissions"],
+    paths: ["/admin/users/list", "/admin/users/roles", "/admin/users/policies", "/admin/permissions", "/config/users/list", "/config/users/roles", "/config/users/policies", "/config/users/permissions"],
     summary: "Review users, roles, permissions, and access policies before changing shared access that may affect many accounts.",
     details: `
       <h3>Purpose</h3><p>Manage user accounts and role assignments and inspect the application's permission and access-policy definitions.</p>

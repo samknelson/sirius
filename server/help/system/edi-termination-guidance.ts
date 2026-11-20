@@ -111,6 +111,9 @@ ${REASON_ITEMS}
   a person's current coverage run, stops the check with a correction-required message
   naming the records, and nothing is excluded. The step states which rule applies, and
   each generated file records the rule it used.</p>
+  <p>To see every remaining conflict across all benefits and months in one place, an
+  administrator can run the <a href="/reports/report_trust_coverage_conflicts">Conflicting Coverage</a>
+  report under Reports, Trust. Use it to finish the cleanup before the rule is turned off.</p>
   <p>The check, the acknowledgement and the generated file never change coverage,
   relationship or employer records. They do not authorize dual coverage or change
   elections, billing, eligibility, lifecycle events or S1. An exclusion applies only

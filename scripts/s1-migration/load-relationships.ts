@@ -22,15 +22,15 @@ import { s1Relations } from '../../server/plugins/system/oneoff/plugins/s1-migra
  *   - start/end: field_sirius_date_start/_date_end date-cast. The S2 relations
  *     storage REQUIRES a start date, forbids future start dates, and requires
  *     end >= start. N26 ruling (2026-08-05): rows with NO start date load
- *     with defaults (start 2000-01-01; end keeps a real S1 end, else
- *     2000-01-02; data.datesDefaulted=true) — prod measured 115 such rows.
+ *     with start 2000-01-01; the source end stays unchanged, including NULL
+ *     (data.datesDefaulted=true marks only the missing-start fallback).
  *     Future-start rows are allowed when the production profile has the fund's
  *     explicit `future_start_date` ruling; the loader still reports them and
  *     does not write them because the S2 storage contract rejects future
  *     starts. `bad_start_date` (present but unparseable), `bad_end_date`, and
  *     `end_before_start` remain fatal.
  *     Active=No with no end date end-dates from node.changed (documented
- *     convention; defaulted rows always carry an end already).
+ *     convention); missing/invalid changed evidence rejects the inactive row.
  *   - field_sirius_count → data.sequence (ordering, not a quantity — Q14).
  *
  * Sync semantics (Task 293 — RUNBOOK §10): RECONCILING. Consumed fingerprint
@@ -96,7 +96,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 })();
 const LOADER = "t15-relationships";
 /** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
-const LOGIC_VERSION = 2;
+const LOGIC_VERSION = 3;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -233,7 +233,7 @@ async function main() {
 
   const stats = { matched: 0, created: 0, updated: 0, endpointsRetargeted: 0, shellWorkersCreated: 0, shellWorkersReused: 0, endDatedFromChanged: 0, datesDefaulted: 0, datesDefaultedActiveYes: 0 };
   /** nid → expected row shape (for the verify pass). */
-  const expected = new Map<number, { worker1: string; worker2: string; relationType: string }>();
+  const expected = new Map<number, { worker1: string; worker2: string; relationType: string; startYmd: string; endYmd: string | null }>();
 
   const summary = emptySummary();
   let fastPathSkips = 0;
@@ -328,8 +328,8 @@ async function main() {
 
     // dates — pre-validate against the storage contract (start required,
     // no future start, end >= start) so failures are dedicated rejects.
-    // N26 ruling (2026-08-05): rows with NO start value load with default
-    // dates instead of rejecting; a present-but-unparseable start stays
+    // Rows with NO start value use only the required-start fallback;
+    // the source end is preserved. A present-but-unparseable start stays
     // fatal (bad_start_date — expect 0).
     const startRaw = strOf(r.fields, "field_sirius_date_start");
     const endRaw = strOf(r.fields, "field_sirius_date_end");
@@ -352,10 +352,10 @@ async function main() {
       continue;
     }
     let endDatedFromChanged = false;
-    if (active === false && !endYmd && r.changed != null) {
-      // end-dating convention (§4 active flag); defaulted rows never reach
-      // this branch — they always carry an end date already
-      const changedYmd = epochToYmd(r.changed);
+    if (active === false && !endYmd) {
+      // Explicit inactivity, not a missing start, permits this convention.
+      // Refuse missing evidence rather than loading an inactive row as open.
+      const changedYmd = r.changed == null ? null : epochToYmd(r.changed);
       if (!changedYmd) {
         rejects.add("bad_changed_epoch", { nid: r.nid, changed: r.changed }, r.nid);
         continue;
@@ -420,7 +420,7 @@ async function main() {
         rejects.add("alt_worker_unmapped", { nid: r.nid }, r.nid);
         continue;
       }
-      expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType });
+      expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType, startYmd, endYmd });
       // merge loader-owned data keys; preserve everything else
       const rowData = (row.data as Record<string, unknown> | null) ?? null;
       const mergedData: Record<string, unknown> = { ...(rowData ?? {}) };
@@ -511,7 +511,7 @@ async function main() {
       if (endDatedFromChanged) stats.endDatedFromChanged++;
       stats.created++;
       summary.created++;
-      expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType });
+      expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType, startYmd, endYmd });
     } catch (err) {
       // storage validation — sanitized code only, never raw error text
       const code = sanitizeStorageError(err);
@@ -550,7 +550,11 @@ async function main() {
         continue;
       }
       const exp = expected.get(r.nid);
-      if (exp && (row.worker1 !== exp.worker1 || row.worker2 !== exp.worker2 || row.relationType !== exp.relationType)) {
+      if (exp && (
+        row.worker1 !== exp.worker1 || row.worker2 !== exp.worker2 ||
+        row.relationType !== exp.relationType ||
+        row.startYmd !== exp.startYmd || (row.endYmd ?? null) !== exp.endYmd
+      )) {
         console.error(`VERIFY: relation nid ${r.nid} row does not match expected resolution`);
         verifyFailures++;
         verifyFailedNids.add(r.nid);

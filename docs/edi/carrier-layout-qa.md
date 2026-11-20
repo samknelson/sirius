@@ -39,12 +39,11 @@ of the download selector.
   `/trust/provider-edi`; path matching, near misses and sanitized guidance are
   checked in `tests/help/workflow-coverage.test.ts`. Local help is not changed.
 
-The existing independent carrier conformance suite was also run. Its structural
-checks for Kaiser, HealthNet and Delta pass, but its pre-existing fixture
-inventory check fails for Local 11, Hinge, Dentwell, MLK, Carelon, VSP and
-Express Scripts: these plugins were already registered without entries in
-`tests/edi/fixtures/legacy-layouts.ts`. The QA fidelity tests cover all ten
-registered serializers without weakening that independent specification check.
+The independent carrier conformance suite pins a layout for all ten registered
+serializers in `tests/edi/fixtures/legacy-layouts.ts`: fixed-width layouts for
+Kaiser, HealthNet, Delta, Express Scripts and VSP, and CSV column layouts for
+Carelon, Dentwell, Hinge, Local 11 and MLK. The QA fidelity tests cover the
+same ten serializers without weakening that independent specification check.
 
 The application was restarted successfully. The live preview of
 `/trust/provider-edi` requires sign-in, so the authenticated Deliver screen,

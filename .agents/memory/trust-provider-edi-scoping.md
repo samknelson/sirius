@@ -31,6 +31,14 @@ Rule: conflicting coverage (same person, benefit and month with a different sour
 
 **How to apply:** A feed never changes source coverage, relationship or employer records. Never inherit an acknowledgement into another run or a changed list. Saved manual decisions on older runs are shown read-only; regenerating uses the current rule. Keep the exclusion rule behind the single setting so removing it is one deletion, not a sweep.
 
+## Cleanup list for the temporary rule
+
+Rule: the all-benefit list of remaining conflicts is an administrator-only report under Reports → Trust (user decision on both placement and audience), gated on Providers EDI. It lists root conflicts only — a dependent a feed drops because their subscriber's month conflicts is a consequence, not a separate row. It is not a feed run: no reason, no exclusion, no acknowledgement.
+
+**Why:** Staff need one place to see what is left so the cleanup can finish and the setting can be turned off; correcting the subscriber clears the cascaded dependent, so listing it would double-count the work.
+
+**How to apply:** Keep the conflict test in the one shared predicate and the record detail in the one shared download layout, so the report and a feed's exclusion list cannot drift. The report never writes coverage, relationship or employer records. A new built-in help entry must also be added to the help coverage inventory document or the help suite fails.
+
 ## Start dates come from lifecycle events
 
 Rule: a coverage start date is the latest `restart` event month at or before the anchor month, moved forward past the latest month in that run without a record of the member's own class. The database returns one row per anchor; a person's months never reach the application, and nothing older than the run start is read. Missing, pending, failed or behind-coverage events refuse the run with a count instead of estimating a date.

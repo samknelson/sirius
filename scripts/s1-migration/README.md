@@ -400,13 +400,15 @@ doesn't match. It must never point at production.
   entity `shell-worker` keyed by the CONTACT nid — S2 relations join workers,
   not contacts). Reltype tid → term id_map →
   `options_worker_relation_type.siriusId` fallback. `active=No` with no end
-  date end-dates from `node.changed` (documented convention).
+  date end-dates from valid `node.changed` (documented convention, including
+  rows with a missing start); absent/invalid evidence rejects as `bad_changed_epoch`.
   `field_sirius_count` → `data.sequence` (ordering, Q14). The relations
   storage contract (start date REQUIRED, no future starts, end ≥ start) is
   pre-validated BEFORE any shell creation, so a reject can't orphan a shell.
-  **N26 ruling (2026-08-05): missing start dates are DEFAULTED, not
-  rejected** — start `2000-01-01`; end keeps a real S1 end date, else
-  `2000-01-02`; `data.datesDefaulted=true`; counters `datesDefaulted` /
+  **Missing start dates use the required-start fallback, not an invented
+  relationship window** — start `2000-01-01`; end keeps the S1 end date,
+  including NULL. Never fabricate an end for an active, source-open
+  relationship. `data.datesDefaulted=true` marks the start fallback; counters `datesDefaulted` /
   `datesDefaultedActiveYes` (prod expects 115 per 07 §P6). Remaining fatal
   date rejects: `bad_start_date` (present but unparseable — expect 0),
   `future_start_date` (the 2 prod rows were fixed directly in S1 — expect 0),
@@ -759,9 +761,12 @@ harnesses are green again.
   (taxonomy-only, title-only, mixed, legacy correction with/without the flag,
   staff-collision preservation, manual-position preservation, idempotent
   re-run) by `scripts/oneoffs/s1-t24-contact-title-smoke.ts`.
-- **Relationship date constraints — RESOLVED (N26 ruling 2026-08-05).**
-  The 115 missing-start rows load with default dates (start `2000-01-01`,
-  end `2000-01-02` unless a real S1 end exists; `data.datesDefaulted=true`).
+- **Relationship date constraints — corrected missing-start rule.**
+  Missing-start rows load with start `2000-01-01`, preserving the source
+  end (including NULL); `data.datesDefaulted=true` marks only the start.
+  The former synthetic `2000-01-02` end is retired. Explicit `active=No`
+  without an end uses valid `node.changed`; missing/invalid evidence rejects
+  as `bad_changed_epoch`, and an end before the fallback start still rejects.
   The 2 future-start rows were fixed directly in S1 by the fund;
   `future_start_date` stays a fatal tripwire (expect 0). Never blanket-allow
   the remaining date classes. Prod numbers in 07 §P6.

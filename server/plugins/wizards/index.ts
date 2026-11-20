@@ -45,6 +45,7 @@ import "./plugins/life-event-enrollment";
 import "./plugins/bao-cobra-enrollment";
 import "./plugins/worker-ratings-import";
 import "./plugins/trust-provider-edi";
+import "./plugins/report-trust-coverage-conflicts";
 
 let kindRegistered = false;
 

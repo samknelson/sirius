@@ -22,7 +22,7 @@ export type CoverageProgress = (
   percent: number | null, details?: { phase?: string; processed?: number; total?: number },
 ) => Promise<void> | void;
 
-const coverageColumns = {
+export const coverageColumns = {
   id: trustWmb.id, workerId: trustWmb.workerId, benefitId: trustWmb.benefitId, year: trustWmb.year,
   month: trustWmb.month, employerId: trustWmb.employerId, sourceRelationId: trustWmb.sourceRelationId,
   employerSiriusId: employers.siriusId,
@@ -328,7 +328,7 @@ const entryOrder = (a: EdiCoverageEntry, b: EdiCoverageEntry) =>
   a.workerId.localeCompare(b.workerId) || a.month.localeCompare(b.month) || a.benefitId.localeCompare(b.benefitId);
 
 /** Names are read only for the records an entry lists, never for the population. */
-async function describer(
+export async function describer(
   read: TrustProviderEdiContext["storage"]["readOnly"]["query"], groups: readonly ExcludedGroup[],
   relations: Map<string, EvidenceRelation>,
 ) {

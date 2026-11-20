@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
+import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/queryClient";
 import {
-  EDI_COVERAGE_REASONS, type EdiCoverageEntry, type EdiCoverageEntryReason, type EdiCoverageRule,
-  type EdiCoverageRunSummary,
+  EDI_COVERAGE_REASONS, type EdiCoverageConflict, type EdiCoverageEntry, type EdiCoverageEntryReason,
+  type EdiCoverageRule, type EdiCoverageRunSummary,
 } from "@shared/edi-coverage-choices";
 import { downloadStepExport } from "./use-coverage-review";
 
@@ -24,14 +25,21 @@ export function formatWhen(value?: string) {
   return Number.isNaN(date.getTime()) ? value ?? "" : date.toLocaleString();
 }
 
-function Entry({ entry }: { entry: EdiCoverageEntry }) {
-  const reason = EDI_COVERAGE_REASONS[entry.reason];
+/** A feed run's entry, or a conflict listed outside any run (no kind, no reason). */
+type Listed = EdiCoverageConflict & Partial<Pick<EdiCoverageEntry, "kind" | "reason">>;
+
+function Entry({ entry, personHref }: { entry: Listed; personHref?: (workerId: string) => string }) {
+  const reason = entry.reason && EDI_COVERAGE_REASONS[entry.reason];
   return <li className="rounded-md border p-4" data-testid={`coverage-entry-${entry.workerId}-${entry.benefitId}-${entry.month}`}>
     <div className="flex flex-wrap items-start justify-between gap-2">
-      <p className="min-w-0 break-words font-medium">{entry.personLabel} · {entry.benefitLabel} · {entry.month}</p>
-      <Badge variant={entry.kind === "exclusion" ? "destructive" : "outline"}>{reason.label}</Badge>
+      <p className="min-w-0 break-words font-medium">
+        {personHref
+          ? <Link href={personHref(entry.workerId)} className="text-primary hover:underline">{entry.personLabel}</Link>
+          : entry.personLabel} · {entry.benefitLabel} · {entry.month}
+      </p>
+      {reason && <Badge variant={entry.kind === "exclusion" ? "destructive" : "outline"}>{reason.label}</Badge>}
     </div>
-    <p className="mt-1 text-sm text-muted-foreground">{reason.meaning}</p>
+    {reason && <p className="mt-1 text-sm text-muted-foreground">{reason.meaning}</p>}
     <p className="mt-1 break-all text-xs text-muted-foreground">Person ID {entry.workerId} · Benefit ID {entry.benefitId}</p>
     <div className="mt-3 overflow-x-auto">
       <table className="w-full min-w-[40rem] text-left text-sm">
@@ -65,13 +73,16 @@ function Entry({ entry }: { entry: EdiCoverageEntry }) {
 }
 
 /** Paged and filterable, so a long list stays reviewable. */
-export function CoverageEntryList({ title, entries, total, empty }: {
-  title: string; entries: EdiCoverageEntry[]; total: number; empty: string;
+export function CoverageEntryList({ title, entries, total, empty, personHref }: {
+  title: string; entries: Listed[]; total: number; empty: string;
+  /** When given, each person's name links there. */
+  personHref?: (workerId: string) => string;
 }) {
   const [reason, setReason] = useState<EdiCoverageEntryReason | "">("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const reasons = useMemo(() => [...new Set(entries.map(entry => entry.reason))], [entries]);
+  const reasons = useMemo(() => [...new Set(entries.map(entry => entry.reason)
+    .filter((value): value is EdiCoverageEntryReason => !!value))], [entries]);
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return entries.filter(entry => (!reason || entry.reason === reason) && (!needle ||
@@ -105,7 +116,7 @@ export function CoverageEntryList({ title, entries, total, empty }: {
     {!!entries.length && !filtered.length && <p className="text-sm text-muted-foreground">No entries match this filter.</p>}
     <ul className="space-y-3">
       {filtered.slice(current * PAGE, current * PAGE + PAGE).map(entry =>
-        <Entry key={`${entry.reason}|${entry.workerId}|${entry.benefitId}|${entry.month}`} entry={entry} />)}
+        <Entry key={`${entry.reason ?? ""}|${entry.workerId}|${entry.benefitId}|${entry.month}`} entry={entry} personHref={personHref} />)}
     </ul>
     {pages > 1 && <div className="flex items-center gap-3 text-sm">
       <Button variant="outline" size="sm" disabled={current === 0} onClick={() => setPage(current - 1)}>Previous</Button>

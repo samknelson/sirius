@@ -57,11 +57,15 @@ Every carrier document records, in this order:
 
 ## Where the enforcement lives
 
-- Layout pin: `tests/edi/fixtures/legacy-layouts.ts` (field names, order,
-  widths, total record width — transcribed from the spec, never derived
-  from the plugin).
-- Structural conformance (offsets, padding, truncation, constants,
-  record width) for every registered plugin:
-  `tests/edi/provider-edi-conformance.test.ts`.
+- Layout pin: `tests/edi/fixtures/legacy-layouts.ts` — transcribed from the
+  spec or the legacy generator, never derived from the plugin. Fixed-width
+  files pin field names, order, widths and total record width
+  (`LEGACY_LAYOUTS`); CSV files pin column names and order
+  (`LEGACY_CSV_LAYOUTS`). Every registered plugin must appear in the map
+  matching the format it produces.
+- Structural conformance for every registered plugin:
+  `tests/edi/provider-edi-conformance.test.ts`. Fixed-width: offsets,
+  padding, truncation, constants, record width. CSV: column order, one cell
+  per column when values hold delimiters, quotes or line breaks.
 - Carrier-specific golden records, header/trailer behavior, and code
   mappings: `tests/edi/<carrier>-edi.test.ts`.
