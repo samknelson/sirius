@@ -60,7 +60,12 @@ function fixture(start: string | null, end: string | null, active: string | null
         storage: { workerRelations: { get: async () => row, create } },
         s1Relations: { reconcileFromMigration: reconcile },
         getMappings: async () => mappings,
-        putMapping: async (_entity, nid, id, options) => {
+        putMapping: async (
+          _entity: string,
+          nid: number,
+          id: string,
+          options: { fingerprint?: string | null; logicVersion?: number },
+        ) => {
           mappings.set(nid, { s2Id: id, consumedFingerprint: options.fingerprint, logicVersion: options.logicVersion });
           return id;
         },

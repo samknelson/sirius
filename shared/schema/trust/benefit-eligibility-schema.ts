@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, unique, varchar } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, unique, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { denorm, pluginConfigs, policies, trustBenefits, workers } from "../../schema";
@@ -41,6 +41,9 @@ export const trustWmbEvents = pgTable("trust_wmb_events", {
     table.month,
     table.benefitId,
     table.eventType,
+  ),
+  ediTerminationLookup: index("trust_wmb_events_edi_termination_lookup_idx").on(
+    table.benefitId, table.eventType, table.year, table.month, table.id,
   ),
 }));
 

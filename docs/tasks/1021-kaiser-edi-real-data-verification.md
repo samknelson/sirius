@@ -188,6 +188,35 @@ relationship or employer entries attributed to the operator.
 
 End-to-end verification remains incomplete. Partial real-data evidence follows.
 
+### Reported Carelon timeout on 2026-11-20
+
+The user supplied a later bao-stg Coverage sources failure for Carelon. The
+termination-evidence query was cancelled with PostgreSQL code `57014` after
+14,998 ms, matching this check's 15-second statement timeout. No phase-end
+record, event count, or query plan was included, so the size and exact query
+plan remain unobserved. This is a database-query timeout, distinct from the
+previous generation heap refusal and the successful 4.82-second start-date
+query.
+
+Inspection found that the termination-event window used arithmetic on year
+and month, preventing a normal calendar index range, while its correlated
+"no later coverage" check had no worker+benefit+calendar index. The event
+lookup likewise had no benefit/event/calendar-leading index. The query now
+uses year/month row comparisons with unchanged event-window semantics. Core
+migration 1225 builds both supporting indexes concurrently, only when the
+optional trust-benefits tables exist; a matching schema declaration keeps the
+drift check aligned. This changes no coverage, relationship, employer, or
+event records.
+
+Local checks after these changes: `npm run check`, `npm run lint`, migration
+merge checks, and the EDI plus relationship-date tests passed (580 passed,
+11 skipped). Local app startup ran migration 1225 and `/health` reported
+`driftCheck: passed`. This does not prove the staging query plan or resolve the
+reported failure; retry Coverage sources in staging and record its phase-end
+counts/timing. If it still times out, obtain the matching phase-start/phase-end
+lines and a read-only `EXPLAIN (ANALYZE, BUFFERS)` for the generated SQL with
+values redacted before changing limits.
+
 ### Reported Carelon attempt
 
 The user supplied a failed bao-stg Carelon Coverage sources check on

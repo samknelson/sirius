@@ -6,7 +6,7 @@ import { requireSegmentStart, resolveSegmentStarts } from "./coverage-starts";
 import { CoverageBudget, COVERAGE_LIMITS, readBudgetedPages } from "./coverage-budget";
 import type { TrustProviderEdiContext } from "./registry";
 import {
-  monthIndex, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
+  monthIndex, monthParts, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
 } from "./termination-policy";
 import { readAsOfYmd } from "./base";
 
@@ -173,6 +173,8 @@ export async function readTerminationEvidence(
   if (!policy.subscribers && !policy.dependents) return empty;
   const asOf = readAsOfYmd(ctx);
   const window = terminationWindow(asOf, policy.months);
+  const firstEventMonth = monthParts(window.firstEnd + 1);
+  const lastEventMonth = monthParts(window.report);
   const limit = { statementTimeoutMs: COVERAGE_LIMITS.queryMs };
   const events = await readBudgetedPages(budget, (after, pageSize) => ctx.storage.readOnly.query(db => db.select({
     id: trustWmbEvents.id, workerId: trustWmbEvents.workerId, benefitId: trustWmbEvents.benefitId,
@@ -180,11 +182,12 @@ export async function readTerminationEvidence(
   }).from(trustWmbEvents).where(and(
     inArray(trustWmbEvents.benefitId, benefitIds), eq(trustWmbEvents.eventType, "terminate"),
     after ? gt(trustWmbEvents.id, after) : undefined,
-    sql`${trustWmbEvents.year} * 12 + ${trustWmbEvents.month} - 1 BETWEEN ${window.firstEnd + 1} AND ${window.report}`,
+    sql`(${trustWmbEvents.year}, ${trustWmbEvents.month}) BETWEEN
+      (${firstEventMonth.year}, ${firstEventMonth.month}) AND (${lastEventMonth.year}, ${lastEventMonth.month})`,
     // Reinstatement in ANY later month, from any source, retires the ending.
     sql`NOT EXISTS (SELECT 1 FROM ${trustWmb} later WHERE later.worker_id = ${trustWmbEvents.workerId}
-      AND later.benefit_id = ${trustWmbEvents.benefitId} AND later.year >= ${trustWmbEvents.year}
-      AND later.year * 12 + later.month >= ${trustWmbEvents.year} * 12 + ${trustWmbEvents.month})`,
+      AND later.benefit_id = ${trustWmbEvents.benefitId}
+      AND (later.year, later.month) >= (${trustWmbEvents.year}, ${trustWmbEvents.month}))`,
   )).orderBy(trustWmbEvents.id).limit(pageSize), limit));
   const result: TerminationEvidence = { ...empty, events };
   const endMonths = (batch: TermEvent[]) => [...new Set(batch.map(e => monthIndex(e.year, e.month) - 1))];
