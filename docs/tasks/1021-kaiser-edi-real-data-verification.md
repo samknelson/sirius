@@ -217,6 +217,14 @@ counts/timing. If it still times out, obtain the matching phase-start/phase-end
 lines and a read-only `EXPLAIN (ANALYZE, BUFFERS)` for the generated SQL with
 values redacted before changing limits.
 
+The user also reported a termination refusal that named only the event UUID,
+making the affected person difficult to find. The missing-last-covered-WMB
+error now resolves the source worker NID from the existing S1 worker mapping
+only on this refusal path, and includes the prior coverage month and benefit
+ID. If staging mappings are absent it explicitly says the NID is unavailable
+and includes the S2 worker UUID; `workers.sirius_id` is not mislabeled as an
+S1 node NID. Read-only lookup tests cover both cases.
+
 ### Reported Carelon attempt
 
 The user supplied a failed bao-stg Carelon Coverage sources check on

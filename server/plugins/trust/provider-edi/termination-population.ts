@@ -34,6 +34,35 @@ export interface ScanEvidence {
   workerId: string; year: number; month: number;
   resultSummary: unknown;
 }
+
+class MissingLastCoveredWmbError extends Error {
+  constructor(readonly event: TermEvent) {
+    super("last-covered WMB evidence is missing");
+  }
+}
+
+async function sourceWorkerNids(ctx: TrustProviderEdiContext, workerId: string): Promise<string[]> {
+  return ctx.storage.readOnly.query(async db => {
+    const presence = await db.execute(sql`SELECT to_regclass('s1_staging.id_map') IS NOT NULL AS present`);
+    if (!presence.rows[0]?.present) return [];
+    const result = await db.execute(sql`
+      SELECT s1_id::text AS nid
+      FROM s1_staging.id_map
+      WHERE entity = 'worker' AND s2_id = ${workerId} AND stub = false
+      ORDER BY s1_id
+    `);
+    return result.rows.map(row => String(row.nid));
+  }, { statementTimeoutMs: COVERAGE_LIMITS.queryMs });
+}
+
+function missingLastCoveredMessage(event: TermEvent, sourceNids: string[]): string {
+  const worker = sourceNids.length === 1
+    ? `worker NID ${sourceNids[0]}`
+    : sourceNids.length > 1
+      ? `worker NIDs ${sourceNids.join(", ")}`
+      : `worker NID unavailable (S2 worker ${event.workerId})`;
+  return `Termination event ${event.id} for ${worker}: last-covered WMB evidence is missing for ${monthStart(monthIndex(event.year, event.month) - 1)} (benefit ${event.benefitId}). Repair history before generating.`;
+}
 /** Rows must be newest-first. A parent's unscoped action is never a child's decision. */
 export function terminationScanDecisions(events: TermEvent[], scans: ScanEvidence[]) {
   const seen = new Set<string>();
@@ -103,7 +132,7 @@ export function selectTerminationCandidates(
     // A stale end must never override reinstatement, even after the report month.
     if (history.some(r => monthIndex(r.year, r.month) >= eventMonth)) continue;
     const previous = history.filter(r => monthIndex(r.year, r.month) === endMonth);
-    if (!previous.length) throw new Error(`Termination event ${event.id}: last-covered WMB evidence is missing. Repair history before generating.`);
+    if (!previous.length) throw new MissingLastCoveredWmbError(event);
     const roles = new Set(previous.map(r => r.sourceRelationId ? "dependent" : "subscriber"));
     if (![...roles].some(role => role === "subscriber" ? policy.subscribers : policy.dependents)) continue;
     if (competingSources(previous)) {
@@ -244,7 +273,16 @@ export async function readTerminationEvidence(
     const confirmed = confirmedTerminationIds(batch, scans);
     const contradicted = new Set([...terminationScanDecisions(batch, scans)]
       .filter(([, decision]) => !decision).map(([id]) => id));
-    const { selected, excluded } = selectTerminationCandidates(batch, coverage, relations, confirmed, asOf, policy, contradicted);
+    let selection: ReturnType<typeof selectTerminationCandidates>;
+    try {
+      selection = selectTerminationCandidates(batch, coverage, relations, confirmed, asOf, policy, contradicted);
+    } catch (error) {
+      if (error instanceof MissingLastCoveredWmbError) {
+        throw new Error(missingLastCoveredMessage(error.event, await sourceWorkerNids(ctx, error.event.workerId)));
+      }
+      throw error;
+    }
+    const { selected, excluded } = selection;
     result.selected.push(...selected);
     result.excluded.push(...excluded);
     result.coverage.push(...coverage);
