@@ -6,6 +6,11 @@ import type { EvidenceRow } from "../../server/plugins/trust/provider-edi/covera
 import { CoverageDatabaseError } from "../../server/plugins/trust/provider-edi/coverage-database-error";
 import { logger } from "../../server/logger";
 import { DrizzleQueryError } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+vi.mock("../../server/services/component-cache", async importOriginal => ({
+  ...await importOriginal<typeof import("../../server/services/component-cache")>(),
+  isComponentEnabledSync: () => true,
+}));
 
 // The REAL evidence reader over scripted database answers, in the order it
 // asks. Nothing in the reader is mocked; an unexpected read fails the fixture.
@@ -16,6 +21,22 @@ const coverage = (id: string, workerId: string, month: number, extra: Partial<Ev
 });
 function evidenceFixture(reads: readonly (readonly unknown[])[], terminations: boolean) {
   const fixture = ediReadFixture(reads);
+  // Repeated freshness checks see the same immutable fixture database. Only
+  // the first readiness statement consumes its scripted answer.
+  const read = fixture.ctx.storage.readOnly.query;
+  let readiness: unknown;
+  fixture.ctx.storage.readOnly.query = (fn, options) => read(db => fn(new Proxy(db, {
+    get(target, property) {
+      if (property !== "execute") return Reflect.get(target, property);
+      return async (query: any) => {
+        const isReadiness = new PgDialect().sqlToQuery(query).sql.includes("FROM workers w LEFT JOIN denorm");
+        if (isReadiness && readiness) return readiness;
+        const result = await target.execute(query);
+        if (isReadiness) readiness = result;
+        return result;
+      };
+    },
+  })), options);
   fixture.ctx.input = { asOfDate: "2026-11-15" };
   fixture.ctx.terminationPolicy = { subscribers: terminations, dependents: terminations, months: 1 };
   Object.assign(fixture.ctx.storage, {
@@ -24,7 +45,13 @@ function evidenceFixture(reads: readonly (readonly unknown[])[], terminations: b
   });
   return fixture;
 }
-const ready = (...configs: string[]) => configs.map(config_id => ({ config_id, population: 3, missing: 0, pending: 0, failed: 0 }));
+const ready = (..._configs: string[]) => [{ population: 3, missing: 0, stale: 0, failed: 0, revision: "fixture" }];
+const endingSpan = (workerId: string, subscriberWorkerId = workerId) => ({
+  id: "span",
+  data: { workerId, subscriberWorkerId, benefitId: "benefit", sourceRelationId: subscriberWorkerId === workerId ? null : "relation",
+    startMonth: "2026-03-01", continuityStartMonth: "2026-03-01", lastCoveredMonth: "2026-10-01", usable: true, isCobra: false,
+    ending: { month: "2026-11-01", reason: "retained-coverage-inference", eventId: "event", eventData: { provenance: "coverage_inferred" } } },
+});
 const variable = "EDI_EXCLUDE_CONFLICTING_COVERAGE";
 afterEach(() => { delete process.env[variable]; vi.restoreAllMocks(); });
 
@@ -46,13 +73,13 @@ describe("coverage database failures", () => {
       fixture.ctx.coverageCorrelation = { wizardId: "fictional-wizard", runId: "fictional-run" };
       const error = await readCoverageEvidence(fixture.ctx, kaiser).catch(e => e);
       expect(error).toBeInstanceOf(CoverageDatabaseError);
-      expect(error.diagnostics).toMatchObject({ phase: "Checking lifecycle events", code,
+      expect(error.diagnostics).toMatchObject({ phase: "Checking maintained coverage", code,
         wizardId: "fictional-wizard", runId: "fictional-run" });
       expect(error.message).toContain("Reference:");
       expect(error.message).toContain("No partial review was accepted");
       expect(error.cause).toBe(wrapped);
       expect(log).toHaveBeenCalledWith("EDI coverage database operation failed", expect.objectContaining({
-        reference: error.diagnostics.reference, phase: "Checking lifecycle events", code,
+        reference: error.diagnostics.reference, phase: "Checking maintained coverage", code,
       }));
       const publicAndLogged = error.message + JSON.stringify(log.mock.calls);
       expect(publicAndLogged).not.toMatch(/private_|private database|private row|SELECT/);
@@ -69,14 +96,12 @@ describe("historical family relationship authority", () => {
     startYmd: "2026-01-01", endYmd: null, relationType: "child" };
   const reads = (changes = {}) => [
     [{ id: "benefit", siriusId: "K" }], ready("trust-wmb-restart", "trust-wmb-terminate"), [],
-    [{ id: "event", workerId: "parent", benefitId: "benefit", year: 2026, month: 11, data: { provenance: "coverage_inferred" } }],
-    [parent], [], [{ ...child, ...relation, ...changes }], [child],
+    [], [endingSpan("parent")],
+    [parent], [{ ...child, ...relation, ...changes }], [child],
   ];
   it.each([
     { worker1: "another-subscriber" },
     { worker2: "someone-else" },
-    { startYmd: "2026-11-01" },
-    { endYmd: "2026-09-30" },
   ])("refuses an unconflicted dependent with invalid authority: %j", async changes => {
     const fixture = evidenceFixture(reads(changes), true);
     await expect(readCoverageEvidence(fixture.ctx, kaiser)).rejects.toThrow(/Correction required.*family relationship.*child-10/s);
@@ -116,8 +141,7 @@ describe("termination and supplemental results respect the shared budget as page
     almostFull("Reading termination evidence", role === "member" ? 2 : 5);
     const fixture = evidenceFixture([
       [{ id: "benefit", siriusId: "K" }], ready("trust-wmb-restart", "trust-wmb-terminate"), [],
-      [{ id: "event", workerId: "ended", benefitId: "benefit", year: 2026, month: 11, data: { provenance: "coverage_inferred" } }],
-      ...(role === "subscriber" ? [[dependent], [relation]] : []),
+      [], [endingSpan("ended", role === "subscriber" ? "parent" : "ended")],
       oversized(),
     ], true);
     await expect(readCoverageEvidence(fixture.ctx, kaiser)).rejects.toBeInstanceOf(CoverageBudgetError);
@@ -141,7 +165,7 @@ describe("termination and supplemental results respect the shared budget as page
     const wide = oversized({ employerSiriusId: "x".repeat(1000) });
     const fixture = evidenceFixture(kind === "termination" ? [
       [{ id: "benefit", siriusId: "K" }], ready("trust-wmb-restart", "trust-wmb-terminate"), [],
-      [{ id: "event", workerId: "ended", benefitId: "benefit", year: 2026, month: 11, data: { provenance: "coverage_inferred" } }],
+      [], [endingSpan("ended")],
       wide,
     ] : [
       [{ id: "benefit", siriusId: "K" }], [{ id: "supplemental" }], ready("trust-wmb-restart"), [member], wide,
@@ -168,8 +192,8 @@ describe("ended families are judged on every record a family member holds", () =
     [{ id: "benefit", siriusId: "K" }],
     ready("trust-wmb-restart", "trust-wmb-terminate"),
     [],
-    [{ id: "event", workerId: "parent", benefitId: "benefit", year: 2026, month: 11, data: { provenance: "coverage_inferred" } }],
-    [parent], [],
+    [], [endingSpan("parent")],
+    [parent],
     [attached],
     [attached, own],
   ];
@@ -247,8 +271,8 @@ describe("earlier conflicts are budgeted before they are read", () => {
     const fixture = evidenceFixture([
       [{ id: "benefit", siriusId: "K" }], ready("trust-wmb-restart"), [member],
       [segmentStartRow(member, { restart: 1, conflictMonths: 1, conflictRecords: 2 })],
-      [{ id: "member-6", worker_id: "member", benefit_id: "benefit", year: 2026, month: 6, employer_id: "employer", source_relation_id: null, employer_sirius_id: "100" },
-        { id: "member-6-cobra", worker_id: "member", benefit_id: "benefit", year: 2026, month: 6, employer_id: "cobra", source_relation_id: null, employer_sirius_id: "COBRA" }],
+      [{ data: { records: [coverage("member-6", "member", 6),
+        coverage("member-6-cobra", "member", 6, { employerId: "cobra", employerSiriusId: "COBRA" })] } }],
       [{ id: "member", name: "Fictional Member" }], [{ id: "benefit", name: "Fictional Plan" }],
       [{ id: "employer", name: "Fictional Employer" }, { id: "cobra", name: "COBRA" }],
     ], false);

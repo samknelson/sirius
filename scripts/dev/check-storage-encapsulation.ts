@@ -74,6 +74,8 @@ const READONLY_FLAG_EXEMPT_FILES = [
   // Bounded feed evidence (report month, lifecycle-event start dates, event
   // readiness for the run's population); the EDI wizard owns the read-only opt-in.
   'server/plugins/trust/provider-edi/coverage-evidence.ts',
+  // Maintained coverage helper inherits the EDI wizard's needsReadOnlyDb capability.
+  'server/plugins/trust/provider-edi/maintained-coverage.ts',
   'server/plugins/trust/provider-edi/coverage-starts.ts',
   'server/plugins/trust/provider-edi/coverage-readiness.ts',
   'server/plugins/trust/provider-edi/termination-population.ts',

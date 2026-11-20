@@ -2680,6 +2680,41 @@ export type InsertDenorm = z.infer<typeof insertDenormSchema>;
 export type Denorm = typeof denorm.$inferSelect;
 export type DenormStatus = (typeof denormStatusEnum.enumValues)[number];
 
+/**
+ * Generic span payload owned through denorm's (entity, plugin-config) spine.
+ * subjectId is producer-defined (coverage uses the actual benefit id).
+ * startMonth/lastMonth are inclusive first-of-month boundaries. IDs are
+ * replaceable implementation details, never external evidence identities.
+ */
+export const denormSpan = pgTable("denorm_span", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id").notNull().references(() => denorm.id, { onDelete: "cascade" }),
+  subjectId: varchar("subject_id").notNull(),
+  startMonth: date("start_month").notNull(),
+  lastMonth: date("last_month").notNull(),
+  terminationMonth: date("termination_month"),
+  data: jsonb("data").notNull(),
+}, table => [
+  index("denorm_span_owner_idx").on(table.denormId),
+  index("denorm_span_subject_month_idx").on(table.subjectId, table.startMonth, table.lastMonth),
+  index("denorm_span_subject_termination_idx").on(table.subjectId, table.terminationMonth),
+  check("denorm_span_months_check", sql`extract(day from ${table.startMonth}) = 1 AND extract(day from ${table.lastMonth}) = 1 AND ${table.lastMonth} >= ${table.startMonth} AND (${table.terminationMonth} IS NULL OR (extract(day from ${table.terminationMonth}) = 1 AND ${table.terminationMonth} > ${table.lastMonth}))`),
+]);
+
+/** Companion diagnostics are replaced in the SAME apply transaction as spans. */
+export const denormIssue = pgTable("denorm_issue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id").notNull().references(() => denorm.id, { onDelete: "cascade" }),
+  subjectId: varchar("subject_id").notNull(),
+  month: date("month").notNull(),
+  reason: varchar("reason").notNull(),
+  data: jsonb("data").notNull(),
+}, table => [
+  index("denorm_issue_owner_idx").on(table.denormId),
+  index("denorm_issue_subject_month_idx").on(table.subjectId, table.month),
+  check("denorm_issue_month_check", sql`extract(day from ${table.month}) = 1`),
+]);
+
 // Per-worker denormalized current member statuses (payload table for the
 // `worker_ms` denorm plugin). One row per (worker, member-status), where
 // each row is the latest member status for one industry. `denorm_id` ties the

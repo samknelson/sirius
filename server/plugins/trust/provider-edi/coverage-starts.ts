@@ -4,6 +4,7 @@ import type { TrustProviderEdiContext } from "./registry";
 import { COBRA_EMPLOYER_SIRIUS_IDS } from "./coverage-segments";
 import { COVERAGE_LIMITS } from "./coverage-budget";
 import { monthStart } from "./termination-policy";
+import { maintainedStarts, maintainedConflicts } from "./maintained-coverage";
 
 /**
  * Segment start from lifecycle events.
@@ -57,7 +58,10 @@ interface StartRow {
 }
 
 /** One statement for up to `COVERAGE_LIMITS.page` anchors. */
-export async function readSegmentStarts(db: Db, anchorIds: readonly string[]): Promise<SegmentStart[]> {
+export const readSegmentStarts = maintainedStarts;
+
+/** Verification-only source comparison; never a runtime fallback. */
+export async function readSourceSegmentStarts(db: Db, anchorIds: readonly string[]): Promise<SegmentStart[]> {
   if (!anchorIds.length) return [];
   const ids = sql.join(anchorIds.map(id => sql`${id}`), sql`, `);
   const cobraIds = sql.join(COBRA_EMPLOYER_SIRIUS_IDS.map(id => sql`${id}`), sql`, `);
@@ -139,7 +143,10 @@ export interface SegmentConflictRecord {
  * before the anchor month. Only those months come back, never the rest of the
  * run. Call it for anchors whose counts were already charged to the budget.
  */
-export async function readSegmentConflicts(
+export const readSegmentConflicts = maintainedConflicts;
+
+/** Verification-only source comparison; never a runtime fallback. */
+export async function readSourceSegmentConflicts(
   db: Db, segments: readonly { id: string; coverageStartYmd: string }[],
 ): Promise<SegmentConflictRecord[]> {
   if (!segments.length) return [];

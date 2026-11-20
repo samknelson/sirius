@@ -58,15 +58,23 @@ export const ediTerminationGuidance = `
   classification. Ordinary employer changes do not restart dates, and equivalent
   same-family employer rows are selected deterministically without duplicate output.
   A true benefit ending uses the final classification's segment start and last-covered date.</p>
-  <p><strong>Coverage start dates</strong> come from each person's coverage lifecycle
-  events: the start of their current continuous coverage run, moved later when the
-  subscriber or dependent source or the COBRA classification changed inside that run.
-  A file reads the reporting month, the last covered month of people whose coverage
-  ended inside the termination window, and each person's current coverage run. It does
-  not read older history. If lifecycle events are switched off, missing, pending or
-  failed for anyone in the run, the check stops and says how many people are affected.
-  No date is estimated. Wait for lifecycle event maintenance to finish, or ask an
-  administrator to review failed records, then select <strong>Check coverage again</strong>.</p>
+  <p><strong>Coverage start dates and endings</strong> use maintained coverage spans.
+  Spans summarize granted coverage; they do not create eligibility. Source-family
+  and COBRA changes start new classification segments, while ordinary employer changes
+  do not. A last-covered month alone does not prove a termination: retained ending
+  evidence must support it. Family relationships identify the subscriber and dependent;
+  relationship dates do not independently decide entitlement.</p>
+  <p>Coverage checks distinguish initial backfill, stale or processing records, failed
+  records, and ready records. An empty span list is not proof of no coverage while
+  maintenance is incomplete. The check reports counts across the worker maintenance
+  population and refuses to estimate dates. Ask an administrator to enable
+  <strong>Worker benefit coverage spans</strong> under denormalization settings, run
+  the existing backfill and recompute operations, and review failed records before
+  rebuilding them. Files that include endings also require <strong>Trust WMB
+  Terminate Events</strong> to be enabled and fully current; ready spans cannot
+  substitute for unfinished ending evidence. Then select <strong>Check coverage again</strong>. Backfill queues
+  work; it does not mean computation has finished. Coverage changed during a check
+  or generation requires another check and generation before delivery.</p>
   <p><strong>Coverage sources</strong> shows which coverage records a membership file
   leaves out, and why, before you generate it. Coverage conflicts when one person has
   more than one coverage record for the same benefit and month with a different

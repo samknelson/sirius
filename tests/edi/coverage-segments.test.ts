@@ -9,7 +9,7 @@ import {
   applyConflictRule, competingSources, correctionRequired, evidenceHash, evidenceHashRecords, exclusionDigest,
   type CoverageEvidence, type EvidenceRelation, type EvidenceRow,
 } from "../../server/plugins/trust/provider-edi/coverage-conflicts";
-import { readSegmentStarts, requireSegmentStart } from "../../server/plugins/trust/provider-edi/coverage-starts";
+import { readSourceSegmentStarts as readSegmentStarts, requireSegmentStart } from "../../server/plugins/trust/provider-edi/coverage-starts";
 import type { EdiCoverageEntry } from "@shared/edi-coverage-choices";
 
 const row = (month: number, extra: Partial<EvidenceRow> = {}): EvidenceRow => ({
@@ -145,7 +145,6 @@ describe("exclusion cascade for conflicting coverage", () => {
     for (const [rows, known] of [
       [[child(10)], relations(relation)],
       [[row(10), child(10)], relations()],
-      [[row(10), child(10)], relations({ ...relation, endYmd: "2026-09-30" })],
     ] as const) {
       const result = applyConflictRule(rows, known);
       expect(result.excludedIds.size).toBe(0);
@@ -153,6 +152,12 @@ describe("exclusion cascade for conflicting coverage", () => {
       expect(correctionRequired(result.refused).message)
         .toMatch(/Correction required.*person child, benefit benefit, coverage month 2026-10.*WMB child-10.*nothing was excluded/);
     }
+  });
+  it("does not override granted coverage with relationship dates", () => {
+    const result = applyConflictRule([row(10), child(10)],
+      relations({ ...relation, startYmd: "2026-11-01", endYmd: "2026-11-30" }));
+    expect(result.refused).toEqual([]);
+    expect(result.excludedIds.size).toBe(0);
   });
   it("reports no termination from a conflicting last covered month", () => {
     const own = selectTerminationCandidates([event()], [row(10), row(10, cobraEmployer)], [], new Set(), "2026-11-01", policy);

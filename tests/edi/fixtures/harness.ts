@@ -94,6 +94,13 @@ export function segmentStartRow(
   const restart = run.restart == null ? null : index(run.restart);
   return {
     id: anchor.id, worker_id: anchor.workerId, benefit_id: anchor.benefitId, cobra: run.cobra ?? false,
+    // Maintained-query fixture response. Legacy fields below remain for the
+    // explicitly source-based comparison tests.
+    data: {
+      isCobra: run.cobra ?? false,
+      continuityStartMonth: run.restart == null ? null
+        : `${anchor.year}-${String(run.lastBreak == null ? run.restart : run.lastBreak + 1).padStart(2, "0")}-01`,
+    },
     anchor_idx: index(anchor.month), restart_idx: restart,
     last_break: run.lastBreak == null ? null : index(run.lastBreak),
     covered: restart == null ? null : run.covered ?? index(anchor.month) - restart + 1,

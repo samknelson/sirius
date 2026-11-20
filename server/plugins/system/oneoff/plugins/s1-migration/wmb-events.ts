@@ -2,6 +2,7 @@ import { getClient, runInTransaction } from '../../../../../storage/transaction-
 import { trustWmbEvents } from "@shared/schema";
 import { eq, and, inArray, sql, lte } from "drizzle-orm";
 import { WMB_INFERRED_PROVENANCE, isInferredTermination, createTrustWmbEventsStorage } from '../../../../../storage/trust/wmb-events';
+import { enqueueCoverageSpanInvalidations } from "../../../../../storage/trust/coverage-span-invalidation";
 
 export type EventChange = "created" | "unchanged" | "removed" | "skipped";
 
@@ -94,6 +95,8 @@ export function createS1TrustWmbEventsOperations(): S1TrustWmbEventsOperations {
             if (!deleted.length) decisions[decisions.length - 1].change = "skipped";
           }
         }
+        if (!dryRun && decisions.some(d => d.change === "created" || d.change === "removed"))
+          await enqueueCoverageSpanInvalidations([workerId]);
         return decisions;
       };
       return dryRun ? execute() : runInTransaction(execute);

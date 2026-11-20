@@ -1,3 +1,4 @@
+import { deleteCoverageSpansForWorkers } from "./trust/coverage-span-invalidation";
 import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
 import { eventBus, EventType } from '../services/event-bus';
 import {
@@ -1241,6 +1242,7 @@ export function createContactStorage(): ContactStorage {
 
         const result = await client.delete(contacts).where(eq(contacts.id, id)).returning();
         if (result.length) {
+          await deleteCoverageSpansForWorkers(deletedWorkerIds);
           await enqueueWorkerBenefitRoleHistoryInvalidations([...affectedWorkers]);
         }
         return result.length > 0;

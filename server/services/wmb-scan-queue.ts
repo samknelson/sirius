@@ -16,6 +16,7 @@ import {
 } from "../flood/events";
 import { tryAcquireAppWriteFence } from "./s1-write-fence";
 import { getDenormStaleSeed } from "../plugins/system/denorm/mark-stale";
+import { COVERAGE_SPAN_PLUGIN } from "@shared/coverage-span";
 
 /**
  * Per-worker, event-driven trigger sources. Jobs from these sources also
@@ -132,7 +133,7 @@ export async function processClaimedJob(
     ];
     const success = errors.length === 0;
     const seeds = await Promise.all([...new Set(people.map(p => p.workerId))]
-      .map(id => getDenormStaleSeed("trust-wmb-terminate", id)));
+      .flatMap(id => ["trust-wmb-terminate", COVERAGE_SPAN_PLUGIN].map(pluginId => getDenormStaleSeed(pluginId, id))));
 
     const jobResultInfo = await storage.wmbScanQueue.recordJobResult(
       job.id,

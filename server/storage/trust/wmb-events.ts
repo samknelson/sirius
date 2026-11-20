@@ -1,6 +1,7 @@
 import { getClient, runInTransaction } from '../transaction-context';
 import { trustWmb, trustWmbScanQueue, trustWmbEvents, type TrustWmbEvent } from "@shared/schema";
 import { eq, and, inArray, isNotNull, sql, or, desc } from "drizzle-orm";
+import { enqueueCoverageSpanInvalidations } from "./coverage-span-invalidation";
 
 export const WMB_INFERRED_PROVENANCE = "coverage_inferred";
 export function isInferredTermination(data: unknown): boolean {
@@ -98,6 +99,7 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
     async replaceForWorkerAndType(workerId: string, eventType: string, events: TrustWmbEventInput[]): Promise<void> {
       await runInTransaction(async () => {
         const client = getClient();
+        if (eventType === "terminate") await enqueueCoverageSpanInvalidations([workerId]);
 
         const sliceWhere = and(
           eq(trustWmbEvents.workerId, workerId),

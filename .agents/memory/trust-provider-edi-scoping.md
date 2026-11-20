@@ -27,6 +27,11 @@ Rule: the all-benefit list of remaining conflicts is an administrator-only repor
 
 ## Start dates come from lifecycle events
 
+**Superseded for runtime carrier feeds:** see
+[Maintained carrier coverage evidence](coverage-span-direction.md). The following
+describes the retained source-comparison baseline, not the current runtime
+architecture direction.
+
 Rule: a coverage start date is the latest `restart` event month at or before the anchor month, moved forward past the latest month in that run without a record of the member's own class. The database returns one row per anchor; a person's months never reach the application, and nothing older than the run start is read. Missing, pending, failed or behind-coverage events refuse the run with a count instead of estimating a date.
 
 **Why:** The month-by-month history traversal reached its whole-check time ceiling at Kaiser scale. The events are already maintained per worker, benefit and run. This supersedes the earlier instruction not to rely on persisted span data; no new table or event type was added.

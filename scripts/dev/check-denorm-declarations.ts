@@ -54,6 +54,8 @@ const MUTATING_PREFIXES = [
  * loudly on an unmapped `create*Storage` call in a plugin file.
  */
 const FACTORY_NAMESPACES: Record<string, string> = {
+  createCoverageSpanSourceStorage: "coverageSpanSource",
+  createDenormSpansStorage: "denormSpans",
   createVariableStorage: "variables",
   createWorkerHoursStorage: "workerHours",
   createEmployerCompanyStorage: "employerCompanies",

@@ -45,6 +45,9 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
         if (kind !== "denorm" || operation !== "update" || !isCacheInitialized()) return;
         const config = await storage.pluginConfigs.get(id);
         const plugin = config && this.get(config.pluginId);
+        if (plugin?.invalidateOnConfigChange && isPluginComponentEnabledSync(plugin.metadata)) {
+          await storage.denorm.markAllStaleForConfig(id);
+        }
         if (plugin?.replaceOnCompute && isPluginComponentEnabledSync(plugin.metadata)) {
           await storage.denorm.clearForConfig(id);
         }

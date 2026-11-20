@@ -138,6 +138,7 @@ import "./plugins/trustWmbStart";
 import "./plugins/trustWmbRestart";
 import "./plugins/trustWmbTerminate";
 import "./plugins/workerBenefitRoleHistory";
+import "./plugins/workerBenefitCoverageSpans";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
 // Auto Sign-In: sets workers back to Available when their accepted primary

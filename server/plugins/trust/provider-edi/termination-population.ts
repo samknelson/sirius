@@ -9,6 +9,8 @@ import {
   monthIndex, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
 } from "./termination-policy";
 import { readAsOfYmd } from "./base";
+import { maintainedTerminations } from "./maintained-coverage";
+import { assertCoverageEventsReady } from "./coverage-readiness";
 
 export type Coverage = Pick<typeof trustWmb.$inferSelect,
   "id" | "workerId" | "benefitId" | "year" | "month" | "sourceRelationId" | "employerId"> & { employerSiriusId?: string | null };
@@ -164,6 +166,23 @@ export interface TerminationEvidence {
  * No one's history is loaded.
  */
 export async function readTerminationEvidence(
+  ctx: TrustProviderEdiContext, benefitIds: string[],
+  _onBatch?: (done: number, total: number, milliseconds: number) => Promise<void> | void,
+  budget = new CoverageBudget(ctx.coverageCorrelation),
+): Promise<TerminationEvidence> {
+  const policy = ctx.terminationPolicy ?? readTerminationPolicy(ctx.configData);
+  const window = terminationWindow(readAsOfYmd(ctx), policy.months);
+  const includesEndings = policy.subscribers || policy.dependents;
+  const before = await assertCoverageEventsReady(ctx, benefitIds, window.firstEnd, window.report, includesEndings);
+  const evidence = await maintainedTerminations(ctx, benefitIds, budget);
+  const after = await assertCoverageEventsReady(ctx, benefitIds, window.firstEnd, window.report, includesEndings);
+  if (before.revision !== after.revision)
+    throw new Error("Coverage changed while reading endings. Check Coverage sources again.");
+  return evidence;
+}
+
+/** Explicit verification-only path, never used when maintained evidence is incomplete. */
+export async function readSourceTerminationEvidence(
   ctx: TrustProviderEdiContext, benefitIds: string[],
   onBatch?: (done: number, total: number, milliseconds: number) => Promise<void> | void,
   budget = new CoverageBudget(ctx.coverageCorrelation),

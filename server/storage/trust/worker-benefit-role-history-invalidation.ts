@@ -3,6 +3,7 @@ import { pluginConfigs, workerRelations } from "@shared/schema";
 import { getClient } from "../transaction-context";
 import { tableExists } from "../utils";
 import { enqueueDenormInvalidations } from "../system/denorm-invalidation";
+import { enqueueCoverageSpanInvalidations } from "./coverage-span-invalidation";
 
 const PLUGIN_ID = "worker-benefit-role-history";
 
@@ -45,6 +46,7 @@ export async function enqueueWorkerBenefitRoleHistoryInvalidations(
 ): Promise<void> {
   const ids = Array.from(new Set(workerIds.filter(Boolean)));
   if (!ids.length) return;
+  await enqueueCoverageSpanInvalidations(ids);
   const client = getClient();
   const [config] = await client
     .select({ id: pluginConfigs.id })

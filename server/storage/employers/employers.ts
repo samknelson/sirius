@@ -5,6 +5,8 @@ import { eq, sql, inArray, or, ilike, asc } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 import { storageLogger as logger } from "../../logger";
+import { enqueueCoverageSpanInvalidations } from "../trust/coverage-span-invalidation";
+import { tableExists } from "../utils";
 import {
   affectedWorkerBenefitRoleHistoryWorkers,
   enqueueWorkerBenefitRoleHistoryInvalidations,
@@ -131,6 +133,7 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined> {
+      return runInTransaction(async () => {
       validate.validateOrThrow(employer);
       const client = getClient();
       try {
@@ -150,6 +153,11 @@ export function createEmployerStorage(): EmployerStorage {
           .set(employer)
           .where(eq(employers.id, id))
           .returning();
+        if (updatedEmployer && Object.prototype.hasOwnProperty.call(employer, "siriusId") && await tableExists("trust_wmb")) {
+          const affected = await client.selectDistinct({ id: trustWmb.workerId }).from(trustWmb)
+            .where(eq(trustWmb.employerId, id));
+          await enqueueCoverageSpanInvalidations(affected.map(row => row.id));
+        }
         if (updatedEmployer && industryTouched) {
           const newIndustryId = updatedEmployer.industryId ?? null;
           if (newIndustryId !== previousIndustryId) {
@@ -177,6 +185,7 @@ export function createEmployerStorage(): EmployerStorage {
         }
         throw error;
       }
+      });
     },
 
     async updateEmployerPolicy(employerId: string, denormPolicyId: string | null): Promise<Employer | undefined> {

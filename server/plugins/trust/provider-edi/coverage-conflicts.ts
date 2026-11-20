@@ -29,12 +29,9 @@ export function competingSources(rows: readonly SegmentCoverage[]): boolean {
   return new Set(rows.map(classOf)).size > 1;
 }
 
-/** The family relationship names this dependent and overlaps the coverage month. */
+/** Family identity only. Eligibility plugins, not relationship dates, grant coverage. */
 export function relationCoversMonth(relation: EvidenceRelation | undefined, row: SegmentCoverage): relation is EvidenceRelation {
-  if (!relation || relation.worker2 !== row.workerId) return false;
-  const index = monthIndex(row.year, row.month);
-  return !(relation.startYmd && relation.startYmd > monthEnd(index)) &&
-    !(relation.endYmd && relation.endYmd < monthStart(index));
+  return !!relation && relation.worker2 === row.workerId && relation.worker1 !== row.workerId;
 }
 
 /** Every record of one person, benefit and month that a feed leaves out, and why. */

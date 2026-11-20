@@ -1,3 +1,4 @@
+import { deleteCoverageSpansForWorkers } from "./trust/coverage-span-invalidation";
 import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
 import { stripWorkerData } from "./workers/row-projection";
 import { workers, contacts, employers, workerHours, workerMshDenorm, workerWshDenorm, workerEmploymentDenorm, denorm, trustWmb, workerRelations, type Worker } from "@shared/schema";
@@ -1822,6 +1823,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // If worker was deleted, also delete the corresponding contact using contact storage
         if (result.length > 0) {
+          await deleteCoverageSpansForWorkers([id]);
           await enqueueWorkerBenefitRoleHistoryInvalidations([...affectedWorkers]);
           await contactsStorage.deleteContact(worker.contactId);
           // Announce the deletion once it is durable, so the areas that hang off

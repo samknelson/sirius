@@ -1,5 +1,6 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { getClient, runInTransaction, runWithTransaction } from './transaction-context';
+import { captureCoverageScanReceivers, enqueueCoverageSpanInvalidations } from "./trust/coverage-span-invalidation";
 import {
   trustWmbScanStatus,
   trustWmbScanQueue,
@@ -537,6 +538,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         }
 
         // Reset all existing queue entries for this run to pending
+        const retainedReceivers = await runWithTransaction(tx, () =>
+          captureCoverageScanReceivers(eq(trustWmbScanQueue.statusId, status.id)));
         await tx
           .update(trustWmbScanQueue)
           .set({
@@ -555,6 +558,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           .select({ id: trustWmbScanQueue.id, workerId: trustWmbScanQueue.workerId })
           .from(trustWmbScanQueue)
           .where(eq(trustWmbScanQueue.statusId, status.id));
+        await runWithTransaction(tx, () => enqueueCoverageSpanInvalidations(retainedReceivers));
 
         // Drop entries for workers no longer in the run's population (e.g. a
         // worker who left the employer since the previous run of this scope).
@@ -638,6 +642,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           );
 
         if (existing) {
+          await runWithTransaction(tx, async () => enqueueCoverageSpanInvalidations(
+            await captureCoverageScanReceivers(eq(trustWmbScanQueue.id, existing.id))));
           const [updated] = await tx
             .update(trustWmbScanQueue)
             .set({
@@ -866,12 +872,19 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async invalidateWorkerScans(workerId: string): Promise<number> {
+      return runInTransaction(async () => {
       const client = getClient();
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
 
       // Reset all pending/success entries for current and future months to pending
+      const retainedReceivers = await captureCoverageScanReceivers(and(
+        eq(trustWmbScanQueue.workerId, workerId),
+        or(sql`${trustWmbScanQueue.year} > ${currentYear}`,
+          and(eq(trustWmbScanQueue.year, currentYear), gte(trustWmbScanQueue.month, currentMonth))),
+        inArray(trustWmbScanQueue.status, ["success", "pending"]),
+      )!);
       const result = await client
         .update(trustWmbScanQueue)
         .set({
@@ -903,6 +916,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
       // Mark affected months as stale
       if (result.length > 0) {
+        await enqueueCoverageSpanInvalidations(retainedReceivers);
         const statusIds = Array.from(new Set(result.map(r => r.statusId)));
         await client
           .update(trustWmbScanStatus)
@@ -916,10 +930,12 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       }
 
       return result.length;
+      });
     },
 
     async invalidateWorkerScansBulk(workerIds: string[]): Promise<number> {
       if (workerIds.length === 0) return 0;
+      return runInTransaction(async () => {
       const client = getClient();
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
@@ -927,8 +943,15 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
       let reset = 0;
       const statusIds = new Set<string>();
+      const retainedReceivers = new Set<string>();
       for (let i = 0; i < workerIds.length; i += 500) {
         const slice = workerIds.slice(i, i + 500);
+        for (const id of await captureCoverageScanReceivers(and(
+          inArray(trustWmbScanQueue.workerId, slice),
+          or(sql`${trustWmbScanQueue.year} > ${currentYear}`,
+            and(eq(trustWmbScanQueue.year, currentYear), gte(trustWmbScanQueue.month, currentMonth))),
+          inArray(trustWmbScanQueue.status, ["success", "pending"]),
+        )!)) retainedReceivers.add(id);
         const result = await client
           .update(trustWmbScanQueue)
           .set({
@@ -963,6 +986,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
       // Mark affected months as stale (same semantics as the single form).
       if (statusIds.size > 0) {
+        await enqueueCoverageSpanInvalidations([...retainedReceivers]);
         await client
           .update(trustWmbScanStatus)
           .set({ status: "stale" })
@@ -975,6 +999,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       }
 
       return reset;
+      });
     },
 
     async getPendingSummary(): Promise<{ month: number; year: number; pending: number; processing: number; success: number; failed: number; canceled: number }[]> {

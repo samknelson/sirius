@@ -117,6 +117,8 @@ export interface DenormPlugin<TPayload = unknown, TBeforeApply = unknown> {
    * in-place payload semantics unless they explicitly opt in.
    */
   replaceOnCompute?: boolean;
+  /** Queue existing rows after configuration edits without resetting generations. */
+  invalidateOnConfigChange?: boolean;
   /**
    * Optional read-only snapshot inside the apply transaction, BEFORE replacement
    * cascades. Passed to write so a plugin can distinguish a real change from

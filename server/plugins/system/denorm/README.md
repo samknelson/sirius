@@ -11,6 +11,31 @@ Registration follows the standard plugin-framework convention
 `registerDenormPlugin(...)` at module top level, and `index.ts` imports it
 as a side-effect import.
 
+## Continuous spans and companion issues
+
+`denorm_span` and `denorm_issue` are optional payload forms, not a second
+scheduler. Each row belongs to one `denorm.id`, hence one entity/plugin config.
+Dates are first-of-month boundaries; span `last_month` is inclusive and never
+independently proves termination. `subject_id` and JSON semantics belong to the
+producer. Indexes support owner replacement and subject/month or ending lookups.
+The coverage producer's typed payload and reason codes live in
+`shared/coverage-span.ts`; carrier semantics must not enter this framework.
+
+Write both stores through `createDenormSpansStorage().replace()` inside
+`applyComputed`. Keep the status spine when replacing payloads, so generations
+remain monotonic. IDs of payload rows are rebuild-unstable; consumers fingerprint
+stable facts plus generation/freshness, never payload IDs. A failed write rolls
+back both stores and status together. Missing/stale/error status means unusable
+payload even if previous rows remain. Disabled configs pause computation, not
+source invalidation. `invalidateOnConfigChange` enqueues existing statuses
+without deleting their generation.
+
+The initial worker coverage producer uses the existing worker anti-join backfill,
+bounded denorm drain, error/rebuild controls and widow cleanup. Worker/contact
+deletions also remove its status in the source transaction, cascading payloads.
+Readiness enumerates the authoritative worker population, including workers whose
+computed answer is empty; an empty payload table is not a readiness signal.
+
 ## Required storage declarations (`reads` / `writes`)
 
 Every plugin MUST declare, at **storage-object granularity** (the property

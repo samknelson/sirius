@@ -88,7 +88,7 @@ export async function readCoverageEvidence(
     return { benefitIds, supplementalIds: supplemental.map(b => b.id).filter(id => !benefitIds.includes(id)) };
   });
 
-  const { population } = await phase("Checking lifecycle events",
+  const { population, revision } = await phase("Checking maintained coverage",
     () => assertCoverageEventsReady(ctx, benefitIds, terminations ? window.firstEnd : window.report, window.report, terminations));
   budget.check(population);
 
@@ -290,7 +290,7 @@ export async function readCoverageEvidence(
     : null;
   const digest = exclusionDigest(rule, exclusions);
   const fingerprint = await phase("Fingerprinting evidence", () => evidenceHashRecords({
-    context: [{ configId: ctx.configId, data: ctx.configData, input: ctx.input, policy, rule }],
+    context: [{ configId: ctx.configId, data: ctx.configData, input: ctx.input, policy, rule, revision }],
     coverage: [...retained].sort(byId),
     relations: [...relations.values()].sort(byId),
     terminationEvents: [...termination.events].sort(byId).map(e => ({ id: e.id, workerId: e.workerId,
@@ -304,6 +304,10 @@ export async function readCoverageEvidence(
     exclusions: [digest],
     warnings: warnings.map(w => `${w.workerId}|${w.benefitId}|${w.month}|${w.records.map(r => r.id).join(",")}`),
   }));
+  const finalReadiness = await assertCoverageEventsReady(ctx, benefitIds,
+    terminations ? window.firstEnd : window.report, window.report, terminations);
+  if (revision !== finalReadiness.revision)
+    throw new Error("Coverage changed during this check. Check Coverage sources again before generating or delivering.");
   budget.log("complete", "Evidence complete", { population, exclusions: exclusions.length, warnings: warnings.length });
   return { rule, excludedIds, starts, terminationCandidates, exclusions, warnings,
     exclusionDigest: digest, fingerprint, population, timings, budget };
