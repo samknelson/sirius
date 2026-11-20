@@ -2,6 +2,13 @@
 
 ## Contract and cutover
 
+Staging reconciliation retains the maintained-span implementation rather than
+the superseded runtime termination-query changes. Staging previously used
+version 1225 for termination-evidence indexes, so migration **1226** replays the
+idempotent span schema above that counter. Databases that already ran the span
+migration are safe to replay; existing older indexes need not be dropped.
+The isolated PostgreSQL fixture exercises this reconciliation migration.
+
 Migration **1225** creates core `denorm_span` and `denorm_issue` payload tables
 without foreign keys to optional benefit tables. Both cascade from the existing
 entity/config denorm status. All month boundaries are first-of-month dates.

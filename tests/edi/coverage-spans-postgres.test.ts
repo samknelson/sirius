@@ -34,7 +34,7 @@ import { maintainedStarts } from "../../server/plugins/trust/provider-edi/mainta
 import { assertCoverageEventsReady } from "../../server/plugins/trust/provider-edi/coverage-readiness";
 import { deriveCoverageSpans } from "../../server/services/coverage-spans/derive";
 import { COVERAGE_SPAN_PLUGIN, type CoverageSpanPayload } from "@shared/coverage-span";
-import migration from "../../scripts/migrate/core/1225_denorm_spans";
+import migration from "../../scripts/migrate/core/1226_reconcile_denorm_spans";
 import { createCoverageSpanSourceStorage } from "../../server/storage/trust/coverage-span-source";
 import { enqueueCoverageSpanInvalidations } from "../../server/storage/trust/coverage-span-invalidation";
 import { compareCoverageSpanEvidence } from "../../server/services/coverage-spans/compare";
