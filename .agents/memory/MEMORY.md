@@ -195,3 +195,4 @@
 - [Shared email footer activation](shared-email-footer-boundary.md) — confirm Fund link destinations before activation; software verification uses fictional content and does not authorize live defaults.
 - [Fund authoring boundary](fund-authoring-boundary.md) — Fund presets are authoring conveniences, not exclusive colors, bulk document restyling, or seeded Benefit Color options.
 - [JSON null progress](jsonb-progress-null.md) — SQL COALESCE preserves JSON null; object merges can become arrays and silently lose run ownership.
+- [Coverage span direction](coverage-span-direction.md) — prefer maintained denorm_span over repeated feed-history reconstruction; recover the framework contract before implementation.
