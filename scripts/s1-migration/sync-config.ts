@@ -157,6 +157,16 @@ export const FLEET: FleetStep[] = [
     supportsAllowRejects: true,
   },
   {
+    // Depends only on staged feeds/parents and the employer crosswalk.
+    id: "employer-wizards",
+    script: "load-employer-wizards.ts",
+    loader: "s1-employer-wizards",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: false,
+    supportsAllowRejects: true,
+  },
+  {
     id: "policies",
     script: "load-policies.ts",
     loader: "t-policies",
@@ -424,6 +434,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       },
       "member-statuses": {},
       employers: {},
+      "employer-wizards": { allowRejects: ["approved_historical_upload"] },
       policies: { allowRejects: ["policy_unmatched_unreferenced"] }, // synthetic workers_v1 node
       "employer-policies": {},
       "employer-rates": { allowRejects: ["bad_rate"] }, // §4 row 5c
@@ -526,6 +537,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
           "shopcontact_employer_unresolved",
         ],
       },
+      "employer-wizards": { allowRejects: ["approved_historical_upload"] },
       policies: { allowRejects: ["policy_unmatched_unreferenced"] },
       "employer-policies": {},
       // §4 row 5c: bad_rate=2 known colon typos (`6:00`/`6:75`), cleanly

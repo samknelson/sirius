@@ -16,3 +16,10 @@ verification already succeeded.
 after storage writes must call the shared drain helper first on both success
 and failure shutdown paths. Direct-SQL-only scripts do not need it unless they
 also emit through the database-backed storage logger.
+
+Load the drain helper lazily at shutdown in migration CLIs if it introduces
+an eager logger/transport cycle.
+
+**Why:** importing it before logger initialization produced a `LogsTransport`
+temporal-dead-zone error even on a read-only timezone refusal. A dynamic
+shutdown import preserved draining without the startup initialization cycle.

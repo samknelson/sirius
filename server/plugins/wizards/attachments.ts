@@ -3,6 +3,7 @@ import { storage } from "../../storage";
 import { fileSystemService } from "../../services/files";
 import { logger } from "../../logger";
 import { BAO_PROCESS_DELETE_REFUSAL, isBaoProcessAdmitted } from "@shared/wizard-process-lifecycle";
+import { historicalEmployerUpload, HISTORICAL_UPLOAD_REFUSAL } from "@shared/historical-employer-upload";
 import {
   expandDirectoryTemplate,
   isExtensionAllowed,
@@ -43,6 +44,9 @@ export async function createWizardAttachmentRecord(input: {
   metadata?: unknown;
   displayName?: string;
 }) {
+  if (historicalEmployerUpload((await storage.wizards.getById(input.wizardId))?.data)) {
+    throw new WizardAttachmentConfigurationError(HISTORICAL_UPLOAD_REFUSAL);
+  }
   const usable = await resolveUsableContextConfig(CONTEXT);
   if (!usable.config) throw new WizardAttachmentConfigurationError(usable.reason);
   if (!isExtensionAllowed(input.fileName, usable.config.allowed)) {
@@ -197,6 +201,9 @@ export async function deleteWizardWithAttachments(
 
 /** New attachments first, with a narrowly scoped legacy-row compatibility read. */
 export async function getWizardAttachment(fileId: string, wizardId: string): Promise<File | undefined> {
+  if (historicalEmployerUpload((await storage.wizards.getById(wizardId))?.data)) {
+    throw new WizardAttachmentConfigurationError(HISTORICAL_UPLOAD_REFUSAL);
+  }
   const attached = await storage.entityFiles.getByFileId(CONTEXT, wizardId, fileId);
   if (attached) return attached.file;
   const legacy = await storage.files.getById(fileId);

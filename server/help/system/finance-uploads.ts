@@ -71,6 +71,7 @@ export const financeUploadHelp: SystemHelpEntry[] = [
     summary: "Find or start an authorized employer upload and review its period, input, validation, preview, and processing results before posting data.",
     details: `
       <h3>Purpose</h3><p>Use Wizards to locate employer submissions and create a supported upload for this employer.</p>
+      <p>Historical S1 uploads are read-only records. Their files are unavailable in S2, and they cannot be resumed, processed, downloaded, rerun, or edited. This limitation applies even when their recorded status is draft or completed; the correction guidance below applies only to ordinary S2 uploads.</p>
       <h3>Before you start</h3><p>Employer access and an offered wizard type are required. Staff monitoring pages do not grant an employer permission to submit for another organization.</p>
       <h3>How to use this page</h3><ol><li>Review existing work for the intended period before selecting <strong>Create New Wizard</strong>.</li><li>Select Wizard Type and complete its creation form with the correct employer and period.</li><li>Review the input format and mapping in the opened wizard.</li><li>Complete validation and inspect row issues and any preview before Process.</li></ol>
       <h3>Results and status meanings</h3><p>For monthly hours uploads, validation checks input; Process posts accepted work and can affect hours, worker records, and ledger consumers. A preview is not posting. Other offered types have their own steps; do not reuse an hours mapping for an unrelated feed.</p>
@@ -80,9 +81,10 @@ export const financeUploadHelp: SystemHelpEntry[] = [
   {
     id: "system:shared-wizard-runner",
     paths: ["/wizards/%"],
-    summary: "Resume saved wizard steps, review validation and processing results, and distinguish unreadable progress from a confirmed failed run.",
+    summary: "Review saved wizard status and available steps; historical S1 employer uploads are read-only and have no file available in S2.",
     details: `
       <h3>Purpose</h3><p>Follow the steps for the wizard type shown on this saved run.</p>
+      <p>A <strong>Historical employer upload</strong> shows the source upload ID, original type/status, and reporting period instead of runnable steps. Complete in S1 maps to completed; draft stays draft. Missing file bytes do not change that recorded status. No completed S2 steps or processing results are implied, and a conflicting saved Post flag is shown rather than hidden. These records cannot be edited, deleted, resumed, processed, downloaded, or rerun; the normal step and correction instructions below do not apply to them.</p>
       <h3>Before you start</h3><p>Access is checked for the wizard's type and linked entity; sign-in alone is not sufficient. The launcher and steps describe the input and effects for this particular type.</p>
       <h3>How to use this page</h3><ol><li>Check the wizard type, entity, period, and saved status.</li><li>Follow the offered steps in order, correcting validation issues before processing.</li><li>Before Process or another run action, review its warning: imports may write records, while reports may generate downloadable files.</li><li>Inspect saved results and row issues after completion; protect downloaded personal or financial data.</li></ol>
       <h3>Results and status meanings</h3><p>Validation, preview, processing, and results are separate stages. In-progress or queued work is not complete. A browser refresh or missing heartbeat is not proof that server work stopped. A confirmed failed run shows its saved failure details. The page offers a retry only when that step is explicitly safe to repeat; a retry receives a new run identity and the earlier attempt remains recorded. Other failed runs require an administrator to review possible partial effects. A completed safe step may offer a repeat action.</p>

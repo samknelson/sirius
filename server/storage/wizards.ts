@@ -5,6 +5,16 @@ import { eq, and, desc, or, ne, sql, getTableColumns } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
+import { historicalEmployerUpload, HISTORICAL_UPLOAD_REFUSAL } from "@shared/historical-employer-upload";
+
+function historicalMutationAllowed() {
+  return sql`coalesce(${wizards.data}->'historicalEmployerUpload'->>'kind', '') <> 's1-employer-upload'`;
+}
+function refuseHistoryInjection(data: unknown) {
+  if (data && typeof data === "object" && "historicalEmployerUpload" in data) {
+    throw new Error(HISTORICAL_UPLOAD_REFUSAL);
+  }
+}
 
 /**
  * Stub validator - add validation logic here when needed
@@ -37,7 +47,7 @@ function ediMutationAllowed() {
       AND coalesce(${wizards.data} #>> '{progress,coverage,runId}', '') <> '')))`;
 }
 function processDeletionAllowed() {
-  return sql`${ediMutationAllowed()} AND NOT (${wizards.type} = 'bao_monthly_hours' AND (
+  return sql`${historicalMutationAllowed()} AND ${ediMutationAllowed()} AND NOT (${wizards.type} = 'bao_monthly_hours' AND (
     coalesce(${wizards.data} #>> '{progress,process,status}', '') <> ''
     OR coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1'
     OR coalesce(${wizards.data}, '{}'::jsonb) ? 'processResults'))`;
@@ -148,6 +158,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async create(insertWizard: InsertWizard): Promise<Wizard> {
+      refuseHistoryInjection(insertWizard.data);
       validate.validateOrThrow(insertWizard);
       const client = getClient();
       const [wizard] = await client
@@ -159,6 +170,7 @@ export function createWizardStorage(): WizardStorage {
 
     async createMonthlyWizard(params: MonthlyWizardCreateParams): Promise<Wizard> {
       const { wizard: wizardData, employerId, year, month } = params;
+      refuseHistoryInjection(wizardData.data);
       return db.transaction(async (tx) => {
         const [wizard] = await tx
           .insert(wizards)
@@ -212,6 +224,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>, expectedType?: string, expectedData?: unknown): Promise<Wizard | undefined> {
+      refuseHistoryInjection(updates.data);
       validate.validateOrThrow(updates);
       if (updates.type !== undefined && expectedType !== undefined &&
           updates.type !== expectedType &&
@@ -225,6 +238,7 @@ export function createWizardStorage(): WizardStorage {
         .update(wizards)
         .set(updates)
         .where(and(
+          historicalMutationAllowed(),
           expectedData !== undefined ? sql`${wizards.data} IS NOT DISTINCT FROM ${JSON.stringify(expectedData)}::jsonb` : undefined,
           updates.data !== undefined ? ediMutationAllowed() : undefined,
           // A type-only PATCH must not turn admitted BAO evidence into an
@@ -253,9 +267,10 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async mergeData(id, patch, activeStep, runId) {
+      refuseHistoryInjection(patch);
       const [wizard] = await getClient().update(wizards)
         .set({ data: sql`coalesce(${wizards.data}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb` })
-        .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+        .where(and(eq(wizards.id, id), historicalMutationAllowed(), ne(wizards.status, "deleting"),
           sql`NOT (${wizards.type} = 'bao_monthly_hours'
             AND coalesce(${wizards.data} #>> '{progress,process,protocol}', '') = 'bao-process-v1')`,
           !(activeStep && runId) ? ediMutationAllowed() : undefined,
@@ -268,6 +283,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus, leasePid, expectedType, startPolicy = "initial", expectedData) {
+      refuseHistoryInjection(dataPatch);
       const current = sql`coalesce(${wizards.data}, '{}'::jsonb)`;
       // A Parameters save deliberately writes JSON null. SQL COALESCE alone
       // does not remove JSON null; null || object creates an array and loses
@@ -287,7 +303,7 @@ export function createWizardStorage(): WizardStorage {
         data: next,
         ...(wizardStatus ? { status: wizardStatus } : {}),
       })
-        .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+        .where(and(eq(wizards.id, id), historicalMutationAllowed(), ne(wizards.status, "deleting"),
           start && expectedData !== undefined
             ? sql`${wizards.data} IS NOT DISTINCT FROM ${JSON.stringify(expectedData)}::jsonb` : undefined,
           start && expectedType ? eq(wizards.type, expectedType) : undefined,
@@ -321,6 +337,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData> {
+      if (historicalEmployerUpload((await this.getById(wizardId))?.data)) throw new Error(HISTORICAL_UPLOAD_REFUSAL);
       const client = getClient();
       const [reportData] = await client
         .insert(wizardReportData)

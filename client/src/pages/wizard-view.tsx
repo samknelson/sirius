@@ -18,6 +18,7 @@ import type { WizardData } from "@shared/schema";
 import type { ReportData } from "@shared/wizard-types";
 import { Wizard, WizardType } from "@/lib/wizard-types";
 import { Employer } from "@/lib/employer-types";
+import { historicalEmployerUpload, HISTORICAL_UPLOAD_REFUSAL } from "@shared/historical-employer-upload";
 
 export default function WizardView() {
   const { id } = useParams<{ id: string }>();
@@ -52,7 +53,7 @@ export default function WizardView() {
 
   const { data: wizardFiles = [] } = useQuery<any[]>({
     queryKey: ["/api/wizards", id, "files"],
-    enabled: !!wizard && !!id,
+    enabled: !!wizard && !!id && !historicalEmployerUpload(wizard.data),
   });
 
   const deleteWizardMutation = useMutation({
@@ -88,6 +89,33 @@ export default function WizardView() {
   });
 
   const wizardData = wizard?.data as WizardData | undefined;
+  const history = historicalEmployerUpload(wizard?.data);
+
+  if (wizard && history) {
+    return <div className="max-w-4xl mx-auto px-4 py-8">
+      <Card>
+        <CardHeader>
+          <CardTitle>Historical employer upload</CardTitle>
+          <CardDescription>{HISTORICAL_UPLOAD_REFUSAL}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <dl className="grid grid-cols-2 gap-2">
+            <dt>Reporting period</dt><dd>{history.year}-{String(history.month).padStart(2, "0")}</dd>
+            <dt>Recorded status</dt><dd>{wizard.status}</dd>
+            <dt>Original S1 status</dt><dd>{history.sourceStatus}</dd>
+            <dt>Source upload type</dt><dd>{history.sourceType}</dd>
+            <dt>Source upload ID</dt><dd>{history.feedNid}</dd>
+            <dt>Source parent ID</dt><dd>{history.parentNid}</dd>
+            <dt>Created</dt><dd>{format(new Date(wizard.date), "PPP p")}</dd>
+          </dl>
+          <p>No file, completed S2 steps, or processing results were imported. The status preserves S1’s recorded outcome; it is not a new verification of the original file.</p>
+          {history.sourceStatus === "complete" && history.postComplete === false &&
+            <p role="note">S1 recorded complete, but its saved Post flag was false. Both pieces of source evidence have been retained.</p>}
+          <Link href={`/employers/${wizard.entityId}/wizards`}><Button variant="outline">Back to employer uploads</Button></Link>
+        </CardContent>
+      </Card>
+    </div>;
+  }
 
   if (wizardError && !wizard) {
     return (

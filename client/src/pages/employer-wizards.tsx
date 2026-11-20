@@ -12,6 +12,7 @@ import { Wand2, Plus } from "lucide-react";
 import { format } from "@/lib/date-format";
 import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 import { Wizard, WizardType } from "@/lib/wizard-types";
+import { historicalEmployerUpload } from "@shared/historical-employer-upload";
 
 function EmployerWizardsContent() {
   const { employer } = useEmployerLayout();
@@ -145,7 +146,8 @@ function EmployerWizardsContent() {
           <div className="space-y-3">
             {wizards.map((wizard) => {
               const wizardType = wizardTypes?.find(wt => wt.name === wizard.type);
-              const launchArgs = wizard.data?.launchArguments;
+              const history = historicalEmployerUpload(wizard.data);
+              const launchArgs = history ?? wizard.data?.launchArguments;
               const monthName = launchArgs?.month ? new Date(2000, launchArgs.month - 1).toLocaleString('default', { month: 'long' }) : null;
 
               return (
@@ -168,6 +170,7 @@ function EmployerWizardsContent() {
                       <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
                         {wizard.status}
                       </span>
+                      {history && <span className="text-xs text-muted-foreground">Historical · File unavailable</span>}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-sm text-muted-foreground">

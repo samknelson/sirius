@@ -10,6 +10,7 @@ import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
 import { deleteWizardWithAttachments, listWizardAttachments } from "../plugins/wizards/attachments";
 import { isEnrollmentWizard } from "../plugins/wizards/enrollment/identity";
+import { historicalEmployerUpload } from "@shared/historical-employer-upload";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -271,6 +272,7 @@ export function registerWizardRoutes(
       // Framework (plugin-based) wizards carry a computed manifest so the
       // client can render steps generically and poll progress off this
       // same load route (no bespoke poll route).
+      if (historicalEmployerUpload(wizard.data)) return res.json(wizard);
       const plugin = wizardPluginRegistry.get(wizard.type);
       if (plugin) {
         const manifest = wizardPluginRegistry.computeManifest(plugin, wizard);

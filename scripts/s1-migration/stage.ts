@@ -94,6 +94,7 @@ const IN_SCOPE_BUNDLES = [
   "sirius_ledger_account",
   "sirius_phonenumber",
   "sirius_log",
+  "sirius_feed",
   "sirius_bulk",
 ];
 
@@ -109,7 +110,7 @@ const DAILY_SHARDED_BUNDLES = new Set(["sirius_payperiod", "smf_worker_month", "
  */
 const DOCUMENTED_SKIP_BUNDLES: Record<string, string> = {
   // N3 CLOSED 2026-08-06: epayperiod hours-reporting workflow tracker; S2's
-  // wizard_employer_monthly recreates equivalent state per import. Written
+  // tracker is NOT upload evidence; actual feed history is staged separately. Written
   // daily in S1 — post-freeze rows are expected and also dropped.
   // See docs/n3-employer-payperiod-drop.md (tracked ruling record).
   sirius_employer_payperiod: "employer_payperiod_workflow_state",

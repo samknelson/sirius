@@ -4,6 +4,7 @@ import type { WizardPlugin } from "./types";
 import { wizardPluginRegistry } from "./registry";
 import { storage } from "../../storage";
 import { enrollmentIdentityError, isEnrollmentWizard } from "./enrollment/identity";
+import { historicalEmployerUpload, HISTORICAL_UPLOAD_REFUSAL } from "@shared/historical-employer-upload";
 
 /**
  * Maps a wizard plugin's `entityType` to the "*.mine" access policy that
@@ -77,13 +78,20 @@ export async function enforceWizardRecordAccess(
   wizardId: string,
   req: Request,
 ): Promise<WizardAccessDecision> {
-  return checkWizardRecordAccess(wizardId, async (policy, entityId) =>
+  const decision = await checkWizardRecordAccess(wizardId, async (policy, entityId) =>
     (await checkAccessInline(req, policy, entityId)).granted,
     async (componentId) => {
       const { isComponentEnabled } = await import("../../modules/components");
       return isComponentEnabled(componentId);
     },
   );
+  if (!decision.ok) return decision;
+  const wizard = await storage.wizards.getById(wizardId, true);
+  if (historicalEmployerUpload(wizard?.data) &&
+      !(req.method === "GET" && req.path === `/api/wizards/${wizardId}`)) {
+    return { ok: false, status: 409, message: HISTORICAL_UPLOAD_REFUSAL };
+  }
+  return decision;
 }
 
 /**

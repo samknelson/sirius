@@ -1,11 +1,31 @@
 # Data Migration: Employer Wizards
 
-## Status: source-authority gate blocked
+## Status: importer built; real-source destination acceptance outstanding
 
 The approved destination is **actual S2 wizard records**, not historical
-placeholders. No importer or application behavior has been changed yet.
-Implementation must wait for authoritative source evidence; this document
-is not an approved type/status mapping or a completed migration report.
+placeholders. The CLI importer and read-only historical view are implemented.
+Source code now establishes the type/status/period extraction rules below.
+Live source-link reconciliation resolved 4,163 candidates and left 153
+unresolved. After Q17 investigation, the operator approved treating those 153
+inspected records as allowed rejects. Authorized destination rehearsal remains
+outstanding; this is not a completed migration report.
+
+### Approved implementation-first merge
+
+The operator explicitly approved merging the implementation before completing
+the protected-environment migration rehearsal. Implementation delivery and
+data-migration acceptance are therefore separate: the code may be merged while
+the real-source destination checks below remain unverified. This approval
+does not waive source/data safeguards, approve the extra malformed-type record,
+authorize new reject allowances, or establish successful historical imports.
+Follow-on acceptance must cover both database reconciliation and authenticated
+historical/native wizard, compliance, and help behavior.
+
+The supplied daily report contained neither a `sirius_feed` staging entry nor
+an `employer-wizards` fleet entry; the operator's S2 count confirmed zero staged
+feed rows. Inspection of its supplied build commit also found both changes
+absent. That run is not an importer rehearsal. A migration image must include
+the merged implementation before a meaningful importer rehearsal can occur.
 
 ### Representation contract
 
@@ -89,14 +109,335 @@ semantics, retry identity, and correction-type correspondence remain open.
 
 ## Reconciliation of previous DROP decisions
 
+### Second operator pass: Q9–Q11
+
+- Every candidate `complete` node has an object at `$.wizard` (2,563 main
+  and 1,437 correction). This proves payload presence, not successful processing.
+- Main drafts: 16 have the wizard object and 12 have no JSON field.
+  Correction drafts: 162 have the wizard object and 126 have no JSON field.
+- Q10 finds 2,580 occurrences of the main root and 1,599 correction roots,
+  versus Q9's 2,579 and 1,599 payload-bearing nodes of the matching source
+  types. Root/type agreement must be checked explicitly; do not discard
+  or adopt the one-record difference by assumption.
+- Q11 returned exactly 300 groups, ending alphabetically before either
+  hours root. It is **truncated**, not evidence of absent hours fields.
+- Use
+  [`s1-employer-wizard-hours-structure.sql`](../../scripts/oneoffs/s1-employer-wizard-hours-structure.sql)
+  for Q12–Q14. This scopes discovery to the two candidate roots without an
+  output cap, checks root/type correspondence, lists immediate keys and
+  selected control-container child keys, and counts positive integer
+  `process_ts` evidence without returning payload values. No success
+  meaning is assigned to that timestamp.
+- The operator's first targeted run encountered MariaDB's “Illegal mix of
+  collations for operation 'UNION'”. The targeted pack now explicitly
+  normalizes every text projection on both union arms to `utf8mb4_bin`.
+  Run `ROLLBACK` on the failed connection before rerunning the corrected
+  pack. The operator subsequently returned Q12–Q14 successfully.
+
+### Targeted operator pass: Q12–Q14
+
+- Q12 resolves the one-root discrepancy: one node typed `complete` carries
+  a main-hours root. It must remain an explicit anomalous-type case, not
+  be silently converted based on its payload. The 12 main and 126 correction
+  missing-root nodes correspond to the previously counted missing JSON.
+- Q14 finds **no** root-level `process_ts` in any of the 4,316 correctly
+  typed candidates. Absence at this path neither proves failure nor authorizes
+  a different status. The earlier timestamp hint came from unrelated feed types.
+- Q13 returned 1,799 groups. Both hours roots store `steps` objects plus
+  mappings and uploaded-row-related objects; no immediate period key was found.
+  Main root occurrences: 2,580; correction: 1,599. These are root occurrences,
+  not a clean type-filtered attempt inventory.
+- Fixed steps include `upload`, `map`, `verify`, `post`, `review`, and
+  `statement`. Main roots also have a `process` object in only two cases.
+  A step object existing is not evidence that the step completed.
+- Most result groups were dynamically numbered worker/disability steps.
+  Do not expand or export their contents. The next structure-only query,
+  [`s1-employer-wizard-step-structure.sql`](../../scripts/oneoffs/s1-employer-wizard-step-structure.sql),
+  inspects only fixed workflow steps, at most three object-key levels deep.
+  It excludes arrays and named employee/result containers and returns no
+  payload values. Source status semantics and reporting-month authority
+  still require evidence before implementation.
+
 The blanket `sirius_feed`/`feeds_*` DROP decision is **reopened for employer
 upload history only**. It does not authorize importing unrelated feeds.
+
+### Fixed-step operator pass: Q15
+
+The operator returned 13 groups. Every inspected fixed-step object contains
+only a Boolean `complete` key. Main-root `map`, `post`, `statement`,
+`upload`, and `verify` flags occur on 2,580 roots; `review` occurs on 2,579;
+`process` occurs on two. The six corresponding non-`process` flags each
+occur on 1,599 correction roots. Q15 describes the **shape**, not whether
+these flags are true or false.
+
+No reporting-period field was found in the root or the inspected fixed-step
+metadata. Employee/result containers were intentionally not expanded; this
+does not establish absence of dates there. Do not substitute upload creation
+month, filenames, period trackers, or migrated hours. In particular, the
+investigation has not established that every correction upload concerns
+exactly one reporting month.
+
+Further structure-only SQL is insufficient to establish the workflow's
+meaning. The next authority evidence should be the S1 implementations for
+`sirius_smf_feed_ehrs` and `sirius_smf_feed_ehrs_correction`: how reporting
+period/employer are chosen and saved, how `post` and `review` completion
+relate to `field_sirius_feed_status`, and whether retries mutate one node
+or create new nodes. Sanitized implementation code or an authorized
+operator's explicit explanation backed by source inspection is required;
+raw uploaded rows are not requested.
+
+### Reviewed S1 implementation evidence
+
+The operator supplied full SMF monthly subclass, feed definitions, correction
+launcher, posting/review handlers, and shared wizard helper:
+
+- The parent employer-upload record is a **`sirius_log` node**, category
+  **`smf:ehrs`**, whose `field_sirius_log_handler` references the feed NID.
+  `sirius_smf_feed_ehrs_get_eup` queries that relationship. This is **not**
+  `sirius_employer_payperiod`. Its query takes the first matching row without
+  ordering; the importer must instead count and reject ambiguous parents.
+- `get_feed_node` reuses a main feed linked from that parent, creating one
+  only when missing. It synchronizes the main feed's employer reference
+  from the parent. `add_correction` launches another feed and links it to
+  the same parent, but does not perform that employer-reference synchronization.
+  Thus missing correction feed employer references are not by themselves
+  proof of an unresolvable employer: the explicit parent relation must be checked.
+- Both main and correction types use the same posting handler, taking year,
+  month, and employer from that parent. A correction therefore uses one
+  parent reporting period in this implementation; invoice display dates
+  must not be substituted for it.
+- The final posting batch operation requests `feed_status => complete`.
+  The shared wizard helper marks the current `post` step complete, clears
+  subsequent steps, and assigns the feed status. Hence `complete` does not
+  require review, statement, or payment completion. Preserve that historical
+  outcome without fabricating those completed steps or payment results.
+- Row operations can return early for missing parent/period/employer while
+  the final operation remains scheduled. Recorded `complete` is S1's
+  recorded workflow outcome, **not independent proof every row succeeded**.
+  Historical rendering must not claim verified processing totals.
+- The parent class `Sirius_Employer_Monthly_Upload`, required from
+  `sirius_employer.monthly_upload.inc`, was not included in the first source
+  attachment. The subsequent base-class evidence below resolves its getters
+  and upload-replacement behavior.
+
+### Base-class and upload-replacement evidence
+
+The additional source establishes the parent key as
+`field_sirius_notes = employerNID/year/month`. The base class constructs that
+key, reads year/month from its second/third slash-separated parts, and
+resolves the employer through a `grievance_shop` handler on the same parent.
+Its `eup` JSON mirrors those values but is not the getter's authority.
+The parent key and explicit employer handler must agree; do not parse the
+title or infer a period from created timestamps.
+
+`feed_type_correction()` appends `_correction` to the main type. Main and
+correction feeds thus represent the same monthly-hours family; both can
+use S2 `bao_monthly_hours` with the original source type retained as evidence,
+not an invented new plugin kind. Each feed NID remains a separate record;
+ordinary newest-upload selection must remain unchanged.
+
+Replacing an attachment invokes the same feed node's upload handler, creates
+a `feed:prior` log referencing the old attachment, and changes the current
+wizard data. This is not proof of an independently completed prior attempt.
+Preserve the current feed identity/outcome; do not synthesize prior wizards,
+files, steps, or processing results from those attachment logs. New
+correction creation, in contrast, explicitly creates a new feed NID.
+
+Recorded status mapping is `complete` → `completed` and `draft` → `draft`;
+unknown values must be rejected. Preserve original values. The status
+records S1's workflow outcome, not a claim of complete row-level success.
+
+Next run
+[`s1-employer-wizard-link-reconciliation.sql`](../../scripts/oneoffs/s1-employer-wizard-link-reconciliation.sql)
+for Q16. It uses the actual parent/category/handler/key paths, rejects
+ambiguous source relationships in its classification, compares feed-employer
+references to parent authority, counts post/review flag evidence and
+multiple attempts, and returns reporting-period aggregates plus up to five
+feed NIDs per group. No raw notes, JSON, uploaded contents, or amounts leave
+the source. This is source reconciliation, not a destination rehearsal.
+
+### Earlier source-search results (superseded by full source review)
+
+The supplied search transcript located calls to
+`Sirius_Smf_Ehrs_Monthly::get_year`, `get_month`, and `get_employer` on a
+separate `$eup_node`. The processing snippets refuse missing associations.
+This points to a separate employer-upload record as the period authority;
+the getter implementations and feed-to-upload lookup were still needed then.
+It does not prove that this is the old auto-created period tracker.
+
+The transcript locates `sirius_wizard_submit` in the hours `post.inc`, the
+status setter in shared `sirius.wizard.inc`, and a feed-status copy in
+`sirius_smf.ehrs_monthly.inc`. Search matches alone do not establish their
+control flow or success semantics. The function extraction command selected
+top-level functions beginning with `feed_ehrs`; it did not capture the
+monthly class methods. Request the complete relevant source files rather
+than another filtered search or raw database payload.
 
 N3's observation that employer-period trackers are auto-created remains useful.
 Its argument that migrated hours prove upload history is insufficient:
 hours do not establish upload type, attempt, or status. Do not convert those
 envelopes into completed wizards. The existing counted staging skip remains
 unchanged until source evidence justifies a specific replacement.
+
+## Actual source-link reconciliation: Q16
+
+The operator's Q16 output has 141 groups and accounts for all **4,316**
+correctly typed candidates: 2,591 main + 1,725 correction; 4,000 complete
+and 316 draft.
+
+| Classification | Feeds | Interpretation |
+|---|---:|---|
+| `SOURCE_LINKS_RESOLVED` | 4,163 | Unique parent/category/key and a unique matching live parent-employer handler |
+| `MISSING_OR_AMBIGUOUS_LIVE_PARENT_EMPLOYER` | 139 | Parent exists, but no unique live employer resolved; the result does not distinguish missing from duplicate handlers |
+| `NO_PARENT` | 14 | No matching `smf:ehrs` parent found |
+
+Resolved-set findings:
+
+- Main: **2,445**; corrections: **1,718**.
+- Recorded complete: **3,866**; draft: **297**.
+- **4,010** feed employer references match parent authority; **153** resolved
+  feeds lack a feed employer reference. The explicit parent relationship
+  proves those 153 employers/periods; this is not inference from hours.
+  No resolved feed employer disagrees with its parent.
+- **2,453** resolved feeds belong to employer/month groups with multiple
+  attempts across main and correction types. This counts feeds, not distinct
+  groups. Preserve their separate identities.
+- Reporting periods range from **2019-01 through 2027-09**. These are
+  source-declared periods, not proof of business correctness. Never replace
+  them with creation month merely because they are historical or future.
+- One resolved correction is recorded complete with Post=false. Preserve
+  both pieces of evidence without manufacturing a successful Post result.
+  Other resolved recorded-complete feeds have Post=true.
+- All 4,177 candidates with a Boolean Review flag have Review=false; the
+  remaining 139 lack a Boolean Review flag. Review completion must not be
+  required or fabricated when mapping the source status.
+
+The **153 unresolved** feeds comprise 134 recorded-complete and 19 draft
+records. They do not yet have approved S2 employer/month associations.
+Keep them as counted rejects pending explicit disposition; never synthesize
+their relationships or silently treat them as accepted conversion results.
+The operator's result retains bounded source-ID samples by classification.
+
+### Unresolved relationships: investigation selected
+
+On 2026-11-19, the operator chose to investigate the 153 unresolved source
+relationships first, rather than proceed with an importer that excludes them.
+After receiving Q17, the operator approved the inspected cohort as allowed
+rejects; the later disposition below supersedes this initial investigation hold.
+
+[`s1-employer-wizard-unresolved-links.sql`](../../scripts/oneoffs/s1-employer-wizard-unresolved-links.sql)
+provides Q17, a read-only diagnostic for the same two structural cohorts.
+It distinguishes absent employer nodes from duplicate/multiple live employer
+handlers, compares the parsed numeric key with the explicit handler and feed
+reference, and inspects incoming logs for missing owners, deleted handlers,
+or handler-bundle discrepancies.
+
+For uploads without a current parent, Q17 also counts retained revisions whose
+feed handler and `smf:ehrs` category occur in the **same** revision. It does
+not combine a historical handler with current notes, infer that an arbitrary
+node revision proves employer type, or promote a prior-file log to an upload
+parent. Any archived-parent hits require revision-consistent period/employer
+inspection before a mapping can be approved.
+
+Only source IDs, counts, parsed numeric reporting periods, and fixed diagnostic
+labels are returned. There are no names, raw notes/JSON, file references,
+employee rows, or amounts. The output has a 200-feed cap with an uncapped
+window total and candidate census; cap-sized or changed results must be
+reconciled, not interpreted as complete by assumption. Expected diagnostic
+population at the Q16 snapshot is 153 of 4,316 candidates. This workspace
+has not executed Q17 against S1.
+
+### Operator-supplied Q17 findings
+
+The supplied output contains **153 distinct feed IDs**, with every row reporting
+4,316 current candidates and 153 diagnostic feeds. The 200-feed output cap
+therefore did not truncate the supplied cohort.
+
+**139 feeds: missing employer nodes, not competing employer links.**
+These comprise 134 main feeds and five corrections, linked to 134 distinct
+current parents. Every one has exactly one reporting key and exactly one
+current handler pointing to that key's employer ID, but the target employer
+node is absent. The query reports no retained `node_revision` rows for any
+of these eight employer IDs:
+
+| Missing source employer NID | Affected feeds |
+|---|---:|
+| 7603259 | 27 |
+| 13226221 | 24 |
+| 13227410 | 26 |
+| 13247243 | 41 |
+| 13247244 | 11 |
+| 13253698 | 2 |
+| 13254973 | 5 |
+| 13255444 | 3 |
+| **Total** | **139** |
+
+All 136 populated feed-employer references agree with the parent key and
+point to missing nodes; three corrections have no feed-employer reference.
+All 139 have zero live employer handlers, rather than duplicate or multiple
+live employer handlers. Their parsed source periods range from 2013-01 to
+2025-11. This establishes consistent historical source IDs/periods, **not**
+an existing S2 employer mapping or authority to recreate/reassign employers.
+The evidence does not establish why the employer nodes are absent.
+
+**14 feeds: no current upload parent.**
+These comprise 12 main feeds and two corrections. Eight have a direct live
+employer reference, two reference missing employer nodes, and four have no
+feed-employer reference. None has a reporting key from an upload parent.
+The output reports no alternative current `smf:ehrs` parent, deleted handler
+to such a parent, or missing current handler owner. Eight have prior-file
+logs, but those do not supply reporting-period or processing-status authority.
+One other feed has a current log that was not classified as a prior-file
+log; its category has not been inventoried. A direct employer reference
+alone is insufficient to synthesize the missing period.
+
+**Query provenance discrepancy: retained-revision columns are not accepted
+as verified recovery evidence yet.**
+The returned archive columns report one retained parent revision for each
+of the 139 feeds that already have a current parent, with its parent ID
+matching that current parent. The supplied Q17 SQL restricts the
+`archived_links` CTE to `u.parent_count = 0`, so its intended execution should
+produce no archive match for those 139 rows. The 14 no-parent feeds report
+zero retained parents. Obtain the actual executed SQL or independently
+recheck this portion before treating the archive search as a proven absence
+of recoverable parents. Do not discard this discrepancy or assume a cause.
+
+No source relationships have been repaired and no native S2 employer mappings
+have been checked for these missing source IDs.
+
+### Approved disposition after Q17
+
+The operator stated that these are probably stale old test files and explicitly
+approved treating them as `allowed_rejects` in the migration script. “Test files”
+is an operator hypothesis, not a verified source attribute. Further recovery
+investigation is not a prerequisite for this approved cohort.
+
+The allowance is for the **153 inspected feed identities**, grouped by their
+observed reason in [the approved cohort](employer-wizard-approved-rejects.json):
+139 `missing_employer_node` and 14 `missing_upload_parent`. The manifest records
+approval evidence consumed by the importer. The exact ID/reason pairs become
+the standard `approved_historical_upload` reject class; both fleet profiles
+explicitly allow that class, while unrelated rejects still fail.
+
+- Keep these records counted as rejected, not imported, completed, or absent.
+- Match both source feed identity and the observed reason. Never authorize
+  arbitrary new rejects just because they share the reason or count.
+- Re-evaluate source relationships each run. A repaired record is no longer
+  rejected solely because its ID appears in the approved cohort.
+- Missing destination mappings, changed rejection reasons, unsupported status,
+  or unrelated data failures are not covered by this approval.
+- Retain aggregate totals and source-ID/reason evidence in migration reports.
+  No S1 deletions, employer recreation, or source repair is authorized.
+- The archive-query discrepancy above remains documented, but does not block
+  this explicit disposition. It must not be presented as verified recovery.
+
+At this source snapshot, expected accounting is 4,316 candidates =
+4,163 source-resolved candidates + 153 approved rejects. Destination mapping
+and verification can still expose additional blocking failures.
+
+No destination records have been written. Target-side dry run, authorized
+rehearsal, repeat-run proof, and authenticated compliance comparison remain
+outstanding. The source census alone is not migration acceptance.
 
 ## Required protected-environment source inspection
 
@@ -147,6 +488,39 @@ Parent wizard, monthly association, and identity bookkeeping must commit
 consistently. Reruns must preserve identity and refuse unrelated native targets.
 Register the importer in the ordered sync, result, and verification contracts.
 
+### Implemented fleet contract
+
+- `sirius_feed` joins the stage bundle list; parent `sirius_log` and employer
+  `grievance_shop` already belong to staging. The auto-created period tracker
+  remains excluded.
+- `s1-employer-wizards`, logic version 1, runs immediately after employers.
+  Both supported source types retain distinct feed identities and map to
+  `bao_monthly_hours`. Status is complete → completed or draft → draft.
+- Migration SQL is owned by the S1 Oneoff module, with no HTTP execution
+  route. The standard loader envelope and retained run reports use existing
+  monitoring; no new execution button or plugin kind is introduced.
+- Each source feed has deterministic target identity `s1-employer-upload-NID`
+  plus an `s1_employer_wizard` crosswalk entry. A bounded transaction lock
+  serializes that source identity. Parent, monthly association, crosswalk,
+  and exact destination verification commit together. Conflicting native
+  identities are refused, never adopted.
+- Stored data contains only source reference/status/type/period/timestamps and
+  the saved Post/Review Boolean evidence. No uploaded rows, paths, attachments,
+  fabricated S2 step state, or processing results are copied.
+- Full runs reconcile every target, including unchanged fingerprints and
+  missing targets after a restore. Missing source rows are preserved and
+  block verification. A changed type or newly unresolved mapped source blocks.
+- The historical view has no runnable controls; dispatcher routes refuse all
+  historical actions. Ordinary mutation/progress/deletion predicates refuse
+  imported records, normal create/update paths refuse marker injection, and
+  attachment creation/download paths refuse historical records.
+- The approved 153 rejects remain counted. The separate malformed source type
+  `complete` is not approved and fails explicitly if present. Thus the source
+  report may contain one extra unsupported candidate beyond the 4,316 correctly
+  typed Q16 candidates; do not mistake that for a duplicate attempt.
+- See the runbook for bounded and full dry-run/rehearsal commands. A dry run
+  writes no wizard, association, mapping, or run report.
+
 Acceptance still requires a bounded dry run and authorized rehearsal against
 real source evidence, followed by exact source/destination comparisons through
 the compliance storage query and authenticated report. Cover available types/
@@ -157,8 +531,12 @@ repeat-run identity proof. No permanent conversion-test suite is requested.
 ### Current reconciliation results and limits
 
 - Current real-source comparisons: **not performed**.
-- Real-source inventory: Q1–Q8 supplied by the authorized operator; see above.
-- Approved type/status/period mapping: **not established**.
+- Real-source inventory/link reconciliation: Q1–Q17 supplied by the operator;
+  all 4,316 candidates accounted for, 4,163 resolved and 153 unresolved.
+  Q17 narrows 139 cases to eight absent employer nodes and 14 to missing
+  upload parents; retained-revision query provenance needs confirmation.
+- Source-code type/status/period rules: **established above**; live relationship
+  reconciliation is recorded above; destination correspondence is not verified.
 - Dry run, imported records, rerun identity proof: **not performed**.
 - Compliance query/report correspondence: **not verified against real S1**.
 - Source access: `S1_DATABASE_URL` is not configured in this workspace.
@@ -166,8 +544,51 @@ repeat-run identity proof. No permanent conversion-test suite is requested.
   substitute for the S1 source.
 - The project confines production source inspection to its HIPAA boundary.
   Adding production credentials to this workspace is not the remedy.
-- No UI or server behavior changed at this gate, so no built-in help change
-  is appropriate yet. Historical-view help and authenticated help verification
-  remain required alongside that implementation; local help must be preserved.
+- Built-in wizard runner/launcher and migration-monitoring help now describe
+  read-only history and unavailable files. Local help rows are untouched.
+  Authenticated help listing/dialog verification remains outstanding.
 
 These are acceptance blockers, not passing or skipped migration checks.
+
+### Workspace verification of the implementation
+
+- Application server/client typecheck passed.
+- Architecture lint passed all 16 rules; no new core migration was introduced.
+- One-time source resolver assertions covered complete with Post=false,
+  missing-parent and missing-employer reasons, exact reject identity/reason
+  membership, and placement immediately after the employer loader.
+- The final application server/client typecheck and all 16 architecture lint
+  rules passed. The existing fleet, version-contract, wizard attachment, and
+  wizard recovery checks passed (56 checks across four selected files).
+  The initial fleet failure
+  exposed the source-inspection preflight's literal `LOGIC_VERSION` requirement;
+  the loader was corrected to follow that contract and all 23 fleet checks passed.
+- Built-in help registry lookup, HTML sanitization, intended wizard path, and
+  near-miss paths passed. Local help rows were not modified.
+- The final existing help suites reported 80 passing checks and one failure:
+  the all-workflow browser-host inventory expects `/config/phone-numbers`
+  for `system:contact-field-configuration`. That unrelated existing entry's
+  path was not changed by this implementation. The broader suite is not a
+  pass; distinguish this limitation from the importer-specific help checks.
+- The application was restarted and its unauthenticated sign-in page rendered.
+  The signed-in historical wizard, compliance report, and help dialog were
+  **not** browser-verified.
+- A bounded `--dry-run --limit 20` invocation was refused by the existing
+  timezone gate before source scanning or any conversion writes: this workspace
+  is unconfigured UTC, whereas the migration contract pins America/Los_Angeles.
+  The pin was not overridden to force a pass. This is refusal evidence, not a
+  successful dry run or source/destination comparison.
+- `npx tsc -p tsconfig.scripts.json --noEmit` reports 12 existing
+  `cronJobRuns` property errors in `scripts/oneoffs/smoke-s1-write-fence.ts`;
+  no diagnostic names the new importer files. That gate is not a pass.
+- `npx tsx scripts/check-migrations.ts --base=origin/main` fails on existing
+  core migration versions 1107–1120 versus the base's maximum 1120.
+  That stale upstream base is not the configured merge gate. The normal
+  `bash scripts/dev/check-migrations-merge.sh` gate passed its deployment-branch
+  comparisons. This task changes none of those migrations and does not
+  renumber them.
+
+No conversion writes, hours changes, financial writes, or source repairs were
+performed in this workspace. Under the approved implementation-first merge,
+protected-environment rehearsal and comparisons remain mandatory before
+accepting the data migration, not a claimed result of implementation delivery.

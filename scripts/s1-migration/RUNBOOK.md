@@ -1,18 +1,95 @@
 ## Data Migration: Employer Wizards
 
-**Blocked at source authority; no importer is available yet.** The approved
+**Implementation approved for merge; data migration not yet verified.** The
+operator chose to merge the implementation first and perform protected-environment
+rehearsal and authenticated acceptance separately. The approved
 representation is actual S2 employer-upload wizards, not placeholders. Historical
 file bytes are unavailable in S2; do not imply retrieval, resume, or rerun support.
 Do not backfill completed upload status from hours or auto-created period trackers.
 
+After the Q17 inspection, the operator approved the 153 inspected unresolved
+feeds as allowed rejects (139 referencing missing employer nodes, 14 missing
+upload parents). Preserve exact source-ID/reason membership and reported counts;
+do not allow unrelated new failures. See the mapping document's approved
+disposition and cohort manifest. This approval does not prove that these were
+test files, nor does it authorize deleting or repairing source data.
+
 The source inventory, reopened DROP decisions, required protected-environment
 inspection, intended run order, and outstanding reconciliation evidence are in
 [Data Migration: Employer Wizards](../../docs/s1-migration/employer-wizard-history.md).
-Resolve that gate before implementing or executing the conversion. Existing fleet
-commands do not import this history. Real S1 comparisons and an authorized rehearsal
+The fleet stages `sirius_feed` and runs `load-employer-wizards.ts` immediately
+after `load-employers.ts`, before policies and the unchanged financial sequence.
+Both profiles allow `approved_historical_upload`; the loader applies that class
+only to exact approved source-ID/reason pairs. All other rejects block.
+
+Run inside the authorized migration environment, after full verified staging of
+`sirius_feed`, `sirius_log`, and `grievance_shop` and the employer loader:
+
+```sh
+npx tsx scripts/s1-migration/load-employer-wizards.ts --dry-run --limit 100 --allow-rejects approved_historical_upload
+npx tsx scripts/s1-migration/load-employer-wizards.ts --dry-run --allow-rejects approved_historical_upload
+# Authorized rehearsal only, with app writers stopped as for the other loaders:
+npx tsx scripts/s1-migration/load-employer-wizards.ts --allow-rejects approved_historical_upload
+# Repeat exactly to prove unchanged identity and correspondence:
+npx tsx scripts/s1-migration/load-employer-wizards.ts --allow-rejects approved_historical_upload
+```
+
+Do not execute the write commands merely because the bounded plan passed.
+`--limit` is accepted only with `--dry-run`; it bounds inspected feeds and does
+not claim full reconciliation. Dry runs do not initialize schema, write wizard
+or identity rows, or retain run reports. Existing staging/crosswalk tables and
+the normal migration timezone gate are prerequisites.
+
+Every full run checks for previously mapped feeds missing from staging, keeps
+their history, and fails rather than deleting it. A mapped feed whose type
+changes or whose relationships become unresolved also blocks. The loader
+verifies every destination instead of trusting a fingerprint fast path.
+New attempts remain separate even in the same employer/month. It never invokes
+upload handlers, creates files, changes hours/financials, or emits completion
+notifications. Write-run standard envelopes appear in existing run monitoring.
+
+**Known unresolved extra anomaly:** Q12 found one feed with source type
+`complete`, outside the 4,316 correctly typed candidates. This becomes
+`unsupported_source_type`, not one of the 153 approved rejects. A current full
+rehearsal containing it will fail until its disposition is separately resolved.
+Do not broaden `--allow-rejects` to make it disappear.
+
+Real S1 comparisons, an authorized rehearsal, authenticated compliance/report
+and help verification, unchanged hours/financial totals, and repeat-run proof
 remain acceptance requirements; lack of source access is not a pass.
+They are follow-on data-migration acceptance work under the approved
+implementation-first merge, not results claimed by this implementation.
 
 ## Read-only dashboard and internal operation ownership
+
+### Missing migration execution role
+
+The inspected task definition `sirius-migration:45` referenced a
+Flightcontrol/CloudFormation execution role whose owning project had been
+removed. The operator approved recreating that exact role independently.
+`bash scripts/oneoffs/recreate-s1-migration-execution-role.sh` performs this
+one-time IAM repair in the authorized AWS CLI environment, not in Replit.
+It verifies the account, absence of the role, and inspected task requirements
+before making changes; it refuses to overwrite an existing role. It attaches
+the standard AWS ECS execution policy and scopes the added secret-read and
+customer-managed-key decrypt permissions to the two inspected database secrets.
+It also permits creation of `/sirius-migration`, as the task requires.
+
+The script reads encryption metadata, never secret values, and does not change
+the application task role, KMS key policies, task definition, image, or scheduler;
+it does not launch a task. Restoring the same role ARN preserves the task
+definition reference. IAM propagation and any resource-policy/organization
+restrictions still apply. Partial IAM failures require inspection, not deleting
+and rerunning the script. The operator supplied successful execution output:
+the role was created, both policy operations completed, and the role-existence
+check passed. No ECS task was launched by the repair. The operator subsequently
+confirmed that ECS started the daily task. Its supplied completed report lacked
+both feed staging and the wizard loader; inspection of the supplied build commit
+confirmed that it did not contain this implementation. A read-only S2 query
+returned zero staged `sirius_feed` rows. The infrastructure repair therefore
+worked, but that run did not verify the wizard importer. Verify that the next
+migration image contains both staging and fleet changes before treating its
+results as importer evidence.
 
 Open **One-off Jobs → S1 Migration** at `/admin/oneoff/s1-migration`.
 The previous `/config/s1-migration` link redirects there. Administrator access,

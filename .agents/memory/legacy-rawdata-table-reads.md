@@ -47,3 +47,32 @@ the authoritative list, then confirm each name answers. Those tables also hold
 rows for other entity types and keep deleted rows, so filter by `entity_type`,
 `deleted = 0`, and the id set you actually staged; multi-valued fields appear
 as several rows differing by `delta` and all of them matter.
+
+## A capped discovery result does not prove absence
+
+When asking an operator for sanitized JSON key inventories, scope by the
+relevant source family before limiting grouped output.
+
+**Why:** an alphabetically ordered inventory across unrelated legacy feeds
+hit its output cap before reaching the employer-hours family. The requested
+keys were unobserved, not absent; more unscoped output would repeat the problem.
+
+**How to apply:** label a cap-sized result incomplete, narrow to the intended
+roots, and reconcile counts before interpreting missing keys. Keep discovery
+to key names and shapes; inspect sensitive row contents only inside the
+authorized source environment.
+
+## MariaDB JSON discovery unions need explicit text collations
+
+Normalize every corresponding text expression on both `UNION` arms with
+`CONVERT(... USING utf8mb4) COLLATE utf8mb4_bin`, including typed NULL
+columns and JSON function results.
+
+**Why:** operator-run discovery combining JSON_TABLE keys, JSON_TYPE results,
+and a connection-default CAST failed with an illegal collation mix even
+though the source strings themselves were valid. Per-projection normalization
+was subsequently confirmed by successful operator results on MariaDB 10.6.
+
+**How to apply:** do not change source table collations or session defaults.
+Keep the fix within the read-only query, and explicitly roll back a failed
+inspection transaction before retrying.

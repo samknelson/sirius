@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import { startValidationRun, validationProgressWriter } from "./validation-run";
 import { withWizardValidationWrite } from "../../storage/wizard-validation-lock";
 import { startProcessRun, PROCESS_PROTOCOL } from "./process-run";
+import { historicalEmployerUpload, HISTORICAL_UPLOAD_REFUSAL } from "@shared/historical-employer-upload";
 
 type AuthMiddleware = (
   req: Request,
@@ -84,6 +85,10 @@ async function loadRegisteredWizard(
       res.status(entityGate.status).json({ message: entityGate.message });
       return null;
     }
+  }
+  if (historicalEmployerUpload(wizard.data)) {
+    res.status(409).json({ message: HISTORICAL_UPLOAD_REFUSAL });
+    return null;
   }
   if (req.method === "POST" && !req.path.endsWith("/navigate") &&
       wizard.type === "bao_monthly_hours" && (wizard.data as any)?.progress?.process?.protocol === PROCESS_PROTOCOL) {
