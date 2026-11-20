@@ -190,6 +190,17 @@ End-to-end verification remains incomplete. Partial real-data evidence follows.
 
 ### Reported Carelon timeout on 2026-11-20
 
+A subsequent user-supplied failure at 17:42 UTC again reported SQLSTATE 57014
+in Reading termination evidence (11,113 ms). That phase includes several
+different reads, so these logs do not establish which query was cancelled or
+whether the cause was specifically statement_timeout. Added static per-read
+labels and query-start/query-end timings/counts, preserving the 10-second
+statement limit and all selection rules. Database failures retain their exact
+read label through the outer phase handler, without logging SQL, parameters or
+person data. This is diagnostic instrumentation, not a demonstrated performance
+fix. A staging retry with this change is still needed to identify the failing
+query before changing its execution plan.
+
 The user supplied a later bao-stg Coverage sources failure for Carelon. The
 termination-evidence query was cancelled with PostgreSQL code `57014` after
 14,998 ms, matching this check's 15-second statement timeout. No phase-end

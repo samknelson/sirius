@@ -3,12 +3,13 @@ import { trustWmb, trustWmbEvents, trustWmbScanQueue, workerRelations, employers
 import { assertUnambiguousMonth } from "./coverage-segments";
 import { competingSources, correctionRequired, relationCoversMonth, type EvidenceRow, type ExcludedGroup } from "./coverage-conflicts";
 import { requireSegmentStart, resolveSegmentStarts } from "./coverage-starts";
-import { CoverageBudget, COVERAGE_LIMITS, readBudgetedPages } from "./coverage-budget";
+import { CoverageBudget, readBudgetedPages } from "./coverage-budget";
 import type { TrustProviderEdiContext } from "./registry";
 import {
   monthIndex, monthParts, monthStart, monthEnd, readTerminationPolicy, terminationWindow,
 } from "./termination-policy";
 import { readAsOfYmd } from "./base";
+import { readTerminationQuery } from "./termination-query";
 
 export type Coverage = Pick<typeof trustWmb.$inferSelect,
   "id" | "workerId" | "benefitId" | "year" | "month" | "sourceRelationId" | "employerId"> & { employerSiriusId?: string | null };
@@ -42,7 +43,7 @@ class MissingLastCoveredWmbError extends Error {
 }
 
 async function sourceWorkerNids(ctx: TrustProviderEdiContext, workerId: string): Promise<string[]> {
-  return ctx.storage.readOnly.query(async db => {
+  return readTerminationQuery(ctx, "Resolving source worker NID", async db => {
     const presence = await db.execute(sql`SELECT to_regclass('s1_staging.id_map') IS NOT NULL AS present`);
     if (!presence.rows[0]?.present) return [];
     const result = await db.execute(sql`
@@ -52,7 +53,7 @@ async function sourceWorkerNids(ctx: TrustProviderEdiContext, workerId: string):
       ORDER BY s1_id
     `);
     return result.rows.map(row => String(row.nid));
-  }, { statementTimeoutMs: COVERAGE_LIMITS.queryMs });
+  });
 }
 
 function missingLastCoveredMessage(event: TermEvent, sourceNids: string[]): string {
@@ -204,8 +205,7 @@ export async function readTerminationEvidence(
   const window = terminationWindow(asOf, policy.months);
   const firstEventMonth = monthParts(window.firstEnd + 1);
   const lastEventMonth = monthParts(window.report);
-  const limit = { statementTimeoutMs: COVERAGE_LIMITS.queryMs };
-  const events = await readBudgetedPages(budget, (after, pageSize) => ctx.storage.readOnly.query(db => db.select({
+  const events = await readBudgetedPages(budget, (after, pageSize) => readTerminationQuery(ctx, "Selecting termination events", db => db.select({
     id: trustWmbEvents.id, workerId: trustWmbEvents.workerId, benefitId: trustWmbEvents.benefitId,
     year: trustWmbEvents.year, month: trustWmbEvents.month, data: trustWmbEvents.data,
   }).from(trustWmbEvents).where(and(
@@ -217,7 +217,7 @@ export async function readTerminationEvidence(
     sql`NOT EXISTS (SELECT 1 FROM ${trustWmb} later WHERE later.worker_id = ${trustWmbEvents.workerId}
       AND later.benefit_id = ${trustWmbEvents.benefitId}
       AND (later.year, later.month) >= (${trustWmbEvents.year}, ${trustWmbEvents.month}))`,
-  )).orderBy(trustWmbEvents.id).limit(pageSize), limit));
+  )).orderBy(trustWmbEvents.id).limit(pageSize), budget));
   const result: TerminationEvidence = { ...empty, events };
   const endMonths = (batch: TermEvent[]) => [...new Set(batch.map(e => monthIndex(e.year, e.month) - 1))];
   const coverageColumns = {
@@ -234,15 +234,15 @@ export async function readTerminationEvidence(
     const monthFilter = and(inArray(trustWmb.benefitId, benefitIds), inArray(trustWmb.year, years),
       sql`${trustWmb.year} * 12 + ${trustWmb.month} - 1 IN (${sql.join(months.map(m => sql`${m}`), sql`, `)})`);
     const ended = new Set(batch.map(e => `${e.workerId}|${e.benefitId}|${monthIndex(e.year, e.month) - 1}`));
-    const coverage: EvidenceRow[] = (await readBudgetedPages(budget, (after, pageSize) => ctx.storage.readOnly.query(db => db.select(coverageColumns).from(trustWmb)
+    const coverage: EvidenceRow[] = (await readBudgetedPages(budget, (after, pageSize) => readTerminationQuery(ctx, "Reading last-covered rows", db => db.select(coverageColumns).from(trustWmb)
       .leftJoin(employers, eq(trustWmb.employerId, employers.id))
       .where(and(inArray(trustWmb.workerId, workerIds), monthFilter, after ? gt(trustWmb.id, after) : undefined))
-      .orderBy(trustWmb.id).limit(pageSize), limit)))
+      .orderBy(trustWmb.id).limit(pageSize), budget)))
       .filter(r => ended.has(`${r.workerId}|${r.benefitId}|${monthIndex(r.year, r.month)}`));
     const relationIds = [...new Set(coverage.map(r => r.sourceRelationId).filter((v): v is string => !!v))];
-    const relations = relationIds.length ? await readBudgetedPages(budget, (after, pageSize) => ctx.storage.readOnly.query(db =>
+    const relations = relationIds.length ? await readBudgetedPages(budget, (after, pageSize) => readTerminationQuery(ctx, "Reading historical relationships", db =>
       db.select().from(workerRelations).where(and(inArray(workerRelations.id, relationIds),
-        after ? gt(workerRelations.id, after) : undefined)).orderBy(workerRelations.id).limit(pageSize), limit)) : [];
+        after ? gt(workerRelations.id, after) : undefined)).orderBy(workerRelations.id).limit(pageSize), budget)) : [];
     const relationById = new Map(relations.map(r => [r.id, r]));
     const parentMonths = new Set(coverage.flatMap(r => {
       const parent = r.sourceRelationId && relationById.get(r.sourceRelationId)?.worker1;
@@ -250,15 +250,15 @@ export async function readTerminationEvidence(
     }));
     const parentIds = [...new Set([...parentMonths].map(key => key.split("|")[0]))];
     const known = new Set(coverage.map(r => r.id));
-    if (parentIds.length) for (const row of await readBudgetedPages(budget, (after, pageSize) => ctx.storage.readOnly.query(db => db.select(coverageColumns).from(trustWmb)
+    if (parentIds.length) for (const row of await readBudgetedPages(budget, (after, pageSize) => readTerminationQuery(ctx, "Reading historical subscriber rows", db => db.select(coverageColumns).from(trustWmb)
       .leftJoin(employers, eq(trustWmb.employerId, employers.id))
       .where(and(inArray(trustWmb.workerId, parentIds), monthFilter, after ? gt(trustWmb.id, after) : undefined))
-      .orderBy(trustWmb.id).limit(pageSize), limit))) {
+      .orderBy(trustWmb.id).limit(pageSize), budget))) {
       if (parentMonths.has(`${row.workerId}|${row.benefitId}|${monthIndex(row.year, row.month)}`) && !known.has(row.id)) coverage.push(row);
     }
     // Parent scans can carry individual dependent decisions. Load once per
     // batch, not once per person. Newest attempts supersede older summaries.
-    const scans = await ctx.storage.readOnly.query(db => db.select({
+    const scans = await readTerminationQuery(ctx, "Reading continuation scan summaries", db => db.select({
       workerId: trustWmbScanQueue.workerId, year: trustWmbScanQueue.year,
       month: trustWmbScanQueue.month, resultSummary: trustWmbScanQueue.resultSummary,
     }).from(trustWmbScanQueue).where(and(
@@ -267,7 +267,7 @@ export async function readTerminationEvidence(
       sql`${trustWmbScanQueue.year} * 12 + ${trustWmbScanQueue.month} - 1 BETWEEN ${window.firstEnd + 1} AND ${window.report}`,
       or(inArray(trustWmbScanQueue.workerId, workerIds),
         ...workerIds.map(id => sql`(${trustWmbScanQueue.resultSummary}->'people') @> jsonb_build_array(jsonb_build_object('workerId', ${id}::text))`)),
-    )).orderBy(desc(trustWmbScanQueue.completedAt), desc(trustWmbScanQueue.id)).limit(5001), limit);
+    )).orderBy(desc(trustWmbScanQueue.completedAt), desc(trustWmbScanQueue.id)).limit(5001), budget);
     if (scans.length > 5000) throw new Error("Termination scan evidence exceeded its safe resource budget. No partial generation is available; ask an administrator to inspect scan history.");
     for (const scan of scans) budget.retain(scan);
     const confirmed = confirmedTerminationIds(batch, scans);

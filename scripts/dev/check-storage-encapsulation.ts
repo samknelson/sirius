@@ -77,6 +77,7 @@ const READONLY_FLAG_EXEMPT_FILES = [
   'server/plugins/trust/provider-edi/coverage-starts.ts',
   'server/plugins/trust/provider-edi/coverage-readiness.ts',
   'server/plugins/trust/provider-edi/termination-population.ts',
+  'server/plugins/trust/provider-edi/termination-query.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-healthnet.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser.ts',
   // Shared SMF helper module (medical-plan group lookup) used by the SMF
