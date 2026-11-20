@@ -5,10 +5,12 @@
 The approved destination is **actual S2 wizard records**, not historical
 placeholders. The CLI importer and read-only historical view are implemented.
 Source code now establishes the type/status/period extraction rules below.
-Live source-link reconciliation resolved 4,163 candidates and left 153
-unresolved. After Q17 investigation, the operator approved treating those 153
-inspected records as allowed rejects. Authorized destination rehearsal remains
-outstanding; this is not a completed migration report.
+The historical Q16 source-link reconciliation resolved 4,163 candidates and
+left 153 unresolved. The operator initially approved that inspected cohort as
+allowed rejects, then on 2026-11-20 superseded the identity-scoped allowance
+with reason-based allowances for `missing_upload_parent` and
+`missing_employer_node`. Authorized destination rehearsal remains outstanding;
+this is not a completed migration report.
 
 ### Approved implementation-first merge
 
@@ -17,7 +19,8 @@ the protected-environment migration rehearsal. Implementation delivery and
 data-migration acceptance are therefore separate: the code may be merged while
 the real-source destination checks below remain unverified. This approval
 does not waive source/data safeguards, approve the extra malformed-type record,
-authorize new reject allowances, or establish successful historical imports.
+or establish successful historical imports. The reason-based reject policy is
+recorded below.
 Follow-on acceptance must cover both database reconciliation and authenticated
 historical/native wizard, compliance, and help behavior.
 
@@ -405,19 +408,38 @@ of recoverable parents. Do not discard this discrepancy or assume a cause.
 No source relationships have been repaired and no native S2 employer mappings
 have been checked for these missing source IDs.
 
-### Approved disposition after Q17
+### Current reason-based disposition (2026-11-20)
+
+The operator explicitly replaced the original identity-scoped policy with the
+same reason-based `--allow-rejects` convention as the other loaders. Ad hoc
+callers pass `--allow-rejects missing_upload_parent,missing_employer_node`;
+both sync fleet profiles pass those same reasons. The allowance covers all
+unmapped source records with either reason, including identities outside the
+original 153. Without the argument those rejects still fail the normal gate.
+
+Each rejection retains its original reason, source-ID sample, and count.
+Source relationships are re-evaluated every run; resolved records are imported,
+not permanently skipped. Already-mapped sources that lose their relationships
+remain `mapped_source_unresolved`, and other rejects (including
+`unsupported_source_type` for `complete`) remain blocking. The old
+`approved_historical_upload` alias is no longer accepted. The JSON manifest
+below is retained only as historical inspection evidence; nothing at runtime
+imports it. No source repair, deployment, or migration execution is authorized
+by this policy change. No user-facing screen/help behavior changed.
+
+### Original approved disposition after Q17 (superseded)
 
 The operator stated that these are probably stale old test files and explicitly
 approved treating them as `allowed_rejects` in the migration script. “Test files”
 is an operator hypothesis, not a verified source attribute. Further recovery
 investigation is not a prerequisite for this approved cohort.
 
-The allowance is for the **153 inspected feed identities**, grouped by their
+The original allowance was for the **153 inspected feed identities**, grouped by their
 observed reason in [the approved cohort](employer-wizard-approved-rejects.json):
 139 `missing_employer_node` and 14 `missing_upload_parent`. The manifest records
-approval evidence consumed by the importer. The exact ID/reason pairs become
-the standard `approved_historical_upload` reject class; both fleet profiles
-explicitly allow that class, while unrelated rejects still fail.
+approval evidence originally consumed by the importer. The exact ID/reason pairs became
+the standard `approved_historical_upload` reject class. This original
+identity-scoped implementation is superseded by the reason-based policy above.
 
 - Keep these records counted as rejected, not imported, completed, or absent.
 - Match both source feed identity and the observed reason. Never authorize
@@ -514,7 +536,8 @@ Register the importer in the ordered sync, result, and verification contracts.
   historical actions. Ordinary mutation/progress/deletion predicates refuse
   imported records, normal create/update paths refuse marker injection, and
   attachment creation/download paths refuse historical records.
-- The approved 153 rejects remain counted. The separate malformed source type
+- Missing-parent and missing-employer rejects remain counted under their
+  original reasons; the original snapshot had 153. The separate malformed source type
   `complete` is not approved and fails explicitly if present. Thus the source
   report may contain one extra unsupported candidate beyond the 4,316 correctly
   typed Q16 candidates; do not mistake that for a duplicate attempt.
@@ -527,6 +550,52 @@ the compliance storage query and authenticated report. Cover available types/
 statuses, month boundaries, multiple attempts, report links, and native/
 migrated coexistence. Record before/after hours and financial totals and
 repeat-run identity proof. No permanent conversion-test suite is requested.
+
+### Protected-environment acceptance access check (2026-11-20, before policy revision)
+
+**BLOCKED; not migration acceptance.** The available execution environment is
+the development workspace, not the authorized in-boundary migration host.
+Secret-existence checks found no `S1_DATABASE_URL` or AWS access-key/session
+secrets. Neither the AWS CLI nor Session Manager plugin is installed, and no
+local AWS config/credentials files were found. No protected-environment task
+session or current task-definition/image-digest evidence was supplied.
+These checks establish this workspace's access limits, not the remote
+environment's configuration or availability. Do not bring production database
+credentials or raw source records into this workspace to bypass the boundary.
+
+Source-only inspection at workspace commit
+`b1ab2a291f8b4a1e75aabf710cd8b13ae5adae61` confirmed `sirius_feed` in staging,
+the version-1 employer-wizard loader immediately after employers, the
+migration-owned reconciliation module, shared historical-upload representation,
+and server refusal guards. At that time, both fleet profiles used the old
+identity-scoped `approved_historical_upload` allowance; the manifest had 139
+missing-employer identities plus 14 missing-parent identities (153 distinct
+identities). That policy was later superseded as recorded above. Local source
+inspection is **not** verification of the authorized migration image, a
+successful dry run, or evidence about actual destination rows.
+
+No migration command or database query was run during this access check.
+The development database and fund-configuration connection were not substituted
+for S1/S2. No deployment, schedule change, source repair, or conversion write
+was attempted. No user-facing behavior changed; in-app help is unchanged.
+
+To resume, an authorized operator must supply sanitized evidence from the
+existing protected environment: the immutable task revision/image digest and
+its source commit; verified staging and employer prerequisites; the bounded
+and full dry-run envelopes; and a separately explicit rehearsal authorization
+with the target and writer-pause/timezone prerequisites confirmed. The known
+source type `complete` still needs identity-specific, evidence-backed disposition
+before accepting a full run; it is not covered by the 153 approved rejects.
+Q17's checked-in archive CTE still restricts matches to `parent_count = 0`;
+the executed-query discrepancy remains unresolved without the actual executed
+SQL or an independent in-boundary recheck.
+
+Real S1/S2 aggregate and record correspondence, reporting-month boundary and
+multiple-attempt comparisons, compliance storage-query results, before/after
+hours and financial totals, and repeat-run identity/side-effect proof all remain
+**not performed**, not passed or waived. No zero-delta claim can be made without
+those measurements. The older daily report remains inadmissible as importer
+evidence for the reasons above.
 
 ### Current reconciliation results and limits
 

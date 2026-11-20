@@ -1,9 +1,7 @@
 import type { HistoricalEmployerUpload } from "../../../shared/historical-employer-upload";
-import approved from "../../../docs/s1-migration/employer-wizard-approved-rejects.json";
 
 export const EMPLOYER_WIZARD_LOADER = "s1-employer-wizards";
 export const EMPLOYER_WIZARD_ENTITY = "s1_employer_wizard";
-export const APPROVED_HISTORY_REJECT = "approved_historical_upload";
 export const SOURCE_TYPES = ["sirius_smf_feed_ehrs", "sirius_smf_feed_ehrs_correction"] as const;
 
 export interface SourceUploadNode {
@@ -27,12 +25,6 @@ export function reference(value: unknown): number | undefined {
   const n = typeof v === "number" || (typeof v === "string" && /^[1-9]\d*$/.test(v)) ? Number(v) : NaN;
   return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 }
-export function approvedReject(nid: number, reason: string): boolean {
-  if (reason === "missing_upload_parent") return approved.missing_upload_parent.includes(nid);
-  if (reason === "missing_employer_node") return approved.missing_employer_node.includes(nid);
-  return false;
-}
-
 export function indexUploadParents(parents: SourceUploadNode[]): Map<number, SourceUploadNode[]> {
   const index = new Map<number, SourceUploadNode[]>();
   for (const parent of parents) {

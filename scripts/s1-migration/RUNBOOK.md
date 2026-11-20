@@ -7,31 +7,34 @@ representation is actual S2 employer-upload wizards, not placeholders. Historica
 file bytes are unavailable in S2; do not imply retrieval, resume, or rerun support.
 Do not backfill completed upload status from hours or auto-created period trackers.
 
-After the Q17 inspection, the operator approved the 153 inspected unresolved
-feeds as allowed rejects (139 referencing missing employer nodes, 14 missing
-upload parents). Preserve exact source-ID/reason membership and reported counts;
-do not allow unrelated new failures. See the mapping document's approved
-disposition and cohort manifest. This approval does not prove that these were
-test files, nor does it authorize deleting or repairing source data.
+The operator's 2026-11-20 instruction supersedes the original 153-ID allowance:
+use the ordinary reason-based reject policy, with `missing_upload_parent` and
+`missing_employer_node` allowed when explicitly passed. This includes new source
+IDs with those reasons, not only the original 139 missing-employer and 14
+missing-parent records. Keep all rejects counted and sampled. The original
+cohort manifest is historical evidence only, not a runtime dependency. This
+does not authorize deleting/repairing source data or allowing other failures.
 
 The source inventory, reopened DROP decisions, required protected-environment
 inspection, intended run order, and outstanding reconciliation evidence are in
 [Data Migration: Employer Wizards](../../docs/s1-migration/employer-wizard-history.md).
 The fleet stages `sirius_feed` and runs `load-employer-wizards.ts` immediately
 after `load-employers.ts`, before policies and the unchanged financial sequence.
-Both profiles allow `approved_historical_upload`; the loader applies that class
-only to exact approved source-ID/reason pairs. All other rejects block.
+Both profiles pass `--allow-rejects missing_upload_parent,missing_employer_node`
+to the loader. Ad hoc callers use the same argument; without it, these reasons
+also fail the normal reject gate. Already-mapped sources that become unresolved
+remain blocking `mapped_source_unresolved` failures.
 
 Run inside the authorized migration environment, after full verified staging of
 `sirius_feed`, `sirius_log`, and `grievance_shop` and the employer loader:
 
 ```sh
-npx tsx scripts/s1-migration/load-employer-wizards.ts --dry-run --limit 100 --allow-rejects approved_historical_upload
-npx tsx scripts/s1-migration/load-employer-wizards.ts --dry-run --allow-rejects approved_historical_upload
+npx tsx scripts/s1-migration/load-employer-wizards.ts --dry-run --limit 100 --allow-rejects missing_upload_parent,missing_employer_node
+npx tsx scripts/s1-migration/load-employer-wizards.ts --dry-run --allow-rejects missing_upload_parent,missing_employer_node
 # Authorized rehearsal only, with app writers stopped as for the other loaders:
-npx tsx scripts/s1-migration/load-employer-wizards.ts --allow-rejects approved_historical_upload
+npx tsx scripts/s1-migration/load-employer-wizards.ts --allow-rejects missing_upload_parent,missing_employer_node
 # Repeat exactly to prove unchanged identity and correspondence:
-npx tsx scripts/s1-migration/load-employer-wizards.ts --allow-rejects approved_historical_upload
+npx tsx scripts/s1-migration/load-employer-wizards.ts --allow-rejects missing_upload_parent,missing_employer_node
 ```
 
 Do not execute the write commands merely because the bounded plan passed.
@@ -50,7 +53,7 @@ notifications. Write-run standard envelopes appear in existing run monitoring.
 
 **Known unresolved extra anomaly:** Q12 found one feed with source type
 `complete`, outside the 4,316 correctly typed candidates. This becomes
-`unsupported_source_type`, not one of the 153 approved rejects. A current full
+`unsupported_source_type`, not either allowed missing-link reason. A current full
 rehearsal containing it will fail until its disposition is separately resolved.
 Do not broaden `--allow-rejects` to make it disappear.
 

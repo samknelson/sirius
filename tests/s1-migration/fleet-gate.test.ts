@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FLEET, fleetGateStatus } from "../../scripts/s1-migration/sync-config";
+import { FLEET, fleetGateStatus, PROFILES } from "../../scripts/s1-migration/sync-config";
 
 const passing = FLEET.map(({ id }) => ({ id, status: "pass" }));
 const skippedSeeders = passing.map((record) =>
@@ -9,6 +9,13 @@ const skippedSeeders = passing.map((record) =>
 );
 
 describe("sync fleet gate", () => {
+  it("passes only the operator-approved employer-upload reject reasons in both profiles", () => {
+    const expected = ["missing_upload_parent", "missing_employer_node"];
+    expect(PROFILES.dev.steps["employer-wizards"].allowRejects).toEqual(expected);
+    expect(PROFILES.production.steps["employer-wizards"].allowRejects).toEqual(expected);
+    expect(expected).not.toContain("unsupported_source_type");
+  });
+
   it("accepts precisely the two intentionally skipped daily seeders", () => {
     expect(fleetGateStatus(skippedSeeders, "daily", true)).toBe("pass");
     expect(fleetGateStatus(passing, "daily", false)).toBe("pass");

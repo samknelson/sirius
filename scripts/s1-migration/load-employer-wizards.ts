@@ -3,7 +3,7 @@
  * Run AFTER stage (feeds/logs/shops) and employers. No upload handlers/events.
  * --dry-run writes neither targets, mappings, nor run reports.
  * --force-reconcile is accepted for fleet parity; every run already proves targets.
- * --allow-rejects approved_historical_upload allows ONLY the approved ID/reason pairs.
+ * --allow-rejects missing_upload_parent,missing_employer_node allows those reasons.
  */
 import { createHash } from "node:crypto";
 import { s1EmployerWizards } from "../../server/plugins/system/oneoff/plugins/s1-migration/employer-wizards";
@@ -14,7 +14,7 @@ import { RejectLog } from "./lib/loader-utils";
 import { buildLoaderResult, emitLoaderResult, emptySummary, loaderExitCode, parseForceReconcile } from "./lib/sync";
 import {
   EMPLOYER_WIZARD_LOADER as LOADER,
-  APPROVED_HISTORY_REJECT, approvedReject, indexUploadParents, resolveUpload,
+  indexUploadParents, resolveUpload,
 } from "./lib/employer-wizards";
 
 // Fleet preflight reads this literal without importing executable loaders.
@@ -32,7 +32,9 @@ async function main() {
   }
   const allowIndex = process.argv.indexOf("--allow-rejects");
   const allowedRejects = allowIndex < 0 ? [] : (process.argv[allowIndex + 1] ?? "").split(",").filter(Boolean);
-  if (allowedRejects.some(r => r !== APPROVED_HISTORY_REJECT)) throw new Error("Only approved_historical_upload may be allowed.");
+  if (allowedRejects.some(r => !["missing_upload_parent", "missing_employer_node"].includes(r))) {
+    throw new Error("Only missing_upload_parent and missing_employer_node may be allowed.");
+  }
   phase = "migration timezone gate";
   await assertMigrationTimeZone();
   phase = "staging and destination prerequisites";
@@ -61,8 +63,7 @@ async function main() {
       candidates++;
       if (resolution.kind === "reject") {
         reasons[resolution.reason] = (reasons[resolution.reason] ?? 0) + 1;
-        const reason = mappedFeeds.has(feed.nid) ? "mapped_source_unresolved"
-          : approvedReject(feed.nid, resolution.reason) ? APPROVED_HISTORY_REJECT : resolution.reason;
+        const reason = mappedFeeds.has(feed.nid) ? "mapped_source_unresolved" : resolution.reason;
         rejects.add(reason, { sourceNid: feed.nid, reason: resolution.reason }, feed.nid);
         continue;
       }

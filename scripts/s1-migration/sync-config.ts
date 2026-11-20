@@ -434,7 +434,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       },
       "member-statuses": {},
       employers: {},
-      "employer-wizards": { allowRejects: ["approved_historical_upload"] },
+      "employer-wizards": { allowRejects: ["missing_upload_parent", "missing_employer_node"] },
       policies: { allowRejects: ["policy_unmatched_unreferenced"] }, // synthetic workers_v1 node
       "employer-policies": {},
       "employer-rates": { allowRejects: ["bad_rate"] }, // §4 row 5c
@@ -537,7 +537,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
           "shopcontact_employer_unresolved",
         ],
       },
-      "employer-wizards": { allowRejects: ["approved_historical_upload"] },
+      "employer-wizards": { allowRejects: ["missing_upload_parent", "missing_employer_node"] },
       policies: { allowRejects: ["policy_unmatched_unreferenced"] },
       "employer-policies": {},
       // §4 row 5c: bad_rate=2 known colon typos (`6:00`/`6:75`), cleanly
