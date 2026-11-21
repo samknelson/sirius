@@ -393,6 +393,8 @@ export function registerWizardDispatcherRoutes(
         processed: 0,
         total: 0,
         error: null,
+        completedAt: null,
+        failedAt: null,
         startedAt: new Date().toISOString(),
         heartbeatAt: new Date().toISOString(),
       }, true, {}, undefined, undefined, loaded.plugin.id, step.retrySafe ? "safe-retry" : "initial",
@@ -447,6 +449,7 @@ export function registerWizardDispatcherRoutes(
           });
           await boundedWrite(() => storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
             status: "failed",
+            failedAt: new Date().toISOString(),
             error:
               error instanceof Error ? error.message : "Run failed",
           }));

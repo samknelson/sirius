@@ -57,6 +57,7 @@ export function registerDenormRoutes(
 
   // List every denorm plugin config with its status breakdown.
   app.get("/api/denorm/configs", requireAccess("admin"), async (_req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
     try {
       const [configs, countsByConfig] = await Promise.all([
         storage.pluginConfigs.getByKind("denorm"),
@@ -81,6 +82,7 @@ export function registerDenormRoutes(
 
   // A single denorm plugin config with its status breakdown.
   app.get("/api/denorm/configs/:id", requireAccess("admin"), async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
     try {
       const { id } = req.params;
       const config = await storage.pluginConfigs.get(id);

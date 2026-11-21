@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "@/lib/date-format";
 
 interface DenormStatusCounts {
   ok: number;
@@ -93,9 +94,11 @@ export default function DenormConfigDetailPage() {
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const { data: config, isLoading, isError } = useQuery<DenormConfigDetail>({
+  const { data: config, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery<DenormConfigDetail>({
     queryKey: ["/api/denorm/configs", configId],
     enabled: !!configId,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 
   function invalidateCounts() {
@@ -302,6 +305,14 @@ export default function DenormConfigDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <span>Counts last refreshed: {dataUpdatedAt ? format(new Date(dataUpdatedAt), "PPpp") : "Not yet observed"}.
+          {" "}Source changes can queue new stale work after this reading.</span>
+        <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          <RefreshCw className="mr-2 h-4 w-4" />Refresh counts
+        </Button>
+      </div>
 
       {config.counts.total === 0 ? (
         <Card>

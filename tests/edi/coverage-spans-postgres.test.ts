@@ -17,6 +17,12 @@ vi.mock("../../server/db", () => ({ db: new Proxy({}, {
   },
 }) }));
 vi.mock("../../server/services/migration-runner", () => ({ registerMigration: () => {} }));
+vi.mock("../../server/storage/db", () => ({ db: new Proxy({}, {
+  get: (_target, key) => {
+    const value = state.db[key];
+    return typeof value === "function" ? value.bind(state.db) : value;
+  },
+}) }));
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => state.context.getStore() ?? state.db,
   runWithTransaction: (tx: unknown, fn: () => Promise<unknown>) => state.context.run(tx, fn),
@@ -42,6 +48,7 @@ import { createWorkerStorage } from "../../server/storage/workers";
 import { createWmbScanQueueStorage } from "../../server/storage/wmb-scan-queue";
 import { maintainedTerminations } from "../../server/plugins/trust/provider-edi/maintained-coverage";
 import { createTrustWmbEventsStorage } from "../../server/storage/trust/wmb-events";
+import { createWizardStorage } from "../../server/storage/wizards";
 
 // Always isolated: no application URL, credentials or production records.
 describe("maintained coverage on isolated PostgreSQL", () => {
@@ -241,6 +248,109 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     // Completion of upstream maintenance invalidates an already-ready empty
     // downstream answer in the SAME transaction as the newly retained event.
     await expect(assertCoverageEventsReady(ctx(), [], 0, 0, true)).rejects.toThrow("worker-benefit-coverage-spans");
+  });
+  it("converges upstream catch-up without re-invalidating identical termination evidence", async () => {
+    const events = createTrustWmbEventsStorage();
+    const markReady = async () => {
+      for (const entityId of ["worker", "dependent"]) {
+        const claim = await status.claimStaleForEntity({ ...seed, entityId }, `ready-${entityId}`);
+        if (claim) await applyComputed(plugin, "config", entityId, facts, claim.generation, claim.claimToken);
+      }
+    };
+    await markReady();
+    const before = await status.get("worker", "config");
+    const familyBefore = await status.get("dependent", "config");
+    const desired = [{ benefitId: "benefit", year: 2026, month: 5, data: { failedPlugins: [] } }];
+    // Repeated upstream computation, including reordered JSON object keys,
+    // must not change generation, timestamps, claims or status.
+    for (let i = 0; i < 3; i++) await events.replaceForWorkerAndType("worker", "terminate", desired);
+    expect(await status.get("worker", "config")).toEqual(before);
+    expect(await status.get("dependent", "config")).toEqual(familyBefore);
+    await expect(assertCoverageEventsReady(ctx(), [], 0, 0, true)).resolves.toMatchObject({ population: 1 });
+    expect(await status.countByStatusForConfig("config")).toMatchObject({ stale: 0, error: 0 });
+
+    // A finite second upstream batch genuinely changes evidence after zero.
+    await events.replaceForWorkerAndType("worker", "terminate", [
+      { ...desired[0], data: { failedPlugins: [], provenance: "coverage_inferred" } },
+    ]);
+    for (const entityId of ["worker", "dependent"])
+      expect(await status.get(entityId, "config")).toMatchObject({ status: "stale" });
+    await expect(assertCoverageEventsReady(ctx(), [], 0, 0, true)).rejects.toThrow("stale");
+    await markReady();
+    const inferred = await status.get("worker", "config");
+    await events.replaceForWorkerAndType("worker", "terminate", [
+      { ...desired[0], data: { provenance: "coverage_inferred", failedPlugins: [] } },
+    ]);
+    expect(await status.get("worker", "config")).toEqual(inferred);
+    // Scan replacement cannot erase inferred evidence when no scan confirms it.
+    await events.replaceForWorkerAndType("worker", "terminate", []);
+    expect(await status.get("worker", "config")).toEqual(inferred);
+    // But a confirmed scan at that key changes authority and must invalidate.
+    await events.replaceForWorkerAndType("worker", "terminate", desired);
+    expect(await status.get("worker", "config")).toMatchObject({ status: "stale", generation: inferred!.generation + 1 });
+    await markReady();
+    // Removing confirmed evidence invalidates both receivers, atomically.
+    await expect(state.db.transaction((tx: unknown) => state.context.run(tx, async () => {
+      await events.replaceForWorkerAndType("worker", "terminate", []);
+      expect(await status.get("dependent", "config")).toMatchObject({ status: "stale" });
+      throw new Error("rollback fixture");
+    }))).rejects.toThrow("rollback fixture");
+    expect(await status.get("worker", "config")).toMatchObject({ status: "ok" });
+    await events.replaceForWorkerAndType("worker", "terminate", []);
+    expect(await status.get("dependent", "config")).toMatchObject({ status: "stale" });
+    await markReady();
+    const empty = await status.get("worker", "config");
+    await events.replaceForWorkerAndType("worker", "terminate", []);
+    expect(await status.get("worker", "config")).toEqual(empty);
+    await expect(assertCoverageEventsReady(ctx(), [], 0, 0, true)).resolves.toMatchObject({ population: 1 });
+    // Preserve the confirmed-event fixture used by the later scan-reset test.
+    await events.replaceForWorkerAndType("worker", "terminate", desired);
+    await markReady();
+  });
+  it("admits an explicit failed-check retry and reads completed recomputation instead of replaying failure", async () => {
+    await pool.query(`CREATE TABLE wizards(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      date timestamp NOT NULL DEFAULT now(),type varchar NOT NULL,status varchar NOT NULL,
+      current_step varchar,entity_id varchar,data jsonb)`);
+    const wizards = createWizardStorage();
+    const wizard = await wizards.create({ type: "trust_provider_edi", status: "draft", data: {} });
+    const admit = async (runId: string) => {
+      const fresh = (await wizards.getById(wizard.id))!;
+      return wizards.writeStepProgress(wizard.id, "coverage", runId,
+        { status: "in_progress", error: null, failedAt: null, startedAt: new Date().toISOString() },
+        true, {}, undefined, undefined, wizard.type, "safe-retry", fresh.data);
+    };
+    await enqueueCoverageSpanInvalidations(["worker"]);
+    expect(await admit("failed-check")).toBeDefined();
+    let failure = "";
+    try { await assertCoverageEventsReady(ctx(), [], 0, 0, true); }
+    catch (error) { failure = (error as Error).message; }
+    expect(failure).toContain("stale");
+    await wizards.writeStepProgress(wizard.id, "coverage", "failed-check",
+      { status: "failed", error: failure, failedAt: new Date().toISOString() });
+    for (const entityId of ["worker", "dependent"]) {
+      const claim = (await status.claimStaleForEntity({ ...seed, entityId }, `retry-${entityId}`))!;
+      await applyComputed(plugin, "config", entityId, facts, claim.generation, claim.claimToken);
+    }
+    // Completing maintenance doesn't rewrite the old wizard's observation.
+    expect((await wizards.getById(wizard.id))?.data).toMatchObject({
+      progress: { coverage: { status: "failed", error: failure } },
+    });
+    const started = await admit("fresh-check");
+    expect(started?.data).toMatchObject({ progress: { coverage: {
+      status: "in_progress", runId: "fresh-check", error: null, failedAt: null,
+      attempts: [expect.objectContaining({ status: "failed", error: failure })],
+    } } });
+    expect(await admit("duplicate")).toBeUndefined();
+    const ready = await assertCoverageEventsReady(ctx(), [], 0, 0, true);
+    expect(await status.countByStatusForConfig("config")).toMatchObject({ ok: 2, stale: 0, error: 0 });
+    await wizards.writeStepProgress(wizard.id, "coverage", "fresh-check", { status: "completed" },
+      false, { coverageSnapshot: { population: ready.population, checkedAt: new Date().toISOString() } });
+    expect(await wizards.writeStepProgress(wizard.id, "coverage", "failed-check",
+      { status: "failed", error: failure })).toBeUndefined();
+    expect((await wizards.getById(wizard.id))?.data).toMatchObject({
+      progress: { coverage: { status: "completed", runId: "fresh-check", error: null } },
+      coverageSnapshot: { population: 1 },
+    });
   });
   it("scopes unsupported ending issues to enabled roles and refuses unknown roles", async () => {
     const context = ctx();
