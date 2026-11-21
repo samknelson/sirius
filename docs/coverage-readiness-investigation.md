@@ -1,5 +1,86 @@
 # Coverage readiness investigation
 
+## Open incident: staging evidence on 2026-11-21
+
+**Unresolved. No staging recovery is established.** The operator's latest
+reported check finished at **08:46:23 on 2026-11-21**, with 119,941 people,
+zero missing initial records, 113 stale/processing coverage-span rows and zero
+failed rows. Its timezone and selected configuration/run identity were not
+provided. Earlier counts of 255, 202 and zero do not establish convergence or
+identify a producer.
+
+Authorized GitHub read-only observations around **16:51 UTC** established:
+
+| Evidence | Result |
+| --- | --- |
+| `bao-stg` branch tip | `552d7e57398ece4f0e2e90bbd6430d53691e09bf`, matching the workspace HEAD |
+| GitHub deployment `7966195634`, environment `Staging` | Same revision; created **16:36:13 UTC**, reported successful **16:41:44 UTC** |
+| Previous staging deployment `7965721815` | `965123fd101c7cdef649b2b25b6aad8d7f8a69b3`; successful **16:03:41 UTC**, marked inactive **16:41:44 UTC** |
+
+The successful deployment status points to the
+[Flightcontrol staging deployment](https://app.flightcontrol.dev/org/cmkcpells0069h33qzcdocwlr/environments/cmsoy2hmz000nlnmja06p7r7q/deployments/cmwqmqpdj075228mw486sb789).
+These are deployment-controller records, **not** a read of the serving API
+process or its database. GitHub supplied no application environment URL.
+The initial query using environment `bao-stg` returned no deployments; the
+actual GitHub environment is `Staging`. A branch tip or an empty result for
+the wrong environment must not be treated as runtime deployment proof.
+
+If the operator's timestamp is Pacific standard time (UTC−08:00), that check
+finished at **16:46:23 UTC**, after the newer deployment reported success.
+This is conditional, not a confirmed correlation. Do not prescribe deploying
+the same revision again as a diagnosis.
+
+### Access blocker and next evidence
+
+The managed production SQL read refused with “This project has no production
+database.” Replit deployment metadata also reported no Replit deployment;
+neither result describes the external Flightcontrol database. No connected
+Flightcontrol, AWS or PostgreSQL integration was available. Existence-only
+checks found no `BAO_STG_DATABASE_URL`, `STAGING_DATABASE_URL`,
+`AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` secret in this workspace.
+No secret values were read. No authorized staging operator session was
+available.
+
+Consequently the running API revision, diagnostic table/schema, enabled
+configurations, claims, operation-counter deltas and current readiness remain
+unverified. There is no evidence yet classifying the 113 rows as finite work,
+starvation, legitimate mutations, redundant invalidation or a feedback loop.
+The source trace and prior synthetic results below are not that evidence.
+
+To resume, an authorized operator must supply an approved read-only staging
+access path, or collect a non-personal evidence bundle using their existing
+access:
+
+1. Confirm the operator check's timezone, EDI configuration ID, wizard/run ID
+   and start/finish times. Confirm the serving API image revision and startup
+   migration/drift result from the linked staging deployment, not the branch.
+2. Confirm `coverage_readiness_work` exists with the columns used by
+   `scripts/tools/coverage-readiness-snapshot.sql` before running its aggregate
+   query. Absence means diagnostics are unavailable, not zero producer work.
+3. Capture the existing repeatable-read snapshot for both required denorm
+   configurations, then another across an **already scheduled** producer/drain
+   cycle. Include the selected configuration IDs and effective enabled state,
+   relevant scan/drain cron settings and bounded maintenance run times/results.
+   Compare counters only within the same configuration, deployed/schema
+   baseline and interval. Do not attach names, worker IDs, scan summaries,
+   credentials, cookies or raw request/response payloads.
+4. Use those observations to choose a correction or propose a specific
+   maintenance action for separate authorization. Do not clear status rows,
+   change schedules, run eligibility scans or launch a rebuild to collect
+   evidence. After correction and any authorized maintenance, capture a fresh
+   **coverage check only**, without generating or delivering a carrier file,
+   and observe the next relevant producer/drain cycle.
+
+Only this investigation record changed in this incident pass; no application
+defect was inferred or patched without staging evidence. No staging mutation,
+deployment, scan, rebuild, cron change or carrier action was performed.
+Existing in-app denorm/EDI help still accurately distinguishes missing
+backfill from stale recomputation, preserves strict readiness, and warns
+against clearing coverage or running eligibility scans as a refresh. No
+product behavior or recovery action changed, so no help update or new
+regression fixture is warranted yet. The signed-in UI and staging recovery
+have not been verified.
+
 ## Evidence and limits
 
 On 2026-11-21 the workspace's managed production read refused because this
