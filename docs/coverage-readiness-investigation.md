@@ -201,6 +201,52 @@ generation or delivery. The operator performs the actions in their existing
 authorized session; the executor still has no direct staging access.
 **Approval is not evidence that an action ran or that staging recovered.**
 
+### Ready population, followed by an ending-evidence refusal
+
+The operator reported independently disabling **Process WMB Batch** because
+its ongoing processing kept adding stale spans. This was an operator action,
+not an executor change and not part of the previously approved scope, which
+explicitly left scans running. Record the operational consequence: unfinished
+batch scan work is paused, not completed. No re-enable or further cron change
+has been authorized or performed by the executor.
+
+At **2026-11-21 17:42:26.776829+00**, both selected denorm configurations had
+**119,941 OK, zero missing, zero stale and zero failed**, with admin and
+whole-worker EDI counts agreeing. The operator's one span recompute returned
+**zero recomputed** and a refresh left counts unchanged. That is an empty
+stale batch, not a failed recompute. This is stronger operational evidence
+that ongoing scan/source work was preventing a quiet readiness observation;
+it is not proof of convergence with scans enabled.
+
+The subsequent saved check, displayed finished **2026-11-21 09:45:07 AM**,
+refused with **“Coverage ending evidence needs correction:
+termination-coverage-missing”**, rather than the previous stale-readiness
+error. If displayed in UTC−08:00, this finish is **17:45:07 UTC**; retain the
+displayed value until its raw timestamp is supplied. The attached error
+lists **21 examples**, all for one benefit's **November 2026** terminations.
+The reader deliberately limits its diagnostic query to 21 rows, so this
+does not establish the total affected population. Do not copy the supplied
+worker/event identifiers into this incident record.
+
+The check therefore reached maintained ending-evidence validation beyond
+the initial readiness gate, but **did not complete Coverage sources**.
+An OK denorm status means computation completed; it does not mean the
+computed payload is free of evidence issues. Span derivation records
+`termination-coverage-missing` when a retained termination event has no
+immediately preceding coverage month and has not been retired by current
+or later coverage. For the supplied examples the missing prerequisite at
+derivation was **October coverage supporting a November ending**.
+
+This narrows the remaining blocker to source/evidence integrity or
+invalidation, not an unprocessed stale-row count. Before any correction,
+compare the persisted issue against current prior-month coverage, retained
+event provenance, the supporting scan's status, and unfinished scan work for
+that scan owner. That distinguishes a still-valid missing-source refusal
+from a ready-but-outdated diagnostic or bad termination production. Do not
+delete events, invent October coverage/dates, exclude people, acknowledge
+the issue or repeatedly rebuild to get past it. No successful check or
+carrier generation/delivery was reported; the incident remains unresolved.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
