@@ -78,6 +78,65 @@ deltas before authorizing any maintenance, and retain a fresh successful
 coverage check plus a subsequent producer/drain observation as the recovery
 criterion. No carrier generation or delivery is authorized.
 
+### Second operator snapshot at 17:10 UTC
+
+At **2026-11-21 17:10:32.663204+00**, spans had **75 stale**, zero missing
+or failed, with admin and whole-worker EDI counts still agreeing. Termination
+remained **119,941 OK**, zero missing, stale or failed. Both configurations
+remained enabled with the same IDs.
+
+Across the **15 minutes 55.737205 seconds** between snapshots:
+
+| Operation | Additional calls | Additional affected invalidations |
+| --- | ---: | ---: |
+| Upstream scan completion handoff | 381 | 469 |
+| Span role-history source change | 88 | 235 |
+| Span scan-worker requeue | 1 | 1 |
+| Span termination-evidence change | 5 | 5 |
+
+Pending monthly jobs fell **54,239 → 53,858** (381 fewer); processing remained
+14. These concurrent figures support ongoing scan production rather than a
+globally stopped scan queue, without proving each source invalidation came
+from those exact jobs. The success/failure counts are rolling one-hour
+windows, so their difference is not an interval completion count.
+
+Newest OK span computation advanced **16:51:01.095 → 17:00:47.909**.
+The oldest currently stale span timestamp advanced
+**16:50:53.585 → 17:00:47.176**, and newest stale was **17:10:25.972**;
+all 75 were unclaimed. The data demonstrates computation progress and fresh
+invalidations; it does not show one unchanged set of rows stuck since the
+failed check. Since an invalidation replaces `stale_at`, this is not proof
+that every prior stale worker was successfully recomputed.
+
+The operator also supplied saved cron configurations at **17:11:18 UTC**:
+`denorm_backfill` enabled at `0 * * * *`, `denorm_stale` enabled at
+`30 * * * *`, and `process-wmb-batch` enabled at `*/4 * * * *`.
+The queued scan population covered **October and November 2026**:
+26,904 and 26,938 pending respectively, with 7 processing for each.
+The November processing group still included the November 20 01:18:19 pick.
+No ownership/reset is inferred or authorized.
+
+The supplied **Denorm Stale Recompute** live run reported **396 recomputed,
+zero errors**, including **369 spans and 27 role-history rows**. Its UI
+showed a 00:30 start, an 08:31 completion and 59.94-second duration; those
+rendered times cannot be treated as one consistent timezone or correlated
+to this interval without raw timestamps. In any case it is not the missing
+ten-minute emitter history.
+
+**Remaining narrow diagnostic gap:** the actual ten-minute drain is driven
+by **Cron Tick Emitter**, plugin ID `cron-tick-emitter`. The earlier settings
+query filtered it out. Obtain its enabled switch, saved schedule and live
+history covering 17:00 and 17:10 UTC, including `emitted`, `since` and any
+subscriber `failures`. A nominally successful emitter run may include
+subscriber failures in its summary. The 17:10 snapshot was only 32 seconds
+after the boundary; it cannot alone establish a missed or blocked drain.
+
+These two snapshots explain recurring recent work through observed source
+operations and bounded processing, but do not yet prove a specific
+application defect, all-source convergence, or successful staging recovery.
+No code, scheduling or maintenance correction was performed. The next step
+is emitter evidence, not another blind rebuild or repeated zero-count chase.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
