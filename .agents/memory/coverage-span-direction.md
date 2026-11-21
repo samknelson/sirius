@@ -20,6 +20,20 @@ runtime historical reconstruction. Label synthetic verification separately from
 authorized staging evidence. No deployment, eligibility scans or carrier delivery
 is authorized by this implementation work.
 
+Upstream recomputation alone is not a new source observation: only semantic
+evidence changes should invalidate ready consumers. A zero-stale observation
+is neither a durable promise nor proof that upstream maintenance has finished.
+
+**Why:** termination replacement could requeue spans even for empty or identical
+event sets. Finite upstream catch-up could thus create new downstream work after
+an operator observed zero. That mechanism does not by itself prove an infinite
+loop or explain a remote count without contemporaneous producer evidence.
+
+**How to apply:** keep actual source changes and invalidation in one transaction,
+preserve inferred-versus-confirmed authority, compare the same config and
+observation time, and distinguish saved wizard failures from fresh readiness.
+Never suppress genuine invalidation just to restore a zero-stale display.
+
 Readiness of a derived consumer does not prove completeness of an upstream
 derived source. Ending-enabled feeds must gate both maintained spans and the
 termination-event producer; a span may otherwise compute an empty ending before

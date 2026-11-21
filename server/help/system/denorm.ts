@@ -2,7 +2,7 @@ import type { SystemHelpEntry } from "./index";
 
 export const denormStatusHelp: SystemHelpEntry = {
   id: "system:denorm-status",
-  paths: ["/admin/denorm"],
+  paths: ["/admin/denorm", "/admin/denorm/%"],
   summary: "Each denorm plugin keeps a slice of data in sync. These numbers show how many records are up to date (OK), need recomputing (stale), or failed (error).",
   details: `
     <h2>What is denorm?</h2>
@@ -18,6 +18,8 @@ export const denormStatusHelp: SystemHelpEntry = {
     </ul>
 
     <h3>Where the numbers come from</h3>
+    <p>On a configuration detail page, <strong>Counts last refreshed</strong> dates the displayed reading. Use <strong>Refresh counts</strong> to read it again; returning to the page or window also refreshes it. The page does not continuously poll. New source changes can queue stale work even after a zero-stale reading. Stale includes records currently being processed.</p>
+    <p>For EDI, compare the same configuration and observation time. <strong>Coverage sources</strong> checks the entire worker population, including workers with no status row, and also requires <strong>Trust WMB Terminate Events</strong> when endings are enabled. Its saved failure is historical, not a live maintenance count. Drain upstream termination work and then stale spans before explicitly checking again. Backfill is needed for missing initial records, not simply because an earlier check found stale records. Do not use <strong>Clear all records</strong> to refresh counts.</p>
     <p>Configuration names and enabled switches are saved in the <strong>plugin_configs</strong> table. For each tracked entity, the <strong>denorm</strong> table stores its entity identifier, configuration, status, and bookkeeping such as when it was computed or marked stale and any error message. The Status table groups those saved status rows by configuration; it is not a live recount of every possible source entity.</p>
     <p>Changes to source data can trigger a registered plugin to recompute a result. The scheduled backfill sweep can find missing results (and remove orphaned ones) and queue work as stale. The scheduled stale sweep recalculates queued results and marks them OK or error; both jobs normally run hourly. Eligible plugins can also be run from their detail pages. Work can be processed in batches, so a backlog may take more than one run to clear. If a plugin or its configuration is disabled, its scheduled work is skipped. Consult the detail page and job history when counts do not look right.</p>
 

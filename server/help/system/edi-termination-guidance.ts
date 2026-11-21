@@ -67,14 +67,24 @@ export const ediTerminationGuidance = `
   <p>Coverage checks distinguish initial backfill, stale or processing records, failed
   records, and ready records. An empty span list is not proof of no coverage while
   maintenance is incomplete. The check reports counts across the worker maintenance
-  population and refuses to estimate dates. Ask an administrator to enable
-  <strong>Worker benefit coverage spans</strong> under denormalization settings, run
-  the existing backfill and recompute operations, and review failed records before
-  rebuilding them. Files that include endings also require <strong>Trust WMB
+  population and refuses to estimate dates. Ask an administrator to verify
+  <strong>Worker benefit coverage spans</strong> under denormalization settings.
+  Backfill queues missing initial records; recompute processes stale records.
+  Failed records need administrator review before rebuilding. Do not clear coverage
+  or run eligibility scans to refresh this reading. Files that include endings also require <strong>Trust WMB
   Terminate Events</strong> to be enabled and fully current; ready spans cannot
   substitute for unfinished ending evidence. Then select <strong>Check coverage again</strong>. Backfill queues
   work; it does not mean computation has finished. Coverage changed during a check
   or generation requires another check and generation before delivery.</p>
+  <p><strong>Saved failed coverage check</strong> shows a historical result and its
+  recorded finish time (or start time for older checks), not current maintenance
+  counts. Older checks without a timestamp say so. Refresh the relevant denorm
+  detail page with <strong>Refresh counts</strong>. Upstream termination recomputation
+  can queue new span work when evidence changes; finish that work before retrying.
+  <strong>Check coverage again</strong> starts a new read after a confirmed failure;
+  once admitted, it replaces the old failure display with progress. A refused or
+  unavailable admission does not erase the saved failure. A new check still refuses
+  any genuinely missing, stale, processing or failed maintenance records.</p>
   <p><strong>Coverage sources</strong> shows which coverage records a membership file
   leaves out, and why, before you generate it. Coverage conflicts when one person has
   more than one coverage record for the same benefit and month with a different

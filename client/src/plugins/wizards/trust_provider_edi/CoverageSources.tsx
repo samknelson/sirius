@@ -142,6 +142,13 @@ export function CoverageSources({ wizardId, data }: WizardStepComponentProps) {
             <p>Heartbeat is missing or stale. Work may be interrupted; do not start another check. Ask an administrator to investigate.</p>}
         </div>}
         {!statusUnavailable && progress?.status === "failed" && <Alert variant="destructive"><AlertDescription>
+          <p className="font-medium">Saved failed coverage check</p>
+          <p className="text-sm">
+            {progress.failedAt ? <>Finished <time dateTime={progress.failedAt}>{formatWhen(progress.failedAt)}</time>. </>
+              : progress.startedAt ? <>Started <time dateTime={progress.startedAt}>{formatWhen(progress.startedAt)}</time>; finish time was not recorded. </>
+                : "This older check has no recorded observation time. "}
+            These are historical results, not live maintenance counts.
+          </p>
           <span className="whitespace-pre-wrap break-words">{progress.error || "The coverage check failed."}</span>{" "}
           Nothing was excluded or acknowledged. Resolve what the message names, then use Check coverage again.
         </AlertDescription></Alert>}

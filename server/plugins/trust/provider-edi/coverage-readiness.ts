@@ -44,7 +44,7 @@ export async function assertCoverageEventsReady(
   if (row.missing || row.stale || row.failed) {
     throw new CoverageEventsNotReadyError(
       `${pluginId}: ${row.population} people in the maintenance population: ${row.missing} awaiting initial backfill, ${row.stale} stale or processing, ${row.failed} failed. ` +
-      "Run the existing denorm backfill and recompute operations; failed records need administrator review and rebuild before retrying.");
+      "Refresh this configuration's denorm counts. Backfill only missing initial records; recompute stale records (upstream termination events before coverage spans). Failed records need administrator review before retrying.");
   }
   population = Number(row.population);
   revisions.push(`${config.id}:${row.revision}`);

@@ -4,7 +4,7 @@ import type { EdiCoverageReview } from "@shared/edi-coverage-choices";
 
 // A gateway's HTML is never a useful status or a confirmed job failure.
 async function request<T>(url: string, input?: unknown): Promise<T> {
-  const response = await fetch(url, input === undefined ? { credentials: "include" } : {
+  const response = await fetch(url, input === undefined ? { credentials: "include", cache: "no-store" } : {
     method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ input }),
   });
@@ -39,7 +39,8 @@ export async function downloadStepExport(wizardId: string, stepId: string, forma
 }
 
 type Progress = { status?: string; runId?: string; phase?: string; percentComplete?: number | null;
-  processed?: number; total?: number; error?: string; heartbeatAt?: string };
+  processed?: number; total?: number; error?: string | null; heartbeatAt?: string;
+  startedAt?: string; failedAt?: string | null; completedAt?: string | null };
 
 export function useCoverageReview(wizardId: string, autoStart = true) {
   const queryClient = useQueryClient();
@@ -65,7 +66,16 @@ export function useCoverageReview(wizardId: string, autoStart = true) {
   });
   const reloadStatus = () => queryClient.invalidateQueries({ queryKey: [wizardUrl] });
   const start = useMutation({
-    mutationFn: (input: Record<string, unknown>) => request(`/api/wizards/${wizardId}/dispatch/coverage/run`, input),
+    mutationFn: (input: Record<string, unknown>) =>
+      request<{ started: boolean; runId: string }>(`/api/wizards/${wizardId}/dispatch/coverage/run`, input),
+    onSuccess: admitted => {
+      // Only a confirmed admission replaces the saved failure. Do not leave
+      // it displayed until the next poll, or optimistically clear it on click.
+      queryClient.setQueryData<{ data?: { progress?: { run?: Progress; coverage?: Progress } } }>(
+        [wizardUrl], old => old ? { ...old, data: { ...old.data, progress: {
+          ...old.data?.progress, coverage: { status: "in_progress", runId: admitted.runId, phase: "Starting" },
+        } } } : old);
+    },
     onSettled: reloadStatus,
   });
   // Once per visit: a run with no check yet, or one whose saved check answers

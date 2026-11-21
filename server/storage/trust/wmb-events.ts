@@ -99,7 +99,6 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
     async replaceForWorkerAndType(workerId: string, eventType: string, events: TrustWmbEventInput[]): Promise<void> {
       await runInTransaction(async () => {
         const client = getClient();
-        if (eventType === "terminate") await enqueueCoverageSpanInvalidations([workerId]);
 
         const sliceWhere = and(
           eq(trustWmbEvents.workerId, workerId),
@@ -116,7 +115,8 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
             data: trustWmbEvents.data,
           })
           .from(trustWmbEvents)
-          .where(sliceWhere);
+          .where(sliceWhere)
+          .for("update");
 
         const desiredKeys = new Set(events.map(e => `${e.benefitId}:${e.year}:${e.month}`));
         const staleIds = existing
@@ -127,9 +127,11 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
           await client.delete(trustWmbEvents).where(inArray(trustWmbEvents.id, staleIds));
         }
 
-        // Upsert the desired rows (refreshing data on conflict).
+        let changed = staleIds.length > 0;
+        // JSONB equality ignores object-key order. A recomputation of identical
+        // evidence must not requeue ready spans (including empty -> empty).
         for (const event of events) {
-          await client
+          const written = await client
             .insert(trustWmbEvents)
             .values({
               workerId,
@@ -148,8 +150,15 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
                 trustWmbEvents.eventType,
               ],
               set: { data: event.data ?? null },
-            });
+              setWhere: sql`${trustWmbEvents.data} IS DISTINCT FROM excluded.data`,
+            })
+            .returning({ id: trustWmbEvents.id });
+          changed ||= written.length > 0;
         }
+        // Keep source changes and family invalidation atomic. Inferred rows
+        // retained above do not count as a change; confirmed collisions do.
+        if (eventType === "terminate" && changed)
+          await enqueueCoverageSpanInvalidations([workerId]);
       });
     },
 
