@@ -351,6 +351,51 @@ The screenshot browser reported a local Vite hot-reload WebSocket connection
 failure; the proxied application boot-status and login requests succeeded.
 None of this development verification is staging recovery evidence.
 
+### Later October deletions confirmed at 19:55 UTC
+
+The operator's read-only summary at **2026-11-21 19:55:46.854792+00**
+returned all **21** previously-covered cases in one group: the latest
+terminal October scan succeeded, completed **after** the supporting November
+scan, and recorded deletion of the affected person's benefit. Combined with
+the earlier evidence (October present in the November snapshot, absent now),
+this supports later October source mutation as the explanation for this
+group's inconsistent November endings. It is not an unprocessed span row:
+the span computation correctly reported the resulting inconsistency.
+
+This does not establish when either job was originally enqueued, exclude
+intervening writes, or prove that October's eligibility decision was wrong.
+Do not relabel the November snapshot as a failed start: it really recorded
+previous coverage when evaluated. The local current-only correction
+deliberately retains these 21 events and the downstream refusal.
+
+Queue trace: bulk `enqueueMonth` inserts jobs without `scheduled_for`.
+`claimNextJob` orders by `scheduled_for ASC NULLS LAST, id ASC`, not coverage
+year/month; `SKIP LOCKED` prevents duplicate claims, not cross-month
+dependency violations. `claimJobById` also has no predecessor-month guard.
+These paths permit interleaved month evaluation, but the supplied aggregate
+does not distinguish overlapping batches from a deliberately later October
+correction. A global queue redesign, chronological claim guard, automatic
+rescan cascade or synthetic event retirement is therefore not justified by
+this evidence alone.
+
+The required recovery for this group is an operator-approved correction
+based on authoritative source history, not deletion of offending events.
+If October's corrected grants are accepted as authoritative, any proposed
+November re-evaluation must first verify those grants are committed and that
+earlier work for the affected families is settled; preserve the existing
+snapshots before an explicitly bounded chronological rescan. Such scans can
+cause billing or notifications and remain **unauthorized** here. Changed
+eligibility decisions must use the existing queue-completion and
+ownership-aware denorm paths. The seven inferred endings still need their
+own source-history classification; a successful scan is not their authority.
+
+An empty monthly queue is not itself the EDI readiness condition. Ongoing
+scans can legitimately change sources and invalidate whole-population
+readiness; pausing the producer only isolates this behavior. Recovery still
+requires approved handling of the paused batch, a fresh successful
+coverage-only check and observation across the relevant producer/drain
+cycle, without generating or delivering a carrier file.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
