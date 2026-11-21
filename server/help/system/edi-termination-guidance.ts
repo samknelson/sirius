@@ -79,8 +79,11 @@ export const ediTerminationGuidance = `
   <p><strong>Saved failed coverage check</strong> shows a historical result and its
   recorded finish time (or start time for older checks), not current maintenance
   counts. Older checks without a timestamp say so. Refresh the relevant denorm
-  detail page with <strong>Refresh counts</strong>. Upstream termination recomputation
-  can queue new span work when evidence changes; finish that work before retrying.
+  detail page with <strong>Refresh counts</strong>. A pending or requeued WMB scan
+  temporarily makes its prior summary unavailable. When it finishes, a changed
+  termination or an affected inferred ending can queue new span work. Finish pending
+  and processing scans, then let <strong>Trust WMB Terminate Events</strong> and
+  <strong>Worker benefit coverage spans</strong> become current before retrying.
   <strong>Check coverage again</strong> starts a new read after a confirmed failure;
   once admitted, it replaces the old failure display with progress. A refused or
   unavailable admission does not erase the saved failure. A new check still refuses

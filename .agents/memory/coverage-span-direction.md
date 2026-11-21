@@ -34,6 +34,22 @@ preserve inferred-versus-confirmed authority, compare the same config and
 observation time, and distinguish saved wizard failures from fresh readiness.
 Never suppress genuine invalidation just to restore a zero-stale display.
 
+WMB scan completion must not blanket-invalidate every coverage span after also
+staling the termination producer. Confirmed event changes invalidate spans at
+the semantic event write; completion directly invalidates only retained
+inferred endings whose scan-summary availability can change without changing
+that event. Requeue and reset still invalidate every captured old recipient.
+
+**Why:** the completion handoff and later termination write can otherwise bump
+the same span generation twice. But span derivation also checks which completed
+scan supports an inferred ending, so dropping every completion invalidation
+would leave a ready span based on an obsolete status transition.
+
+**How to apply:** when changing scan-result handoffs, preserve termination
+seeds and recipient snapshots, target direct span work only at status-sensitive
+inferred evidence, and let confirmed-event writes own their invalidation. Keep
+generation fencing; do not skip work only because a row is already stale.
+
 Readiness of a derived consumer does not prove completeness of an upstream
 derived source. Ending-enabled feeds must gate both maintained spans and the
 termination-event producer; a span may otherwise compute an empty ending before

@@ -1,6 +1,10 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient, runInTransaction, runWithTransaction } from './transaction-context';
-import { captureCoverageScanReceivers, enqueueCoverageSpanInvalidations } from "./trust/coverage-span-invalidation";
+import {
+  captureCoverageScanReceivers,
+  enqueueCoverageSpanInvalidations,
+  recordCoverageReadinessWork,
+} from "./trust/coverage-span-invalidation";
 import {
   trustWmbScanStatus,
   trustWmbScanQueue,
@@ -8,6 +12,7 @@ import {
   contacts,
   employers,
   denorm,
+  trustWmbEvents,
   type TrustWmbScanStatus,
   type TrustWmbScanQueue,
 } from "@shared/schema";
@@ -558,7 +563,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           .select({ id: trustWmbScanQueue.id, workerId: trustWmbScanQueue.workerId })
           .from(trustWmbScanQueue)
           .where(eq(trustWmbScanQueue.statusId, status.id));
-        await runWithTransaction(tx, () => enqueueCoverageSpanInvalidations(retainedReceivers));
+        await runWithTransaction(tx, () => enqueueCoverageSpanInvalidations(retainedReceivers, "scan_month_reset"));
 
         // Drop entries for workers no longer in the run's population (e.g. a
         // worker who left the employer since the previous run of this scope).
@@ -643,7 +648,9 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
         if (existing) {
           await runWithTransaction(tx, async () => enqueueCoverageSpanInvalidations(
-            await captureCoverageScanReceivers(eq(trustWmbScanQueue.id, existing.id))));
+            await captureCoverageScanReceivers(eq(trustWmbScanQueue.id, existing.id)),
+            "scan_worker_requeue",
+          ));
           const [updated] = await tx
             .update(trustWmbScanQueue)
             .set({
@@ -786,14 +793,14 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
         if (!job) return { scanCompleted: false };
 
-        // Durable queue→denorm handoff: mark the entity's denorm row `stale`
+        // Durable queue→denorm handoff: mark the termination producer stale
         // IN THE SAME TRANSACTION that records the successful result, so a
-        // scan can never commit as `success` without its downstream denorm
+        // scan can never commit as `success` without its upstream denorm
         // processing being durably enqueued (a crash or write failure rolls
         // both back and the job is retried). The completion-event handler
-        // recomputes immediately and flips the row back to `ok`; if it is
-        // missing, skipped or fails, the row stays `stale` for the hourly
-        // denorm_stale cron.
+        // recomputes immediately. Semantic termination changes invalidate
+        // spans from their owning write; inferred events also need a targeted
+        // handoff because the span reader observes scan-summary availability.
         for (const seed of staleSeed ? (Array.isArray(staleSeed) ? staleSeed : [staleSeed]) : []) {
           const now = new Date();
           await tx
@@ -821,6 +828,65 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
                 claimAt: null,
               },
             });
+        }
+
+        const seeds = staleSeed ? (Array.isArray(staleSeed) ? staleSeed : [staleSeed]) : [];
+        const uniqueSeeds = new Set(seeds.map(seed => `${seed.configId}\u0000${seed.entityId}`));
+        const handoffCounts = new Map<string, number>();
+        for (const seedKey of uniqueSeeds) {
+          const [configId] = seedKey.split("\u0000");
+          handoffCounts.set(configId, (handoffCounts.get(configId) ?? 0) + 1);
+        }
+        await runWithTransaction(tx, async () => {
+          for (const [configId, count] of handoffCounts)
+            await recordCoverageReadinessWork(configId, "wmb_scan_completion_handoff", count);
+        });
+
+        const summary = resultSummary as {
+          people?: Array<{ workerId?: unknown }>;
+          actions?: Array<{
+            workerId?: unknown;
+            benefitId?: unknown;
+            scanType?: unknown;
+            eligible?: unknown;
+            action?: unknown;
+            executionError?: unknown;
+          }>;
+        } | null;
+        if (summary) {
+          const affectedWorkers = new Set<string>([job.workerId]);
+          for (const candidate of [...(summary.people ?? []), ...(summary.actions ?? [])])
+            if (typeof candidate?.workerId === "string" && candidate.workerId)
+              affectedWorkers.add(candidate.workerId);
+          const eventTable = await tx.execute(sql`
+            SELECT to_regclass('public.trust_wmb_events') IS NOT NULL AS present
+          `);
+          if (eventTable.rows[0]?.present === true) {
+            const inferred = await tx.select({
+              workerId: trustWmbEvents.workerId,
+              benefitId: trustWmbEvents.benefitId,
+            })
+              .from(trustWmbEvents)
+              .where(and(
+                inArray(trustWmbEvents.workerId, [...affectedWorkers]),
+                eq(trustWmbEvents.year, job.year),
+                eq(trustWmbEvents.month, job.month),
+                eq(trustWmbEvents.eventType, "terminate"),
+                sql`${trustWmbEvents.data}->>'provenance' = 'coverage_inferred'`,
+              ));
+            const confirmedByThisScan = new Set((summary.actions ?? [])
+              .filter(action => action && !action.executionError && action.scanType === "continue" &&
+                (action.eligible === false || action.action === "delete") &&
+                typeof action.benefitId === "string")
+              .map(action => `${typeof action.workerId === "string" ? action.workerId : job.workerId}\u0000${action.benefitId}`));
+            const recipientsNeedingDirectInvalidation = inferred
+              .filter(row => !confirmedByThisScan.has(`${row.workerId}\u0000${row.benefitId}`))
+              .map(row => row.workerId);
+            await runWithTransaction(tx, () => enqueueCoverageSpanInvalidations(
+              [...new Set(recipientsNeedingDirectInvalidation)],
+              "scan_completion_inferred_evidence",
+            ));
+          }
         }
 
         const { started: benefitsStarted, continued: benefitsContinued,
@@ -916,7 +982,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
       // Mark affected months as stale
       if (result.length > 0) {
-        await enqueueCoverageSpanInvalidations(retainedReceivers);
+        await enqueueCoverageSpanInvalidations(retainedReceivers, "scan_worker_reset");
         const statusIds = Array.from(new Set(result.map(r => r.statusId)));
         await client
           .update(trustWmbScanStatus)
@@ -986,7 +1052,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
       // Mark affected months as stale (same semantics as the single form).
       if (statusIds.size > 0) {
-        await enqueueCoverageSpanInvalidations([...retainedReceivers]);
+        await enqueueCoverageSpanInvalidations([...retainedReceivers], "scan_worker_bulk_reset");
         await client
           .update(trustWmbScanStatus)
           .set({ status: "stale" })

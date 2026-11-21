@@ -48,6 +48,16 @@ FROM trust_wmb_scan_queue
 WHERE status IN ('pending', 'processing') OR completed_at >= now() - interval '1 hour'
 GROUP BY status, trigger_source;
 
+-- Bounded producer attribution: one cumulative row per config and operation,
+-- with no worker ids or source/eligibility payloads. This is not an event log.
+SELECT transaction_timestamp() AS observed_at, c.id AS config_id, c.plugin_id,
+  w.operation, w.call_count, w.affected_count, w.last_affected_count, w.last_at
+FROM coverage_readiness_work w
+JOIN plugin_configs c ON c.id = w.config_id
+WHERE c.plugin_kind = 'denorm'
+  AND c.plugin_id IN ('worker-benefit-coverage-spans', 'trust-wmb-terminate')
+ORDER BY c.plugin_id, w.operation;
+
 -- These are saved observations, NOT current maintenance counts.
 SELECT transaction_timestamp() AS observed_at,
   data #>> '{config,configId}' AS edi_config_id,

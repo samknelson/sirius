@@ -298,6 +298,7 @@ import "./core/1223_contact_postal_street2";
 import "./core/1224_edi_readiness_index";
 import "./core/1225_denorm_spans";
 import "./core/1226_reconcile_denorm_spans";
+import "./core/1227_coverage_readiness_work";
 
 export {
   runMigrations,

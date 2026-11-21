@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, bigserial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, bigint, unique, serial, bigserial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { onlinePaymentSettingsSchema } from "./ledger/online-payments";
@@ -2673,6 +2673,34 @@ export const denorm = pgTable("denorm", {
   index("denorm_config_idx").on(table.configId),
   index("denorm_config_status_stale_idx").on(table.configId, table.status, table.staleAt),
   index("denorm_stale_claim_idx").on(table.configId, table.status, table.claimAt, table.staleAt),
+]);
+
+// Privacy-safe, bounded attribution for coverage readiness work. Rows are
+// aggregated by plugin configuration and a fixed operation category; no
+// worker IDs, source payloads, or per-operation history are retained.
+export const coverageReadinessWork = pgTable("coverage_readiness_work", {
+  configId: varchar("config_id")
+    .notNull()
+    .references(() => pluginConfigs.id, { onDelete: "cascade" }),
+  operation: varchar("operation").notNull(),
+  callCount: bigint("call_count", { mode: "number" }).notNull().default(0),
+  affectedCount: bigint("affected_count", { mode: "number" }).notNull().default(0),
+  lastAffectedCount: integer("last_affected_count").notNull().default(0),
+  lastAt: timestamp("last_at").notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ name: "coverage_readiness_work_pk", columns: [table.configId, table.operation] }),
+  check("coverage_readiness_work_operation_check", sql`${table.operation} IN (
+    'role_history_source_change',
+    'termination_evidence_change',
+    'scan_month_reset',
+    'scan_worker_requeue',
+    'scan_worker_reset',
+    'scan_worker_bulk_reset',
+    'scan_completion_inferred_evidence',
+    'wmb_scan_completion_handoff',
+    'migration_termination_reconciliation',
+    'employer_classification_change'
+  )`),
 ]);
 
 export const insertDenormSchema = createInsertSchema(denorm);

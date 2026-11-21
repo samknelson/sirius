@@ -46,7 +46,7 @@ export async function enqueueWorkerBenefitRoleHistoryInvalidations(
 ): Promise<void> {
   const ids = Array.from(new Set(workerIds.filter(Boolean)));
   if (!ids.length) return;
-  await enqueueCoverageSpanInvalidations(ids);
+  await enqueueCoverageSpanInvalidations(ids, "role_history_source_change");
   const client = getClient();
   const [config] = await client
     .select({ id: pluginConfigs.id })

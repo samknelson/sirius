@@ -156,7 +156,7 @@ export function createEmployerStorage(): EmployerStorage {
         if (updatedEmployer && Object.prototype.hasOwnProperty.call(employer, "siriusId") && await tableExists("trust_wmb")) {
           const affected = await client.selectDistinct({ id: trustWmb.workerId }).from(trustWmb)
             .where(eq(trustWmb.employerId, id));
-          await enqueueCoverageSpanInvalidations(affected.map(row => row.id));
+          await enqueueCoverageSpanInvalidations(affected.map(row => row.id), "employer_classification_change");
         }
         if (updatedEmployer && industryTouched) {
           const newIndustryId = updatedEmployer.industryId ?? null;

@@ -41,6 +41,7 @@ import { assertCoverageEventsReady } from "../../server/plugins/trust/provider-e
 import { deriveCoverageSpans } from "../../server/services/coverage-spans/derive";
 import { COVERAGE_SPAN_PLUGIN, type CoverageSpanPayload } from "@shared/coverage-span";
 import migration from "../../scripts/migrate/core/1226_reconcile_denorm_spans";
+import readinessWorkMigration from "../../scripts/migrate/core/1227_coverage_readiness_work";
 import { createCoverageSpanSourceStorage } from "../../server/storage/trust/coverage-span-source";
 import { enqueueCoverageSpanInvalidations } from "../../server/storage/trust/coverage-span-invalidation";
 import { compareCoverageSpanEvidence } from "../../server/services/coverage-spans/compare";
@@ -100,6 +101,8 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     `);
     await migration.up();
     await migration.up(); // Idempotent upgrade; no optional benefit tables needed.
+    await readinessWorkMigration.up();
+    await readinessWorkMigration.up(); // Aggregate attribution schema is idempotent too.
   }, 30_000);
   afterAll(async () => {
     await pool?.end();
@@ -198,7 +201,7 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     expect(source.events).toMatchObject([{ decision: "confirmed", scanId: "scan" }]);
     expect(deriveCoverageSpans("worker", source.coverage, source.families, source.events).spans[0].ending)
       .toMatchObject({ reason: "confirmed-continuation-failure", scanId: "scan" });
-    await enqueueCoverageSpanInvalidations(["worker"]);
+    await enqueueCoverageSpanInvalidations(["worker"], "role_history_source_change");
     expect((await status.get("dependent", "config"))?.status).toBe("stale");
     const initial = (await status.claimStaleForEntity(seed, "comparison"))!;
     await applyComputed(plugin, "config", "worker",
@@ -215,11 +218,11 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     expect(comparison.startDifferences).toEqual([]);
     expect(comparison.endingDifference).toBeNull();
     process.stdout.write(`LOCAL SYNTHETIC source comparison ${JSON.stringify({ ...comparison, transactions })}\n`);
-    await enqueueCoverageSpanInvalidations(["worker"]);
+    await enqueueCoverageSpanInvalidations(["worker"], "role_history_source_change");
     const claim = (await status.claimStaleForEntity(seed, "source-edit"))!;
     await state.db.transaction((tx: any) => state.context.run(tx, async () => {
       await tx.execute((await import("drizzle-orm")).sql`UPDATE trust_wmb SET month = 4 WHERE id = 'w-3'`);
-      await enqueueCoverageSpanInvalidations(["worker"]);
+      await enqueueCoverageSpanInvalidations(["worker"], "role_history_source_change");
     }));
     expect(await applyComputed(plugin, "config", "worker", facts, claim.generation, claim.claimToken)).toBe(false);
     const corrected = await createCoverageSpanSourceStorage().read("worker");
@@ -319,7 +322,7 @@ describe("maintained coverage on isolated PostgreSQL", () => {
         { status: "in_progress", error: null, failedAt: null, startedAt: new Date().toISOString() },
         true, {}, undefined, undefined, wizard.type, "safe-retry", fresh.data);
     };
-    await enqueueCoverageSpanInvalidations(["worker"]);
+    await enqueueCoverageSpanInvalidations(["worker"], "role_history_source_change");
     expect(await admit("failed-check")).toBeDefined();
     let failure = "";
     try { await assertCoverageEventsReady(ctx(), [], 0, 0, true); }
@@ -469,4 +472,73 @@ describe("maintained coverage on isolated PostgreSQL", () => {
       before, after: process.memoryUsage(),
     })}\n`);
   }, 60_000);
+
+  it("invalidates spans at scan completion only for retained inferred evidence", async () => {
+    await pool.query(`
+      INSERT INTO trust_wmb_scan_status(id,month,year,scope_type,status,queued_at)
+        VALUES ('handoff-run',4,2026,'all','running',now()),
+               ('plain-run',4,2026,'all','running',now()),
+               ('confirmed-run',4,2026,'all','running',now())
+        ON CONFLICT (id) DO NOTHING;
+      INSERT INTO trust_wmb_scan_queue(id,status_id,worker_id,month,year,status,trigger_source)
+        VALUES ('handoff-job','handoff-run','handoff-owner',4,2026,'processing','test'),
+               ('plain-job','plain-run','plain-owner',4,2026,'processing','test'),
+               ('confirmed-job','confirmed-run','confirmed-owner',4,2026,'processing','test')
+        ON CONFLICT (id) DO NOTHING;
+      INSERT INTO trust_wmb_events(id,worker_id,benefit_id,year,month,event_type,data)
+        VALUES ('inferred-event','inferred-worker','benefit',2026,4,'terminate',
+          '{"provenance":"coverage_inferred"}'),
+               ('confirmed-inferred-event','confirmed-worker','benefit',2026,4,'terminate',
+          '{"provenance":"coverage_inferred"}')
+        ON CONFLICT (id) DO UPDATE SET data=excluded.data;
+    `);
+    for (const entityId of ["inferred-worker", "plain-worker", "confirmed-worker"])
+      await status.upsertStatus({ ...seed, entityId, status: "ok" });
+
+    const queue = createWmbScanQueueStorage();
+    await queue.recordJobResult("handoff-job", true, {
+      people: [{ workerId: "inferred-worker" }],
+      actions: [],
+    }, undefined, [{
+      entityId: "inferred-worker", entityType: "worker", configId: "terminate-config",
+    }]);
+    await queue.recordJobResult("plain-job", true, {
+      people: [{ workerId: "plain-worker" }],
+      actions: [{ workerId: "plain-worker", benefitId: "benefit", scanType: "start", eligible: true }],
+    }, undefined, [{
+      entityId: "plain-worker", entityType: "worker", configId: "terminate-config",
+    }]);
+    await queue.recordJobResult("confirmed-job", true, {
+      people: [{ workerId: "confirmed-worker" }],
+      actions: [{ workerId: "confirmed-worker", benefitId: "benefit", scanType: "continue", eligible: false }],
+    }, undefined, [{
+      entityId: "confirmed-worker", entityType: "worker", configId: "terminate-config",
+    }]);
+
+    expect(await status.get("inferred-worker", "config")).toMatchObject({ status: "stale" });
+    expect(await status.get("plain-worker", "config")).toMatchObject({ status: "ok" });
+    expect(await status.get("confirmed-worker", "config")).toMatchObject({ status: "ok" });
+    await createTrustWmbEventsStorage().replaceForWorkerAndType("confirmed-worker", "terminate", [
+      { benefitId: "benefit", year: 2026, month: 4, data: { failedPlugins: [] } },
+    ]);
+    expect(await status.get("confirmed-worker", "config")).toMatchObject({ status: "stale" });
+    const attribution = await pool.query(`
+      SELECT operation, call_count::text, affected_count::text, last_affected_count
+      FROM coverage_readiness_work ORDER BY config_id, operation
+    `);
+    expect(attribution.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        operation: "scan_completion_inferred_evidence",
+        call_count: "1",
+        affected_count: "1",
+        last_affected_count: 1,
+      }),
+      expect.objectContaining({
+        operation: "wmb_scan_completion_handoff",
+        call_count: "3",
+        affected_count: "3",
+        last_affected_count: 1,
+      }),
+    ]));
+  });
 });

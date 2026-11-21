@@ -96,7 +96,7 @@ export function createS1TrustWmbEventsOperations(): S1TrustWmbEventsOperations {
           }
         }
         if (!dryRun && decisions.some(d => d.change === "created" || d.change === "removed"))
-          await enqueueCoverageSpanInvalidations([workerId]);
+          await enqueueCoverageSpanInvalidations([workerId], "migration_termination_reconciliation");
         return decisions;
       };
       return dryRun ? execute() : runInTransaction(execute);

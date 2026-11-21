@@ -1,9 +1,56 @@
-import { and, eq, inArray, type SQL } from "drizzle-orm";
-import { denorm, pluginConfigs, workerRelations, trustWmbScanQueue } from "@shared/schema";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  coverageReadinessWork,
+  denorm,
+  pluginConfigs,
+  workerRelations,
+  trustWmbScanQueue,
+} from "@shared/schema";
 import { COVERAGE_SPAN_PLUGIN } from "@shared/coverage-span";
 import { getClient } from "../transaction-context";
 import { enqueueDenormInvalidations } from "../system/denorm-invalidation";
 import { tableExists } from "../utils";
+
+export const COVERAGE_READINESS_OPERATIONS = [
+  "role_history_source_change",
+  "termination_evidence_change",
+  "scan_month_reset",
+  "scan_worker_requeue",
+  "scan_worker_reset",
+  "scan_worker_bulk_reset",
+  "scan_completion_inferred_evidence",
+  "wmb_scan_completion_handoff",
+  "migration_termination_reconciliation",
+  "employer_classification_change",
+] as const;
+
+export type CoverageReadinessOperation = typeof COVERAGE_READINESS_OPERATIONS[number];
+
+/** Increment the one aggregate counter for a config/operation pair. */
+export async function recordCoverageReadinessWork(
+  configId: string,
+  operation: CoverageReadinessOperation,
+  affectedCount: number,
+): Promise<void> {
+  if (affectedCount <= 0) return;
+  const db = getClient();
+  await db.insert(coverageReadinessWork).values({
+    configId,
+    operation,
+    callCount: 1,
+    affectedCount,
+    lastAffectedCount: affectedCount,
+    lastAt: new Date(),
+  }).onConflictDoUpdate({
+    target: [coverageReadinessWork.configId, coverageReadinessWork.operation],
+    set: {
+      callCount: sql`${coverageReadinessWork.callCount} + 1`,
+      affectedCount: sql`${coverageReadinessWork.affectedCount} + excluded.affected_count`,
+      lastAffectedCount: sql`excluded.last_affected_count`,
+      lastAt: sql`excluded.last_at`,
+    },
+  });
+}
 
 /** Capture before reset/deletion, with row locks held through invalidation. */
 export async function captureCoverageScanReceivers(where: SQL): Promise<string[]> {
@@ -23,7 +70,10 @@ export async function captureCoverageScanReceivers(where: SQL): Promise<string[]
 }
 
 /** Same source transaction; disabled processing still retains invalidations. */
-export async function enqueueCoverageSpanInvalidations(workerIds: string[]): Promise<void> {
+export async function enqueueCoverageSpanInvalidations(
+  workerIds: string[],
+  operation: CoverageReadinessOperation,
+): Promise<void> {
   const ids = [...new Set(workerIds.filter(Boolean))];
   if (!ids.length) return;
   const db = getClient();
@@ -36,8 +86,14 @@ export async function enqueueCoverageSpanInvalidations(workerIds: string[]): Pro
       .where(inArray(workerRelations.worker1, ids))
     : [];
   const receivers = [...new Set([...ids, ...dependents.map(r => r.id)])].sort();
-  await enqueueDenormInvalidations(configs.flatMap(config =>
-    receivers.map(entityId => ({ entityId, entityType: "worker", configId: config.id }))));
+  for (const config of configs) {
+    const affected = await enqueueDenormInvalidations(receivers.map(entityId => ({
+      entityId,
+      entityType: "worker",
+      configId: config.id,
+    })));
+    await recordCoverageReadinessWork(config.id, operation, affected);
+  }
 }
 
 /** Delete the status spine in the source deletion transaction; payloads cascade. */

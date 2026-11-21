@@ -41,11 +41,17 @@ work, not evidence that they caused the reported remote stale counts.
   occurs, in the same transaction. JSON object-key ordering is immaterial.
   Inferred events survive absence from scan output; confirmed collisions still
   replace their authority and invalidate the worker and family receivers.
-- **Scan completion and reset:** completion hands off stale upstream seeds
-  atomically with persisted results. Source coverage writes and completion
-  recipients also enqueue span work. Monthly requeue, single enqueue and
-  single/bulk reset capture retained `people`/`actions` recipients under lock
-  before removing summaries. This is necessary evidence invalidation; it is
+- **Scan completion and reset:** completion hands off `trust-wmb-terminate`
+  seeds atomically with persisted results. It no longer blindly invalidates
+  every recipient's span on every completion. A changed confirmed termination
+  invalidates spans from the event replacement transaction, after semantic
+  comparison. Completion still invalidates a span when the scan's new status
+  or summary can change a retained coverage-inferred ending; those endings are
+  the case where span computation directly consumes scan-summary availability.
+  Monthly requeue, single enqueue and single/bulk reset capture retained
+  `people`/`actions` recipients under lock before removing or hiding summaries.
+  Those transitions remain invalidating because the prior result is no longer
+  available to the span reader. These are necessary source/evidence changes,
   not removed. A continuing scan queue can keep producing genuine work.
 - **Migration event reconciliation:** the historical reconciler enqueues spans
   only for actual created/removed decisions, preserves confirmed events, and does
@@ -92,20 +98,26 @@ and cannot accept a late result from an earlier attempt.
 ## Read-only operator correlation
 
 `scripts/tools/coverage-readiness-snapshot.sql` captures matching counts,
-generation/time ranges, queue activity and saved check timestamps in one
-repeatable-read transaction without source payloads or personal details.
+generation/time ranges, queue activity, bounded producer aggregates and saved
+check timestamps in one repeatable-read transaction without source payloads or
+personal details.
 Capture once at zero and once after recurrence, noting which configuration
 the operator opened. Compare upstream draining/computation times with new
 span stale times and existing job history. A shrinking upstream backlog that
 eventually stops producing changes is finite catch-up. Continuing source
-mutations legitimately requeue work. Unchanged replacements must no longer
-advance span generations after this fix.
+mutations legitimately requeue work. Identical termination replacements no
+longer advance span generations, and ordinary scan completions no longer add a
+second blanket span invalidation after the termination producer is scheduled.
 
-The status spine has no persisted per-invalidation producer history. Timestamps
-alone cannot retrospectively prove whether a particular row came from a scan,
-source correction or config edit; additional authorized environment evidence
-is needed for that attribution. Do not record names, eligibility payloads or
-credentials to obtain it.
+`coverage_readiness_work` keeps one aggregate row per denorm configuration and
+fixed operation category. It records cumulative call/affected-row counts and
+the last call's count/time; it does not retain worker IDs, eligibility payloads,
+or an unbounded event history. Scan-completion handoffs to the upstream
+termination configuration are recorded separately from span invalidations.
+The snapshot query reads these aggregates alongside status generations and queue
+activity. This makes future recurrence attributable to a configuration and
+operation category, but cannot retrospectively identify the cause of the
+reported 255 without an authorized before/after read in that environment.
 
 ## Verification scope
 
@@ -115,8 +127,13 @@ strict readiness, and failed check → completed recomputation → explicit retr
 with a new identity and late-write fencing. Synthetic fixtures are not a
 production recovery claim.
 
-All 32 focused checks in `coverage-spans-postgres.test.ts` and
-`coverage-evidence.test.ts` passed. One-time server rendering verified failed,
+All 117 checks in the focused batch passed, with 5 skipped across six test
+files. This includes `coverage-spans-postgres.test.ts`,
+`coverage-evidence.test.ts`, WMB queue storage and built-in help. The batch
+covers the inferred-evidence-only scan handoff, avoids a duplicate span
+invalidation when a scan will replace an inferred event, and verifies that a
+plain scan does not stale an unrelated span. TypeScript server/client checks
+also passed. One-time server rendering verified failed,
 in-progress and completed coverage screen states, including the failure time
 and absence of obsolete failure text outside the failed state. Help recovery
 copy survived the shared sanitizer, and intended paths plus unrelated near

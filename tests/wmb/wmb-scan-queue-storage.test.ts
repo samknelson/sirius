@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: mocks.getClient,
+  runWithTransaction: async (_tx: unknown, fn: () => Promise<unknown>) => fn(),
 }));
 
 import { trustWmbScanQueue, trustWmbScanStatus } from "../../shared/schema";
@@ -36,7 +37,11 @@ function enqueueFixture({
   const statusInserts: Array<Record<string, unknown>> = [];
 
   const clientSelect = vi.fn(() => ({
-    from: vi.fn(() => Promise.resolve(populationIds.map(id => ({ id })))),
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({
+        for: vi.fn(() => Promise.resolve([])),
+      })),
+    })),
   }));
 
   let transactionSelectCall = 0;
@@ -166,7 +171,9 @@ describe("WMB month scan queue bulk enqueue", () => {
 
     expect(result.queuedCount).toBe(1_001);
     expect(fixture.client.execute).toHaveBeenCalled();
-    expect(fixture.client.select).not.toHaveBeenCalled();
+    // The queue reset snapshots retained recipients under lock before
+    // clearing summaries; it does not enumerate the scan population via SELECT.
+    expect(fixture.client.select).toHaveBeenCalledTimes(1);
     expect(fixture.statusInserts).toEqual([{
       month: 3,
       year: 2026,

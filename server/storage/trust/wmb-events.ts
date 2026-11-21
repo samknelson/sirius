@@ -158,7 +158,7 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
         // Keep source changes and family invalidation atomic. Inferred rows
         // retained above do not count as a change; confirmed collisions do.
         if (eventType === "terminate" && changed)
-          await enqueueCoverageSpanInvalidations([workerId]);
+          await enqueueCoverageSpanInvalidations([workerId], "termination_evidence_change");
       });
     },
 
