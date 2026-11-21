@@ -287,6 +287,70 @@ No repair, rescan, event reconciliation or further staging maintenance was
 authorized or performed on the basis of this classification. The batch job
 remains operator-paused unless the operator reports otherwise.
 
+### Scan-time evidence at 17:59 UTC and bounded producer correction
+
+The operator's read-only query at **2026-11-21 17:59:37.883729+00**
+classified the 53 scan-backed issues using their original saved person
+snapshots:
+
+| Trigger | Previous-month benefit in original snapshot | Issues |
+| --- | --- | ---: |
+| COBRA case saved | Absent | 2 |
+| Monthly batch | Absent | 30 |
+| Monthly batch | Present | 21 |
+
+This demonstrates the continuation/termination mismatch affected **32**
+reported endings. The other **21** scans recorded prior coverage which is
+absent now; the query does not explain its subsequent removal. The seven
+inferred endings remain a separate source-history discrepancy. None of
+these observations authorizes new eligibility decisions or source repair.
+
+The local correction derives a tri-state `previousMonthCovered` fact from
+the persisted scan's matching person/source snapshot, then excludes only
+explicitly absent previous-month coverage from scan-confirmed termination
+production. It does not change eligibility evaluation or the meaning of
+`continue` elsewhere. Missing, malformed or ambiguous snapshots retain
+legacy behavior and downstream consistency refusals rather than guessing.
+Newer coverage cannot promote a failed start into ending evidence.
+
+Recomputation still uses the existing ownership-aware event replacement:
+inferred events are protected, confirmed evidence wins collisions, and
+actual source changes retain transactional invalidation and after-commit
+delivery. Whole-population readiness, claim/generation fencing and final
+evidence consistency checks are unchanged. No migration marks statuses
+ready or automatically queues a population rebuild.
+
+**Staging remains unresolved.** This correction is local and is not a
+deployment or maintenance authorization. After the corrected revision is
+separately authorized and deployed, repair needs a separately approved,
+bounded recomputation of the evidenced affected termination owners followed
+by their span drain, retaining original scan snapshots. Do not blindly
+rebuild the whole population. The 21 previously covered and seven inferred
+cases require source-history diagnosis before choosing a repair; this
+producer correction does not resolve them. The operator-paused batch job,
+remaining queue, actual serving revision and a fresh successful coverage-only
+check still need correlated recovery evidence. No carrier file was generated
+or delivered.
+
+Existing built-in EDI help now distinguishes computed OK from consistent
+ending evidence, explains missing prior-month coverage, and warns against
+inventing grants, deleting events or running scans merely to pass the check.
+The guidance stays in the existing registered wizard help entry.
+
+Local verification: the focused maintained-span PostgreSQL, coverage derivation,
+dependent scan/termination and workflow-help suites passed **55 tests**, with
+two existing skipped tests. Regression coverage exercises actual storage
+snapshot extraction (including other people, source relationships, malformed,
+missing and ambiguous snapshots) and the producer's true/false/unknown
+handling. Existing fixtures cover real invalidations and generation fencing.
+Built-in help sanitization and intended/unrelated path matching passed.
+`git diff --check` passed. The development application restarted successfully;
+its boot-status reported ready with the drift check passed, and the login
+screen rendered. The signed-in help dialog and staging UI were not verified.
+The screenshot browser reported a local Vite hot-reload WebSocket connection
+failure; the proxied application boot-status and login requests succeeded.
+None of this development verification is staging recovery evidence.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest

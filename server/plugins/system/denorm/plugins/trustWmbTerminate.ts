@@ -8,7 +8,8 @@ import type { TrustWmbEventInput } from "../../../../storage/trust/wmb-events";
  * Denorm payload: the worker's "terminate" events — one per
  * [benefit, year, month] where a WMB scan decided the benefit should not
  * continue (a `continue` scan that came back ineligible, whether or not a
- * coverage row existed to delete), EXCLUDING months where the worker
+ * coverage row existed to delete), excluding explicitly recorded current-only
+ * scans and months where the worker
  * currently has coverage for that benefit (a benefit cannot terminate in a
  * month it is covered). The event's `data` carries the eligibility plugins
  * that failed in that scan.
@@ -24,6 +25,8 @@ interface ScanSummaryAction {
   scanType?: string;
   action?: string;
   eligible?: boolean;
+  /** Derived by storage from the matching person's persisted scan snapshot. */
+  previousMonthCovered?: boolean;
   pluginResults?: Array<{
     pluginKey?: string;
     eligible?: boolean;
@@ -91,9 +94,13 @@ const trustWmbTerminateDenormPlugin: DenormPlugin<TrustWmbTerminateDenorm> = {
         : [];
       for (const action of actions) {
         if (!action.benefitId) continue;
-        // A terminate event is ANY failed continue scan — the benefit was
-        // covered the previous month and the worker did not qualify to keep
-        // it. This covers both `action: "delete"` (an existing coverage row
+        // "continue" also includes current-month-only coverage. Such a
+        // deletion cannot establish a prior month's ending. Exclude it only
+        // when the saved person/source snapshot explicitly proves absence.
+        // Unknown legacy snapshots retain their evidence and downstream
+        // consistency checks; today's coverage must not rewrite scan history.
+        if (action.previousMonthCovered === false) continue;
+        // This covers both `action: "delete"` (an existing coverage row
         // was removed) and `action: "none"` where the failure left nothing to
         // remove because the month had not been computed yet.
         // (`action === "delete"` is kept as a fallback for any legacy

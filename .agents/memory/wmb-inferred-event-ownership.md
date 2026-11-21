@@ -37,6 +37,20 @@ errors, and actual row deletions. Verify committed previous-month coverage
 before scanning the next approved month, and verify the saved-result termination
 handoff rather than directly editing lifecycle events.
 
+## Incomplete scan snapshots are not repair authority
+
+An explicit saved absence of prior-month coverage may disqualify a scan-produced
+ending. Missing, malformed or ambiguous snapshots must not be treated as that
+absence or silently authorize removal of retained evidence.
+
+**Why:** legacy evidence can be incomplete without being false. Removing it to
+make a carrier check pass conceals a source-history discrepancy; borrowing
+today's grants would instead invent scan-time authority.
+
+**How to apply:** separate proven current-month-only deletions from unknown
+historical cases. Keep consistency refusals and require separately authorized,
+bounded reconciliation after preserving original snapshots.
+
 ## Stored coverage is not source-history completeness
 
 The user explicitly permits importer-reviewed rejects for historical event

@@ -473,6 +473,33 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     })}\n`);
   }, 60_000);
 
+  it("reads previous-month evidence from the exact saved person/source, never today's grants", async () => {
+    const action = (sourceRelationId: string) => ({
+      workerId: "snapshot-worker", sourceRelationId, benefitId: "benefit",
+      scanType: "continue", eligible: false, action: "delete",
+    });
+    const summary = {
+      people: [
+        { workerId: "snapshot-worker", sourceRelationId: "current", previousMonthBenefitIds: [] },
+        { workerId: "snapshot-worker", sourceRelationId: "prior", previousMonthBenefitIds: ["benefit"] },
+        { workerId: "snapshot-worker", sourceRelationId: "malformed", previousMonthBenefitIds: [123] },
+        { workerId: "snapshot-worker", sourceRelationId: "unknown" },
+        { workerId: "snapshot-worker", sourceRelationId: "duplicate", previousMonthBenefitIds: [] },
+        { workerId: "snapshot-worker", sourceRelationId: "duplicate", previousMonthBenefitIds: ["benefit"] },
+        { workerId: "other-worker", sourceRelationId: "current", previousMonthBenefitIds: ["benefit"] },
+      ],
+      actions: ["current", "prior", "malformed", "unknown", "duplicate", "missing"].map(action),
+    };
+    await pool.query(`INSERT INTO trust_wmb_scan_queue
+      (id,worker_id,month,year,status,trigger_source,result_summary)
+      VALUES ('snapshot-evidence','snapshot-worker',11,2026,'success','test',$1::jsonb)`,
+    [JSON.stringify(summary)]);
+    const rows = await createTrustWmbEventsStorage().getWorkerScanResults("snapshot-worker");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].resultSummary.actions.map((a: any) => a.previousMonthCovered))
+      .toEqual([false, true, undefined, undefined, undefined, undefined]);
+  });
+
   it("invalidates spans at scan completion only for retained inferred evidence", async () => {
     await pool.query(`
       INSERT INTO trust_wmb_scan_status(id,month,year,scope_type,status,queued_at)
