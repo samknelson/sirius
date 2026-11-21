@@ -177,6 +177,30 @@ that attempt; if it fails, retain the failure and stop rather than loop
 rebuilds or bypass the readiness barrier. No recovery action has yet been
 authorized or performed, and no fresh successful coverage check was supplied.
 
+### Authorized recovery scope
+
+The operator explicitly approved **one bounded staging recovery attempt**:
+refresh upstream/span readiness, run the existing span-only **Run recompute
+now** action once if upstream is current and neither producer has missing or
+failed records, then admit one fresh coverage check if both producers are
+fully ready. If a check is already active, reconnect rather than start another.
+Opening Coverage sources may itself admit the check; that consumes the one
+attempt and does not authorize an additional retry click.
+
+The approved span configuration is
+`0406b4a3-d991-452f-9b50-d475edc7caaf`; upstream termination is
+`b0672afc-76ed-42d9-900e-c7c6fc7ac595`. Capture the recompute result,
+refreshed counts and new coverage-check start/finish/result, then observe
+readiness after the next scheduled drain cycle. If readiness does not reach
+zero or the check fails, retain evidence and stop instead of repeating
+maintenance.
+
+Authorization does **not** include clearing records, backfill, eligibility
+scans, changing/stopping cron jobs, resetting scan claims, deployment, carrier
+generation or delivery. The operator performs the actions in their existing
+authorized session; the executor still has no direct staging access.
+**Approval is not evidence that an action ran or that staging recovered.**
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
