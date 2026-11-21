@@ -247,6 +247,46 @@ delete events, invent October coverage/dates, exclude people, acknowledge
 the issue or repeatedly rebuild to get past it. No successful check or
 carrier generation/delivery was reported; the incident remains unresolved.
 
+### Ending-evidence classification at 17:52 UTC
+
+The operator's **2026-11-21 17:52:51.564+00** read-only summary establishes
+**60** `termination-coverage-missing` issues for the selected benefit's
+November 2026 endings, not merely the error message's 21 examples:
+
+| Event authority | Older coverage before October | Supporting scan | Unfinished owner scan work | Issues |
+| --- | --- | --- | --- | ---: |
+| Inferred | Yes | None linked | No | 5 |
+| Inferred | Yes | None linked | Yes | 2 |
+| Other/unmarked | No | Success, COBRA-case trigger | No | 2 |
+| Other/unmarked | No | Success, monthly batch | No | 21 |
+| Other/unmarked | Yes | Success, monthly batch | No | 30 |
+
+All 60 span statuses were OK, their termination events still existed, and
+none had October coverage at the time of this query. Thus the persisted
+missing-prior-month issue is not explained by October coverage already
+existing but failing to invalidate an old issue. Null linked scans on the
+seven inferred events are not failed scans; historical inference has a
+different authority. The owner-work flag is not a full family inventory.
+
+Source trace found a specific semantic mismatch to investigate before
+correcting the 53 scan-backed events: `benefits-scan` deliberately chooses
+`scanType: continue` for a benefit present in **either the previous month
+or the current month**. The termination producer interprets failed
+`continue` as evidence of a previous-month grant. A deletion of current-only
+coverage can therefore produce a nominal termination without that grant.
+However, today's missing October rows do not prove they were absent when
+each scan ran; later source corrections can also remove a formerly real
+October grant. The saved per-person `previousMonthBenefitIds` can distinguish
+these cases without inventing source history. Inspect its aggregate
+present/absent/unrecorded classification before applying a producer repair
+or touching retained events. Preserve both the original scan results and
+inferred-event ownership; do not recast refused starts or current-only
+deletions as historical continuation evidence.
+
+No repair, rescan, event reconciliation or further staging maintenance was
+authorized or performed on the basis of this classification. The batch job
+remains operator-paused unless the operator reports otherwise.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
