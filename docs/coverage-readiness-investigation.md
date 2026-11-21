@@ -2,6 +2,84 @@
 
 ## Open incident: staging evidence on 2026-11-21
 
+### Operator-supplied database snapshot at 16:54 UTC
+
+This later evidence supersedes the initial access-blocked observations below,
+but **does not establish recovery**. The operator supplied the read-only
+snapshot at **2026-11-21 16:54:36.925999+00** and schema preflight at
+**16:55:07.430331+00**. Database timezone was `GMT`;
+`coverage_readiness_work` existed with all seven expected diagnostic columns.
+This confirms the attribution schema, not the entire application schema or
+the revision of each serving API process.
+
+The saved-check result identifies EDI configuration
+`9748ccb0-e88b-4c8c-9027-672f478b8c0f`, check started
+**16:46:20.264 UTC** and failed **16:46:23.042 UTC**. That matches the reported
+08:46:23 finish in UTC−08:00 and occurred after the deployment controller's
+16:41:44 success. A second saved record with the same start time remained
+`in_progress`; the aggregate query does not expose wizard IDs or execution
+ownership, so it cannot establish whether this is duplicate work, an abandoned
+record or a distinct saved wizard. Do not reset it on that evidence.
+
+| Producer/configuration | Whole-worker readiness at 16:54:36 UTC |
+| --- | --- |
+| Spans `0406b4a3-d991-452f-9b50-d475edc7caaf` (enabled) | 119,941 population, 119,914 OK, 27 stale, zero missing or failed; admin and EDI counts agreed |
+| Termination `b0672afc-76ed-42d9-900e-c7c6fc7ac595` (enabled) | 119,941 OK, zero missing, stale or failed; admin and EDI counts agreed |
+
+All 27 stale span rows were **unclaimed**, with stale timestamps from
+**16:50:53.585 through 16:54:35.672**. The newest successful span computation
+was **16:51:01.095**. Thus this snapshot shows recently queued work while
+computation has also advanced; it does not show old abandoned span claims.
+It cannot prove that the original 113 workers drained, since the same worker
+can be invalidated again and individual identities were intentionally omitted.
+
+The cumulative attribution baseline is:
+
+| Configuration | Operation | Calls | Affected invalidations | Last operation timestamp |
+| --- | --- | ---: | ---: | --- |
+| Termination | `wmb_scan_completion_handoff` | 287 | 341 | 16:54:36.743 |
+| Spans | `role_history_source_change` | 63 | 191 | 16:54:35.677 |
+| Spans | `scan_worker_requeue` | 3 | 4 | 16:46:36.834 |
+| Spans | `termination_evidence_change` | 10 | 11 | 16:52:09.706 |
+
+Affected counts are invalidation operations, not distinct people or the current
+stale count; the counter's installation/reset baseline was not supplied.
+In source, `role_history_source_change` is the shared WMB/relationship/cascade
+source-write boundary. `termination_evidence_change` is recorded only when
+termination event replacement inserts, deletes or changes JSONB evidence.
+The counters therefore distinguish actual recorded source-boundary work from
+blanket scan-completion span invalidation, but do not attribute all 27 rows
+to a particular scan or prove every source change was necessary.
+
+There was concurrent scan activity: **54,239 pending monthly-batch jobs**,
+**14 processing**, **1,475 monthly-batch successes in the preceding hour**,
+and **9 monthly-batch failures** in that hour. The oldest processing pick was
+**2026-11-20 01:18:19.633**, the newest **2026-11-21 16:54:36.828**.
+COBRA-triggered results also included 9 successes and 11 failures in the
+preceding hour. Scan failures are a separate queue result, not the zero
+denorm-error count. The very old processing pick warrants checking execution
+ownership; it does not prove the entire queue is blocked while other jobs
+continue completing.
+
+The source's span drain is bounded to 5,000 rows per plugin per sweep and is
+subscribed to the shared ten-minute tick, alongside the separately configured
+`denorm_stale` cron and admin action. New source writes can therefore leave
+recent unclaimed spans between drain runs. This is a demonstrated mechanism
+consistent with this snapshot, **not yet proof of the live tick's execution or
+eventual convergence**. A second contemporaneous snapshot plus effective cron
+settings/history is needed to distinguish sustained source production from a
+missed/blocked drain. No additional application correction or staging mutation
+is justified from this one snapshot alone.
+
+**Next evidence:** repeat the same snapshot after a scheduled drain boundary,
+capture the effective denorm/scan cron switches and schedules and their recent
+run results, and confirm API runtime/boot identity. Attribute the counter
+deltas before authorizing any maintenance, and retain a fresh successful
+coverage check plus a subsequent producer/drain observation as the recovery
+criterion. No carrier generation or delivery is authorized.
+
+### Initial access and deployment observations
+
 **Unresolved. No staging recovery is established.** The operator's latest
 reported check finished at **08:46:23 on 2026-11-21**, with 119,941 people,
 zero missing initial records, 113 stale/processing coverage-span rows and zero
