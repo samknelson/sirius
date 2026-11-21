@@ -396,6 +396,65 @@ requires approved handling of the paused batch, a fresh successful
 coverage-only check and observation across the relevant producer/drain
 cycle, without generating or delivering a carrier file.
 
+### Seven inferred endings: October deletion evidence at 19:58 UTC
+
+At **2026-11-21 19:58:35.776705+00**, the operator's read-only aggregate
+returned all **seven** inferred-ending issues with both a retained successful
+October scan and an affected-person/benefit deletion recorded in such a
+scan. The earliest and latest retained deletion completion values were
+`2026-11-21 04:56:41.73` and `2026-11-21 09:59:35.182`.
+These are the supplied naive timestamp values, not independently verified
+UTC instants. The query exposes no event-creation time, so it cannot date the
+inference relative to those deletions or exclude intervening writes.
+
+The classification now accounts for the **60** observed November issues:
+32 scan candidates with explicitly absent scan-time prior-month coverage,
+21 with scan-time prior coverage and later October deletion, and seven
+inferred endings whose missing October support also has retained scan
+deletion evidence. It does not establish that any October eligibility
+decision was correct or incorrect. There is no justification for inventing
+October grants or deleting all November endings to obtain a passing check.
+
+#### Recovery decision and scope, not a write authorization
+
+Before proposing eligibility re-evaluation, the operator must decide whether
+October's deletion decisions are authoritative. If they are unexpected,
+review the corresponding eligibility decisions and source inputs first;
+do not restore grants simply because an old ending needs them.
+
+If October's corrected coverage is accepted, prepare a preserved-snapshot,
+bounded recovery preview in three separate ownership groups:
+
+1. The 32 proven current-only candidates: after independently verified
+   rollout of the producer correction, recompute only the affected
+   termination owners and drain their resulting span work. No new
+   eligibility decision is needed for this correction.
+2. The 21 subsequent-deletion cases: settle earlier work for the affected
+   families, preserve the old summaries, and separately authorize any
+   November eligibility re-evaluation. It can change grants, billing and
+   notifications and must use normal queue completion. Do not rewrite the
+   old snapshot as though October had been absent at scan time.
+3. The seven inferred cases: review a worker/benefit-bounded dry-run
+   reconciliation against accepted retained history and an explicitly
+   approved horizon, respecting historical source-completeness rules.
+   Only its owning reconciler may change inferred events; this must not
+   erase scan-confirmed terminations or broaden into a fleet migration.
+
+Static inspection found the historical reconciler's worker/benefit filters
+and dry-run support, but no verified registered operator action for this
+exact bounded repair. Do not substitute raw DELETEs or invoke internal
+helpers without the required operational gates. Likewise,
+`/api/wmb-scan/process-batch` processes the general queue, not a pinned
+incident cohort: its batch-size limit is not sufficient scoping while
+tens of thousands of unrelated jobs are pending.
+
+No new staging writes, scans, delivery or deployment are authorized by
+this evidence. Recovery remains blocked on the source-authority decision,
+verified rollout, a reviewed and explicitly authorized bounded execution
+path, and a fresh successful coverage-only check with subsequent
+producer/drain observation. The batch remains operator-paused unless
+reported otherwise.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
