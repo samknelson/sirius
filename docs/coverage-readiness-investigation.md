@@ -137,6 +137,46 @@ application defect, all-source convergence, or successful staging recovery.
 No code, scheduling or maintenance correction was performed. The next step
 is emitter evidence, not another blind rebuild or repeated zero-count chase.
 
+### Emitter configuration and operator history at 17:28 UTC
+
+At **2026-11-21 17:28:36.573606+00**, the operator confirmed
+`cron-tick-emitter` configuration
+`e4527c27-773a-4d65-b932-bb072dde61f9` was **enabled**, scheduled
+`*/10 * * * *`. Supplied live scheduler runs were successful, lasting
+**47.84 seconds** and **82.63 seconds**, and neither supplied summary
+included subscriber failures. Both emitted `10m`, `1h`, `2h`, `4h`, `8h`.
+Thus a disabled emitter is not supported by the evidence.
+
+The displayed first start/completion were **01:00:00 / 09:00:47**, with
+`since: 2026-11-21T08:50:00.194Z`; the second displayed
+**01:20:00 / 09:21:22**, with
+`since: 2026-11-21T09:10:00.140Z`. These must not be silently relabeled
+17:00/17:20 UTC. Source inspection identifies a concrete timestamp
+inconsistency: run creation leaves `started_at` to the database's naive
+`now()` default, completion writes a mapped JS Date, and emitter dueness
+uses the mapped defaulted start as an instant. In a non-UTC application DB
+session this can shift the prior-run instant and re-emit coarse periods.
+The external SQL client's `GMT` session does not establish the API pool's
+session timezone.
+
+This anomaly does **not** account for the observed span source invalidations:
+the denorm subscriber listens only to `10m`, not the repeated coarse ticks,
+and the other current tick subscriber is the usage-alert notifier, not a WMB
+scan producer. Do not broaden this incident into a general timestamp rewrite
+or present a timer fix as the correction for the reported coverage failure.
+Full running API/DB-session identity remains unverified.
+
+The actionable coverage finding is **ongoing source invalidations alongside
+bounded, progressing span recomputation**, not missing initial population or
+termination backlog. A narrowly scoped recovery attempt may be proposed:
+reconfirm upstream readiness, run one bounded stale recompute for the span
+plugin, refresh counts and immediately perform one fresh coverage check
+without generation/delivery. This is a real maintenance write and requires
+operator authorization first. Continuous scans may invalidate results during
+that attempt; if it fails, retain the failure and stop rather than loop
+rebuilds or bypass the readiness barrier. No recovery action has yet been
+authorized or performed, and no fresh successful coverage check was supplied.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest
