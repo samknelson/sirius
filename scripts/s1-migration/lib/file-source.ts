@@ -20,7 +20,11 @@ export async function loadFileSource() {
   for (const node of nodes) {
     needed.add(node.nid);
     for (const nid of references(node.fields.field_sirius_log_handler)) needed.add(nid);
-    const json = categoryOf(node).startsWith("trust:election_wizard") ? sourceJson(node) : {};
+    let json: Record<string, any> = {};
+    // Candidate construction reports malformed election payloads per file.
+    if (categoryOf(node).startsWith("trust:election_wizard")) {
+      try { json = sourceJson(node); } catch { continue; }
+    }
     const fallback = Number(json.wizard?.trust_election?.policy?.worker_nid);
     if (Number.isSafeInteger(fallback) && fallback > 0) needed.add(fallback);
   }
@@ -62,14 +66,15 @@ export async function loadFileSource() {
     }
     return { kind: !bundle ? "unstaged" : ["sirius_feed", "sirius_payperiod"].includes(bundle) ? "archive" : "other" };
   };
-  const candidates = buildCandidates(nodes, resolveOwner, mergeResolver(nodes));
+  const resolveMerge = mergeResolver(nodes);
+  const candidates = buildCandidates(nodes, resolveOwner, resolveMerge);
   const terms = new Map(rows<{ tid: string; name: string }>(await db.execute(sql`SELECT tid,name FROM s1_staging.terms`)).map(r => [Number(r.tid), r.name]));
   for (const c of candidates) if (c.materialType && /^\d+$/.test(c.materialType)) {
     c.materialType = terms.get(Number(c.materialType)) ?? c.materialType;
   }
   const rawFiles = rows<RawFile>(await db.execute(sql`SELECT * FROM s1_staging.raw_file_managed`))
     .map(r => ({ ...r, fid: Number(r.fid), uid: Number(r.uid), filesize: Number(r.filesize), timestamp: Number(r.timestamp) }));
-  return { candidates, rawFiles: new Map(rawFiles.map(r => [r.fid, r])), notes,
+  return { candidates, mergeLogInvalid: resolveMerge.invalidLogs, rawFiles: new Map(rawFiles.map(r => [r.fid, r])), notes,
     uploader: (uid: number) => {
       const m = users.get(uid);
       return m && !m.stub && userIds.has(m.s2Id) ? m.s2Id : "system:s1-migration";

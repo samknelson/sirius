@@ -90,16 +90,20 @@ async function main() {
   const prefix = getEnvironmentVariable("S1_FILES_ARCHIVE_PREFIX") ?? "private/";
   archiveKey("private://preflight", prefix);
   // Dry runs cannot initialize even scratch tables.
+  const attemptTable = rows<{ present: string | null }>(await db.execute(sql`SELECT to_regclass('s1_staging.file_inventory_attempt')::text AS present`))[0]?.present;
+  if (!attemptTable) throw new Error("file_inventory_unverified");
+  const attempt = rows<{ status: string }>(await db.execute(sql`SELECT status FROM s1_staging.file_inventory_attempt`));
+  if (attempt.length !== 1 || attempt[0].status !== "verified") throw new Error("file_inventory_unverified");
   const evidence = rows<{ row_count: string }>(await db.execute(sql`SELECT row_count FROM s1_staging.file_inventory_evidence`));
   const count = rows<{ n: string }>(await db.execute(sql`SELECT count(*) AS n FROM s1_staging.raw_file_managed`));
   if (evidence.length !== 1 || Number(evidence[0].row_count) !== Number(count[0].n)) throw new Error("file_inventory_unverified");
   const source = await loadFileSource();
   // Validate every resolved owner via the actual context API before any file/type write.
   for (const c of source.candidates) if (!c.reason && !c.archiveOnly && c.context && c.ownerId) {
-    if (!(await getEntityFileContext(c.context)!.entityExists(c.ownerId))) throw new Error("owner_prerequisite_missing");
+    if (!(await getEntityFileContext(c.context)!.entityExists(c.ownerId))) c.reason = "owner_missing";
   }
   if (!args.dry) { await ensureStagingSchema(); await ensureIdMap(); await ensureRawFileTable(); }
-  const typeIds = await ensureFileTypes(args.dry);
+  const { ids: typeIds, fileTypesToCreate } = await ensureFileTypes(args.dry);
   const maps = await getAllMappings("file");
   const scoped = new Set(rows<{ s1_id: string }>(await db.execute(sql`SELECT s1_id FROM s1_staging.id_map WHERE entity='file' AND loader=${LOADER}`)).map(r => Number(r.s1_id)));
   const targets = rows<Target>(await db.execute(sql`SELECT f.id AS file_id,e.id AS attachment_id,e.context_id,e.entity_id,f.status,
@@ -111,6 +115,8 @@ async function main() {
   const byFid = new Map<number, Target[]>();
   for (const t of targets) byFid.set(Number(t.fid), [...(byFid.get(Number(t.fid)) ?? []), t]);
   const rejects = new RejectLog(); const summary = emptySummary(); const findings: SyncFinding[] = [];
+  if (source.mergeLogInvalid) findings.push({ kind: "merge_log_invalid", entity: "file", s1Id: 0,
+    detail: { count: source.mergeLogInvalid } });
   const missing: { fid: number; sourceNid: number }[] = [];
   const current = new Set(source.candidates.filter(c => !c.archiveOnly).map(c => c.fid));
   const sweep = [...maps].filter(([fid]) => scoped.has(fid) && !current.has(fid));
@@ -184,10 +190,6 @@ async function main() {
         }
       }
       const moved = target && (target.context_id !== c.context || target.entity_id !== c.ownerId);
-      if (target && !moved && !args.dry && target.file_size !== undefined && target.file_size !== raw.filesize) {
-        findings.push({ kind: "size_differs", entity: "file", s1Id: c.fid,
-          detail: { stagedSize: raw.filesize, objectSize: target.file_size } });
-      }
       if (target && target.status === "live" && target.file_context === `entity-files:${c.context}` &&
           target.file_owner_id === c.ownerId && !moved && mapping?.consumedFingerprint === fp &&
           mapping.logicVersion === LOGIC_VERSION && !args.force && !args.dry) {
@@ -309,15 +311,17 @@ async function main() {
   const result = buildLoaderResult({ loader: LOADER, logicVersion: LOGIC_VERSION, dryRun: args.dry,
     forceReconcile: args.force, summary, rejects, allowedRejects: args.rejects, verifyFailures,
     findings, allowedFindings: args.findings,
-    detail: { ...totals, contextCounts, typeCounts, categoryCounts, missingFiles: missing, rejectSamples: rejects.samples } });
+    detail: { ...totals, fileTypesToCreate, contextCounts, typeCounts, categoryCounts, missingFiles: missing, rejectSamples: rejects.samples } });
   emitLoaderResult(result);
   if (args.missingList) await writeFile(args.missingList, JSON.stringify(missing), { mode: 0o600 });
   if (!args.dry) await recordRun(start, { loader: LOADER }, result as unknown as Record<string, unknown>);
   return loaderExitCode(result);
 }
 
-main().then(code => { process.exitCode = code; }).catch(() => {
-  console.error("s1-files failed: sanitized operational failure; no raw error details emitted");
+main().then(code => { process.exitCode = code; }).catch(error => {
+  console.error(error instanceof Error && error.message === "file_inventory_unverified"
+    ? "s1-files failed: file_inventory_unverified"
+    : "s1-files failed: sanitized operational failure; no raw error details emitted");
   process.exitCode = 1;
 }).finally(async () => {
   try {

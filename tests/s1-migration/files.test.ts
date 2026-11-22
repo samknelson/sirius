@@ -53,7 +53,7 @@ describe("file migration precedence", () => {
       fields: { field_sirius_category: "sirius_worker", field_sirius_type: "merge",
         field_sirius_log_handler: [to], field_sirius_json: JSON.stringify({ nid: from }) } });
     expect(mergeResolver([merge(7, 8), merge(8, 1)])(7)).toBe(1);
-    expect(() => mergeResolver([merge(7, 8), merge(8, 7)])(7)).toThrow("merge_cycle");
+    expect(mergeResolver([merge(7, 8), merge(8, 7)])(7)).toBeUndefined();
   });
   it("selects the lowest source nid deterministically", () => {
     const a = log("comment", [1], 11), b = log("comment", [3], 12);
@@ -64,6 +64,30 @@ describe("file migration precedence", () => {
   });
   it("uses filename fallback instead of an unrelated node title", () => {
     expect(buildCandidates([log("material")], owner, n => n)[0].title).toBeUndefined();
+  });
+  it("rejects invalid source JSON per material/election candidate without aborting other files", () => {
+    const nodes = [log("material", [1], 10), log("trust:election_wizard", [], 11), log("comment", [1], 12)];
+    nodes[0].fields.field_sirius_json = "CANARY_INVALID_JSON";
+    nodes[1].fields.field_sirius_json = "CANARY_INVALID_JSON";
+    const result = buildCandidates(nodes, owner, n => n);
+    expect(result.map(c => c.reason)).toEqual(["source_json_invalid", "source_json_invalid", undefined]);
+  });
+  it("isolates malformed merges, conflicts, cycles and their upstream handlers", () => {
+    const merge = (from: number, handlers: number[]): SourceNode => ({
+      ...log("sirius_worker", handlers, from + 100), fields: {
+        field_sirius_category: "sirius_worker", field_sirius_type: "merge",
+        field_sirius_log_handler: handlers, field_sirius_json: JSON.stringify({ nid: from }),
+      },
+    });
+    const unreadable = merge(99, [1]); unreadable.fields.field_sirius_json = "CANARY_JSON";
+    const resolver = mergeResolver([merge(7, []), merge(8, [7]), merge(9, [1]), merge(9, [2]),
+      merge(10, [11]), merge(11, [10]), unreadable]);
+    expect(resolver.invalidLogs).toBe(2);
+    const result = buildCandidates([7, 8, 9, 10, 11, 1].map((handler, i) => log("comment", [handler], 200 + i)), owner, resolver);
+    expect(result.map(c => c.reason)).toEqual([
+      "merge_unresolved", "merge_unresolved", "merge_unresolved", "merge_unresolved", "merge_unresolved", undefined,
+    ]);
+    expect(resolver(99)).toBe(99); // Unknown from-nid cannot taint an arbitrary worker.
   });
 });
 describe("local archive containment", () => {

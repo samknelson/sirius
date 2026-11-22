@@ -50,22 +50,34 @@ export const categoryOf = (n: SourceNode) => normalize(n.fields.field_sirius_log
 export const typeOf = (n: SourceNode) => normalize(n.fields.field_sirius_log_type ?? n.fields.field_sirius_type);
 export function mergeResolver(logs: SourceNode[]) {
   const edges = new Map<number, number>();
+  const invalid = new Set<number>();
+  let invalidLogs = 0;
   for (const n of logs) {
     if (categoryOf(n) !== "sirius_worker" || typeOf(n) !== "merge") continue;
-    const from = Number(sourceJson(n).nid);
+    let json: Record<string, any>;
+    try { json = sourceJson(n); } catch { invalidLogs++; continue; }
+    const from = Number(json.nid);
     const handlers = references(n.fields.field_sirius_log_handler);
-    if (!Number.isSafeInteger(from) || from <= 0 || handlers.length !== 1) throw new Error("merge_invalid");
-    if (edges.has(from) && edges.get(from) !== handlers[0]) throw new Error("merge_conflicting");
+    const fromKnown = Number.isSafeInteger(from) && from > 0;
+    if (!fromKnown || handlers.length !== 1) {
+      invalidLogs++;
+      if (fromKnown) invalid.add(from);
+      continue;
+    }
+    if (edges.has(from) && edges.get(from) !== handlers[0]) invalid.add(from);
     edges.set(from, handlers[0]);
   }
-  return (nid: number) => {
+  const resolve = (nid: number): number | undefined => {
     const seen = new Set<number>();
-    while (edges.has(nid)) {
-      if (seen.has(nid)) throw new Error("merge_cycle");
-      seen.add(nid); nid = edges.get(nid)!;
+    for (;;) {
+      if (invalid.has(nid) || seen.has(nid)) return undefined;
+      seen.add(nid);
+      const next = edges.get(nid);
+      if (next === undefined) return nid;
+      nid = next;
     }
-    return nid;
   };
+  return Object.assign(resolve, { invalidLogs });
 }
 /** Walk explicit fid/relationship pairs, including inherited relationship nodes. */
 function relationshipFor(value: unknown, fid: number, inherited?: number): number | undefined {
@@ -80,7 +92,7 @@ function relationshipFor(value: unknown, fid: number, inherited?: number): numbe
   }
 }
 export function buildCandidates(
-  nodes: SourceNode[], resolveOwner: (nid: number) => Owner, resolveMerge: (nid: number) => number,
+  nodes: SourceNode[], resolveOwner: (nid: number) => Owner, resolveMerge: (nid: number) => number | undefined,
 ): Candidate[] {
   const out: Candidate[] = [];
   for (const node of [...nodes].sort((a, b) => a.nid - b.nid)) {
@@ -97,19 +109,27 @@ export function buildCandidates(
         continue;
       }
       if (["feed:prior", "auditlog"].includes(c.category)) { c.archiveOnly = true; continue; }
-      const owners = references(node.fields.field_sirius_log_handler).map(n => resolveOwner(resolveMerge(n)));
+      const election = c.category.startsWith("trust:election_wizard");
+      let json: Record<string, any> = {};
+      if (election || c.category === "material") {
+        try { json = sourceJson(node); }
+        catch { c.reason = "source_json_invalid"; continue; }
+      }
+      const resolved = references(node.fields.field_sirius_log_handler).map(n => resolveMerge(n));
+      if (resolved.some(n => n === undefined)) { c.reason = "merge_unresolved"; continue; }
+      const owners = resolved.map(n => resolveOwner(n!));
       const workers = owners.filter(o => o.kind === "worker");
       let worker = workers.find(o => o.id);
       if (workers.some(o => o.reason === "worker_ambiguous") ||
           new Set(workers.map(o => o.id).filter(Boolean)).size > 1) {
         c.reason = "worker_ambiguous"; continue;
       }
-      const election = c.category.startsWith("trust:election_wizard");
-      const json = election || c.category === "material" ? sourceJson(node) : {};
       if (!worker && election && workers.length === 0) {
         const nid = Number(json.wizard?.trust_election?.policy?.worker_nid);
         if (Number.isSafeInteger(nid) && nid > 0) {
-          const fallback = resolveOwner(resolveMerge(nid));
+          const merged = resolveMerge(nid);
+          if (merged === undefined) { c.reason = "merge_unresolved"; continue; }
+          const fallback = resolveOwner(merged);
           if (fallback.kind === "worker") worker = fallback;
         }
       }

@@ -8,16 +8,23 @@ application, task, or scheduler. The unrelated mockup artifact was not changed.
 - `npx tsc -p tsconfig.scripts.json --noEmit` passed before the first loader
   execution and after the final runtime changes.
 - `npx vitest run tests/s1-migration/files.test.ts tests/s1-migration/fleet-gate.test.ts`:
-  12 passing tests.
-- `node scripts/s1-migration/dev/rehearse-files.mjs`: 22 passing loader runs,
-  plus missing-type and conflicting-type startup refusals.
+  15 passing tests, including production allowance gates and isolated malformed
+  source/merge handling.
+- `node scripts/s1-migration/dev/rehearse-files.mjs`: 25 passing loader runs,
+  plus conflicting/incompatible-type startup refusals in both modes and
+  unverified-inventory refusal.
 - The rehearsal starts a separate local PostgreSQL cluster with two disposable
   databases, asserts their identities, and gives child commands a clean
   environment. Archive and destination bytes are separate local directories.
   The source SQL adapter translates MySQL placeholders for PostgreSQL; it is
   not proof of MariaDB transport behavior.
-- Raw extraction interruption and moving-count refusal preserve the previous
-  inventory. A complete refresh removes stale rows and restores count evidence.
+- Raw extraction interruption preserves the previous inventory. A first-attempt
+  change followed by stable reads publishes on attempt two. Three changing
+  attempts preserve both the inventory and its evidence row. The actual stage
+  CLI, executed with an isolated source adapter, exits zero and reports
+  `skipped_changing`; other raw-table reports pass. The subsequent files loader
+  exits nonzero with `file_inventory_unverified` and changes no tracked rows.
+  A complete refresh removes stale rows and restores count/admission evidence.
 - All six types, scalar contracts, draft election JSON fallback and dependent
   links, direct/contact worker resolution and ambiguity, employer/payment
   rejection, normalized D7 totals and unknown-category rejection were exercised.
@@ -26,6 +33,8 @@ application, task, or scheduler. The unrelated mockup artifact was not changed.
   and deny a non-staff uploader with 403. No existing/live application server or
   authenticated browser session was used.
 - Reruns create/update/delete nothing and perform zero archive GETs.
+  A staged size mismatch emits exactly one first-run `size_differs`; the
+  immediate rerun has zero findings, writes and archive GETs.
   Material metadata edits use zero archive GETs. Fresh merge logs move files
   without editing or restaging their attachment-bearing logs.
 - Verification failure remains retryable; provenance adoption repairs a
@@ -37,12 +46,21 @@ application, task, or scheduler. The unrelated mockup artifact was not changed.
   allowed. Archive bytes survive destination deletion.
 - Dry-run snapshots of files, attachments, mappings, types, variables,
   metadata, logs and run history remain identical.
+  This includes a first-ever run with no types: it reports
+  `fileTypesToCreate: 6`, performs six HEAD checks and creates no objects.
+- Malformed material/election JSON, malformed merge logs with known/unknown
+  from-nids, conflicting edges, cycles and upstream merge dependencies are
+  isolated. A single missing-owner preflight is simulated at the context API;
+  all remaining storage is real. Two healthy candidates still load while the
+  run reports two `source_json_invalid`, four `merge_unresolved`, one
+  `owner_missing`, and a count-only malformed-log finding. The run exits one;
+  an explicitly allowed isolated rerun exits zero without archive GETs.
 - Synthetic canaries were absent from loader console output, result envelopes
   and storage logs, including forced database failures.
 
 Rehearsal artifacts are deliberately ignored under `generated-artifacts/`.
 The latest successful run at implementation time is
-`generated-artifacts/s1-files-1795296401597/evidence.json`.
+`generated-artifacts/s1-files-1795361406415/evidence.json`.
 Rerunning the documented command creates a new isolated evidence directory.
 
 ## Implementation notes
@@ -66,6 +84,12 @@ response were checked against the source epoch; simply using the session's
 Los Angeles wall clock would shift the instant exposed by the API.
 
 ## Release and remaining acceptance
+
+The daily-loader fixes above change no Part A configuration, ECS definitions,
+schedules or production data. Delivery is source-only to `bao-replit-main`;
+the operator must build the image from the reported commit. No image was built
+or published for these fixes. The earlier implementation's image notes below
+are historical evidence, not a release of this patch.
 
 The dedicated `migration` image was built locally from the implementation,
 without inheriting the full web development-dependency stage. Network-disabled

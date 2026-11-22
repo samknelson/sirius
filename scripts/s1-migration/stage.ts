@@ -259,6 +259,7 @@ async function stageRawLedgerAr(
 
 interface RawTableReport {
   table: string;
+  status?: "verified" | "skipped_changing";
   s1Count: number;
   sourceCountAfter: number;
   extracted: number;
@@ -828,6 +829,10 @@ async function main() {
     rawUserReports = await stageRawUserTables(s1, args.batch);
     rawUserReports.push(await stageRawFiles(s1, args.batch));
     for (const r of rawUserReports) {
+      if (r.status === "skipped_changing") {
+        console.log(`raw ${r.table}: skipped_changing; previous inventory retained; files loader blocked`);
+        continue;
+      }
       const evidence = assess(`raw:${r.table}`, extractionStartedAt, new Date(), {
         sourceCountBefore: r.s1Count,
         sourceCountAfter: r.sourceCountAfter,
@@ -880,6 +885,7 @@ async function main() {
         nulSanitizedValues: nulSanitizedCount(),
         rawLedgerStaged: rawLedgerReport?.staged ?? null,
         rawUserTables: rawUserReports?.length ?? null,
+        rawFilesStatus: rawUserReports?.find(r => r.table === "file_managed")?.status ?? null,
       }),
     );
   }

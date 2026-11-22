@@ -17,11 +17,11 @@ export async function ensureFileTypes(dryRun: boolean) {
     if (row.name !== name || JSON.stringify(row.data?.contextIds) !== JSON.stringify([context])) throw new Error("file_type_incompatible");
     ids.set(key, row.id);
   }
-  if (dryRun && missing.length) throw new Error("dry_run_file_types_missing");
+  if (dryRun) return { ids, fileTypesToCreate: missing.length };
   for (const [key, name, context] of missing) {
     const inserted = await db.execute(sql`INSERT INTO options_file_type(id,name,sirius_id,data)
       VALUES(${`s1-file-${key}`},${name},${`s1-file-${key}`},${JSON.stringify({ contextIds: [context] })}::jsonb) RETURNING id`);
     ids.set(key, (inserted as unknown as { rows: { id: string }[] }).rows[0].id);
   }
-  return ids;
+  return { ids, fileTypesToCreate: 0 };
 }

@@ -49,8 +49,26 @@ try {
       if (statement.includes("COUNT(*)") && ++countCalls === 2) result[0][0].n = 999;
       return result;
     } };
-    await assert.rejects(() => stageRawFiles(moving as any, 2), /inventory not published/);
-    assert.equal(JSON.stringify((await client.query("SELECT * FROM s1_staging.raw_file_managed ORDER BY fid")).rows), beforeInventory);
+    const settled = await stageRawFiles(moving as any, 2);
+    assert.equal(settled.status, "verified");
+    assert.equal(settled.attempts, 2);
+    const snapshot = async () => JSON.stringify({
+      inventory: (await client.query("SELECT * FROM s1_staging.raw_file_managed ORDER BY fid")).rows,
+      evidence: (await client.query("SELECT * FROM s1_staging.file_inventory_evidence")).rows,
+    });
+    const stableSnapshot = await snapshot();
+    countCalls = 0;
+    const alwaysMoving = { query: async (statement: string, params?: unknown[]) => {
+      const result = await adapter.query(statement, params);
+      if (statement.includes("COUNT(*)") && ++countCalls % 2 === 0) result[0][0].n = 999;
+      return result;
+    } };
+    const skipped = await stageRawFiles(alwaysMoving as any, 2);
+    assert.equal(skipped.status, "skipped_changing");
+    assert.equal(skipped.attempts, 3);
+    assert.equal(countCalls, 6);
+    assert.equal(await snapshot(), stableSnapshot);
+    assert.equal((await client.query("SELECT status FROM s1_staging.file_inventory_attempt")).rows[0].status, "skipped_changing");
     const removed = (await source.query("DELETE FROM file_managed WHERE fid=7 RETURNING *")).rows[0];
     assert.equal((await stageRawFiles(adapter as any, 2)).staleRemoved, 1);
     assert.equal((await client.query("SELECT count(*)::int n FROM s1_staging.raw_file_managed")).rows[0].n, 6);
@@ -76,6 +94,14 @@ try {
     const { pool } = await import("../../../server/storage/db");
     await pool.end();
     console.log("synthetic source staged");
+  } else if (process.argv[2] === "loader-owner-missing") {
+    // Simulate a single owner disappearing between source resolution and the
+    // context preflight. All other reads/writes still use the disposable DB.
+    const { storage } = await import("../../../server/storage/database");
+    const original = storage.workers.getWorker.bind(storage.workers);
+    storage.workers.getWorker = async id => id === "worker-missing-fixture" ? undefined : original(id);
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    await import("../load-files");
   } else if (process.argv[2] === "access") {
     await import("../../../shared/access-policies/loader");
     const { storage } = await import("../../../server/storage/database");

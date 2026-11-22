@@ -20,17 +20,27 @@ npx tsx scripts/s1-migration/load-files.ts --migration-mode \
   [--missing-file-list /secure/output/missing-files.json]
 ```
 
-Allowances are examples, not automatic approvals. Start without allowances;
-every reject and finding must be reviewed. Fleet profiles intentionally grant
-no file-specific allowances. `--limit` limits new byte-backed writes, including
+The production fleet allows only `bytes_missing` and `owner_unresolved`, per
+plan v2 acceptance criterion 2 (about 440 missing bytes and 3 unresolved owners).
+The dev profile is unchanged. No file findings or other reject reasons are
+automatically approved. `--limit` limits new byte-backed writes, including
 owner moves; it does not truncate candidate discovery or authorize deletions.
-`--dry-run` requires the six file types already present, performs archive HEAD
-checks and writes no database or destination objects. The optional report file
+`--dry-run` reports missing types in `detail.fileTypesToCreate` (six on a fresh
+target), performs archive HEAD checks and writes no database or destination
+objects. Type collisions and incompatible definitions still refuse both modes.
+The optional report file
 contains only fid/sourceNid pairs.
 
 Raw-only refresh includes file metadata; skip-raw leaves it untouched.
 Incomplete or changing raw extraction never publishes a partial inventory or
-deletes stale rows. Reads are keyset-paged; only metadata is buffered.
+deletes stale rows. A changing inventory retries the complete two-pass read up
+to three times with a short pause. Exhaustion records `skipped_changing` in the
+stage report without failing other staging work. The previous inventory and
+evidence row remain untouched; separate latest-attempt admission stays blocked.
+The files loader then exits nonzero with `file_inventory_unverified` before
+writing files or types. Run a successful raw refresh before retrying files.
+Existing installations also need that refresh to establish the admission row.
+Other extraction errors still fail staging. Reads are keyset-paged; only metadata is buffered.
 Local synthetic rehearsal uses `--archive-directory` and requires local
 destination providers. Normal operation uses the AWS default credential chain,
 `S1_FILES_ARCHIVE_BUCKET`, and `S1_FILES_ARCHIVE_PREFIX` (default `private/`).
@@ -43,6 +53,18 @@ Deletion is loader-scoped and removes only destination attachments/objects;
 more than 50 sweep candidates require explicit `sweep_over_limit` allowance.
 Current rejected, pending, and limited source identities remain protected.
 Provenance adoption and dangling-map recovery emit findings for review.
+`size_differs` is an archive HEAD observation during create/owner-move checks,
+not a comparison re-emitted on unchanged daily files. Verification uses the
+actual stored size. An unchanged rerun performs no archive GETs or file writes.
+
+A missing resolved context owner rejects only its candidate as `owner_missing`.
+Malformed material/election JSON rejects its candidate as `source_json_invalid`.
+Malformed merge logs produce a count-only `merge_log_invalid` finding; a readable
+from-nid and its upstream chains reject as `merge_unresolved`. Conflicting edges
+and cycles likewise reject their dependent handlers, without stopping healthy
+candidates. Unreadable from-nids are never guessed. These new reasons/findings
+are not allowed by either fleet profile and keep the files step failing until
+reviewed. Rejected candidates retain protection from deletion sweeps.
 
 Storage sampling must be zero and migration debug logging unset; filenames,
 URIs, material titles, and summaries are not diagnostic fields.

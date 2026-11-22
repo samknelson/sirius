@@ -20,18 +20,44 @@ export async function ensureRawFileTable() {
     singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
     completed_at timestamptz NOT NULL, row_count bigint NOT NULL, identity_hash text NOT NULL
   )`);
+  // Admission state is separate: a failed refresh must not alter published evidence.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS s1_staging.file_inventory_attempt (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+    status text NOT NULL
+  )`);
 }
 
 export async function stageRawFiles(s1: Pool, batch: number) {
   const start = Date.now();
   await ensureRawFileTable();
+  await db.execute(sql`INSERT INTO s1_staging.file_inventory_attempt VALUES(true,'pending')
+    ON CONFLICT(singleton) DO UPDATE SET status='pending'`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await extractAndPublish(s1, batch);
+      return { ...result, status: "verified" as const, attempts: attempt, durationMs: Date.now() - start };
+    } catch (error) {
+      if (!(error instanceof InventoryChanged)) {
+        throw new Error("raw_file_managed extraction failed; inventory not published");
+      }
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  await db.execute(sql`UPDATE s1_staging.file_inventory_attempt SET status='skipped_changing'`);
+  return { table: "file_managed", status: "skipped_changing" as const, attempts: 3,
+    s1Count: 0, sourceCountAfter: 0, extracted: 0, staged: 0, staleRemoved: 0,
+    durationMs: Date.now() - start, identityVerified: false };
+}
+
+class InventoryChanged extends Error {}
+
+async function extractAndPublish(s1: Pool, batch: number) {
   const count = async () => Number((await s1.query<RowDataPacket[]>(
     "SELECT COUNT(*) AS n FROM file_managed"))[0][0].n);
   const s1Count = await count();
   const inventory: RawFile[] = [];
   const hash = createHash("sha256");
   let after = -1;
-  try {
     for (;;) {
       const [page] = await s1.query<RowDataPacket[]>(
         "SELECT fid,uid,filename,uri,filemime,filesize,status,timestamp FROM file_managed WHERE fid > ? ORDER BY fid LIMIT ?",
@@ -73,7 +99,7 @@ export async function stageRawFiles(s1: Pool, batch: number) {
     const identityHash = hash.digest("hex");
     const sourceCountAfter = await count();
     if (s1Count !== inventory.length || verified !== s1Count || sourceCountAfter !== s1Count ||
-        identityHash !== proof.digest("hex")) throw new Error("inventory_changed");
+        identityHash !== proof.digest("hex")) throw new InventoryChanged();
     const staleRemoved = await db.transaction(async (tx) => {
       await tx.execute(sql`LOCK TABLE s1_staging.raw_file_managed IN EXCLUSIVE MODE`);
       const watermark = (await tx.execute(sql`SELECT clock_timestamp()::text AS stamp`) as unknown as { rows: { stamp: string }[] }).rows[0].stamp;
@@ -93,12 +119,9 @@ export async function stageRawFiles(s1: Pool, batch: number) {
       await tx.execute(sql`INSERT INTO s1_staging.file_inventory_evidence VALUES(true,now(),${s1Count},${identityHash})
         ON CONFLICT(singleton) DO UPDATE SET completed_at=excluded.completed_at,
         row_count=excluded.row_count,identity_hash=excluded.identity_hash`);
+      await tx.execute(sql`UPDATE s1_staging.file_inventory_attempt SET status='verified'`);
       return deleted.rowCount ?? 0;
     });
     return { table: "file_managed", s1Count, sourceCountAfter, extracted: inventory.length,
-      staged: inventory.length, staleRemoved, durationMs: Date.now() - start, identityVerified: true };
-  } catch {
-    // SQL/vendor errors can contain raw filenames and URIs.
-    throw new Error("raw_file_managed extraction failed; inventory not published");
-  }
+      staged: inventory.length, staleRemoved, identityVerified: true };
 }

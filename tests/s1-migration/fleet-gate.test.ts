@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FLEET, fleetGateStatus, PROFILES } from "../../scripts/s1-migration/sync-config";
+import { buildLoaderResult, emptySummary, loaderExitCode } from "../../scripts/s1-migration/lib/sync";
+import { RejectLog } from "../../scripts/s1-migration/lib/loader-utils";
 
 const passing = FLEET.map(({ id }) => ({ id, status: "pass" }));
 const skippedSeeders = passing.map((record) =>
@@ -9,6 +11,23 @@ const skippedSeeders = passing.map((record) =>
 );
 
 describe("sync fleet gate", () => {
+  it("admits only the two ruled file rejects in the production daily fleet", () => {
+    const allowedRejects = PROFILES.production.steps.files.allowRejects;
+    expect(allowedRejects).toEqual(["bytes_missing", "owner_unresolved"]);
+    expect(PROFILES.dev.steps.files.allowRejects).toBeUndefined();
+    for (const other of [undefined, "category_unruled", "extension_disallowed",
+      "owner_missing", "source_json_invalid", "merge_unresolved"]) {
+      const rejects = new RejectLog();
+      for (const reason of ["bytes_missing", "owner_unresolved", ...(other ? [other] : [])])
+        rejects.add(reason, { fid: 1 }, 1);
+      const result = buildLoaderResult({ loader: "s1-files", logicVersion: 1, dryRun: false,
+        forceReconcile: false, summary: emptySummary(), rejects, allowedRejects, verifyFailures: 0 });
+      expect(loaderExitCode(result)).toBe(other ? 1 : 0);
+      expect(fleetGateStatus(passing.map(r => r.id === "files"
+        ? { ...r, status: loaderExitCode(result) ? "fail" : "pass" } : r), "daily", false))
+        .toBe(other ? "fail" : "pass");
+    }
+  });
   it("passes only the operator-approved employer-upload reject reasons in both profiles", () => {
     const expected = ["missing_upload_parent", "missing_employer_node"];
     expect(PROFILES.dev.steps["employer-wizards"].allowRejects).toEqual(expected);

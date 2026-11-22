@@ -27,6 +27,7 @@ import { MIGRATION_SYSTEM_TIME_ZONE } from "./lib/timezone-pin";
  * be added here (and given a mode policy) before any profile may allow it —
  * validateSyncConfig refuses unknown kinds. */
 export const KNOWN_FINDING_KINDS = [
+  "merge_log_invalid",
   "size_differs",
   "sweep_over_limit",
   "mapping_repaired",
@@ -526,7 +527,8 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "seed-trust-config": {},
       "seed-policy-benefits": {},
       options: {},
-      files: {},
+      // Plan v2 acceptance criterion 2: ~440 missing bytes and 3 unresolved owners in production.
+      files: { allowRejects: ["bytes_missing", "owner_unresolved"] },
       "contacts-workers": {
         allowRejects: [
           "worker_id_value_collision",

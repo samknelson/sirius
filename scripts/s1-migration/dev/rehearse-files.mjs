@@ -72,24 +72,45 @@ try {
   await q("UPDATE s1_staging.raw_file_managed SET uid=9 WHERE fid=2");
   await q("UPDATE s1_staging.raw_file_managed SET uid=10 WHERE fid=3");
   const allowed = "mapping_repaired,mapping_dangling,size_differs";
-  const refuse = async (args) => {
+  const refuse = async (args, reason) => {
     const r = spawnSync("node", ["--import", "tsx", "scripts/s1-migration/load-files.ts",
       "--archive-directory", `${root}/archive`, ...args], { env, encoding: "utf8", timeout: 180000 });
     assert.equal(r.status, 1);
     assert.ok(!/CANARY_/.test(`${r.stdout}${r.stderr}`));
+    if (reason) assert.ok(`${r.stdout}${r.stderr}`.includes(reason));
   };
-  // Dry bootstrap refuses absent types, and a name collision cannot create a
-  // partial set of the other five definitions.
-  await refuse(["--dry-run"]);
-  assert.equal((await q("SELECT count(*)::int n FROM options_file_type")).rows[0].n, 0);
+  // First-ever dry run must work without types and leave every tracked table intact.
+  const snapshot = async () => {
+    const values = [];
+    for (const table of ["files", "entity_files", "options_file_type", "s1_staging.id_map",
+      "s1_staging.runs", "variables", "entity_metadata", "winston_logs",
+      "s1_staging.raw_file_managed", "s1_staging.file_inventory_evidence", "s1_staging.file_inventory_attempt"]) {
+      values.push((await q(`SELECT to_jsonb(t)::text AS row FROM ${table} t ORDER BY to_jsonb(t)::text`)).rows);
+    }
+    return JSON.stringify(values);
+  };
+  const emptySnapshot = await snapshot();
+  let r = await run(["--dry-run"]);
+  assert.equal(r.detail.fileTypesToCreate, 6);
+  assert.equal(r.detail.archiveHeads, 6);
+  assert.equal(r.detail.archiveGets, 0);
+  assert.equal(await snapshot(), emptySnapshot);
+  assert.equal((await readdir(`${root}/destination`, { recursive: true })).length, 0);
+  // Name collisions and incompatible existing definitions remain fatal in both modes.
   await q("INSERT INTO options_file_type(id,name) VALUES ('collision','Payment Document')");
   await refuse([]);
+  await refuse(["--dry-run"]);
   assert.equal((await q("SELECT count(*)::int n FROM options_file_type")).rows[0].n, 1);
   await q("DELETE FROM options_file_type WHERE id='collision'");
-  async function run(args = [], exit = 0) {
+  await q(`INSERT INTO options_file_type(id,name,sirius_id,data) VALUES
+    ('wrong','Member Document','s1-file-member-document','{"contextIds":["employer"]}')`);
+  await refuse([]); await refuse(["--dry-run"]);
+  await q("DELETE FROM options_file_type WHERE id='wrong'");
+  async function run(args = [], exit = 0, fixtureMode) {
     const resultPath = `${root}/result.json`;
     await rm(resultPath, { force: true });
-    const r = spawnSync("node", ["--import", "tsx", "scripts/s1-migration/load-files.ts",
+    const r = spawnSync("node", ["--import", "tsx", ...(fixtureMode
+      ? ["scripts/s1-migration/dev/file-fixture.ts", fixtureMode] : ["scripts/s1-migration/load-files.ts"]),
       "--archive-directory", `${root}/archive`, "--migration-mode", "--allow-findings", allowed, ...args],
       { env: { ...env, S1_RESULT_JSON_PATH: resultPath }, encoding: "utf8", timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
     const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
@@ -100,13 +121,23 @@ try {
     checks++;
     return result;
   }
-  let r = await run();
+  // An exhausted extraction blocks writes despite the prior count proof.
+  command("node", ["--import", "tsx", "scripts/s1-migration/dev/file-stage-fixture.ts"]);
+  const blockedSnapshot = await snapshot();
+  await refuse([], "file_inventory_unverified");
+  assert.equal(await snapshot(), blockedSnapshot);
+  await q("UPDATE s1_staging.file_inventory_attempt SET status='verified'");
+  // Wrong S1 filesize is a one-time archive observation, not a daily finding.
+  await q("UPDATE s1_staging.raw_file_managed SET filesize=999 WHERE fid=1");
+  r = await run();
+  assert.equal(r.findings.filter(f => f.kind === "size_differs").length, 1);
   assert.equal(r.summary.created, 6); assert.equal(r.verify.failures, 0);
   assert.equal(r.detail.archive_only, 1);
   assert.equal((await q("SELECT uploaded_by FROM files WHERE metadata->'s1'->>'fid'='2'")).rows[0].uploaded_by, "uploader-a");
   for (const fid of [1, 3]) assert.equal((await q("SELECT uploaded_by FROM files WHERE metadata->'s1'->>'fid'=$1", [String(fid)])).rows[0].uploaded_by, "system:s1-migration");
   command("node", ["--import", "tsx", "scripts/s1-migration/dev/file-fixture.ts", "access"]);
   r = await run(); assert.equal(r.summary.unchanged, 6); assert.equal(r.detail.archiveGets, 0);
+  assert.equal(r.findings.length, 0);
   assert.equal(r.summary.updated + r.summary.created + r.summary.deleted, 0);
   // Provider-stat verification failure remains retryable on an ordinary run.
   const existingPath = (await q("SELECT storage_path FROM files WHERE metadata->'s1'->>'fid'='1'")).rows[0].storage_path;
@@ -126,13 +157,6 @@ try {
     '{"field_sirius_category":"sirius_worker","field_sirius_type":"merge","field_sirius_log_handler":[4],"field_sirius_json":"{\\"nid\\":1}"}')`);
   r = await run(); assert.equal(r.summary.updated, 3);
   assert.equal((await q("SELECT entity_id FROM entity_files WHERE data->>'s1Fid'='1'")).rows[0].entity_id, "worker-b");
-  const snapshot = async () => {
-    const values = [];
-    for (const table of ["files", "entity_files", "options_file_type", "s1_staging.id_map", "s1_staging.runs", "variables", "entity_metadata", "winston_logs"]) {
-      values.push((await q(`SELECT to_jsonb(t)::text AS row FROM ${table} t ORDER BY to_jsonb(t)::text`)).rows);
-    }
-    return JSON.stringify(values);
-  };
   const before = await snapshot();
   r = await run(["--dry-run"]);
   assert.equal(await snapshot(), before);
@@ -215,6 +239,40 @@ try {
   assert.deepEqual((await q("SELECT data->>'s1WizardStatus' status,data->>'s1RelationshipNid' relationship FROM entity_files WHERE data->>'s1Fid'='95'")).rows[0],
     { status: "draft", relationship: "999" });
   await q("DELETE FROM s1_staging.records WHERE nid IN (1091,1092,1093,1094,1096)");
+  // Malformed records reject independently; a healthy candidate still loads.
+  for (const fid of [200,201,202,203,204,205,206,207,208]) await add(fid);
+  for (const [fid, category] of [[200,"material"],[201,"trust:election_wizard"]]) {
+    await q(`UPDATE s1_staging.records SET fields=fields || $2::jsonb WHERE nid=$1`,
+      [1000 + fid, JSON.stringify({ field_sirius_category: category, field_sirius_json: "CANARY_INVALID_JSON" })]);
+  }
+  const merge = async (nid, from, handlers, invalidJson = false) => q(
+    "INSERT INTO s1_staging.records(bundle,nid,fields) VALUES('sirius_log',$1,$2::jsonb)", [
+      nid, JSON.stringify({ field_sirius_category: "sirius_worker", field_sirius_type: "merge",
+        field_sirius_log_handler: handlers, field_sirius_json: invalidJson ? "CANARY_MERGE_JSON" : JSON.stringify({ nid: from }) }),
+    ]);
+  await merge(2000, 700, []); // Malformed edge, known from.
+  await merge(2001, 701, [1]); await merge(2002, 701, [4]); // Conflict.
+  await merge(2003, 702, [703]); await merge(2004, 703, [702]); // Cycle.
+  await merge(2005, 704, [700]); // Upstream dependency on a malformed edge.
+  await merge(2006, 705, [1], true); // Unreadable from: count only, no guessed nid.
+  await q("INSERT INTO contacts(id,display_name) VALUES('contact-missing-fixture','Synthetic')");
+  await q("INSERT INTO workers(id,contact_id) VALUES('worker-missing-fixture','contact-missing-fixture')");
+  await q("INSERT INTO s1_staging.records(bundle,nid,fields) VALUES('sirius_worker',706,'{}')");
+  await q("INSERT INTO s1_staging.id_map(entity,s1_id,s2_id,loader) VALUES('worker',706,'worker-missing-fixture','fixture')");
+  for (const [fid, handler] of [[202,700],[203,701],[204,702],[205,704],[206,706]]) {
+    await q("UPDATE s1_staging.records SET fields=jsonb_set(fields,'{field_sirius_log_handler}',$2::jsonb) WHERE nid=$1",
+      [1000 + fid, JSON.stringify([handler])]);
+  }
+  r = await run([], 1, "loader-owner-missing");
+  assert.equal(r.summary.created, 2);
+  assert.equal(r.rejectGate.counts.source_json_invalid, 2);
+  assert.equal(r.rejectGate.counts.merge_unresolved, 4);
+  assert.equal(r.rejectGate.counts.owner_missing, 1);
+  assert.deepEqual(r.findings.filter(f => f.kind === "merge_log_invalid").map(f => f.detail), [{ count: 2 }]);
+  r = await run(["--allow-rejects", "source_json_invalid,merge_unresolved,owner_missing",
+    "--allow-findings", `${allowed},merge_log_invalid`], 0, "loader-owner-missing");
+  assert.equal(r.detail.archiveGets, 0);
+  await q("DELETE FROM s1_staging.records WHERE nid BETWEEN 1200 AND 1206 OR nid BETWEEN 2000 AND 2006");
   // Preflight deletion cap applies to the whole set, before the first delete.
   for (let i = 100; i < 151; i++) await add(i);
   r = await run(); assert.equal(r.summary.created, 51);
