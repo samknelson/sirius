@@ -142,6 +142,20 @@ function fixture() {
 describe("dependent configured Election, Linked and Ageout rules", () => {
   beforeEach(() => { state.storage = {}; });
 
+  it("does not turn current-only coverage deletion into a preceding-month termination", async () => {
+    const actions = [
+      { benefitId: "current-only", previousMonthCovered: false },
+      { benefitId: "prior-grant", previousMonthCovered: true },
+      { benefitId: "legacy" },
+    ].map(a => ({ ...a, scanType: "continue", eligible: false, action: "delete" }));
+    state.storage = { trustWmbEvents: {
+      getWorkerScanResults: async () => [{ year: 2026, month: 11, resultSummary: { actions } }],
+      getWorkerBenefitCoverage: async () => [],
+    } };
+    const result = await state.terminate.compute("fixture-worker");
+    expect(result.events.map((e: any) => e.benefitId)).toEqual(["prior-grant", "legacy"]);
+  });
+
   it("grants unelected linked chains under the subscriber policy with dependent source and employer", async () => {
     const f = fixture();
     const result = await runBenefitsScan(f.storage, "sub", 10, 2026, "live", { includeDependents: true });

@@ -235,7 +235,22 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
         ...row,
         resultSummary: {
           actions: (row.resultSummary as any)?.actions?.filter((action: any) =>
-            !action.executionError && (!action.workerId || action.workerId === workerId)) ?? [],
+            !action.executionError && (!action.workerId || action.workerId === workerId))
+            .map((action: any) => {
+              const summary = row.resultSummary as any;
+              // Use the scan's own evidence, never coverage populated later.
+              // A dependent can appear under several source relationships.
+              const people = Array.isArray(summary?.people) ? summary.people.filter((person: any) =>
+                person?.workerId === workerId &&
+                (action.sourceRelationId === undefined ||
+                  (person.sourceRelationId ?? null) === action.sourceRelationId)) : [];
+              const ids = people.length === 1 ? people[0].previousMonthBenefitIds : undefined;
+              const known = Array.isArray(ids) && ids.every((id: unknown) => typeof id === "string");
+              return {
+                ...action,
+                previousMonthCovered: known ? ids.includes(action.benefitId) : undefined,
+              };
+            }) ?? [],
         },
       }));
     },

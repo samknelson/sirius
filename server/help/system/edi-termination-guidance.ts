@@ -88,6 +88,18 @@ export const ediTerminationGuidance = `
   once admitted, it replaces the old failure display with progress. A refused or
   unavailable admission does not erase the saved failure. A new check still refuses
   any genuinely missing, stale, processing or failed maintenance records.</p>
+  <p><strong>Coverage ending evidence needs correction</strong> is different from
+  unfinished maintenance. An OK maintenance count means computation finished,
+  not that every ending has consistent evidence. A
+  <strong>termination-coverage-missing</strong> issue means a retained termination
+  lacks coverage for the immediately preceding month. Ask an administrator to
+  compare the original scan's previous-month evidence and the authoritative
+  coverage history. A failed continuation can also delete current-month-only
+  coverage; that alone does not prove a previous-month ending. Do not add coverage,
+  delete events, run scans or repeatedly recompute just to pass the check.
+  Historical inferred events require their own source-history review. Any
+  approved repair must preserve scan evidence and be followed by a fresh check;
+  a check never generates or delivers a file.</p>
   <p><strong>Coverage sources</strong> shows which coverage records a membership file
   leaves out, and why, before you generate it. Coverage conflicts when one person has
   more than one coverage record for the same benefit and month with a different
