@@ -414,7 +414,7 @@ Rules (restating and extending the standing rule):
 3. **Everything above rotates at cutover** — these values have circulated through years of dumps and copies. S3 first (it reaches PHI), when S1 goes read-only.
 4. Non-secret variables migrate as configuration with domain scope preserved, after a manual review pass.
 
-The S3 credential scope check and the file-migration workstream (21,029 `file_managed` rows — 14,636 on s3/private, ~6,400 elsewhere unaccounted for; 12,643 CSVs pending a keep/drop decision) are with Sam as a separate case.
+File migration is governed by the [final file plan](plan-v2.md), superseding earlier counts and the November 20 handoff. Part A is operator-owned; Part B stages raw metadata and reconciles six attachment types from a read-only archive. Feed/upload-history files remain archive-only, and archive objects are never deleted.
 
 ### 4.17 Freeze-window writer list (N15 closed — empirical, 14-day window)
 
@@ -600,7 +600,7 @@ The generator will deliberately seed edge cases that a row sample would not cont
 | N19 | Carrier alias→canonical mapping table (§4.15) — **DEFERRED (2026-08-05 ruling):** providers/benefits import as-is from S1, no consolidation at migration time; the alias table is a later-S2-phase input, not a load blocker | Mitchell / Kristin |
 | N20 | Opt-out inheritance from Twilio/SendGrid before first S2 send (§4.19/Q39) | Sam / Luis |
 | N21 | MSR call-reason taxonomy from log types — structured in S2 or archived? | Luis |
-| N22 | File migration workstream: S3 credential scope, the 12,643 CSV keep/drop decision, and the ~6,400 files not on s3/private | Sam |
+| N22 (closed) | Final file plan D1–D8 resolved scope, archive access, upload dates, owners, and file types; see plan-v2.md | Resolved |
 | N23 | Carelon EAP vs Carelon Behavioral Health — distinct products or duplicate tags? | Kristin |
 | OPEN-1 | `field_sirius_payperiod_type` vocabulary and meaning | Mitchell |
 | ~~OPEN-2~~ | **CLOSED (2026-08-04, Sam):** S2 has NO persistent notion of S1 employment status — it is NOT migrated as a fidelity obligation. (Mechanically, `worker_hours.employment_status_id` is `NOT NULL` in S2 today, so T20 keeps the tid→status-name mapping purely to satisfy the column; if the column is ever relaxed the mapping can drop with no migration-fidelity impact.) | — |

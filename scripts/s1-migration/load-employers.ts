@@ -13,7 +13,7 @@
  *   - fields with NO S2 home yet are counted, not loaded: external_id (Q26
  *     ambiguous — employers has no data column), name_tts (no data column),
  *     tags (no S2 home), dispatch_job_types (Q24 — dispatch out of scope),
- *     contract/attachments (T10/T23 file transfer, later milestone).
+   *     contract/attachments (loaded separately by load-files; never structured contracts).
  *     All remain queryable in s1_staging.
  *
  * Shop-contacts pass (02-mapping §9c, T24):
@@ -148,8 +148,8 @@ const SHOP_UNLOADED_FIELDS = [
   "field_sirius_name_tts", // employers has no data column
   "field_grievance_tags", // no S2 home
   "field_sirius_dispatch_job_types", // Q24; dispatch out of scope
-  "field_grievance_contract", // T10/T23 file transfer (later)
-  "field_grievance_attachments", // T10 file transfer (later)
+  "field_grievance_contract", // load-files: Employer Contract attachment, not structured T23 contracts
+  "field_grievance_attachments", // load-files: Employer Document attachments
 ] as const;
 
 async function main() {

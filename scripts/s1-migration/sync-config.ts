@@ -27,6 +27,10 @@ import { MIGRATION_SYSTEM_TIME_ZONE } from "./lib/timezone-pin";
  * be added here (and given a mode policy) before any profile may allow it —
  * validateSyncConfig refuses unknown kinds. */
 export const KNOWN_FINDING_KINDS = [
+  "size_differs",
+  "sweep_over_limit",
+  "mapping_repaired",
+  "mapping_dangling",
   "deleted_in_s1", // framework standard (§10): S1 source vanished, rows preserved
   "source_worker_missing", // beneficiaries: staged worker vanished entirely (fund ruling required)
   "pending_retention", // cardchecks: signed authorization vanished (retention ruling required)
@@ -277,6 +281,16 @@ export const FLEET: FleetStep[] = [
     supportsAllowRejects: true,
     extraArgs: ["--migration-mode"],
   },
+  {
+    id: "files",
+    script: "load-files.ts",
+    loader: "s1-files",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+    extraArgs: ["--migration-mode"],
+  },
 ];
 
 /** Configuration-mutating setup steps operators may explicitly omit on daily runs. */
@@ -411,6 +425,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "pending_retention",
     ],
     steps: {
+      files: {},
       "seed-trust-config": {},
       "seed-policy-benefits": {},
       options: {},
@@ -511,6 +526,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "seed-trust-config": {},
       "seed-policy-benefits": {},
       options: {},
+      files: {},
       "contacts-workers": {
         allowRejects: [
           "worker_id_value_collision",

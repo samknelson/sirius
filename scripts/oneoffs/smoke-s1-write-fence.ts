@@ -327,15 +327,15 @@ async function httpScenarios(harness: HttpHarness): Promise<void> {
 }
 
 async function deferredSchedulerScenario(): Promise<void> {
-  const createOriginal = storage.cronJobRuns.create;
-  const updateOriginal = storage.cronJobRuns.update;
+  const createOriginal = storage.jobRuns.create;
+  const updateOriginal = storage.jobRuns.update;
   const writes: Array<Record<string, unknown>> = [];
   try {
-    (storage.cronJobRuns as any).create = async (value: Record<string, unknown>) => {
+    (storage.jobRuns as any).create = async (value: Record<string, unknown>) => {
       writes.push({ op: "create", ...value });
       return { id: "fence-smoke-run", ...value };
     };
-    (storage.cronJobRuns as any).update = async (_id: string, value: Record<string, unknown>) => {
+    (storage.jobRuns as any).update = async (_id: string, value: Record<string, unknown>) => {
       writes.push({ op: "update", ...value });
       return { id: "fence-smoke-run", ...value };
     };
@@ -359,8 +359,8 @@ async function deferredSchedulerScenario(): Promise<void> {
       "scheduler deferral has an explicit reason and consumes no failure budget",
     );
   } finally {
-    (storage.cronJobRuns as any).create = createOriginal;
-    (storage.cronJobRuns as any).update = updateOriginal;
+    (storage.jobRuns as any).create = createOriginal;
+    (storage.jobRuns as any).update = updateOriginal;
   }
 }
 
@@ -392,14 +392,14 @@ async function deferredWmbScenario(): Promise<void> {
 async function schedulerFailureCleanupScenario(): Promise<void> {
   console.log("\n7. WMB race, scheduler failure cleanup, and a second wet run");
   await wmbClaimRaceScenario();
-  const createOriginal = storage.cronJobRuns.create;
-  const updateOriginal = storage.cronJobRuns.update;
+  const createOriginal = storage.jobRuns.create;
+  const updateOriginal = storage.jobRuns.update;
   try {
-    (storage.cronJobRuns as any).create = async (value: Record<string, unknown>) => ({
+    (storage.jobRuns as any).create = async (value: Record<string, unknown>) => ({
       id: "fence-smoke-failure-run",
       ...value,
     });
-    (storage.cronJobRuns as any).update = async (_id: string, value: Record<string, unknown>) => ({
+    (storage.jobRuns as any).update = async (_id: string, value: Record<string, unknown>) => ({
       id: "fence-smoke-failure-run",
       ...value,
     });
@@ -418,8 +418,8 @@ async function schedulerFailureCleanupScenario(): Promise<void> {
     }
     check(threw, "injected scheduler/plugin failure propagates normally");
   } finally {
-    (storage.cronJobRuns as any).create = createOriginal;
-    (storage.cronJobRuns as any).update = updateOriginal;
+    (storage.jobRuns as any).create = createOriginal;
+    (storage.jobRuns as any).update = updateOriginal;
   }
 
   const firstWet = await within(

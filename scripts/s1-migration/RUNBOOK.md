@@ -1,3 +1,72 @@
+# S1 file attachments
+
+The authoritative specification is `docs/s1-migration/plan-v2.md`, Part B.
+Part A configuration is operator-owned; this loader never changes it.
+`load-files.ts` runs last in the fleet and records the standard `s1-files`
+run envelope in the existing migration run-history view (the view enumerates
+stored runs dynamically, without a separate loader catalog).
+
+Prerequisites: a complete raw-file inventory from `stage.ts`, existing owner
+mappings, verified maintenance mode, `TZ=America/Los_Angeles`, enabled ledger,
+and usable private worker/employer/ledger_payment file areas. Scripts use only
+the task's filesystem environment, not app environment overrides. The archive
+must not be configured in `FILESYSTEMS`.
+
+```
+npx tsx scripts/s1-migration/load-files.ts --migration-mode \
+  [--dry-run] [--force-reconcile] [--max-bytes 104857600] [--limit N] \
+  [--allow-rejects bytes_missing,owner_unresolved] \
+  [--allow-findings size_differs,mapping_repaired,mapping_dangling] \
+  [--missing-file-list /secure/output/missing-files.json]
+```
+
+Allowances are examples, not automatic approvals. Start without allowances;
+every reject and finding must be reviewed. Fleet profiles intentionally grant
+no file-specific allowances. `--limit` limits new byte-backed writes, including
+owner moves; it does not truncate candidate discovery or authorize deletions.
+`--dry-run` requires the six file types already present, performs archive HEAD
+checks and writes no database or destination objects. The optional report file
+contains only fid/sourceNid pairs.
+
+Raw-only refresh includes file metadata; skip-raw leaves it untouched.
+Incomplete or changing raw extraction never publishes a partial inventory or
+deletes stale rows. Reads are keyset-paged; only metadata is buffered.
+Local synthetic rehearsal uses `--archive-directory` and requires local
+destination providers. Normal operation uses the AWS default credential chain,
+`S1_FILES_ARCHIVE_BUCKET`, and `S1_FILES_ARCHIVE_PREFIX` (default `private/`).
+Never use production connections for a synthetic rehearsal.
+
+Missing objects younger than 48 hours are pending, not rejects. Non-private
+URIs and older missing objects reject. Authorization/network failures are
+separate errors, never missing-byte evidence. The default maximum is 100 MiB.
+Deletion is loader-scoped and removes only destination attachments/objects;
+more than 50 sweep candidates require explicit `sweep_over_limit` allowance.
+Current rejected, pending, and limited source identities remain protected.
+Provenance adoption and dangling-map recovery emit findings for review.
+
+Storage sampling must be zero and migration debug logging unset; filenames,
+URIs, material titles, and summaries are not diagnostic fields.
+Original names, dates, material metadata, election status and dependent links
+remain in the protected attachment records. Existing attachment help remains
+sufficient: no new UI actions, permissions, or serving behavior are introduced.
+The D1 SQL writes the UTC-naive representation used by the actual Drizzle
+`files.uploadedAt` Date codec; a session-local SQL conversion would make the
+download metadata report a different instant. Verification checks both SQL
+storage and the application read path. The process/session timezone gate remains
+America/Los_Angeles as required by the rest of the migration framework.
+
+Run the isolated rehearsal after the scripts check:
+`node scripts/s1-migration/dev/rehearse-files.mjs`.
+It launches its own disposable PostgreSQL cluster and supplies a clean child
+environment with only local source/target databases and local file providers.
+Its source adapter translates keyset parameter placeholders for PostgreSQL;
+this is not a claim of real MariaDB transport or production performance proof.
+
+Real-data count tolerance, throughput, fund missing-file review, and UI spot
+checks are operator acceptance work, not conclusions from synthetic tests.
+Release requires a registry `repository@sha256:...` manifest digest built from
+the tested source. A source revision or local image ID is not that evidence.
+
 ## Data Migration: Employer Wizards
 
 **Implementation approved for merge; data migration not yet verified.** The

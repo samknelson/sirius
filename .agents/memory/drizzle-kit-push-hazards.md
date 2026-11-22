@@ -49,3 +49,12 @@ absent targets), and named constraints — it does NOT diff constraint-name
 spelling beyond presence, nullability of defaults, or column defaults. So
 "gate passes, push churns" almost always means name/default cosmetics, not
 real drift.
+
+## Standalone schema fixtures and the API export
+Use Node's `createRequire` for `drizzle-kit/api` in standalone ESM/tsx schema
+fixtures, rather than the package's ESM export.
+**Why:** the installed ESM bundle executes a dynamic `require("fs")` shim that
+throws before schema generation. Its CommonJS export can generate the same
+disposable schema without that loader mismatch.
+**How to apply:** this is for isolated fixtures only, never a reason to run
+`push` on an existing database.

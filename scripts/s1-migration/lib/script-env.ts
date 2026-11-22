@@ -6,6 +6,8 @@ import {
 } from "../../../server/config/env-registry";
 
 registerEnvironmentVariables([
+  { name: "S1_FILES_ARCHIVE_BUCKET", description: "Read-only S1 file archive bucket.", secret: false, category: "core" },
+  { name: "S1_FILES_ARCHIVE_PREFIX", description: "S1 archive key prefix; default private/.", secret: false, category: "core" },
   { name: "S1_MIGRATION_DEBUG", description: "Enable verbose S1 migration error logging.", secret: false, category: "core" },
   { name: "S1_RESULT_JSON_PATH", description: "Path where an S1 migration command writes its JSON result.", secret: false, category: "core" },
   { name: "S1_SYNC_ALERT_TOPIC_ARN", description: "SNS topic ARN for sanitized scheduled S1 sync alerts.", secret: false, category: "core" },

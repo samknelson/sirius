@@ -18,6 +18,7 @@
  */
 import { createS1Pool, listNodeBundles, buildFieldCatalog, type S1FieldInstance } from "./lib/s1";
 import { getEnvironmentVariable } from "./lib/script-env";
+import { stageRawFiles } from "./lib/file-staging";
 import {
   extractBundle,
   extractBundleIncremental,
@@ -825,6 +826,7 @@ async function main() {
   if (!args.skipRaw && (args.bundles == null || args.rawOnly)) {
     const extractionStartedAt = new Date();
     rawUserReports = await stageRawUserTables(s1, args.batch);
+    rawUserReports.push(await stageRawFiles(s1, args.batch));
     for (const r of rawUserReports) {
       const evidence = assess(`raw:${r.table}`, extractionStartedAt, new Date(), {
         sourceCountBefore: r.s1Count,
