@@ -1,5 +1,15 @@
 # File migration verification
 
+## Production files reject allowance — 2026-11-22
+
+The production files profile allows exactly `bytes_missing`, `owner_unresolved`
+and `file_row_missing`. The first two follow plan v2 acceptance criterion 2;
+the operator ruled the two production `file_row_missing` rejects acceptable
+on 2026-11-22 because their referenced fids no longer exist in S1 `file_managed`.
+The dev profile remains unchanged. `category_unruled`, `extension_disallowed`,
+`owner_missing`, `source_json_invalid` and `merge_unresolved` still fail the
+loader and fleet gates.
+
 ## Lock-connection recovery verification — 2026-11-22
 
 - Scripts type check passed; file and fleet-gate tests passed (15 tests).

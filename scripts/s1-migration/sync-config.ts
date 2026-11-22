@@ -528,7 +528,8 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "seed-policy-benefits": {},
       options: {},
       // Plan v2 acceptance criterion 2: ~440 missing bytes and 3 unresolved owners in production.
-      files: { allowRejects: ["bytes_missing", "owner_unresolved"] },
+      // Plus file_row_missing ruled acceptable by the operator on 2026-11-22 (2 in production).
+      files: { allowRejects: ["bytes_missing", "owner_unresolved", "file_row_missing"] },
       "contacts-workers": {
         allowRejects: [
           "worker_id_value_collision",

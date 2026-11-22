@@ -11,14 +11,14 @@ const skippedSeeders = passing.map((record) =>
 );
 
 describe("sync fleet gate", () => {
-  it("admits only the two ruled file rejects in the production daily fleet", () => {
+  it("admits only the three ruled file rejects in the production daily fleet", () => {
     const allowedRejects = PROFILES.production.steps.files.allowRejects;
-    expect(allowedRejects).toEqual(["bytes_missing", "owner_unresolved"]);
+    expect(allowedRejects).toEqual(["bytes_missing", "owner_unresolved", "file_row_missing"]);
     expect(PROFILES.dev.steps.files.allowRejects).toBeUndefined();
     for (const other of [undefined, "category_unruled", "extension_disallowed",
       "owner_missing", "source_json_invalid", "merge_unresolved"]) {
       const rejects = new RejectLog();
-      for (const reason of ["bytes_missing", "owner_unresolved", ...(other ? [other] : [])])
+      for (const reason of ["bytes_missing", "owner_unresolved", "file_row_missing", ...(other ? [other] : [])])
         rejects.add(reason, { fid: 1 }, 1);
       const result = buildLoaderResult({ loader: "s1-files", logicVersion: 1, dryRun: false,
         forceReconcile: false, summary: emptySummary(), rejects, allowedRejects, verifyFailures: 0 });

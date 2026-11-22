@@ -15,13 +15,15 @@ must not be configured in `FILESYSTEMS`.
 ```
 npx tsx scripts/s1-migration/load-files.ts --migration-mode \
   [--dry-run] [--force-reconcile] [--max-bytes 104857600] [--limit N] \
-  [--allow-rejects bytes_missing,owner_unresolved] \
+  [--allow-rejects bytes_missing,owner_unresolved,file_row_missing] \
   [--allow-findings size_differs,mapping_repaired,mapping_dangling] \
   [--missing-file-list /secure/output/missing-files.json]
 ```
 
-The production fleet allows only `bytes_missing` and `owner_unresolved`, per
-plan v2 acceptance criterion 2 (about 440 missing bytes and 3 unresolved owners).
+The production fleet allows only `bytes_missing`, `owner_unresolved` and
+`file_row_missing`: plan v2 acceptance criterion 2 covers about 440 missing
+bytes and 3 unresolved owners; the operator ruled `file_row_missing` acceptable
+on 2026-11-22 (2 in production, referencing fids absent from S1 `file_managed`).
 The dev profile is unchanged. No file findings or other reject reasons are
 automatically approved. `--limit` limits new byte-backed writes, including
 owner moves; it does not truncate candidate discovery or authorize deletions.
