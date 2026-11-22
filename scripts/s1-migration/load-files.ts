@@ -27,11 +27,12 @@ import { ensureFileTypes } from "./lib/file-options";
 import { LocalArchive, S3Archive, archiveKey } from "./lib/file-archive";
 import { D7_CATEGORIES, type Candidate, type FileContext } from "./lib/file-candidates";
 import { makeProgressLogger } from "./lib/progress";
+import { fileLoaderLock } from "./lib/file-loader-lock";
 
 const LOADER = "s1-files";
 const LOGIC_VERSION = 1;
 const contexts: FileContext[] = ["worker", "employer", "ledger_payment"];
-let releaseLoaderLock: (() => Promise<void>) | undefined;
+const loaderLock = fileLoaderLock(pool);
 function parseArgs(argv: string[]) {
   const flags = new Set(["--dry-run", "--migration-mode", "--force-reconcile"]);
   const values = new Set(["--allow-rejects", "--allow-findings", "--max-bytes", "--limit", "--archive-directory", "--missing-file-list"]);
@@ -65,13 +66,7 @@ async function main() {
   if (LOADER_LOG_SAMPLE_EVERY !== 0 || getEnvironmentVariable("S1_MIGRATION_DEBUG")) throw new Error("unsafe_logging_configuration");
   await assertMigrationTimeZone();
   await throttleStorageOpLogs();
-  const lockClient = await pool.connect();
-  const locked = await lockClient.query("SELECT pg_try_advisory_lock(hashtext('s1-files')) AS locked");
-  if (!locked.rows[0]?.locked) { lockClient.release(); throw new Error("file_loader_already_running"); }
-  releaseLoaderLock = async () => {
-    try { await lockClient.query("SELECT pg_advisory_unlock(hashtext('s1-files'))"); }
-    finally { lockClient.release(); }
-  };
+  await loaderLock.acquire();
   registerEntityFileContexts();
   const configs = new Map<FileContext, { file_system: string; directory: string; allowed?: string[] }>();
   for (const context of contexts) {
@@ -100,8 +95,10 @@ async function main() {
   const source = await loadFileSource();
   // Validate every resolved owner via the actual context API before any file/type write.
   for (const c of source.candidates) if (!c.reason && !c.archiveOnly && c.context && c.ownerId) {
+    loaderLock.check();
     if (!(await getEntityFileContext(c.context)!.entityExists(c.ownerId))) c.reason = "owner_missing";
   }
+  loaderLock.check();
   if (!args.dry) { await ensureStagingSchema(); await ensureIdMap(); await ensureRawFileTable(); }
   const { ids: typeIds, fileTypesToCreate } = await ensureFileTypes(args.dry);
   const maps = await getAllMappings("file");
@@ -140,6 +137,7 @@ async function main() {
   };
   try {
     for (const c of source.candidates) {
+      loaderLock.check();
       progress.add(1);
       if (c.archiveOnly) { totals.archive_only++; continue; }
       if (c.context) contextCounts[c.context] = (contextCounts[c.context] ?? 0) + 1;
@@ -297,6 +295,7 @@ async function main() {
       } catch { verifyFailures++; }
     }
     if (!overLimit || args.findings.includes("sweep_over_limit")) for (const [fid, mapping] of sweep) {
+      loaderLock.check();
       try {
         const target = byFile.get(mapping.s2Id);
         if (target && Number(target.fid) !== fid) throw new Error("sweep_provenance_conflict");
@@ -308,6 +307,7 @@ async function main() {
       } catch { rejects.add("delete_failed", { fid }, fid); }
     }
   } finally { progress.stop(); }
+  loaderLock.check();
   const result = buildLoaderResult({ loader: LOADER, logicVersion: LOGIC_VERSION, dryRun: args.dry,
     forceReconcile: args.force, summary, rejects, allowedRejects: args.rejects, verifyFailures,
     findings, allowedFindings: args.findings,
@@ -318,17 +318,23 @@ async function main() {
   return loaderExitCode(result);
 }
 
-main().then(code => { process.exitCode = code; }).catch(error => {
-  console.error(error instanceof Error && error.message === "file_inventory_unverified"
+let failureReported = false;
+function reportFailure(error?: unknown) {
+  if (failureReported) return;
+  failureReported = true;
+  console.error(loaderLock.lost || (error instanceof Error && error.message === "database_connection_lost")
+    ? "s1-files failed: database_connection_lost"
+    : error instanceof Error && error.message === "file_inventory_unverified"
     ? "s1-files failed: file_inventory_unverified"
     : "s1-files failed: sanitized operational failure; no raw error details emitted");
   process.exitCode = 1;
-}).finally(async () => {
+}
+main().then(code => { process.exitCode = code; }).catch(reportFailure).finally(async () => {
   try {
     const { drainStorageSideEffects } = await import("../../server/storage/drain-storage-side-effects");
     await drainStorageSideEffects();
-  } finally { await releaseLoaderLock?.(); await pool.end(); }
-}).catch(() => {
-  console.error("s1-files shutdown failed; diagnostic details suppressed");
-  process.exitCode = 1;
-});
+  } catch (error) { reportFailure(error); }
+  try { await loaderLock.release(); } catch (error) { reportFailure(error); }
+  try { await pool.end(); } catch (error) { reportFailure(error); }
+  if (loaderLock.lost) reportFailure();
+}).catch(reportFailure);

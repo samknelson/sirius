@@ -112,7 +112,8 @@ try {
     const r = spawnSync("node", ["--import", "tsx", ...(fixtureMode
       ? ["scripts/s1-migration/dev/file-fixture.ts", fixtureMode] : ["scripts/s1-migration/load-files.ts"]),
       "--archive-directory", `${root}/archive`, "--migration-mode", "--allow-findings", allowed, ...args],
-      { env: { ...env, S1_RESULT_JSON_PATH: resultPath }, encoding: "utf8", timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
+      { env: { ...env, S1_RESULT_JSON_PATH: resultPath }, encoding: "utf8",
+        timeout: fixtureMode === "loader-lock-longevity" ? 960000 : 180000, maxBuffer: 10 * 1024 * 1024 });
     const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
     assert.ok(!/CANARY_(?:FILENAME|URI|MATERIAL|NODE)/.test(output), "console canary");
     if (r.status !== exit) throw new Error(`loader expected ${exit}, got ${r.status}\n${output}`);
@@ -194,6 +195,29 @@ try {
   assert.equal((await q("SELECT count(*)::int n FROM files WHERE metadata->'s1'->>'fid'='86'")).rows[0].n, 1);
   await q("DROP TRIGGER fixture_map_failure ON s1_staging.id_map");
   r = await run(); assert.equal(r.detail.archiveGets, 0); assert.ok(r.findings.some(f => f.kind === "mapping_repaired"));
+  // Terminate both the dedicated lock and an active mapping connection after
+  // the file transaction committed. The next run must adopt, not duplicate.
+  await add(89);
+  await q(`CREATE FUNCTION fixture_disconnect() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.entity='file' AND NEW.s1_id=89 THEN
+      PERFORM pg_terminate_backend(pid) FROM pg_locks
+        WHERE locktype='advisory' AND granted AND objid=(hashtext('s1-files')::bigint & 4294967295);
+      PERFORM pg_terminate_backend(pg_backend_pid());
+    END IF; RETURN NEW; END $$`);
+  await q("CREATE TRIGGER fixture_disconnect BEFORE INSERT ON s1_staging.id_map FOR EACH ROW EXECUTE FUNCTION fixture_disconnect()");
+  const disconnected = spawnSync("node", ["--import", "tsx", "scripts/s1-migration/load-files.ts",
+    "--archive-directory", `${root}/archive`, "--migration-mode"], { env, encoding: "utf8", timeout: 180000 });
+  assert.equal(disconnected.status, 1);
+  assert.equal(disconnected.signal, null);
+  // Existing startup notice is informational, not a driver failure.
+  const failureLines = disconnected.stderr.trim().split("\n")
+    .filter(line => !line.startsWith("storage-operation logging SUPPRESSED for this run (default)"));
+  assert.deepEqual(failureLines, ["s1-files failed: database_connection_lost"]);
+  assert.ok(!/57P01|terminating connection|Unhandled|Error:| at .*:\d+:\d+/.test(disconnected.stdout));
+  await q("DROP TRIGGER fixture_disconnect ON s1_staging.id_map");
+  r = await run();
+  assert.ok(r.findings.some(f => f.kind === "mapping_repaired" && f.s1Id === 89));
+  assert.equal((await q("SELECT count(*)::int n FROM entity_files WHERE data->>'s1Fid'='89'")).rows[0].n, 1);
   // Row-transaction failure rolls back both rows and compensates uploaded bytes.
   await add(87);
   const objectCountBeforeRollback = (await readdir(`${root}/destination`, { recursive: true, withFileTypes: true })).filter(e => e.isFile()).length;
@@ -282,6 +306,9 @@ try {
   r = await run(["--allow-findings", `${allowed},sweep_over_limit`]); assert.equal(r.summary.deleted, 51);
   assert.equal(await readFile(`${root}/archive/private/CANARY_URI_100`, "utf8"), "synthetic");
   assert.equal((await q("SELECT count(*)::int AS n FROM winston_logs WHERE message LIKE '%CANARY_%' OR meta::text LIKE '%CANARY_%'")).rows[0].n, 0);
+  console.log("Starting 15-minute lock heartbeat acceptance test; backend termination and recovery passed.");
+  r = await run(["--dry-run"], 0, "loader-lock-longevity");
+  assert.equal(r.verify.failures, 0);
   await writeFile(`${root}/evidence.json`, JSON.stringify({ checks, result: "PASS", scope: "isolated PostgreSQL source adapter and real target storage; local bytes only" }, null, 2));
   console.log(JSON.stringify({ result: "PASS", checks, evidence: `${root}/evidence.json` }));
 } finally {

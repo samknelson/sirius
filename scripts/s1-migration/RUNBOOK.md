@@ -46,6 +46,21 @@ destination providers. Normal operation uses the AWS default credential chain,
 `S1_FILES_ARCHIVE_BUCKET`, and `S1_FILES_ARCHIVE_PREFIX` (default `private/`).
 Never use production connections for a synthetic rehearsal.
 
+The dedicated `s1-files` advisory-lock session sends `SELECT 1` every 60
+seconds, including source loading and owner preflight. A client error, pool
+error, or failed heartbeat stops the loader at the next candidate boundary
+with `s1-files failed: database_connection_lost` and a nonzero exit. No driver
+error details are printed. Shutdown drains deferred storage work, clears the
+heartbeat, destroys the lock client, and attempts pool shutdown independently.
+Retry normally after connectivity is restored: committed attachments missing
+their mapping are adopted through provenance (`mapping_repaired`), not
+duplicated. Uncommitted row writes roll back; uncertain orphan objects remain
+for the destination consistency sweep rather than risking committed bytes.
+
+The isolated rehearsal includes an actual backend termination during mapping
+and a dry run paused for more than 15 minutes with a two-minute server idle
+timeout. Allow roughly 17 minutes for the complete rehearsal.
+
 Missing objects younger than 48 hours are pending, not rejects. Non-private
 URIs and older missing objects reject. Authorization/network failures are
 separate errors, never missing-byte evidence. The default maximum is 100 MiB.

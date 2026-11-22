@@ -1,5 +1,22 @@
 # File migration verification
 
+## Lock-connection recovery verification — 2026-11-22
+
+- Scripts type check passed; file and fleet-gate tests passed (15 tests).
+- Isolated `rehearse-files.mjs` passed all 27 loader runs.
+- A real loader dry run paused for 901 seconds with PostgreSQL
+  `idle_session_timeout = '2min'` on its pool sessions. The advisory lock
+  remained held and the loader completed successfully using 60-second heartbeats.
+- A mapping trigger terminated the lock backend and its own active backend
+  after the attachment transaction committed. The loader exited nonzero with
+  `s1-files failed: database_connection_lost`, no driver stack/error details
+  (the existing informational logging-suppression notice remains).
+- Immediate rerun emitted `mapping_repaired` for the interrupted create and
+  retained exactly one attachment. Existing rollback/byte-compensation checks
+  also passed.
+- Source-only delivery to `bao-replit-main`; no image build/publication,
+  ECS definition, schedule, or production database changes.
+
 ## Local evidence
 
 Verified on 2026-11-21 without contacting a production database, archive,

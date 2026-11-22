@@ -94,6 +94,36 @@ try {
     const { pool } = await import("../../../server/storage/db");
     await pool.end();
     console.log("synthetic source staged");
+  } else if (process.argv[2] === "loader-lock-longevity") {
+    const { pool } = await import("../../../server/storage/db");
+    pool.on("connect", connection => {
+      void connection.query("SET idle_session_timeout = '2min'").catch(() => {});
+    });
+    const { LocalArchive } = await import("../lib/file-archive");
+    const head = LocalArchive.prototype.head;
+    let waited = false;
+    let finishWait!: () => void;
+    const finishedWaiting = new Promise<void>(resolve => { finishWait = resolve; });
+    LocalArchive.prototype.head = async function(key) {
+      if (!waited) {
+        waited = true;
+        const started = Date.now();
+        console.log("synthetic lock longevity started (idle timeout 2 minutes)");
+        await new Promise(resolve => setTimeout(resolve, 901_000));
+        assert.ok(Date.now() - started > 900_000);
+        const locks = await client.query(`SELECT count(*)::int n FROM pg_locks
+          WHERE locktype='advisory' AND granted AND objid=(hashtext('s1-files')::bigint & 4294967295)`);
+        assert.equal(locks.rows[0].n, 1);
+        console.log("synthetic lock survived more than 15 minutes");
+        finishWait();
+      }
+      return head.call(this, key);
+    };
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    await import("../load-files");
+    // The loader owns async shutdown; keep the assertion connection alive
+    // until the first archive operation finishes.
+    await finishedWaiting;
   } else if (process.argv[2] === "loader-owner-missing") {
     // Simulate a single owner disappearing between source resolution and the
     // context preflight. All other reads/writes still use the disposable DB.
