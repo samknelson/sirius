@@ -17,6 +17,51 @@ export interface AvailableWorkerForSheet {
   memberStatusSequence: number | null;
 }
 
+export type EdlsSummaryPopulationWorker = Pick<
+  AvailableWorkerForSheet,
+  "id" | "memberStatusName" | "memberStatusSequence"
+>;
+
+function memberStatusJoin(industryId: string | null) {
+  return industryId
+    ? sql`LEFT JOIN LATERAL (
+        SELECT ms.id, ms.name, ms.sequence
+        FROM worker_msh_denorm wmd
+        INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+        WHERE wmd.worker_id = w.id
+        LIMIT 1
+      ) member_status ON true`
+    : sql``;
+}
+
+/**
+ * The default available-workers population, without assignment history or
+ * display/rating fields. Keep the contact join and ordering: the summary uses
+ * the first sequence encountered when multiple statuses share a name.
+ * Industry selection and exclusion of the day's assigned workers stay with
+ * the caller; population membership itself is independent of the day.
+ */
+export async function getSummaryPopulationQuery(
+  industryId: string | null,
+): Promise<EdlsSummaryPopulationWorker[]> {
+  const memberStatusSelect = industryId
+    ? sql`member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
+    : sql`NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
+  const orderBy = industryId
+    ? sql`ORDER BY COALESCE(member_status.sequence, 999999), c.family, c.given`
+    : sql`ORDER BY c.family, c.given`;
+  const result = await getClient().execute(sql`
+    SELECT w.id, ${memberStatusSelect}
+    FROM workers w
+    INNER JOIN contacts c ON w.contact_id = c.id
+    INNER JOIN worker_edls we ON we.worker_id = w.id
+    ${memberStatusJoin(industryId)}
+    WHERE we.active = true
+    ${orderBy}
+  `);
+  return result.rows as unknown as EdlsSummaryPopulationWorker[];
+}
+
 export async function getAvailableWorkersForSheetQuery(
   sheetYmd: string,
   industryId: string | null,
@@ -30,15 +75,6 @@ export async function getAvailableWorkersForSheetQuery(
   const ratingSelect = ratingId
     ? sql`wr.value as "ratingValue"`
     : sql`NULL::integer as "ratingValue"`;
-  const memberStatusJoin = industryId
-    ? sql`LEFT JOIN LATERAL (
-        SELECT ms.id, ms.name, ms.sequence
-        FROM worker_msh_denorm wmd
-        INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
-        WHERE wmd.worker_id = w.id
-        LIMIT 1
-      ) member_status ON true`
-    : sql``;
   const memberStatusSelect = industryId
     ? sql`member_status.id as "memberStatusId", member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
     : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
@@ -73,7 +109,7 @@ export async function getAvailableWorkersForSheetQuery(
       INNER JOIN contacts c ON w.contact_id = c.id
       ${edlsJoin}
       ${ratingJoin}
-      ${memberStatusJoin}
+      ${memberStatusJoin(industryId)}
       ${activeWhere}
     ),
     assignment_statuses AS MATERIALIZED (

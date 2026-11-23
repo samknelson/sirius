@@ -90,14 +90,11 @@ export const edlsSummaryPlugin: DashboardPlugin = {
       };
     });
 
-    // Unassigned column: workers in the EDLS population (per the existing
-    // available-workers function) who have no assignment on this day.
-    // Population logic is deliberately delegated to getAvailableWorkersForSheet;
-    // we only pick the industry (used for member-status resolution) from the
-    // day's sheets — exactly one distinct industry, else null.
+    // Unassigned column: the default available-workers population, without
+    // assignment-status enrichment, minus workers assigned on this day.
+    // Use exactly one distinct industry from the day's sheets, else null.
     const industryId = industryIds.length === 1 ? industryIds[0] : null;
-    const population = await ctx.storage.edlsAssignments.getAvailableWorkersForSheet(
-      ymd,
+    const population = await ctx.storage.edlsAssignments.getSummaryPopulation(
       industryId,
     );
 

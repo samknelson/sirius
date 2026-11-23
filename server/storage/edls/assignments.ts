@@ -33,7 +33,9 @@ import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
 import {
   getAvailableWorkersForSheetQuery,
+  getSummaryPopulationQuery,
   type AvailableWorkerForSheet,
+  type EdlsSummaryPopulationWorker,
 } from "./available-workers-query";
 
 export type { AvailableWorkerForSheet } from "./available-workers-query";
@@ -320,6 +322,8 @@ export interface EdlsAssignmentsStorage extends AssignmentExplorerStorage {
     ratingId?: string,
     includeInactive?: boolean,
   ): Promise<AvailableWorkerForSheet[]>;
+  /** Active EDLS population and member status only; never reads assignments. */
+  getSummaryPopulation(industryId: string | null): Promise<EdlsSummaryPopulationWorker[]>;
   /**
    * Report query: every assignment on a future (ymd >= fromYmd), non-trash
    * sheet whose worker is NOT in the EDLS scheduling population (no
@@ -818,6 +822,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         includeInactive,
       );
     },
+
+    getSummaryPopulation: getSummaryPopulationQuery,
 
     async getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]> {
       const client = getClient();
