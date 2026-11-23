@@ -27,6 +27,7 @@ import './worker/edit';
 import './worker/mine';
 import './worker/ledger';
 import './worker/comm';
+import './comm/view';
 
 import './trust/provider/ledger';
 import './trust/provider/mine';

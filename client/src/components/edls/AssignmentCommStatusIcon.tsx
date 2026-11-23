@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Mail } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useAuth } from "@/contexts/AuthContext";
+import { useCommViewAccess } from "@/hooks/use-comm-view-access";
 import { CommDetailDialog } from "@/components/comm/CommDetailDialog";
 import { getCommStatusBucket, getCommStatusLabel, type CommStatusBucket } from "@shared/commStatus";
 
@@ -27,9 +27,8 @@ export interface AssignmentCommStatusIconProps {
  * an envelope coloured by the shared status bucket, with the status label on
  * hover.
  *
- * Staff can click through to the full record; everyone else sees the same
- * indicator, inert — the communication endpoints behind the dialog are
- * staff-gated, so offering the click to anyone else would only produce a 403.
+ * Click-through uses the same comm-ID policy as the record/history APIs.
+ * Denied users retain the delivery indicator without a clickable action.
  */
 export function AssignmentCommStatusIcon({
   assignmentId,
@@ -37,8 +36,8 @@ export function AssignmentCommStatusIcon({
   commStatus,
   workerName,
 }: AssignmentCommStatusIconProps) {
-  const { hasPermission } = useAuth();
-  const canView = hasPermission("staff");
+  const access = useCommViewAccess(commId);
+  const canView = access.canView;
   const [isOpen, setIsOpen] = useState(false);
 
   const label = getCommStatusLabel(commStatus);
@@ -54,7 +53,11 @@ export function AssignmentCommStatusIcon({
             <button
               type="button"
               className="inline-flex items-center rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => setIsOpen(true)}
+              disabled={access.isFetching}
+              onClick={async () => {
+                const result = await access.refetch();
+                if (result.isSuccess && result.data.granted) setIsOpen(true);
+              }}
               aria-label={`${ariaLabel} — view communication`}
               data-testid={testId}
             >
@@ -75,6 +78,7 @@ export function AssignmentCommStatusIcon({
       </Tooltip>
       {canView && (
         <CommDetailDialog
+          key={access.viewerKey}
           commId={commId}
           open={isOpen}
           onOpenChange={setIsOpen}

@@ -33,6 +33,7 @@ import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { CommWithDetails } from "@/lib/comm-types";
 import { WinstonLog } from "@/lib/system-types";
 import { recordGoHref } from "@shared/utils/record-go";
+import { useCommViewAccess } from "@/hooks/use-comm-view-access";
 
 const getLevelColor = (level: string | null) => {
   if (!level) return "default";
@@ -145,7 +146,21 @@ export interface CommDetailContentProps {
  *
  * Its own queries mean it fetches when — and only when — it is mounted.
  */
-export function CommDetailContent({ commId, statusAction, renderFallback }: CommDetailContentProps) {
+export function CommDetailContent(props: CommDetailContentProps) {
+  const access = useCommViewAccess(props.commId);
+  if (!access.canView || access.isFetching) {
+    const isLoading = access.isPending || access.isFetching;
+    if (props.renderFallback) return <>{props.renderFallback({ isLoading, notFound: !isLoading })}</>;
+    return (
+      <div className="text-center py-8 text-muted-foreground" data-testid="text-comm-detail-access">
+        {isLoading ? "Checking communication access..." : "You do not have access to this communication."}
+      </div>
+    );
+  }
+  return <AuthorizedCommDetailContent key={`${access.viewerKey}:${props.commId}`} {...props} viewerKey={access.viewerKey} />;
+}
+
+function AuthorizedCommDetailContent({ commId, statusAction, renderFallback, viewerKey }: CommDetailContentProps & { viewerKey: string }) {
   const [moduleFilter, setModuleFilter] = useState<string>("");
   const [operationFilter, setOperationFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
@@ -154,7 +169,15 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithDetails>({
-    queryKey: ["/api/comm", commId],
+    queryKey: ["/api/comm", commId, { viewerKey }],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/comm/${commId}`, { credentials: "include", cache: "no-store", signal });
+      if (!response.ok) throw new Error("Failed to fetch communication");
+      return response.json();
+    },
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
     enabled: !!commId,
   });
 
@@ -164,19 +187,23 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
   if (startDate) params.append("startDate", startDate);
   if (endDate) params.append("endDate", endDate);
 
-  const { data: logs = [], isLoading: logsLoading } = useQuery<WinstonLog[]>({
-    queryKey: ["/api/comm", commId, "logs", moduleFilter, operationFilter, startDate, endDate],
-    queryFn: async () => {
+  const { data: loadedLogs, isLoading: logsLoading, error: logsError } = useQuery<WinstonLog[]>({
+    queryKey: ["/api/comm", commId, "logs", { viewerKey }, moduleFilter, operationFilter, startDate, endDate],
+    queryFn: async ({ signal }) => {
       const queryString = params.toString();
       const url = `/api/comm/${commId}/logs${queryString ? `?${queryString}` : ''}`;
-      const response = await fetch(url);
+      const response = await fetch(url, { credentials: "include", cache: "no-store", signal });
       if (!response.ok) {
         throw new Error("Failed to fetch logs");
       }
       return response.json();
     },
     enabled: !!commId,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
   });
+  const logs = logsError ? [] : loadedLogs ?? [];
 
   const uniqueModules = Array.from(new Set(logs.map(log => log.module).filter(Boolean)));
   const uniqueOperations = Array.from(new Set(logs.map(log => log.operation).filter(Boolean)));
@@ -507,7 +534,9 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
             </div>
           )}
 
-          {logsLoading ? (
+          {logsError ? (
+            <div className="text-center py-8 text-destructive">Unable to load communication history.</div>
+          ) : logsLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading logs...</div>
           ) : logs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -561,7 +590,7 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
         </CardContent>
       </Card>
 
-      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+      <Dialog open={!logsError && isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Log Entry Details</DialogTitle>

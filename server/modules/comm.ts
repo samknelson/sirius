@@ -144,7 +144,7 @@ export function registerCommRoutes(
   app: Express, 
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware,
-  requireAccess?: PolicyMiddleware
+  requireAccess: PolicyMiddleware
 ) {
   
   // GET /api/contacts/:contactId/comm - Get communication records for a contact (worker.view policy)
@@ -163,7 +163,13 @@ export function registerCommRoutes(
     }
   });
 
-  app.get("/api/comm/:id", requireAuth, requirePermission("staff"), async (req, res) => {
+  const privateCommRead: AuthMiddleware = (_req, res, next) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    next();
+  };
+
+  app.get("/api/comm/:id", privateCommRead, requireAuth, requireAccess('comm.view', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const record = await commStorage.getCommWithDetails(id);
@@ -527,7 +533,7 @@ export function registerCommRoutes(
     await handleStatusCallback(req, res, commId);
   });
 
-  app.get("/api/comm/:id/logs", requireAuth, requirePermission("staff"), async (req, res) => {
+  app.get("/api/comm/:id/logs", privateCommRead, requireAuth, requireAccess('comm.view', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const { module, operation, startDate, endDate } = req.query;

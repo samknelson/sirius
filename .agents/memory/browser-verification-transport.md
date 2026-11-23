@@ -40,7 +40,12 @@ obscure otherwise-working application behavior.
 
 **How to apply:** Keep fixtures outside application authentication and outside
 the permanent UI suite. Bundle with automatic JSX, exercise the real WebSocket
-handler and shared UI, and inspect the rendered result.
+handler and shared UI, and inspect the rendered result. If transformed
+development modules are unavoidable, discover optimized dependency URLs
+(including the filesystem prefix and version query) from transformed source
+rather than guessing a node_modules URL; handle CommonJS default exports
+explicitly. Supply complete validated authentication envelopes in browser-only
+fixtures: HTTP 200 alone does not mean the auth provider accepted the fixture.
 
 For centered Radix dialog fixtures, do not retain browser element handles
 across preview changes or dialog close/reopen transitions. Prefer independently

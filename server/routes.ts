@@ -19,6 +19,7 @@ import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
+import { wireCommViewAccess } from "./services/comm/view-access";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
 import { registerEntityFileContexts } from "./modules/entity-files-contexts";
 import { registerCatalogRoutes } from "./modules/catalogs";
@@ -328,6 +329,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerPhoneNumberRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register communication routes
+  wireCommViewAccess();
   registerCommRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register grievance routes

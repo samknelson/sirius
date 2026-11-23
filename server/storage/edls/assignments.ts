@@ -233,6 +233,7 @@ export interface SheetAssignmentSmsTarget {
   data: unknown;
 }
 export interface EdlsAssignmentsStorage {
+  getSheetIdsByCommId(commId: string): Promise<string[]>;
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
   /**
@@ -399,6 +400,15 @@ const insertedAssignments = new WeakSet<EdlsAssignment>();
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   return {
+    async getSheetIdsByCommId(commId: string): Promise<string[]> {
+      const rows = await getClient()
+        .selectDistinct({ sheetId: edlsCrews.sheetId })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .where(eq(edlsAssignments.commId, commId));
+      return rows.map(row => row.sheetId);
+    },
+
     async getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]> {
       const client = getClient();
       const rows = await client
