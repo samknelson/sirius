@@ -22,6 +22,38 @@ export type EdlsSummaryPopulationWorker = Pick<
   "id" | "memberStatusName" | "memberStatusSequence"
 >;
 
+// Population membership is independent of sheet date, industry and ratings.
+// Share both the contact requirement and active rule across the lean and
+// scheduling reads so identifier lists cannot silently drift from scheduling.
+function populationFrom(includeInactive = false) {
+  const edlsJoin = includeInactive
+    ? sql`LEFT JOIN worker_edls we ON we.worker_id = w.id`
+    : sql`INNER JOIN worker_edls we ON we.worker_id = w.id`;
+  return sql`FROM workers w
+    INNER JOIN contacts c ON w.contact_id = c.id
+    ${edlsJoin}`;
+}
+
+function populationWhere(includeInactive = false, workerIds?: readonly string[]) {
+  const conditions = [];
+  if (!includeInactive) conditions.push(sql`we.active = true`);
+  // Bound directory pages before joining their assignment history.
+  if (workerIds) {
+    conditions.push(sql`w.id IN (${sql.join(workerIds.map((id) => sql`${id}`), sql`, `)})`);
+  }
+  return conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+}
+
+/** Active workers with contacts only; no display fields or history lookups. */
+export async function getPopulationWorkerIdsQuery(): Promise<string[]> {
+  const result = await getClient().execute(sql`
+    SELECT w.id
+    ${populationFrom()}
+    ${populationWhere()}
+  `);
+  return (result.rows as unknown as { id: string }[]).map(row => row.id);
+}
+
 function memberStatusJoin(industryId: string | null) {
   return industryId
     ? sql`LEFT JOIN LATERAL (
@@ -84,11 +116,9 @@ export async function getSummaryPopulationQuery(
     : sql`ORDER BY c.family, c.given`;
   const result = await getClient().execute(sql`
     SELECT w.id, ${memberStatusSelect}
-    FROM workers w
-    INNER JOIN contacts c ON w.contact_id = c.id
-    INNER JOIN worker_edls we ON we.worker_id = w.id
+    ${populationFrom()}
     ${memberStatusJoin(industryId)}
-    WHERE we.active = true
+    ${populationWhere()}
     ${orderBy}
   `);
   return result.rows as unknown as EdlsSummaryPopulationWorker[];
@@ -112,18 +142,6 @@ export async function getAvailableWorkersForSheetQuery(
   const memberStatusSelect = industryId
     ? sql`member_status.id as "memberStatusId", member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
     : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
-  const edlsJoin = includeInactive
-    ? sql`LEFT JOIN worker_edls we ON we.worker_id = w.id`
-    : sql`INNER JOIN worker_edls we ON we.worker_id = w.id`;
-  const conditions = [];
-  if (!includeInactive) conditions.push(sql`we.active = true`);
-  // Bound the materialized population before joining its assignment history.
-  if (workerIds) {
-    conditions.push(sql`w.id IN (${sql.join(workerIds.map((id) => sql`${id}`), sql`, `)})`);
-  }
-  const populationWhere = conditions.length
-    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
-    : sql``;
 
   let orderBy;
   if (industryId && ratingId) {
@@ -147,12 +165,10 @@ export async function getAvailableWorkersForSheetQuery(
         c.family,
         ${ratingSelect},
         ${memberStatusSelect}
-      FROM workers w
-      INNER JOIN contacts c ON w.contact_id = c.id
-      ${edlsJoin}
+      ${populationFrom(includeInactive)}
       ${ratingJoin}
       ${memberStatusJoin(industryId)}
-      ${populationWhere}
+      ${populationWhere(includeInactive, workerIds)}
     )
     SELECT
       aw.id,

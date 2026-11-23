@@ -556,17 +556,14 @@ export function registerEdlsSheetsRoutes(
         return;
       }
 
-      const employer = await storage.employers.getEmployer(sheet.employerId);
-      const industryId = employer?.industryId ?? null;
-
-      const [assignments, availableWorkers] = await Promise.all([
+      const [assignments, populationWorkerIds] = await Promise.all([
         storage.edlsAssignments.getBySheetId(id),
-        storage.edlsAssignments.getAvailableWorkersForSheet(sheet.ymd, industryId, undefined),
+        storage.edlsAssignments.getPopulationWorkerIds(),
       ]);
 
       const workerIdSet = new Set<string>();
       for (const a of assignments) workerIdSet.add(a.workerId);
-      for (const w of availableWorkers) workerIdSet.add(w.id);
+      for (const workerId of populationWorkerIds) workerIdSet.add(workerId);
 
       const rows = await storage.workerIds.getWorkerIdsByTypeForWorkerIds(
         settings.worker_id_type,

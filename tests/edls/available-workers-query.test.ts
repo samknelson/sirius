@@ -7,11 +7,30 @@ vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => ({ execute: mocks.execute }),
 }));
 
-const { getAvailableWorkersForSheetQuery } = await import(
+const { getAvailableWorkersForSheetQuery, getPopulationWorkerIdsQuery } = await import(
   "../../server/storage/edls/available-workers-query"
 );
 
 describe("available scheduling worker query", () => {
+  it("reads only population IDs using scheduling's active/contact rules without enrichment work", async () => {
+    const statements: string[] = [];
+    mocks.execute.mockImplementation(async (query: SQL) => {
+      statements.push(new PgDialect().sqlToQuery(query).sql);
+      return { rows: [{ id: "active-worker" }] };
+    });
+    expect(await getPopulationWorkerIdsQuery()).toEqual(["active-worker"]);
+    await getAvailableWorkersForSheetQuery("2026-06-15", "industry");
+    const [lean, scheduling] = statements;
+    for (const statement of statements) {
+      expect(statement).toContain("INNER JOIN contacts c ON w.contact_id = c.id");
+      expect(statement).toContain("INNER JOIN worker_edls we ON we.worker_id = w.id");
+      expect(statement).toContain("WHERE we.active = true");
+    }
+    expect(lean).toMatch(/SELECT w\.id\s+FROM/);
+    expect(lean).not.toMatch(/LATERAL|edls_assignments|worker_msh_denorm|worker_ratings|ORDER BY|MATERIALIZED|display_name/);
+    expect(scheduling.match(/LEFT JOIN LATERAL/g)).toHaveLength(4);
+  });
+
   it("limits each date range only after joining the crew and sheet, preserving assignment tie breaks", async () => {
     let statement = "";
     mocks.execute.mockImplementation(async (query: SQL) => {
