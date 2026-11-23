@@ -18,6 +18,14 @@ interface ChangelogEntry {
 // the TOP of this array.
 const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: "11/23/2026",
+    version: "1.0.1",
+    changes: [
+      "Allow users to view comm delivery records",
+      "Add summary views of notification status, acceptance status",
+    ],
+  },
+  {
     date: "11/19/2026",
     version: "1.0.0",
     changes: [
