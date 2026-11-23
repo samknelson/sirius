@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { CommLayout } from "@/components/layouts/CommLayout";
+import { useMutation } from "@tanstack/react-query";
+import { CommLayout, useCommLayout } from "@/components/layouts/CommLayout";
 import { useCommTabAccess } from "@/hooks/useTabAccess";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,18 +18,22 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, AlertCircle, WifiOff } from "lucide-react";
-import { CommWithDetails } from "@/lib/comm-types";
-import { CommDetailContent } from "@/components/comm/CommDetailContent";
+import { AuthorizedCommDetailContent } from "@/components/comm/CommDetailContent";
 
 export default function CommDetail() {
+  return (
+    <CommLayout activeTab="details">
+      <CommDetailBody />
+    </CommLayout>
+  );
+}
+
+function CommDetailBody() {
   const { commId } = useParams<{ commId: string }>();
   const { toast } = useToast();
   const [isOfflineConfirmOpen, setIsOfflineConfirmOpen] = useState(false);
 
-  const { data: comm } = useQuery<CommWithDetails>({
-    queryKey: ["/api/comm", commId],
-    enabled: !!commId,
-  });
+  const { comm, viewerKey } = useCommLayout();
 
   const { tabs } = useCommTabAccess(commId);
   const canEdit = tabs.some((t) => t.id === "edit");
@@ -76,9 +80,10 @@ export default function CommDetail() {
     ) : null;
 
   return (
-    <CommLayout activeTab="details">
-      <CommDetailContent
+    <>
+      <AuthorizedCommDetailContent
         commId={commId}
+        viewerKey={viewerKey}
         statusAction={statusAction}
         renderFallback={({ isLoading }) =>
           isLoading ? (
@@ -131,6 +136,6 @@ export default function CommDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </CommLayout>
+    </>
   );
 }

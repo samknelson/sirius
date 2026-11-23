@@ -1,12 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 
-export function useCommViewAccess(commId: string) {
+export function useCommViewerKey() {
   const { user, permissions, components } = useAuth();
   // Permission/component changes for the same user are also new audiences.
-  const viewerKey = JSON.stringify([
+  return JSON.stringify([
     user?.id ?? null, [...permissions].sort(), [...components].sort(),
   ]);
+}
+
+export function useCommViewAccess(commId: string) {
+  const { user } = useAuth();
+  const viewerKey = useCommViewerKey();
   const query = useQuery<{ granted: boolean }>({
     queryKey: ['/api/access/check', 'comm.view', commId, viewerKey],
     queryFn: async ({ signal }) => {

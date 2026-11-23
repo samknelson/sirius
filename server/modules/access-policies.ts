@@ -281,7 +281,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         ledger_payment_batch: 'staff',
         dispatch_job_group: 'staff',
         trust_election: 'staff',
-        comm: 'staff',
+        comm: 'comm.view',
         grievance: 'staff',
         grievanceTimelineTemplate: 'admin',
         contract: 'staff',

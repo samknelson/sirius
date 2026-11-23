@@ -1,7 +1,9 @@
 import { createContext, useContext, ReactNode } from "react";
 import { MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-react";
-import { Link, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useParams } from "wouter";
+import { useCommViewAccess } from "@/hooks/use-comm-view-access";
+import { useCommRecord } from "@/hooks/use-comm-record";
+import { ApiError } from "@/lib/queryClient";
 import { format } from "@/lib/date-format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +20,7 @@ import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 interface CommLayoutContextValue {
   comm: CommWithDetails;
+  viewerKey: string;
 }
 
 const CommLayoutContext = createContext<CommLayoutContextValue | null>(null);
@@ -81,15 +84,31 @@ function recipientFor(comm: CommWithDetails): string | null {
 export function CommLayout({ activeTab, children }: CommLayoutProps) {
   const { commId } = useParams<{ commId: string }>();
 
-  const { data: comm, isLoading, error } = useQuery<CommWithDetails>({
-    queryKey: ["/api/comm", commId],
-    enabled: !!commId,
-  });
+  const access = useCommViewAccess(commId);
+  const { data: comm, isLoading, error } = useCommRecord(
+    commId, access.viewerKey, access.canView && !access.isFetching,
+  );
 
-  const { tabs } = useCommTabAccess(commId);
+  const { tabs } = useCommTabAccess(commId, access.canView && !access.isFetching);
 
-  const title = comm ? `${mediumLabel(comm.medium)} Communication` : undefined;
+  const title = access.canView && !access.isFetching && comm ? `${mediumLabel(comm.medium)} Communication` : undefined;
   usePageTitle(title);
+
+  if ((!access.isPending && !access.isFetching && !access.canView) ||
+      (error instanceof ApiError && error.status === 403)) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8" role="alert">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <h2 className="text-lg font-medium mb-2">Communication access denied</h2>
+            <p className="text-muted-foreground">
+              {access.isError ? "Unable to check communication access. Please try again." : "You do not have access to this communication."}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -117,7 +136,7 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
     );
   }
 
-  if (isLoading || !comm) {
+  if (!access.canView || access.isFetching || isLoading || !comm) {
     return (
       <div className="bg-background text-foreground min-h-screen">
         <RecordTitleBarLoading icon={<MessageSquare className="text-primary-foreground" size={16} />} />
@@ -138,7 +157,7 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
   const sentLabel = comm.sent ? format(new Date(comm.sent), "MMM dd, yyyy HH:mm") : null;
 
   return (
-    <CommLayoutContext.Provider value={{ comm }}>
+    <CommLayoutContext.Provider value={{ comm, viewerKey: access.viewerKey }}>
       <div className="bg-background text-foreground min-h-screen">
         <RecordTitleBar
           icon={mediumIcon(comm.medium)}
@@ -174,7 +193,7 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
 
         <EntityTabNavigation tabs={tabs} activeTab={activeTab} testIdPrefix="button-comm-" />
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+        <main key={`${access.viewerKey}:${commId}`} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
       </div>
     </CommLayoutContext.Provider>
   );

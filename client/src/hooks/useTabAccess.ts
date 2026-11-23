@@ -14,6 +14,7 @@ import {
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
+import { useCommViewerKey } from "@/hooks/use-comm-view-access";
 
 interface TabAccessResponse {
   tabs: TabAccessResult[];
@@ -66,9 +67,12 @@ export function useTabAccess({
   enabled = true 
 }: UseTabAccessOptions): UseTabAccessResult {
   const term = useTerm();
+  const commViewerKey = useCommViewerKey();
   
   const { data, isLoading, isError } = useQuery<TabAccessResponse>({
-    queryKey: ['/api/access/tabs', entityType, entityId],
+    queryKey: entityType === 'comm'
+      ? ['/api/access/tabs', entityType, entityId, commViewerKey]
+      : ['/api/access/tabs', entityType, entityId],
     queryFn: async () => {
       return await apiRequest('POST', '/api/access/tabs', {
         entityType,
@@ -76,7 +80,8 @@ export function useTabAccess({
       });
     },
     enabled: enabled && !!entityId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: entityType === 'comm' ? 0 : 5 * 60 * 1000,
+    gcTime: entityType === 'comm' ? 0 : 5 * 60 * 1000,
     retry: false,
   });
 

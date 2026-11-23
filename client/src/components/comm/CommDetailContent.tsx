@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { format } from "@/lib/date-format";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
-import { CommWithDetails } from "@/lib/comm-types";
+import { useCommRecord } from "@/hooks/use-comm-record";
 import { WinstonLog } from "@/lib/system-types";
 import { recordGoHref } from "@shared/utils/record-go";
 import { useCommViewAccess } from "@/hooks/use-comm-view-access";
@@ -160,7 +160,8 @@ export function CommDetailContent(props: CommDetailContentProps) {
   return <AuthorizedCommDetailContent key={`${access.viewerKey}:${props.commId}`} {...props} viewerKey={access.viewerKey} />;
 }
 
-function AuthorizedCommDetailContent({ commId, statusAction, renderFallback, viewerKey }: CommDetailContentProps & { viewerKey: string }) {
+/** Read renderer for hosts that have already enforced comm.view (including CommLayout). */
+export function AuthorizedCommDetailContent({ commId, statusAction, renderFallback, viewerKey }: CommDetailContentProps & { viewerKey: string }) {
   const [moduleFilter, setModuleFilter] = useState<string>("");
   const [operationFilter, setOperationFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
@@ -168,18 +169,7 @@ function AuthorizedCommDetailContent({ commId, statusAction, renderFallback, vie
   const [selectedLog, setSelectedLog] = useState<WinstonLog | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithDetails>({
-    queryKey: ["/api/comm", commId, { viewerKey }],
-    queryFn: async ({ signal }) => {
-      const response = await fetch(`/api/comm/${commId}`, { credentials: "include", cache: "no-store", signal });
-      if (!response.ok) throw new Error("Failed to fetch communication");
-      return response.json();
-    },
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-    enabled: !!commId,
-  });
+  const { data: comm, isLoading: commLoading, error: commError } = useCommRecord(commId, viewerKey);
 
   const params = new URLSearchParams();
   if (moduleFilter) params.append("module", moduleFilter);

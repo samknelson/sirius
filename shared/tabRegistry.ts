@@ -536,7 +536,7 @@ export const trustElectionTabTree: HierarchicalTab[] = [
  * Communication record entity tab tree
  */
 export const commTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/comm/{id}', permission: 'staff' },
+  { id: 'details', label: 'Details', hrefTemplate: '/comm/{id}', policyId: 'comm.view' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/comm/{id}/edit', permission: 'staff' },
 ];
 

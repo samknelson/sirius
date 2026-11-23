@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getTabAccessRequirements, hasTabPermission, TabEntityType } from '@shared/tabRegistry';
 import { apiRequest } from '@/lib/queryClient';
+import { useCommViewerKey } from '@/hooks/use-comm-view-access';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -53,6 +54,7 @@ class PolicyCheckError extends Error {
 export default function ProtectedRoute({ children, permission, policy, component, componentAll, componentAny, entityId, tabId, entityType }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, authReady, authError, hasPermission, hasComponent } = useAuth();
   const [location] = useLocation();
+  const commViewerKey = useCommViewerKey();
 
   // Resolve access requirements from tab registry if tabId is provided
   // This is the SINGLE SOURCE OF TRUTH for tab-linked routes
@@ -116,7 +118,9 @@ export default function ProtectedRoute({ children, permission, policy, component
   
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError, error: policyError } = useQuery<DetailedPolicyResult, PolicyCheckError>({
-    queryKey: ['/api/access/policies', effectivePolicy, resourceId, detectedEntityType],
+    queryKey: detectedEntityType === 'comm'
+      ? ['/api/access/policies', effectivePolicy, resourceId, detectedEntityType, commViewerKey]
+      : ['/api/access/policies', effectivePolicy, resourceId, detectedEntityType],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (resourceId) {
@@ -145,7 +149,8 @@ export default function ProtectedRoute({ children, permission, policy, component
       return response.json();
     },
     enabled: isAuthenticated && !!effectivePolicy,
-    staleTime: 30000, // 30 seconds
+    staleTime: detectedEntityType === 'comm' ? 0 : 30000,
+    gcTime: detectedEntityType === 'comm' ? 0 : 5 * 60 * 1000,
     retry: 2,
   });
 

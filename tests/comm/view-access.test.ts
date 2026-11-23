@@ -7,6 +7,7 @@ import {
   clearAccessCache, evaluatePolicy, initAccessControl, requireAccess,
 } from '../../server/services/access-policy-evaluator';
 import { wireCommViewAccess } from '../../server/services/comm/view-access';
+import { getTabAccessRequirements } from '@shared/tabRegistry';
 
 const mocks = vi.hoisted(() => ({
   record: vi.fn(), logs: vi.fn(), errors: vi.fn(),
@@ -83,6 +84,12 @@ beforeEach(() => {
 });
 
 describe('comm.view', () => {
+  it('uses comm.view for standalone details without granting the staff-only edit tab', () => {
+    expect(getTabAccessRequirements('comm', 'details')).toMatchObject({ policyId: 'comm.view' });
+    expect(getTabAccessRequirements('comm', 'details')?.permission).toBeUndefined();
+    expect(getTabAccessRequirements('comm', 'edit')).toMatchObject({ permission: 'staff' });
+  });
+
   it.each(['admin', 'staff', 'workers.comm'])('grants %s independently of EDLS', async permission => {
     permissions[actor.id] = [permission];
     enabled = false;
