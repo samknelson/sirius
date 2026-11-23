@@ -24,3 +24,9 @@ A localhost screenshot does not exercise the Replit proxy's TLS/port behavior.
 **Why:** With Replit's configured wss/443 HMR endpoint, direct HTTP localhost capture can show connection refusal even though the proxied HTTPS browser connects and hot-updates correctly.
 
 **How to apply:** Use a browser visiting the development domain for HMR checks; use the screenshot only for visual rendering. Revert temporary client edits and observe their reversal without a document reload.
+
+Vite's development logger must never terminate the application just because it receives an error.
+
+**Why:** After the Vite 8 upgrade, browser console errors were forwarded to the server logger. A pre-existing exit-on-error logger turned QuickSearch's missing accessible dialog title into a full preview shutdown.
+
+**How to apply:** Keep errors visible in logs and overlays without exiting from logging callbacks. Verify browser-console error forwarding does not stop the server when upgrading the development toolchain.
