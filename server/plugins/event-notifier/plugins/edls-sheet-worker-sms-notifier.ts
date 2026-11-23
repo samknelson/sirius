@@ -94,8 +94,8 @@ const ACCESS_TOKEN_COMPONENT = "worker.aat";
  */
 async function resolveAccessToken(workerId: string, preview = false): Promise<string | null> {
   const { storage } = await import("../../../storage");
-  if (preview) return (await storage.workerAat.getByWorker(workerId))?.accessUuid || null;
   try {
+    if (preview) return (await storage.workerAat.getByWorker(workerId))?.accessUuid || null;
     const { record } = await storage.workerAat.ensureAccessUuid(workerId);
     if (record.accessUuid) return record.accessUuid;
     logger.error("EDLS worker SMS notifier got no access token for a worker", {
@@ -111,6 +111,22 @@ async function resolveAccessToken(workerId: string, preview = false): Promise<st
     });
     return null;
   }
+}
+
+/**
+ * Bound database pressure on large sheets, retaining input order even when
+ * lookups finish out of order. Use the same read-only/get-or-create path as
+ * single-worker resolution; one failed worker must not exclude the others.
+ */
+async function resolveAccessTokens(workerIds: string[], preview = false): Promise<(string | null)[]> {
+  const batchSize = 8;
+  const tokens: (string | null)[] = [];
+  for (let start = 0; start < workerIds.length; start += batchSize) {
+    tokens.push(...await Promise.all(
+      workerIds.slice(start, start + batchSize).map((workerId) => resolveAccessToken(workerId, preview)),
+    ));
+  }
+  return tokens;
 }
 
 /**
@@ -591,9 +607,12 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     // recipient at all rather than one who gets a text that goes nowhere.
     const resolved = new Map<string, ResolvedRecipient>();
     const recipients: NotifierRecipient[] = [];
-    for (const [contactId, group] of byContact) {
-      if (!optins.get(group[0].phoneNumber)?.optin) continue;
-      const accessUuid = await resolveAccessToken(group[0].workerId, ctx.preview);
+    const assigned = [...byContact].filter(([, group]) => optins.get(group[0].phoneNumber)?.optin);
+    const assignedTokens = await resolveAccessTokens(
+      assigned.map(([, group]) => group[0].workerId), ctx.preview,
+    );
+    for (const [index, [contactId, group]] of assigned.entries()) {
+      const accessUuid = assignedTokens[index];
       if (!accessUuid) continue;
       resolved.set(contactId, {
         kind: "assigned",
@@ -609,15 +628,19 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
       });
       recipients.push({ contactId });
     }
-    for (const worker of removed) {
-      // Being on the sheet wins: a contact already resolved as assigned is a
-      // person with work on this sheet, whatever an older roster said, and
-      // they must not be told they are off it.
+    // Being on the sheet wins: resolve assigned contacts first, and exclude
+    // them before doing any credential work for the removed group.
+    const eligibleRemoved = removed.filter((worker) =>
+      !resolved.has(worker.contactId) && optins.get(worker.phoneNumber)?.optin,
+    );
+    const removedTokens = await resolveAccessTokens(
+      eligibleRemoved.map((worker) => worker.workerId), ctx.preview,
+    );
+    for (const [index, worker] of eligibleRemoved.entries()) {
       if (resolved.has(worker.contactId)) continue;
-      if (!optins.get(worker.phoneNumber)?.optin) continue;
       // A removed worker holds no assignment row, but the link they are sent
       // is the same one an assigned worker gets, so it is keyed the same way.
-      const accessUuid = await resolveAccessToken(worker.workerId, ctx.preview);
+      const accessUuid = removedTokens[index];
       if (!accessUuid) continue;
       resolved.set(worker.contactId, {
         kind: "removed",

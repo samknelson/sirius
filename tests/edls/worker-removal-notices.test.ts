@@ -105,6 +105,8 @@ interface Scenario {
   reachable?: string[];
   /** Workers whose access token cannot be issued. */
   tokenless?: string[];
+  /** Workers who have not opted in to SMS. */
+  optedOut?: string[];
   captureActive?: boolean;
   statuses?: string[];
   /** The save being processed, when it is not the default one. */
@@ -194,7 +196,9 @@ vi.mock("../../server/storage", () => ({
   },
   createCommSmsOptinStorage: () => ({
     async getSmsOptinsByPhoneNumbers(phoneNumbers: string[]) {
-      return new Map(phoneNumbers.map((n) => [n, { optin: true }]));
+      return new Map(phoneNumbers.map((n) => [
+        n, { optin: !scenario.optedOut?.some((workerId) => phoneOf(workerId) === n) },
+      ]));
     },
   }),
 }));
@@ -234,6 +238,80 @@ it("replays preview recipients read-only and never issues a missing access crede
   expect(recipients.map(r => r.contactId)).toEqual([contactOf(ASSIGNED)]);
   expect(issuedLookups).toBe(beforeIssued);
   expect(previewLookups - beforePreview).toBe(2);
+});
+
+it.each([false, true])("bounds token lookups and preserves assigned/removal order (preview=%s)", async (preview) => {
+  // phoneOf uses length + last character, so give every worker a unique suffix.
+  const assigned = Array.from({ length: 19 }, (_, i) => `assigned-${String.fromCharCode(97 + i)}`);
+  const removed = Array.from({ length: 19 }, (_, i) => `removed-${String.fromCharCode(97 + i)}`);
+  const optedOut = [assigned[18], removed[18]];
+  const failed = new Set([assigned[2], removed[2]]);
+  scenario = {
+    snapshots: [sheetSnapshot({
+      id: "large-baseline", savedAt: new Date(CHANGED.getTime() - MINUTE),
+      capturedAt: new Date(CHANGED.getTime() - MINUTE + 20),
+      status: "lock", workerIds: [...assigned, ...removed],
+    })],
+    roster: assigned,
+    smsTargets: [...assigned, assigned[0]],
+    reachable: removed,
+    optedOut,
+  };
+  const { storage } = await import("../../server/storage");
+  let active = 0;
+  let peak = 0;
+  const lookedUp: string[] = [];
+  const pending: (() => void)[] = [];
+  const lookup = async (workerId: string) => {
+    lookedUp.push(workerId);
+    peak = Math.max(peak, ++active);
+    await new Promise<void>((resolve) => pending.push(resolve));
+    active--;
+    if (failed.has(workerId)) throw new Error("Worker credential lookup failed");
+    return { id: `aat-${workerId}`, workerId, accessUuid: tokenOf(workerId), accessCode: null };
+  };
+  const read = vi.spyOn(storage.workerAat, "getByWorker").mockImplementation(lookup);
+  const ensure = vi.spyOn(storage.workerAat, "ensureAccessUuid").mockImplementation(async (workerId) => ({
+    record: await lookup(workerId), issued: false,
+  }));
+  try {
+    const ctx = {
+      event: edlsSheetWorkerSmsNotifier.subscribedEvents[0], preview,
+      payload: { sheetId: SHEET_ID, sheet: sheetSavedAt(CHANGED) },
+    };
+    const result = edlsSheetWorkerSmsNotifier.getRecipients!(ctx, { statuses: ["lock"] });
+    // Complete each batch backwards: completion order must not become SMS order.
+    // Both groups span multiple full batches and a partial final batch.
+    for (const size of [8, 8, 2, 8, 8, 2]) {
+      await vi.waitFor(() => expect(pending).toHaveLength(size));
+      expect(active).toBe(size);
+      for (const finish of pending.splice(0).reverse()) finish();
+    }
+    const recipients = await result;
+    const eligible = [...assigned, ...removed].filter((id) => !optedOut.includes(id));
+    expect(peak).toBe(8);
+    expect(active).toBe(0);
+    expect(lookedUp).toEqual(eligible);
+    expect(recipients.map((r) => r.contactId)).toEqual(
+      eligible.filter((id) => !failed.has(id)).map(contactOf),
+    );
+    expect(read).toHaveBeenCalledTimes(preview ? eligible.length : 0);
+    expect(ensure).toHaveBeenCalledTimes(preview ? 0 : eligible.length);
+    // Composition uses the exact stable tokens returned during resolution.
+    for (const workerId of [assigned[0], removed[0]]) {
+      const recipient = recipients.find((r) => r.contactId === contactOf(workerId))!;
+      const prepared = await buildRecipientTemplateContext(edlsSheetWorkerSmsNotifier, ctx, recipient, {}, {
+        seeds: [], templates: resolveTemplates(edlsSheetWorkerSmsNotifier, {}), cache: new Map(),
+      });
+      const composed = await composeFromTemplates(
+        edlsSheetWorkerSmsNotifier, "sms", recipient, prepared!.seeds, prepared!.templates, prepared!.cache,
+      );
+      expect(composed.content!.body).toContain(`/edls-sched/${tokenOf(workerId)}`);
+    }
+  } finally {
+    read.mockRestore();
+    ensure.mockRestore();
+  }
 });
 
 it("summarizes and receipts every covered generation in one worker message, not unrelated work", async () => {
