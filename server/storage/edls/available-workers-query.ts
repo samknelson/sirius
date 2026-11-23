@@ -34,6 +34,38 @@ function memberStatusJoin(industryId: string | null) {
     : sql``;
 }
 
+function nearestAssignmentJoin(
+  sheetYmd: string,
+  position: "prior" | "current" | "next",
+) {
+  const dayCondition = position === "prior"
+    ? sql`ea.ymd < ${sheetYmd}`
+    : position === "next"
+      ? sql`ea.ymd > ${sheetYmd}`
+      : sql`ea.ymd = ${sheetYmd}`;
+  const ordering = position === "prior"
+    ? sql`ea.ymd DESC, ea.id`
+    : position === "next"
+      ? sql`ea.ymd ASC, ea.id`
+      : sql`ea.id`;
+
+  // The worker/date index lets each lookup stop at the first joined row.
+  // Join BEFORE LIMIT: retained cleared rows and missing crews/sheets must
+  // not hide a farther valid assignment. Trash sheets still count, and the
+  // date is the assignment's (not the sheet's). Keep id ASC for date ties.
+  return sql`LEFT JOIN LATERAL (
+    SELECT es.status
+    FROM edls_assignments ea
+    INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+    INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+    WHERE ea.worker_id = aw.id
+      AND ea.crew_id IS NOT NULL
+      AND ${dayCondition}
+    ORDER BY ${ordering}
+    LIMIT 1
+  ) ${sql.identifier(`${position}_assignment`)} ON true`;
+}
+
 /**
  * The default available-workers population, without assignment history or
  * display/rating fields. Keep the contact join and ordering: the summary uses
@@ -111,27 +143,6 @@ export async function getAvailableWorkersForSheetQuery(
       ${ratingJoin}
       ${memberStatusJoin(industryId)}
       ${activeWhere}
-    ),
-    assignment_statuses AS MATERIALIZED (
-      SELECT
-        ea.worker_id,
-        (
-          array_agg(es.status ORDER BY ea.ymd DESC, ea.id)
-            FILTER (WHERE ea.ymd < ${sheetYmd})
-        )[1] as "priorStatus",
-        (
-          array_agg(es.status ORDER BY ea.id)
-            FILTER (WHERE ea.ymd = ${sheetYmd})
-        )[1] as "currentStatus",
-        (
-          array_agg(es.status ORDER BY ea.ymd ASC, ea.id)
-            FILTER (WHERE ea.ymd > ${sheetYmd})
-        )[1] as "nextStatus"
-      FROM available_workers aw
-      INNER JOIN edls_assignments ea ON ea.worker_id = aw.id
-      INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-      INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-      GROUP BY ea.worker_id
     )
     SELECT
       aw.id,
@@ -140,15 +151,17 @@ export async function getAvailableWorkersForSheetQuery(
       aw."displayName",
       aw.given,
       aw.family,
-      assignment_statuses."priorStatus",
-      assignment_statuses."currentStatus",
-      assignment_statuses."nextStatus",
+      prior_assignment.status as "priorStatus",
+      current_assignment.status as "currentStatus",
+      next_assignment.status as "nextStatus",
       aw."ratingValue",
       aw."memberStatusId",
       aw."memberStatusName",
       aw."memberStatusSequence"
     FROM available_workers aw
-    LEFT JOIN assignment_statuses ON assignment_statuses.worker_id = aw.id
+    ${nearestAssignmentJoin(sheetYmd, "prior")}
+    ${nearestAssignmentJoin(sheetYmd, "current")}
+    ${nearestAssignmentJoin(sheetYmd, "next")}
     ${orderBy}
   `);
   return result.rows as unknown as AvailableWorkerForSheet[];

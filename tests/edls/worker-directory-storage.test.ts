@@ -98,10 +98,9 @@ describe("EDLS worker directory storage", () => {
     expect(pageSql).toMatch(/limit \$\d+ offset \$\d+/);
     expect(filterSql.match(/filter_ea\.crew_id is not null/g)).toHaveLength(2);
     expect(pageSql.match(/filter_ea\.crew_id is not null/g)).toHaveLength(2);
-    expect(assignmentsSql).toContain("assignment_statuses as materialized");
-    expect(assignmentsSql.match(/edls_assignments/g)).toHaveLength(1);
-    expect(assignmentsSql.match(/filter \(where ea\.ymd/g)).toHaveLength(3);
-    expect(assignmentsSql).not.toContain("join lateral");
+    expect(assignmentsSql).not.toContain("array_agg");
+    expect(assignmentsSql.match(/edls_assignments/g)).toHaveLength(3);
+    expect(assignmentsSql.match(/join lateral/g)).toHaveLength(3);
     expect(assignmentsSql).not.toContain("where we.active = true");
   });
 });
