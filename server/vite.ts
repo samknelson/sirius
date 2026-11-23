@@ -4,6 +4,21 @@ import path from "path";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
+import { classifySystemServicePath } from "@shared/system-service-roles";
+
+/** Install only after API routes and their guards, before any frontend handler. */
+function installUnmatchedApiHandler(app: Express) {
+  app.use((req, res, next) => {
+    // Use the same segment boundaries as service ownership: /apiary is a
+    // frontend address, while /api itself and all /api/... paths are APIs.
+    if (classifySystemServicePath(req.path) === "static") return next();
+    res.status(404).json({
+      error: "Not Found",
+      code: "API_NOT_FOUND",
+      message: "API endpoint not found",
+    });
+  });
+}
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -17,6 +32,8 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  installUnmatchedApiHandler(app);
+
   // vite and its config are imported lazily so that this module can be loaded
   // in production (where only `serveStatic` is used) without pulling in the
   // `vite` package or `../vite.config` — both of which are dev-only and are
@@ -93,6 +110,7 @@ export function serveStatic(app: Express) {
     );
   }
 
+  installUnmatchedApiHandler(app);
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
