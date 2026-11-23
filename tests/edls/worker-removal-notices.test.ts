@@ -137,12 +137,10 @@ vi.mock("../../server/storage", () => ({
     },
     edlsAssignments: {
       setCommId: vi.fn(async () => true),
-      async getBySheetId() {
-        return scenario.roster.map((workerId) => ({
-          id: `assignment-${workerId}`,
-          workerId,
-        }));
-      },
+      getBySheetId: vi.fn(async () => {
+        throw new Error("Removal recipients must not load the enriched roster");
+      }),
+      getWorkerIdsBySheetId: vi.fn(async (_sheetId: string) => scenario.roster),
       async getSmsTargetsBySheetId() {
         return scenario.smsTargets.map((workerId) => ({
           assignmentId: `assignment-${workerId}`,
@@ -320,12 +318,16 @@ const THIS_SAVE = sheetSnapshot({
 
 describe("EDLS worker SMS notifier — workers taken off the sheet", () => {
   it("texts the removed worker, with the wording and link of someone off the crew", async () => {
+    const { storage } = await import("../../server/storage");
+    vi.mocked(storage.edlsAssignments.getWorkerIdsBySheetId).mockClear();
     const { contactIds, messages } = await recipientsFor({
       snapshots: [BASELINE, THIS_SAVE],
-      roster: [ASSIGNED, RECEIPTED],
+      roster: [RECEIPTED, ASSIGNED, ASSIGNED],
       smsTargets: [ASSIGNED],
     });
 
+    expect(storage.edlsAssignments.getWorkerIdsBySheetId).toHaveBeenCalledExactlyOnceWith(SHEET_ID);
+    expect(storage.edlsAssignments.getBySheetId).not.toHaveBeenCalled();
     expect(contactIds, "assigned and removed, receipted worker untouched").toEqual([
       contactOf(ASSIGNED),
       contactOf(REMOVED),

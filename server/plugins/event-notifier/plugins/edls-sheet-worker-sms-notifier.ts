@@ -375,8 +375,7 @@ async function resolveRemovedWorkers(
   if (!baseline || baseline.size === 0) return [];
 
   const { storage } = await import("../../../storage");
-  const roster = await storage.edlsAssignments.getBySheetId(sheet.id);
-  const assigned = new Set(roster.map((assignment) => assignment.workerId));
+  const assigned = new Set(await storage.edlsAssignments.getWorkerIdsBySheetId(sheet.id));
   const removedIds = Array.from(baseline).filter((id) => !assigned.has(id));
   if (removedIds.length === 0) return [];
 
