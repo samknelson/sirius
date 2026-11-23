@@ -1,5 +1,87 @@
 # Sheet worker display-ID download investigation
 
+## Endpoint retirement — November 23, 2026
+
+**Decision:** remove `GET /api/edls/sheets/:id/worker-display-ids` and its
+endpoint-specific test suite. No known consumer or documented compatibility
+requirement was found, so no deprecation window or replacement endpoint is
+introduced.
+
+### Consumer and compatibility audit
+
+- Searched repository sources, scripts, tests, and documentation for the
+  literal route, `worker-display-ids`, `displayIdValues`, and
+  `workerIdTypeConfigured`; checked `worker_id_type` references separately.
+  The only exact-route references were its registration, its dedicated tests,
+  and this investigation. No client, script, integration implementation,
+  or external API example calls it. The browser audit below still applies.
+- Checked the external web-service dispatcher
+  (`server/modules/webservices/index.ts`), its `/api/ws` mount
+  (`base-path.ts`), the registered services in
+  `server/plugins/web-service/plugins/`, and the client-specific OpenAPI
+  builder (`server/modules/webservices/openapi.ts`). Those contracts come
+  from granted web-service plugin operations, not browser route discovery.
+  This sheet route is not a web-service operation and is not published by
+  that document builder.
+- The external EDLS contract is the separate Sheet Export v1 service
+  (`server/plugins/web-service/plugins/edls-sheet-export.ts`),
+  `POST /api/ws/<configuration>/v1_sheet_export`. It exports assignments
+  through its own handler and mapper; it does not call the retired route.
+  Its versioned operation, schemas, addressing, and grants are unchanged.
+- No repository-documented deprecation period, supported external contract,
+  or compatibility alias was found for the retired browser route.
+
+This is a **source and contract audit**, not production request telemetry or
+confirmation from external operators. It cannot prove that an undocumented
+session-authenticated caller outside this repository never used the route.
+Such a caller must stop using it; Time on Site and the external export are
+not drop-in replacements for the population mapping.
+
+### Scope and effects
+
+Only the route registration and `tests/edls/worker-display-ids.test.ts` were
+removed. The population and assignment storage helpers and their storage
+tests remain untouched. There are no changes to `/api/edls/tos`,
+`worker_id_type` settings, assignment data or writes, other sheet routes,
+or any remaining route's authentication, component, or sheet access checks.
+
+No handler now builds or returns this full-population identifier mapping.
+Do not assume a new JSON 404/410 contract: unmatched requests follow the
+existing application fallback (including its SPA HTML fallback in web-serving
+roles). No tombstone route or general fallback change was added.
+
+Browser savings remain **0 requests / 0 bytes**, because the browser already
+made no calls. The figures below describe the **retired** direct-response
+cost, not measured production savings or the size of a fallback response.
+The original measurement harness was removed with the endpoint; its method
+and fixture recipe are retained below as historical evidence.
+
+### Retirement verification
+
+- Compared TypeScript AST-extracted route registrations against the pre-change
+  file: exactly this one GET registration was removed; all 19 remaining
+  registrations, including their middleware arguments and handler bodies,
+  are byte-for-byte unchanged.
+- Ran the existing sheet-access, sheet-write, sheet-date-filter,
+  assignment-worker-ID, available-workers-query, and external EDLS export-status
+  suites: 100 tests passed; three failed in unchanged authorization coverage.
+  Two failures in `sheet-access-policies.test.ts` concern supervisor creation
+  and status-transition expectations; the failure in
+  `sheet-write-routes.test.ts` is its mock rejecting `edls.sheet.copy`.
+  The access policies were not modified, and the copy registration and
+  handler are unchanged. The existing copy-permission regression work is
+  separate from this retirement.
+- The application initialized successfully after restoring missing local
+  dependencies. The public sign-in page rendered; authenticated sheet pages
+  were not browser-verified. No production traffic or live worker fixtures
+  were used.
+
+## Historical investigation, before retirement
+
+The remaining sections describe the route and tests **before removal**.
+Statements that they remain available or unchanged refer to that earlier
+investigation, not the current code.
+
 ## Result
 
 The current client has **no consumers** of
