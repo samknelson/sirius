@@ -3,7 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, RotateCw } from "lucide-react";
+import {
+  BellOff,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  CircleHelp,
+  CircleX,
+  Clock3,
+  Loader2,
+  RotateCw,
+  Send,
+  ThumbsDown,
+  ThumbsUp,
+  UserRoundCheck,
+  UserRoundX,
+} from "lucide-react";
 import { Link } from "wouter";
 import type { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
@@ -46,6 +61,7 @@ export function EdlsSummary(_props: DashboardPluginProps) {
   const hasDemand = !!data && Object.keys(data.demand ?? {}).length > 0;
   const hasUnassigned = !!data && Object.keys(data.unassigned ?? {}).length > 0;
   const hasData = (data && data.memberStatuses.length > 0) || hasDemand || hasUnassigned;
+  const isToday = selectedDate === getTodayYmd();
 
   const columnTotals: Record<string, number> = {};
   if (hasData) {
@@ -81,25 +97,27 @@ export function EdlsSummary(_props: DashboardPluginProps) {
             <CalendarDays className="h-5 w-5" />
             EDLS Daily Summary
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 shrink-0"
               onClick={() => setSelectedDate(addDaysYmd(selectedDate, -1))}
               data-testid="button-edls-prev-day"
+              aria-label="Previous day"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => {
                   if (e.target.value) setSelectedDate(e.target.value);
                 }}
-                className="h-8 w-auto"
+                className="h-8 w-[9.5rem] max-w-full"
                 data-testid="input-edls-date"
+                aria-label="Select summary date"
               />
               <span className="text-sm text-muted-foreground hidden sm:inline" data-testid="text-edls-date-display">
                 {formatYmd(selectedDate, "weekday-short")}
@@ -108,23 +126,24 @@ export function EdlsSummary(_props: DashboardPluginProps) {
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 shrink-0"
               onClick={() => setSelectedDate(addDaysYmd(selectedDate, 1))}
               data-testid="button-edls-next-day"
+              aria-label="Next day"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </Button>
-            {selectedDate !== getTodayYmd() && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => setSelectedDate(getTodayYmd())}
-                data-testid="button-edls-today"
-              >
-                Today
-              </Button>
-            )}
+            <Button
+              variant={isToday ? "default" : "outline"}
+              size="sm"
+              className="h-8 w-16 shrink-0 px-0 text-xs"
+              onClick={() => setSelectedDate(getTodayYmd())}
+              data-testid="button-edls-today"
+              aria-label={isToday ? "Today, current date selected" : "Go to today"}
+              aria-pressed={isToday}
+            >
+              Today
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -345,12 +364,44 @@ function AssignmentCountGroup({ title, rows, date }: {
   rows: [string, number, { accepted?: "yes" | "no" | "unanswered"; notified?: "sent" | "failed" | "pending" | "none"; population?: "yes" | "no" }][];
   date: string;
 }) {
+  const statusIcons = {
+    accepted: {
+      yes: ThumbsUp,
+      no: ThumbsDown,
+      unanswered: CircleHelp,
+    },
+    notified: {
+      sent: Send,
+      failed: CircleX,
+      pending: Clock3,
+      none: BellOff,
+    },
+    population: {
+      yes: UserRoundCheck,
+      no: UserRoundX,
+    },
+  };
+
+  const getStatusIcon = (filter: (typeof rows)[number][2]) => {
+    if (filter.accepted) return statusIcons.accepted[filter.accepted];
+    if (filter.notified) return statusIcons.notified[filter.notified];
+    if (filter.population) return statusIcons.population[filter.population];
+    return CircleHelp;
+  };
+
   return <section className="rounded-md border bg-muted/20 p-3" aria-label={title}>
     <h3 className="mb-2 text-sm font-semibold">{title}</h3>
     <div className="space-y-1">
       {rows.map(([label, count, filter]) => (
         <Link key={label} href={assignmentExplorerUrl(date, filter)} className="flex items-center justify-between gap-3 rounded px-2 py-1.5 text-sm hover:bg-background">
-          <span className="text-muted-foreground">{label}</span><span className="font-semibold tabular-nums">{count}</span>
+          <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+            {(() => {
+              const StatusIcon = getStatusIcon(filter);
+              return <StatusIcon className="h-4 w-4 shrink-0" aria-hidden="true" />;
+            })()}
+            <span>{label}</span>
+          </span>
+          <span className="font-semibold tabular-nums">{count}</span>
         </Link>
       ))}
     </div>
