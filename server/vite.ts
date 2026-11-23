@@ -48,7 +48,9 @@ export async function setupVite(app: Express, server: Server) {
           return;
         }
         viteLogger.error(msg, options);
-        process.exit(1);
+        // Vite also logs browser console errors here. Keep the dev server
+        // alive so a client warning or recoverable transform error cannot
+        // stop the application; Vite still reports it in logs/the overlay.
       },
     },
     server: serverOptions,
