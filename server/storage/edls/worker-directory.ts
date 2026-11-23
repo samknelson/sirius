@@ -167,12 +167,14 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
         LIMIT ${pageSize} OFFSET ${offset}
       `);
 
-      const workersWithAssignments = await getAvailableWorkersForSheetQuery(
+      const pageWorkerIds = result.rows.map((row) => (row as { id: string }).id);
+      const workersWithAssignments = pageWorkerIds.length ? await getAvailableWorkersForSheetQuery(
         params.referenceYmd,
         null,
         undefined,
         true,
-      );
+        pageWorkerIds,
+      ) : [];
       const assignmentStatuses = new Map(
         workersWithAssignments.map((worker) => [worker.id, worker] as const),
       );

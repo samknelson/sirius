@@ -99,7 +99,9 @@ export async function getAvailableWorkersForSheetQuery(
   industryId: string | null,
   ratingId?: string,
   includeInactive = false,
+  workerIds?: readonly string[],
 ): Promise<AvailableWorkerForSheet[]> {
+  if (workerIds?.length === 0) return [];
   const client = getClient();
   const ratingJoin = ratingId
     ? sql`INNER JOIN worker_ratings wr ON wr.worker_id = w.id AND wr.rating_id = ${ratingId}`
@@ -113,7 +115,15 @@ export async function getAvailableWorkersForSheetQuery(
   const edlsJoin = includeInactive
     ? sql`LEFT JOIN worker_edls we ON we.worker_id = w.id`
     : sql`INNER JOIN worker_edls we ON we.worker_id = w.id`;
-  const activeWhere = includeInactive ? sql`` : sql`WHERE we.active = true`;
+  const conditions = [];
+  if (!includeInactive) conditions.push(sql`we.active = true`);
+  // Bound the materialized population before joining its assignment history.
+  if (workerIds) {
+    conditions.push(sql`w.id IN (${sql.join(workerIds.map((id) => sql`${id}`), sql`, `)})`);
+  }
+  const populationWhere = conditions.length
+    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+    : sql``;
 
   let orderBy;
   if (industryId && ratingId) {
@@ -142,7 +152,7 @@ export async function getAvailableWorkersForSheetQuery(
       ${edlsJoin}
       ${ratingJoin}
       ${memberStatusJoin(industryId)}
-      ${activeWhere}
+      ${populationWhere}
     )
     SELECT
       aw.id,
