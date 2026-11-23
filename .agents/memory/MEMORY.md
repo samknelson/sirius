@@ -160,3 +160,4 @@
 - [Database test isolation](database-test-isolation.md) — scratch tables belong in dedicated schemas; abandoned public fixtures block the startup drift gate.
 - [Mandatory cron non-overlap](cron-nonoverlap-policy.md) — all cron jobs require execution locking, not opt-in; scheduled and manual runs share the boundary.
 - [Live access-check lifecycle](live-access-check-lifecycle.md) — a child refetching its host's access query can cause a hide/remount loop; pass the authorized audience into the renderer.
+- [CSV newline quoting](csv-newline-quoting.md) — CRLF exports need explicit quoting for lone CR/LF inside fields; the installed csv-stringify does not infer it.

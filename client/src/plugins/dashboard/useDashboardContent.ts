@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
+import { liveQueryOptions } from "@/lib/live-query-options";
 
 export type DashboardContentParams = Record<
   string,
@@ -32,6 +33,8 @@ export interface UseDashboardContentOptions<TParams extends DashboardContentPara
   params?: TParams;
   enabled?: boolean;
   refetchIntervalMs?: number;
+  /** Override the application's indefinite cache for live current-state widgets. */
+  live?: boolean;
 }
 
 /**
@@ -49,7 +52,7 @@ export function useDashboardContent<
   TData,
   TParams extends DashboardContentParams = DashboardContentParams,
 >(pluginId: string, options: UseDashboardContentOptions<TParams> = {}) {
-  const { action, params, enabled = true, refetchIntervalMs } = options;
+  const { action, params, enabled = true, refetchIntervalMs, live = false } = options;
   const { configId, targetUserId } = useContext(DashboardConfigContext);
 
   const url = (() => {
@@ -67,6 +70,7 @@ export function useDashboardContent<
   })();
 
   return useQuery<TData | undefined>({
+    ...(live ? liveQueryOptions : {}),
     queryKey: [
       "/api/dashboard-plugins",
       pluginId,
@@ -87,6 +91,6 @@ export function useDashboardContent<
       return (await res.json()) as TData;
     },
     enabled,
-    refetchInterval: refetchIntervalMs,
+    refetchInterval: refetchIntervalMs ?? (live ? liveQueryOptions.refetchInterval : undefined),
   });
 }

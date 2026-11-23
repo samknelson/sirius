@@ -144,6 +144,7 @@ import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/c
 import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
 import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
+import { registerEdlsAssignmentExplorerRoutes } from "./modules/edls/assignment-explorer";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
@@ -1722,6 +1723,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
+  registerEdlsAssignmentExplorerRoutes(app, requireAuth);
   registerEdlsTosRoutes(app, requireAuth);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
   registerWorkerEdlsRoutes(app, requireAuth);

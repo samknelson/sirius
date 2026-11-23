@@ -64,7 +64,9 @@ export const edlsSheets = pgTable("edls_sheets", {
    */
   notificationsEnabled: boolean("notifications_enabled").notNull().default(false),
   data: jsonb("data"),
-});
+}, (table) => [
+  index("edls_sheets_ymd_idx").on(table.ymd),
+]);
 
 /**
  * `changed` is a storage-owned output: it is omitted here so a request body
@@ -95,7 +97,9 @@ export const edlsCrews = pgTable("edls_crews", {
   taskId: varchar("task_id").references(() => optionsEdlsTasks.id, { onDelete: 'set null' }),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
-});
+}, (table) => [
+  index("edls_crews_sheet_id_idx").on(table.sheetId),
+]);
 
 export const insertEdlsCrewsSchema = createInsertSchema(edlsCrews).omit({
   id: true,
@@ -155,6 +159,7 @@ export const edlsAssignments = pgTable("edls_assignments", {
 }, (table) => [
   unique("edls_assignments_ymd_worker_id_unique").on(table.ymd, table.workerId),
   index("edls_assignments_worker_id_ymd_idx").on(table.workerId, table.ymd),
+  index("edls_assignments_crew_id_idx").on(table.crewId),
 ]);
 
 /**

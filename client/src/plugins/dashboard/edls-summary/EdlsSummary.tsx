@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, RotateCw } from "lucide-react";
+import { Link } from "wouter";
 import type { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 import { getTodayYmd, addDaysYmd, formatYmd } from "@shared/utils/date";
+import { assignmentExplorerUrl, type AssignmentStatusCounts } from "@shared/edls-assignment-explorer";
 
 interface EdlsSummaryData {
   memberStatuses: string[];
@@ -13,6 +16,7 @@ interface EdlsSummaryData {
   demand: Record<string, number>;
   unassigned: Record<string, number>;
   unassignedTotal: number;
+  assignmentStatus: AssignmentStatusCounts;
 }
 
 // Non-reserved statuses render before the Total column; Reserved is
@@ -34,9 +38,9 @@ const statusHeaderColors: Record<string, string> = {
 export function EdlsSummary(_props: DashboardPluginProps) {
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
 
-  const { data, isLoading, isError } = useDashboardContent<EdlsSummaryData>(
+  const { data, isLoading, isError, isFetching, refetch } = useDashboardContent<EdlsSummaryData>(
     "edls-summary",
-    { params: { ymd: selectedDate } },
+    { params: { ymd: selectedDate }, live: true },
   );
 
   const hasDemand = !!data && Object.keys(data.demand ?? {}).length > 0;
@@ -69,6 +73,7 @@ export function EdlsSummary(_props: DashboardPluginProps) {
   const variance = demandTotal - grandTotal;
 
   return (
+    <>
     <Card data-testid="card-edls-summary">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -284,5 +289,70 @@ export function EdlsSummary(_props: DashboardPluginProps) {
         )}
       </CardContent>
     </Card>
+    <Card className="mt-4" data-testid="card-edls-assignment-status">
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base" data-testid="title-edls-assignment-status">Assignment status</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Current status for assignments on {formatYmd(selectedDate, "weekday-short")} — not a historical snapshot. Refreshes every 30 seconds while visible and when you return.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()} aria-label="Refresh EDLS daily summary"><RotateCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />Refresh</Button>
+          {data?.assignmentStatus && (
+            <Link href={assignmentExplorerUrl(selectedDate)} className="inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted">
+              <span className="text-muted-foreground">All assignments</span>
+              <span className="tabular-nums">{data.assignmentStatus.total}</span>
+            </Link>
+          )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!data?.assignmentStatus ? (
+          isLoading ? <div className="grid gap-4 md:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
+            : isError ? <p className="text-sm text-destructive">Assignment status counts are unavailable.</p>
+            : <p className="text-sm text-muted-foreground">No assignment status counts returned for this date.</p>
+        ) : (
+          <>
+            <p className="mb-4 text-xs text-muted-foreground">Includes assignments across all sheet statuses except Trash, including Reserved. Each group is an independent view; counts are not mutually exclusive across groups.</p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <AssignmentCountGroup title="Accepted?" rows={[
+                ["Yes", data.assignmentStatus.accepted.yes, { accepted: "yes" }],
+                ["No", data.assignmentStatus.accepted.no, { accepted: "no" }],
+                ["No answer", data.assignmentStatus.accepted.unanswered, { accepted: "unanswered" }],
+              ]} date={selectedDate} />
+              <AssignmentCountGroup title="Notified?" rows={[
+                ["Sent", data.assignmentStatus.notified.sent, { notified: "sent" }],
+                ["Failed", data.assignmentStatus.notified.failed, { notified: "failed" }],
+                ["Pending / unconfirmed", data.assignmentStatus.notified.pending, { notified: "pending" }],
+                ["Not notified", data.assignmentStatus.notified.none, { notified: "none" }],
+              ]} date={selectedDate} />
+              <AssignmentCountGroup title="In population?" rows={[
+                ["Yes", data.assignmentStatus.population.yes, { population: "yes" }],
+                ["No", data.assignmentStatus.population.no, { population: "no" }],
+              ]} date={selectedDate} />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+    </>
   );
+}
+
+function AssignmentCountGroup({ title, rows, date }: {
+  title: string;
+  rows: [string, number, { accepted?: "yes" | "no" | "unanswered"; notified?: "sent" | "failed" | "pending" | "none"; population?: "yes" | "no" }][];
+  date: string;
+}) {
+  return <section className="rounded-md border bg-muted/20 p-3" aria-label={title}>
+    <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+    <div className="space-y-1">
+      {rows.map(([label, count, filter]) => (
+        <Link key={label} href={assignmentExplorerUrl(date, filter)} className="flex items-center justify-between gap-3 rounded px-2 py-1.5 text-sm hover:bg-background">
+          <span className="text-muted-foreground">{label}</span><span className="font-semibold tabular-nums">{count}</span>
+        </Link>
+      ))}
+    </div>
+  </section>;
 }

@@ -445,6 +445,14 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
 export function buildEdlsMenuItems(): MenuItemDef[] {
   return [
     {
+      id: "edls-assignments",
+      label: "Assignments",
+      icon: "List",
+      href: "/edls/assignments",
+      testId: "menu-edls-assignments",
+      gate: { allOf: [{ component: "edls" }, { policy: "edls.coordinator" }] },
+    },
+    {
       id: "edls-sheets",
       label: "Sheets",
       icon: "FileSpreadsheet",

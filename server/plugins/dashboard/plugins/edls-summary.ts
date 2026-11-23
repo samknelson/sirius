@@ -1,6 +1,7 @@
 import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 import { sql } from "drizzle-orm";
+import { calendarDateSchema } from "@shared/edls-assignment-explorer";
 
 export const edlsSummaryPlugin: DashboardPlugin = {
   id: "edls-summary",
@@ -13,7 +14,7 @@ export const edlsSummaryPlugin: DashboardPlugin = {
 
   async content(ctx) {
     const ymd = ctx.query.ymd;
-    if (!ymd || typeof ymd !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    if (!calendarDateSchema.safeParse(ymd).success || typeof ymd !== "string") {
       throw Object.assign(new Error("ymd query parameter required in YYYY-MM-DD format"), {
         status: 400,
       });
@@ -149,7 +150,8 @@ export const edlsSummaryPlugin: DashboardPlugin = {
       demand[row.sheetStatus] = row.slotCount;
     }
 
-    return { memberStatuses, grid, demand, unassigned, unassignedTotal };
+    const assignmentStatus = await ctx.storage.edlsAssignments.getStatusCounts(ymd);
+    return { memberStatuses, grid, demand, unassigned, unassignedTotal, assignmentStatus };
   },
 
   client: {

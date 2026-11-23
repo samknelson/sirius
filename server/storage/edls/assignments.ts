@@ -3,6 +3,7 @@ import {
   type ValidationError
 } from '../utils/validation';
 import { isDeepStrictEqual } from "node:util";
+import { assignmentExplorerStorage, type AssignmentExplorerStorage } from "./assignment-explorer";
 import { 
   edlsAssignments,
   edlsCrews,
@@ -232,7 +233,7 @@ export interface SheetAssignmentSmsTarget {
    */
   data: unknown;
 }
-export interface EdlsAssignmentsStorage {
+export interface EdlsAssignmentsStorage extends AssignmentExplorerStorage {
   getSheetIdsByCommId(commId: string): Promise<string[]>;
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
@@ -400,6 +401,7 @@ const insertedAssignments = new WeakSet<EdlsAssignment>();
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   return {
+    ...assignmentExplorerStorage,
     async getSheetIdsByCommId(commId: string): Promise<string[]> {
       const rows = await getClient()
         .selectDistinct({ sheetId: edlsCrews.sheetId })
