@@ -240,6 +240,8 @@ export interface EdlsAssignmentsStorage extends AssignmentExplorerStorage {
   getSheetIdsByCommId(commId: string): Promise<string[]>;
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
+  /** Worker IDs only, with the same crew/sheet and worker/contact inclusion as getBySheetId; unordered. */
+  getWorkerIdsBySheetId(sheetId: string): Promise<string[]>;
   /**
    * Every assignment on a sheet that is still WAITING TO BE TEXTED: the
    * worker has an active primary phone number, and the assignment carries no
@@ -459,6 +461,21 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         byCrewId.set(assignment.crewId, nodes);
       }
       return byCrewId;
+    },
+
+    async getWorkerIdsBySheetId(sheetId: string): Promise<string[]> {
+      // Keep the inner joins from getBySheetId: retained cleared assignments
+      // and workers without contacts must not enter the identifier population.
+      // No display fields, communication join, or classification sorting needed.
+      const result = await getClient().execute(sql`
+        SELECT ea.worker_id as "workerId"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE ec.sheet_id = ${sheetId}
+      `);
+      return (result.rows as unknown as { workerId: string }[]).map(row => row.workerId);
     },
 
     async getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]> {

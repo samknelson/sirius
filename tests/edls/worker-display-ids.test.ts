@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSheet: vi.fn(),
   getAssignments: vi.fn(),
+  getAssignmentWorkerIds: vi.fn(),
   getPopulationWorkerIds: vi.fn(),
   getAvailableWorkersForSheet: vi.fn(),
   getWorkerIds: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("../../server/storage", () => ({
     edlsSheets: { get: mocks.getSheet },
     edlsAssignments: {
       getBySheetId: mocks.getAssignments,
+      getWorkerIdsBySheetId: mocks.getAssignmentWorkerIds,
       getPopulationWorkerIds: mocks.getPopulationWorkerIds,
       getAvailableWorkersForSheet: mocks.getAvailableWorkersForSheet,
     },
@@ -63,8 +65,8 @@ beforeEach(() => {
   mocks.accessGranted = true;
   mocks.policyTargets = [];
   mocks.getSheet.mockResolvedValue({ id: "sheet", employerId: "employer", ymd: "2026-06-15" });
-  mocks.getAssignments.mockResolvedValue([
-    { workerId: "inactive-assigned" }, { workerId: "active" }, { workerId: "inactive-assigned" },
+  mocks.getAssignmentWorkerIds.mockResolvedValue([
+    "inactive-assigned", "active", "inactive-assigned",
   ]);
   mocks.getPopulationWorkerIds.mockResolvedValue(["active", "unassigned", "no-id"]);
   mocks.getWorkerIds.mockImplementation(async (type: string, ids: string[]) =>
@@ -102,7 +104,8 @@ describe("sheet worker display IDs", () => {
       status: 200, body: { workerIdTypeConfigured: true, values: oldValues },
     });
     expect(mocks.getWorkerIds).toHaveBeenCalledWith(type, oldIds);
-    expect(mocks.getAssignments).toHaveBeenCalledWith("sheet");
+    expect(mocks.getAssignmentWorkerIds).toHaveBeenCalledWith("sheet");
+    expect(mocks.getAssignments).not.toHaveBeenCalled();
     expect(mocks.getPopulationWorkerIds).toHaveBeenCalledWith();
     expect(mocks.getAvailableWorkersForSheet).not.toHaveBeenCalled();
     expect(mocks.getEmployer).not.toHaveBeenCalled();
@@ -110,7 +113,7 @@ describe("sheet worker display IDs", () => {
   });
 
   it("returns empty values for an empty population and sheet", async () => {
-    mocks.getAssignments.mockResolvedValue([]);
+    mocks.getAssignmentWorkerIds.mockResolvedValue([]);
     mocks.getPopulationWorkerIds.mockResolvedValue([]);
     expect((await request()).body).toEqual({ workerIdTypeConfigured: true, values: {} });
     expect(mocks.getWorkerIds).toHaveBeenCalledWith("ein", []);
@@ -120,6 +123,7 @@ describe("sheet worker display IDs", () => {
     mocks.settings.worker_id_type = null;
     expect((await request()).body).toEqual({ workerIdTypeConfigured: false, values: {} });
     expect(mocks.getAssignments).not.toHaveBeenCalled();
+    expect(mocks.getAssignmentWorkerIds).not.toHaveBeenCalled();
     expect(mocks.getPopulationWorkerIds).not.toHaveBeenCalled();
     expect(mocks.getWorkerIds).not.toHaveBeenCalled();
   });
@@ -127,6 +131,7 @@ describe("sheet worker display IDs", () => {
   it("returns 404 before worker reads for a missing sheet", async () => {
     mocks.getSheet.mockResolvedValue(undefined);
     expect((await request()).status).toBe(404);
+    expect(mocks.getAssignmentWorkerIds).not.toHaveBeenCalled();
     expect(mocks.getPopulationWorkerIds).not.toHaveBeenCalled();
     expect(mocks.getWorkerIds).not.toHaveBeenCalled();
   });
@@ -136,6 +141,7 @@ describe("sheet worker display IDs", () => {
     mocks.accessGranted = gate !== "sheet-access";
     expect((await request(gate !== "authentication")).status).toBe(gate === "authentication" ? 401 : 403);
     expect(mocks.getSheet).not.toHaveBeenCalled();
+    expect(mocks.getAssignmentWorkerIds).not.toHaveBeenCalled();
     expect(mocks.getPopulationWorkerIds).not.toHaveBeenCalled();
     expect(mocks.getWorkerIds).not.toHaveBeenCalled();
   });

@@ -556,13 +556,12 @@ export function registerEdlsSheetsRoutes(
         return;
       }
 
-      const [assignments, populationWorkerIds] = await Promise.all([
-        storage.edlsAssignments.getBySheetId(id),
+      const [assignmentWorkerIds, populationWorkerIds] = await Promise.all([
+        storage.edlsAssignments.getWorkerIdsBySheetId(id),
         storage.edlsAssignments.getPopulationWorkerIds(),
       ]);
 
-      const workerIdSet = new Set<string>();
-      for (const a of assignments) workerIdSet.add(a.workerId);
+      const workerIdSet = new Set(assignmentWorkerIds);
       for (const workerId of populationWorkerIds) workerIdSet.add(workerId);
 
       const rows = await storage.workerIds.getWorkerIdsByTypeForWorkerIds(
