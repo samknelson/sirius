@@ -5,6 +5,7 @@ import { checkAccessInline, requireAccess } from "../../services/access-policy-e
 import { requireComponent } from "../components";
 import { getEdlsSettings } from "./supervisor-context";
 import { getTodayYmd } from "@shared/utils/date";
+import { calendarDateSchema } from "@shared/calendar-date";
 import { isComponentEnabledSync } from "../../services/component-cache";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -48,14 +49,6 @@ const setActiveSchema = z.object({
   active: z.boolean(),
 });
 
-const calendarYmdSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
-  const [year, month, day] = value.split("-").map(Number);
-  if (month < 1 || month > 12 || day < 1) return false;
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-  return day <= daysInMonth;
-}, "Invalid calendar date");
-
 const directoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
@@ -66,13 +59,13 @@ const directoryQuerySchema = z.object({
   idValue: z.string().optional(),
   ratingId: z.string().optional(),
   ratingValue: z.coerce.number().int().optional(),
-  referenceDate: calendarYmdSchema.optional(),
+  referenceDate: calendarDateSchema.optional(),
   currentAssignment: z.enum(["include", "exclude"]).optional(),
   nextAssignment: z.enum(["include", "exclude"]).optional(),
 });
 
 const assignmentDetailsQuerySchema = z.object({
-  referenceDate: calendarYmdSchema.optional(),
+  referenceDate: calendarDateSchema.optional(),
 });
 
 export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth) {

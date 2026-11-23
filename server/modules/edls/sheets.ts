@@ -7,8 +7,17 @@ import { z } from "zod";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { getEffectiveUser } from "../masquerade";
+import { calendarDateSchema } from "@shared/calendar-date";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
+
+// Blank sheet bounds have always meant "no bound"; other supplied values
+// must be scalar calendar dates before they reach storage.
+const optionalSheetDateSchema = z.union([z.literal(""), calendarDateSchema]).optional();
+const sheetDateFiltersSchema = z.object({
+  dateFrom: optionalSheetDateSchema,
+  dateTo: optionalSheetDateSchema,
+});
 
 /**
  * Ordinary HTTP saves accept only these sheet fields. Status, notification
@@ -50,8 +59,6 @@ export function registerEdlsSheetsRoutes(
         employerId, 
         page: pageParam,
         limit: limitParam,
-        dateFrom,
-        dateTo,
         status,
         jobGroupId,
         facilityId,
@@ -63,6 +70,15 @@ export function registerEdlsSheetsRoutes(
       
       const page = parseInt(pageParam as string) || 0;
       const limit = Math.min(parseInt(limitParam as string) || 100, 100);
+
+      const dates = sheetDateFiltersSchema.safeParse(req.query);
+      if (!dates.success) {
+        res.status(400).json({
+          message: "dateFrom and dateTo must be valid calendar dates (YYYY-MM-DD)",
+          details: dates.error.errors,
+        });
+        return;
+      }
       
       // "Changed on or after" — an ISO timestamp. Reject an unparseable value
       // rather than silently listing everything.
@@ -80,8 +96,8 @@ export function registerEdlsSheetsRoutes(
         limit, 
         {
           employerId: employerId as string | undefined,
-          dateFrom: dateFrom as string | undefined,
-          dateTo: dateTo as string | undefined,
+          dateFrom: dates.data.dateFrom,
+          dateTo: dates.data.dateTo,
           status: status as string | undefined,
           jobGroupId: jobGroupId as string | undefined,
           facilityId: facilityId as string | undefined,
@@ -177,6 +193,10 @@ export function registerEdlsSheetsRoutes(
       const { date } = req.query;
       if (!date || typeof date !== 'string') {
         res.status(400).json({ message: "date query parameter is required (YYYY-MM-DD)" });
+        return;
+      }
+      if (!calendarDateSchema.safeParse(date).success) {
+        res.status(400).json({ message: "date must be a valid calendar date (YYYY-MM-DD)" });
         return;
       }
       if (!isComponentEnabledSync("dispatch.job_group")) {
