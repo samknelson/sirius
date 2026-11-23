@@ -33,7 +33,6 @@ import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
 import {
   getAvailableWorkersForSheetQuery,
-  getPopulationWorkerIdsQuery,
   getSummaryPopulationQuery,
   type AvailableWorkerForSheet,
   type EdlsSummaryPopulationWorker,
@@ -325,8 +324,6 @@ export interface EdlsAssignmentsStorage extends AssignmentExplorerStorage {
     ratingId?: string,
     includeInactive?: boolean,
   ): Promise<AvailableWorkerForSheet[]>;
-  /** Active EDLS workers with contacts, IDs only; never reads history. */
-  getPopulationWorkerIds(): Promise<string[]>;
   /** Active EDLS population and member status only; never reads assignments. */
   getSummaryPopulation(industryId: string | null): Promise<EdlsSummaryPopulationWorker[]>;
   /**
@@ -843,7 +840,6 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       );
     },
 
-    getPopulationWorkerIds: getPopulationWorkerIdsQuery,
     getSummaryPopulation: getSummaryPopulationQuery,
 
     async getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]> {
