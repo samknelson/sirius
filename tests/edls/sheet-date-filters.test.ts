@@ -5,11 +5,20 @@ import { calendarDateSchema as explorerDateSchema } from "../../shared/edls-assi
 const mocks = vi.hoisted(() => ({
   getPaginated: vi.fn(),
   getActiveOnDate: vi.fn(),
+  getSheet: vi.fn(),
+  getSheetAssignments: vi.fn(),
+  getNextAssignments: vi.fn(),
+  getAllAssignments: vi.fn(),
   jobGroupsEnabled: true,
 }));
 vi.mock("../../server/storage", () => ({
   storage: {
-    edlsSheets: { getPaginated: mocks.getPaginated },
+    edlsSheets: { getPaginated: mocks.getPaginated, get: mocks.getSheet },
+    edlsAssignments: {
+      getBySheetId: mocks.getSheetAssignments,
+      getNextAssignmentsForWorkerIds: mocks.getNextAssignments,
+      getAssignmentsForWorkerIds: mocks.getAllAssignments,
+    },
     dispatchJobGroups: { getActiveOnDate: mocks.getActiveOnDate },
   },
 }));
@@ -47,9 +56,35 @@ async function request(path: string, query: Record<string, unknown>) {
     status(code: number) { result.status = code; return res; },
     json(body: unknown) { result.body = body; return res; },
   };
-  await handlers.get(`/api/edls/${path}`)!({ query }, res);
+  await handlers.get(`/api/edls/${path}`)!({ query, params: { id: "sheet" } }, res);
   return result;
 }
+
+describe("sheet next assignments", () => {
+  it("uses the bounded read with unique assigned workers and preserves the response envelope", async () => {
+    mocks.getSheet.mockResolvedValue({ id: "sheet", ymd: "2026-06-15" });
+    mocks.getSheetAssignments.mockResolvedValue([
+      { workerId: "worker" }, { workerId: "none" }, { workerId: "worker" },
+    ]);
+    const assignment = { assignmentId: "next", ymd: "2026-06-16", sheetStatus: "reserved" };
+    mocks.getNextAssignments.mockResolvedValue(new Map([["worker", assignment], ["none", null]]));
+    const response = await request("sheets/:id/next-assignments", {});
+    expect(mocks.getNextAssignments).toHaveBeenCalledExactlyOnceWith(["worker", "none"], "2026-06-15");
+    expect(mocks.getAllAssignments).not.toHaveBeenCalled();
+    expect(response).toEqual({ status: 200, body: { next: { worker: assignment, none: null } } });
+  });
+
+  it("keeps the empty-sheet response and missing-sheet refusal", async () => {
+    mocks.getSheet.mockResolvedValue({ id: "sheet", ymd: "2026-06-15" });
+    mocks.getSheetAssignments.mockResolvedValue([]);
+    mocks.getNextAssignments.mockResolvedValue(new Map());
+    expect(await request("sheets/:id/next-assignments", {})).toEqual({ status: 200, body: { next: {} } });
+    mocks.getSheet.mockResolvedValue(undefined);
+    mocks.getNextAssignments.mockClear();
+    expect(await request("sheets/:id/next-assignments", {})).toEqual({ status: 404, body: { message: "Sheet not found" } });
+    expect(mocks.getNextAssignments).not.toHaveBeenCalled();
+  });
+});
 
 describe("EDLS calendar date request boundaries", () => {
   it("preserves the explorer's shared schema export", () => {

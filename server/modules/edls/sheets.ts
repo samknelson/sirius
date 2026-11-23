@@ -523,15 +523,14 @@ export function registerEdlsSheetsRoutes(
 
       // Next assignment = earliest assignment on a non-trashed sheet strictly
       // after this sheet's date (one sheet per worker per day is DB-enforced).
-      const upcoming = await storage.edlsAssignments.getAssignmentsForWorkerIds(
+      const upcoming = await storage.edlsAssignments.getNextAssignmentsForWorkerIds(
         workerIds,
-        { afterYmd: sheet.ymd },
+        sheet.ymd,
       );
 
       const next: Record<string, unknown | null> = {};
       for (const workerId of workerIds) {
-        const list = upcoming.get(workerId) ?? [];
-        next[workerId] = list.length > 0 ? list[0] : null;
+        next[workerId] = upcoming.get(workerId) ?? null;
       }
 
       res.json({ next });

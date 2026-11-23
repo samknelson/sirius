@@ -337,6 +337,8 @@ export interface EdlsAssignmentsStorage extends AssignmentExplorerStorage {
   getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
   getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
   getAssignmentsForWorkerIds(workerIds: string[], filters?: AssignmentForWorkerFilters): Promise<Map<string, AssignmentForWorker[]>>;
+  /** At most one non-trash assignment per worker, strictly after the given sheet date. */
+  getNextAssignmentsForWorkerIds(workerIds: string[], afterYmd: string): Promise<Map<string, AssignmentForWorker | null>>;
   /**
    * Snapshot export: versioned assignment bundles (worker captured as a
    * rendered stub, including member status for the given industry), grouped
@@ -994,10 +996,25 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       }));
     },
 
-    async getAssignmentsForWorkerIds(
-      workerIds: string[],
-      filters?: AssignmentForWorkerFilters
-    ): Promise<Map<string, AssignmentForWorker[]>> {
+    async getAssignmentsForWorkerIds(workerIds, filters) {
+      return readAssignmentsForWorkerIds(workerIds, filters);
+    },
+
+    async getNextAssignmentsForWorkerIds(workerIds, afterYmd) {
+      const assignments = await readAssignmentsForWorkerIds(workerIds, { afterYmd }, true);
+      return new Map(Array.from(assignments, ([workerId, list]) => [workerId, list[0] ?? null]));
+    },
+
+    getWorkerAssignmentDetails: readWorkerAssignmentDetails,
+    getMemberStatusSummaryByYmd: readMemberStatusSummaryByYmd,
+  };
+}
+
+async function readAssignmentsForWorkerIds(
+  workerIds: string[],
+  filters?: AssignmentForWorkerFilters,
+  nextOnly = false,
+): Promise<Map<string, AssignmentForWorker[]>> {
       const result = new Map<string, AssignmentForWorker[]>();
       for (const id of workerIds) result.set(id, []);
       if (workerIds.length === 0) return result;
@@ -1016,6 +1033,27 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
       if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
       if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const nextAssignmentIds = nextOnly
+        ? sql`(
+          SELECT DISTINCT ON (a.worker_id) a.id
+          FROM edls_assignments a
+          INNER JOIN edls_crews c ON a.crew_id = c.id
+          INNER JOIN edls_sheets s ON c.sheet_id = s.id
+          WHERE a.worker_id IN (${sql.join(Array.from(result.keys(), id => sql`${id}`), sql`, `)})
+            AND s.status <> 'trash'
+            AND s.ymd > ${filters!.afterYmd}
+          ORDER BY a.worker_id ASC, s.ymd ASC, c.start_time ASC
+        )`
+        : undefined;
+      const assignmentSource = nextAssignmentIds
+        ? client.select().from(edlsAssignments)
+            .where(inArray(edlsAssignments.id, nextAssignmentIds))
+            // This bound is also an optimization fence: PostgreSQL must finish
+            // selecting the next rows before doing any descriptive joins.
+            .limit(result.size)
+            .as("edls_assignments")
+        : edlsAssignments;
 
       const withJobGroups = jobGroupsEnabled();
       const baseQuery = client
@@ -1053,7 +1091,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
           jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
         })
-        .from(edlsAssignments)
+        .from(assignmentSource)
         .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
         .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
         .leftJoin(users, eq(edlsSheets.supervisor, users.id))
@@ -1106,9 +1144,9 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         if (list) list.push(item);
       }
       return result;
-    },
+}
 
-    async getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null> {
+async function readWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null> {
       const client = getClient();
       
       const workerResult = await client.execute(sql`
@@ -1207,9 +1245,9 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         current,
         next,
       };
-    },
+}
 
-    async getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]> {
+async function readMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]> {
       const client = getClient();
       const result = await client.execute(sql`
         SELECT
@@ -1236,8 +1274,6 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ORDER BY oms.sequence NULLS LAST, oms.name
       `);
       return result.rows as unknown as MemberStatusSummaryRow[];
-    },
-  };
 }
 
 async function getSheetIdFromCrewId(crewId: string): Promise<string | undefined> {
