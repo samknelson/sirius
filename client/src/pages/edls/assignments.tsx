@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
-import { CalendarDays, ChevronLeft, ChevronRight, Download, RotateCw, Users } from "lucide-react";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { ChevronLeft, ChevronRight, Download, RotateCw, Users } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EditableDate } from "@/components/ui/editable-date";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -121,23 +121,24 @@ export default function EdlsAssignmentsPage() {
   };
 
   return (
-    <>
-      <PageHeader title="EDLS Assignment Status" icon={<Users className="h-5 w-5 text-primary-foreground" />} />
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Daily coordination</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight">Assignment status explorer</h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">See who is assigned, who has answered, who was notified, and who remains in the active scheduling population.</p>
-          </div>
+    <div className="container mx-auto py-8">
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 space-y-0 pb-4">
+          <CardTitle data-testid="title-page" className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            EDLS Assignments
+          </CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()} aria-label="Refresh assignment statuses"><RotateCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />{isError ? "Retry" : "Refresh"}</Button>
           <Button onClick={downloadCsv} disabled={isExporting} variant="outline" data-testid="button-edls-assignment-export">
             <Download className="mr-2 h-4 w-4" />{isExporting ? "Preparing CSV…" : "Export full CSV"}
           </Button>
-        </div>
+          </div>
+        </CardHeader>
+        <CardContent>
 
-        <section className="rounded-lg border bg-card p-4 shadow-sm" aria-label="Assignment filters">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium"><CalendarDays className="h-4 w-4 text-primary" /> Scheduled day</div>
-          <div className="flex flex-wrap items-end gap-3">
+        <section className="mb-4" aria-label="Assignment filters">
+          <div className="flex flex-wrap items-end gap-4">
             <Button variant="outline" size="icon" aria-label="Previous day" onClick={() => update({ ymd: addDaysYmd(ymd, -1) })} data-testid="button-edls-assignment-prev-day"><ChevronLeft className="h-4 w-4" /></Button>
             <EditableDate value={ymd} onChange={(value) => update({ ymd: value })} label="Select assignment date" testId="input-edls-assignment-date" />
             <Button variant="outline" size="icon" aria-label="Next day" onClick={() => update({ ymd: addDaysYmd(ymd, 1) })} data-testid="button-edls-assignment-next-day"><ChevronRight className="h-4 w-4" /></Button>
@@ -148,35 +149,32 @@ export default function EdlsAssignmentsPage() {
               <FilterSelect label="In Population?" value={population} options={populationOptions} onChange={(value) => update({ population: value })} testId="select-edls-assignment-population" />
             </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">Filters combine together. Statuses show the current state of assignments scheduled for this date. Refreshes every 30 seconds while visible and when you return.</p>
-          <p className="mt-1 text-xs text-muted-foreground">Not Notified means no current linked communication, not that the worker has never been contacted. Pending/unconfirmed includes offline and unrecognized delivery states.</p>
         </section>
 
         {exportMessage && <Alert variant={exportMessage === "CSV downloaded." ? "default" : "destructive"}><AlertDescription>{exportMessage}</AlertDescription></Alert>}
 
-        <section className="overflow-hidden rounded-lg border bg-card shadow-sm" aria-label="Assignment results">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-            <div><h3 className="font-semibold">Assignments</h3><p className="text-xs text-muted-foreground">{data ? `${data.total.toLocaleString()} matching ${data.total === 1 ? "assignment" : "assignments"}` : "Loading scheduled assignments"}{isFetching && !isLoading ? " · Updating…" : ""}</p></div>
-            <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()} aria-label="Refresh assignment statuses"><RotateCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />{isError ? "Retry" : "Refresh"}</Button>
+        <section aria-label="Assignment results">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground" data-testid="text-assignments-result-count" aria-live="polite">
+              {data ? `Showing ${data.total > 0 ? `${((data.page - 1) * data.pageSize + 1).toLocaleString()}–${Math.min(data.page * data.pageSize, data.total).toLocaleString()}` : "0"} of ${data.total.toLocaleString()} assignments` : "Loading assignments…"}{isFetching && !isLoading ? " · Updating…" : ""}
+            </p>
+            {data && <div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={page <= 1 || isFetching} onClick={() => update({ page: String(page - 1) })}>Previous</Button><span className="min-w-[100px] text-center text-sm">Page {Math.min(data.page, totalPages)} of {totalPages}</span><Button size="sm" variant="outline" disabled={page >= totalPages || isFetching} onClick={() => update({ page: String(page + 1) })}>Next</Button></div>}
           </div>
           {isLoading ? <div className="space-y-3 p-5"><Skeleton className="h-8 w-full" /><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
             : isError ? <div className="p-10 text-center"><p className="font-medium">Assignments could not be loaded.</p><p className="mt-1 text-sm text-muted-foreground">Check your connection, then try again.</p><Button className="mt-4" variant="outline" onClick={() => refetch()}>Try again</Button></div>
             : rows.length === 0 ? <div className="px-5 py-14 text-center"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-muted"><Users className="h-5 w-5 text-muted-foreground" /></div><h4 className="mt-4 font-semibold">No matching assignments</h4><p className="mt-1 text-sm text-muted-foreground">Try another date or clear one of the status filters.</p></div>
-            : <div className="overflow-x-auto">
-              <Table className="min-w-[1050px]">
+            : <div>
+              <Table className="table-fixed [&_th]:whitespace-normal [&_th]:[overflow-wrap:anywhere] [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere] [&_th]:px-1 [&_td]:px-1 sm:[&_th]:px-2 sm:[&_td]:px-2 [&_td_div]:flex-wrap [&_td_svg]:shrink-0">
                 <TableHeader><TableRow>
-                  <TableHead className="min-w-[190px]">Worker</TableHead><TableHead className="min-w-[180px]">Sheet</TableHead><TableHead>Sheet status</TableHead><TableHead className="min-w-[150px]">Crew / task</TableHead><TableHead>Effective time</TableHead><TableHead>Accepted?</TableHead><TableHead>Notified?</TableHead><TableHead>In population?</TableHead><TableHead>Tools</TableHead>
+                  <TableHead>Worker</TableHead><TableHead>Sheet</TableHead><TableHead>Sheet status</TableHead><TableHead>Crew / task</TableHead><TableHead>Effective time</TableHead><TableHead>Accepted?</TableHead><TableHead>Notified?</TableHead><TableHead>In population?</TableHead><TableHead>Tools</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>{rows.map((row) => <AssignmentRow key={row.id} row={row} />)}</TableBody>
               </Table>
             </div>}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
-            <span className="text-sm text-muted-foreground">{data && data.total > 0 ? `Showing ${(data.page - 1) * data.pageSize + 1}–${Math.min(data.page * data.pageSize, data.total)} of ${data.total.toLocaleString()}` : data ? "0 results" : ""}</span>
-            {data && <div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={page <= 1 || isFetching} onClick={() => update({ page: String(page - 1) })}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button><span className="min-w-20 text-center text-sm tabular-nums">Page {Math.min(data.page, totalPages)} of {totalPages}</span><Button size="sm" variant="outline" disabled={page >= totalPages || isFetching} onClick={() => update({ page: String(page + 1) })}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button></div>}
-          </div>
         </section>
-      </main>
-    </>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

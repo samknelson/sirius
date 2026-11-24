@@ -437,7 +437,7 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
 }
 
 /**
- * The three EDLS links with their per-item gates. Shared between the
+ * The EDLS links with their per-item gates. Shared between the
  * `default` plugin (as a dropdown) and the `edls` plugin (as top-level
  * items). Gates are self-contained so promotion to top level keeps the
  * exact same access behavior.
@@ -445,20 +445,30 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
 export function buildEdlsMenuItems(): MenuItemDef[] {
   return [
     {
-      id: "edls-assignments",
-      label: "Assignments",
-      icon: "List",
-      href: "/edls/assignments",
-      testId: "menu-edls-assignments",
-      gate: { allOf: [{ component: "edls" }, { policy: "edls.coordinator" }] },
-    },
-    {
       id: "edls-sheets",
       label: "Sheets",
       icon: "FileSpreadsheet",
       href: "/edls/sheets",
       testId: "menu-edls-sheets",
       gate: { policy: "edls.any" },
+      children: [
+        {
+          id: "edls-sheets-list",
+          label: "Sheets",
+          icon: "FileSpreadsheet",
+          href: "/edls/sheets",
+          testId: "menu-edls-sheets-list",
+          gate: { policy: "edls.any" },
+        },
+        {
+          id: "edls-assignments",
+          label: "Assignments",
+          icon: "List",
+          href: "/edls/assignments",
+          testId: "menu-edls-assignments",
+          gate: { allOf: [{ component: "edls" }, { policy: "edls.coordinator" }] },
+        },
+      ],
     },
     {
       id: "edls-workers",

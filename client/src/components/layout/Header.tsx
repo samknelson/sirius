@@ -51,6 +51,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -198,6 +201,33 @@ export default function Header() {
     );
   };
 
+  const renderDesktopMenuItem = (item: ResolvedMenuItem): React.ReactNode => {
+    const Icon = getIcon(item.icon);
+    return (
+      <div key={item.id}>
+        {item.separatorBefore && <DropdownMenuSeparator />}
+        {item.children?.length ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger data-testid={item.testId || `menu-${item.id}`}>
+              <Icon className="h-4 w-4 mr-2" />
+              {itemLabel(item)}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>{item.children.map(renderDesktopMenuItem)}</DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : (
+          <DropdownMenuItem asChild>
+            <Link href={item.href || "#"} className="w-full">
+              <div className="flex items-center cursor-pointer" data-testid={item.testId || `menu-${item.id}`}>
+                <Icon className="h-4 w-4 mr-2" />
+                {itemLabel(item)}
+              </div>
+            </Link>
+          </DropdownMenuItem>
+        )}
+      </div>
+    );
+  };
+
   const renderDesktopDropdown = (item: ResolvedMenuItem) => {
     const Icon = getIcon(item.icon);
     return (
@@ -214,25 +244,7 @@ export default function Header() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          {item.children!.map((child) => {
-            const ChildIcon = getIcon(child.icon);
-            return (
-              <div key={child.id}>
-                {child.separatorBefore && <DropdownMenuSeparator />}
-                <DropdownMenuItem asChild>
-                  <Link href={child.href || "#"} className="w-full">
-                    <div
-                      className="flex items-center cursor-pointer"
-                      data-testid={child.testId || `menu-${child.id}`}
-                    >
-                      <ChildIcon className="h-4 w-4 mr-2" />
-                      {itemLabel(child)}
-                    </div>
-                  </Link>
-                </DropdownMenuItem>
-              </div>
-            );
-          })}
+          {item.children!.map(renderDesktopMenuItem)}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -254,7 +266,7 @@ export default function Header() {
     );
   };
 
-  const renderMobileSection = (item: ResolvedMenuItem) => {
+  const renderMobileSection = (item: ResolvedMenuItem): React.ReactNode => {
     const Icon = getIcon(item.icon);
     const expanded = !!mobileExpanded[item.id];
     return (
@@ -277,7 +289,7 @@ export default function Header() {
         </button>
         {expanded && (
           <div className="space-y-1" id={`mobile-section-${item.id}`}>
-            {item.children!.map((child) => renderMobileLeaf(child, true))}
+            {item.children!.map((child) => child.children?.length ? renderMobileSection(child) : renderMobileLeaf(child, true))}
           </div>
         )}
       </div>
