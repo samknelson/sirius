@@ -13,7 +13,6 @@ import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
 import { logger } from "../../../../logger";
 import {
-  isMaintenanceActive,
   isMaintenanceModeError,
   sendIfMaintenanceRefusal,
 } from "../../../../services/maintenance-flag";
@@ -34,10 +33,6 @@ import {
   stopFreemanMigrate,
   FreemanMigrateConflictError,
   withFreemanMigrateLock,
-  getFreemanEdlsFullResetPreflight,
-  executeFreemanEdlsFullReset,
-  FreemanFullResetRefusedError,
-  FreemanEdlsFullResetUnexpectedError,
 } from "./import";
 
 /**
@@ -67,100 +62,6 @@ type OneBatchFailureStage =
   | "conflict"
   | "database"
   | "request";
-function databaseFailureMetadata(error: unknown): Record<string, unknown> {
-  const source = error instanceof FreemanEdlsFullResetUnexpectedError
-    ? error.diagnostics
-    : error;
-  if (typeof source !== "object" || source === null) return {};
-  const value = source as Record<string, unknown>;
-  const allowed = [
-    "name",
-    "code",
-    "severity",
-    "schema",
-    "table",
-    "column",
-    "dataType",
-    "constraint",
-    "routine",
-    "entity",
-  ] as const;
-  return Object.fromEntries(
-    allowed
-      .filter((key) => typeof value[key] === "string")
-      .map((key) => [key, value[key]]),
-  );
-}
-
-async function sendFullResetFailure(res: Response, error: unknown): Promise<void> {
-  if (error instanceof FreemanMigrateConflictError) {
-    res.status(409).json({ message: error.message, action: "refresh" });
-    return;
-  }
-  if (error instanceof FreemanFullResetRefusedError) {
-    res.status(409).json({
-      message: error.message,
-      action: "refresh",
-      blocker: error.details,
-    });
-    return;
-  }
-
-  const stage = error instanceof FreemanEdlsFullResetUnexpectedError
-    ? error.stage
-    : "reset_boundary";
-  const diagnostics = databaseFailureMetadata(error);
-  const failedRecord = error instanceof FreemanEdlsFullResetUnexpectedError
-    ? error.failedRecord
-    : undefined;
-  const recordDescription = failedRecord
-    ? ` Record ${failedRecord.id} in ${failedRecord.table} failed.`
-    : "";
-  const message = `The full reset could not produce a trustworthy result during ${stage}.${recordDescription} Some earlier batches may already have committed; refresh the counts before trying again.`;
-  const logPayload = {
-    stage,
-    outcome: "hard_failure",
-    diagnostics,
-    failedRecord,
-  };
-  let logId: number | undefined;
-  let logPersistenceError: Record<string, unknown> | undefined;
-  try {
-    const log = await storage.logs.create({
-      level: "error",
-      message: "Freeman EDLS full reset could not return a result",
-      source: "freeman-edls-full-reset",
-      module: "freeman-edls-full-reset",
-      operation: "reset_failed",
-      entityId: failedRecord?.id ?? null,
-      description: message,
-      meta: logPayload,
-    });
-    logId = log.id;
-  } catch (logError) {
-    logPersistenceError = databaseFailureMetadata(logError);
-  }
-  logger.error("Freeman EDLS full reset could not return a result", {
-    service: "freeman-edls-full-reset",
-    logId,
-    stage,
-    outcome: "hard_failure",
-    diagnostics,
-    failedRecord,
-    logPersistenceError,
-  });
-  res.status(500).json({
-    message,
-    action: "inspect",
-    logId,
-    stage,
-    diagnostics,
-    failedRecord,
-    logPersistenceError,
-    diagnosticsVersion: "full-reset-diagnostics-v2",
-  });
-}
-
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (
   permissionKey: string,
@@ -210,77 +111,6 @@ export function registerFreemanEdlsMigrateRoutes(
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         sendMigrationFailure(res, error, "Failed to sweep the legacy node table");
-      }
-    },
-  );
-
-  app.get(
-    "/api/sitespecific/freeman/edls-migrate/full-reset",
-    ...gate,
-    async (_req: Request, res: Response) => {
-      try {
-        res.json(await getFreemanEdlsFullResetPreflight());
-      } catch (error) {
-        sendMigrationFailure(res, error, "Failed to load full-reset counts");
-      }
-    },
-  );
-
-  app.post(
-    "/api/sitespecific/freeman/edls-migrate/full-reset",
-    ...gate,
-    async (req: Request, res: Response) => {
-      if (isMaintenanceActive()) {
-        res.status(503).json({
-          message: "The Freeman EDLS full reset is unavailable while the site is in maintenance mode.",
-          maintenance: true,
-        });
-        return;
-      }
-      try {
-        const result = await executeFreemanEdlsFullReset(req.body);
-        const outcome = result.failures.length > 0 || result.rerunRecommended
-          ? "partial_success"
-          : "completed";
-        let logId: number | undefined;
-        try {
-          const log = await storage.logs.create({
-            level: outcome === "completed" ? "info" : "warn",
-            message: outcome === "completed"
-              ? "Freeman EDLS full reset completed"
-              : "Freeman EDLS full reset made partial progress",
-            source: "freeman-edls-full-reset",
-            module: "freeman-edls-full-reset",
-            operation: "reset_completed",
-            entityId: null,
-            description: result.rerunRecommended
-              ? "Committed deletions were retained. Eligible records remain; run the reset again."
-              : "The best-effort reset run finished with no eligible worker or EDLS records remaining.",
-            meta: {
-              outcome,
-              deleted: result.deleted,
-              remaining: result.remaining,
-              failures: result.failures,
-              stalePreflight: result.stalePreflight,
-            },
-          });
-          logId = log.id;
-        } catch (logError) {
-          logger.error("Freeman EDLS full reset result log could not be persisted", {
-            service: "freeman-edls-full-reset",
-            outcome,
-            diagnostics: databaseFailureMetadata(logError),
-          });
-        }
-        res.json({ ...result, logId });
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          res.status(400).json({
-            message: "Type the exact confirmation phrase and refresh the reset counts before continuing.",
-          });
-          return;
-        }
-        await sendFullResetFailure(res, error);
       }
     },
   );

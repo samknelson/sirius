@@ -2,10 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
-import {
-  storage,
-  FreemanEdlsFullResetUnexpectedError,
-} from "../../../../storage";
+import { storage } from "../../../../storage";
 import { getClient, runInSavepoint, runInTransaction, runOutsideTransaction } from "../../../../storage/transaction-context";
 import {
   validate as validateEdlsSheet,
@@ -49,8 +46,6 @@ export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STA
 
 export const FREEMAN_MIGRATE_RUN_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_RUN";
 const FREEMAN_MIGRATE_PROGRESS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_PROGRESS";
-export const FREEMAN_EDLS_FULL_RESET_CONFIRMATION = "DELETE ALL WORKERS";
-export const FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION = "full-reset-diagnostics-v2";
 const EPOCH = "1970-01-01T00:00:00.000Z";
 // Freeman runs this through PHP strtotime() and rejects the Unix epoch because
 // strtotime("1970-01-01...") is 0, which its legacy truthiness check treats as
@@ -1841,21 +1836,6 @@ export class FreemanMigrateConflictError extends Error {
   }
 }
 
-export class FreemanFullResetRefusedError extends Error {
-  constructor(
-    message: string,
-    public readonly kind: "relationship",
-    public readonly details?: Record<string, unknown>,
-  ) {
-    super(message);
-    this.name = "FreemanFullResetRefusedError";
-  }
-}
-
-export {
-  FreemanEdlsFullResetUnexpectedError,
-};
-
 async function writeRunControl(state: FreemanMigrateRunControl): Promise<void> {
   const value = JSON.stringify(state);
   const existing = await storage.variables.getByName(FREEMAN_MIGRATE_RUN_VARIABLE);
@@ -1952,51 +1932,6 @@ export async function assertNoActiveFreemanMigrate(): Promise<void> {
   if (isActiveLifecycle(control.lifecycle)) {
     throw new FreemanMigrateConflictError("This action is unavailable while the live Freeman migration is active.");
   }
-}
-
-function fullResetSnapshot(plan: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(plan))
-    .digest("hex");
-}
-
-export async function getFreemanEdlsFullResetPreflight() {
-  await assertNoActiveFreemanMigrate();
-  const plan = await storage.freemanEdlsFullReset.getPlan();
-  return {
-    ...plan,
-    snapshot: fullResetSnapshot(plan),
-    confirmation: FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
-    diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
-  };
-}
-
-export async function executeFreemanEdlsFullReset(raw: unknown) {
-  const input = z.object({
-    confirmation: z.literal(FREEMAN_EDLS_FULL_RESET_CONFIRMATION),
-    snapshot: z.string().length(64),
-  }).strict().parse(raw);
-
-  return withFreemanMigrateLock(async () => {
-    await assertNoActiveFreemanMigrate();
-    const plan = await storage.freemanEdlsFullReset.getPlan();
-    const result = await storage.freemanEdlsFullReset.execute(plan);
-    result.stalePreflight ||= input.snapshot !== fullResetSnapshot(plan);
-    const {
-      remaining,
-      failures,
-      stalePreflight,
-      ...deleted
-    } = result;
-    return {
-      deleted,
-      remaining,
-      failures,
-      stalePreflight,
-      rerunRecommended: Object.values(remaining).some((count) => count > 0),
-      diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
-    };
-  });
 }
 
 let startReserved = false;

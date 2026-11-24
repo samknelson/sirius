@@ -3,10 +3,6 @@ import { type VariableStorage, createVariableStorage, variableLoggingConfig } fr
 import { type SnapshotsStorage, createSnapshotsStorage, snapshotsLoggingConfig } from "./system/snapshots";
 import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
-import {
-  type FreemanEdlsFullResetStorage,
-  createFreemanEdlsFullResetStorage,
-} from "./sitespecific/freeman/edls-full-reset";
 import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } from "./employers/employers";
 import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust/benefits";
@@ -229,7 +225,6 @@ export interface IStorage {
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
-  freemanEdlsFullReset: FreemanEdlsFullResetStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
   trustBenefits: TrustBenefitStorage;
@@ -358,7 +353,6 @@ export class DatabaseStorage implements IStorage {
   variables: VariableStorage;
   users: UserStorage;
   workers: WorkerStorage;
-  freemanEdlsFullReset: FreemanEdlsFullResetStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
   trustBenefits: TrustBenefitStorage;
@@ -501,7 +495,6 @@ export class DatabaseStorage implements IStorage {
       createWorkerStorage(this.contacts),
       workerLoggingConfig,
     );
-    this.freemanEdlsFullReset = createFreemanEdlsFullResetStorage();
     this.employers = withStorageLogging(createEmployerStorage(), employerLoggingConfig);
     
     this.trustBenefits = withStorageLogging(
