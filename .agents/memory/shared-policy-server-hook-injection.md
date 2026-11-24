@@ -4,23 +4,21 @@ description: How shared/access-policies files reach server-only registries witho
 ---
 
 Shared access-policy modules are bundled into the client, so they must never
-import server registries. When a policy needs server-side context (e.g.
-`file.read` granting via the entity-files context's own access callback),
-expose an injectable resolver setter in the shared file and wire it at boot
-from a small server file (called in `server/routes.ts` next to the related
-route registration).
+import server registries. For new component-owned alterations, use the shared
+typed alter framework rather than inventing another resolver setter. Existing
+bespoke resolver consumers are not automatically in scope for migration.
 
-**Why:** direct import would pull server code into the client bundle; an
-unset resolver must fail closed so client/standalone evaluation grants
-nothing extra.
+**Why:** direct import would pull server code into the client bundle. The owner
+chose incremental extraction, not wholesale component packaging or a new plugin
+framework. An unwired authorization boundary must fail closed.
 
 **Also:** when a policy branch replaces a dedicated per-context route, it
 must be authoritative — placed before generic shortcut grants (uploader /
 staff / broad permissions), returning grant-or-deny, so access is exactly
 what the old route allowed.
 
-**How to apply:** shared file: `set<X>Resolver(fn)` + null default, branch
-only grants when resolver returns true. Server wiring: look up registry,
-gate on `ctx.isComponentEnabled(component)`, call a req-free
-`checkPolicyAccess(verb, entityId, ctx)` twin of the route's `checkAccess`
-(keep them exactly as strict as each other), catch → deny.
+**How to apply:** keep declarations shared and implementations server-owned;
+register regardless of enabled state and gate execution through injected
+availability. Preserve each consumer's authority contract: a grant-preserving
+extension must not become the template for an authoritative veto boundary.
+Use the existing alter-hook documentation for the lifecycle and API.

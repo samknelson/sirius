@@ -1,12 +1,11 @@
-import { definePolicy, registerPolicy, type PolicyContext } from '../index';
+import { definePolicy, registerPolicy, type PolicyContext, type PolicyResult, type AccessCondition } from '../index';
+import { alterHooks } from '../../alter';
 
-type LinkedCommViewResolver = (commId: string, ctx: PolicyContext) => Promise<boolean>;
-let linkedCommViewResolver: LinkedCommViewResolver | null = null;
-
-/** Server-wired relationship check; shared/browser policy code never imports storage. */
-export function setLinkedCommViewResolver(resolver: LinkedCommViewResolver | null): void {
-  linkedCommViewResolver = resolver;
-}
+export const commViewHook = alterHooks.declare<PolicyResult, PolicyContext, { requirements: AccessCondition[] }>({
+  id: 'comm.view',
+  description: 'Alter the core communication viewing decision',
+  semantics: 'Read-only authorization. Preserve existing grants; verify stored relationships with fresh server-owned data. Failures deny access. Does not authorize writes.',
+});
 
 const policy = definePolicy({
   id: 'comm.view',
@@ -19,20 +18,25 @@ const policy = definePolicy({
     { permission: 'admin' },
     { permission: 'staff' },
     { permission: 'workers.comm' },
-    { all: [{ component: 'edls' }, { attribute: 'can view a sheet linked to this communication' }] },
+    ...alterHooks.implementations(commViewHook).flatMap(callback =>
+      callback.metadata.requirements.map(requirement => ({
+        all: [{ component: callback.component }, requirement],
+      }))),
   ],
   async evaluate(ctx: PolicyContext) {
     if (!ctx.entityId) return { granted: false, reason: 'Communication ID required' };
-    if (await ctx.hasAnyPermission(['admin', 'staff', 'workers.comm'])) {
+    const granted = await ctx.hasAnyPermission(['admin', 'staff', 'workers.comm']);
+    const result = granted
       // Let the read handler retain its existing 404 for a missing record.
-      return { granted: true, reason: 'Communication read permission' };
+      ? { granted: true, reason: 'Communication read permission' }
+      : { granted: false, reason: 'No access to this communication' };
+    try {
+      return await alterHooks.run(commViewHook, result, ctx);
+    } catch (error) {
+      // Framework errors contain identities only, never callback/request data.
+      console.error('Communication view alteration failed', error);
+      return { granted: false, reason: 'No access to this communication' };
     }
-    if (linkedCommViewResolver && await ctx.isComponentEnabled('edls')) {
-      if (await linkedCommViewResolver(ctx.entityId, ctx)) {
-        return { granted: true, reason: 'Can view a sheet linked to this communication' };
-      }
-    }
-    return { granted: false, reason: 'No access to this communication' };
   },
 });
 

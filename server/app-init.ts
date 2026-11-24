@@ -27,6 +27,11 @@ import type { ResolvedServiceRoles } from "./services/service-roles";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
 import { observeSamlCallback, getMountedSamlCallbackPath } from "./auth/saml-roundtrip";
 import { createBrowserRequestProtection } from "./middleware/browser-request-protection";
+import { alterHooks } from "@shared/alter";
+import { registerAlterCatalog } from "@shared/alter/catalog";
+import { getComponentById } from "@shared/components";
+import { registerEdlsCommViewAlter } from "./services/edls/comm-view-alter";
+import { wireCommViewAccess } from "./services/comm/view-access";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -266,6 +271,13 @@ export async function bootstrapApp(
     isComponentEnabled
   );
   logger.info("Access control system initialized", { source: "startup" });
+  wireCommViewAccess();
+  registerEdlsCommViewAlter();
+  alterHooks.close({
+    isKnown: id => getComponentById(id) !== undefined,
+    isEnabled: isComponentEnabled,
+  });
+  registerAlterCatalog();
 
   // Register entity loaders for policies that use cacheKeyFields
   registerEntityLoader('dispatch', async (id: string, injectedStorage: any) => {

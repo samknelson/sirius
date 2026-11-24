@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Express, NextFunction, Request, Response } from 'express';
 import type { User } from '@shared/schema';
-import policy, { setLinkedCommViewResolver } from '@shared/access-policies/comm/view';
+import policy from '@shared/access-policies/comm/view';
+import { alterHooks } from '@shared/alter';
+import { registerEdlsCommViewAlter } from '../../server/services/edls/comm-view-alter';
 import '@shared/access-policies/edls/sheet/view';
 import {
   clearAccessCache, evaluatePolicy, initAccessControl, requireAccess,
@@ -67,6 +69,8 @@ const auth = {
   getUser: async () => actor,
 };
 const component = async (id: string) => id === 'edls' && enabled;
+registerEdlsCommViewAlter();
+alterHooks.close({ isKnown: id => id === 'edls', isEnabled: component });
 const evaluate = (id = 'comm-1', user: User | null = actor, entityData?: Record<string, unknown>) =>
   evaluatePolicy(user, 'comm.view', db, auth, component, id, undefined, { entityData });
 
@@ -155,13 +159,14 @@ describe('comm.view', () => {
     expect((await evaluate()).granted).toBe(false);
   });
 
-  it('fails closed when the resolver is unavailable or relationship storage fails', async () => {
-    setLinkedCommViewResolver(null);
-    expect((await evaluate()).granted).toBe(false);
-    wireCommViewAccess();
+  it('fails closed when relationship storage fails without disclosing its error', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     db.edlsAssignments.getSheetIdsByCommId.mockRejectedValueOnce(new Error('lookup failed'));
     expect((await evaluate()).granted).toBe(false);
-    expect(mocks.errors).toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalled();
+    expect(String(errorLog.mock.calls[0][1])).toContain("edls.comm-view");
+    expect(String(errorLog.mock.calls[0][1])).not.toContain("lookup failed");
+    errorLog.mockRestore();
     expect(policy.skipCache).toBe(true);
   });
 });

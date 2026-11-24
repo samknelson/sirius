@@ -106,6 +106,10 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Where things live
 
+-   **Component alter hooks**: `shared/alter/` holds the typed replacement-value
+    framework; `docs/alter-hooks.md` documents declaration, invocation,
+    component-owned registration, startup closure and catalog projection.
+
 -   **Database Schema**: `server/schema.ts` (implied by Drizzle ORM usage)
 -   **API Routes**: `server/modules/` (feature-based modules)
 -   **Frontend Pages**: `client/src/pages/` (lazy-loaded)
