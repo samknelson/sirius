@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EditableDate } from "@/components/ui/editable-date";
 import {
   BellOff,
   CalendarDays,
@@ -107,21 +107,13 @@ export function EdlsSummary(_props: DashboardPluginProps) {
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Input
-                type="date"
+              <EditableDate
                 value={selectedDate}
-                onChange={(e) => {
-                  if (e.target.value) setSelectedDate(e.target.value);
-                }}
-                className="h-8 w-[9.5rem] max-w-full"
-                data-testid="input-edls-date"
-                aria-label="Select summary date"
+                onChange={setSelectedDate}
+                compact
+                testId="input-edls-date"
+                label="Select summary date"
               />
-              <span className="text-sm text-muted-foreground hidden sm:inline" data-testid="text-edls-date-display">
-                {formatYmd(selectedDate, "weekday-short")}
-              </span>
-            </div>
             <Button
               variant="outline"
               size="icon"

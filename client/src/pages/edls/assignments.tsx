@@ -4,14 +4,14 @@ import { Link, useLocation, useSearch } from "wouter";
 import { CalendarDays, ChevronLeft, ChevronRight, Download, RotateCw, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EditableDate } from "@/components/ui/editable-date";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AssignmentCommStatusIcon } from "@/components/edls/AssignmentCommStatusIcon";
-import { addDaysYmd, formatYmd, getTodayYmd } from "@shared/utils/date";
+import { addDaysYmd, getTodayYmd } from "@shared/utils/date";
 import {
   acceptedOptions,
   notifiedOptions,
@@ -139,11 +139,7 @@ export default function EdlsAssignmentsPage() {
           <div className="mb-4 flex items-center gap-2 text-sm font-medium"><CalendarDays className="h-4 w-4 text-primary" /> Scheduled day</div>
           <div className="flex flex-wrap items-end gap-3">
             <Button variant="outline" size="icon" aria-label="Previous day" onClick={() => update({ ymd: addDaysYmd(ymd, -1) })} data-testid="button-edls-assignment-prev-day"><ChevronLeft className="h-4 w-4" /></Button>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="assignment-date">Date</label>
-              <Input id="assignment-date" type="date" value={ymd} onChange={(event) => event.target.value && update({ ymd: event.target.value })} className="w-44" data-testid="input-edls-assignment-date" />
-            </div>
-            <span className="pb-2 text-sm text-muted-foreground">{formatYmd(ymd, "weekday-short")}</span>
+            <EditableDate value={ymd} onChange={(value) => update({ ymd: value })} label="Select assignment date" testId="input-edls-assignment-date" />
             <Button variant="outline" size="icon" aria-label="Next day" onClick={() => update({ ymd: addDaysYmd(ymd, 1) })} data-testid="button-edls-assignment-next-day"><ChevronRight className="h-4 w-4" /></Button>
             {ymd !== today && <Button variant="ghost" size="sm" className="mb-0.5" onClick={() => update({ ymd: today })} data-testid="button-edls-assignment-today">Today</Button>}
             <div className="ml-auto grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-3">
