@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dashboardRefreshShape } from "@shared/dashboard-refresh";
 import { logger } from "../../logger";
 import {
   registerPluginKind,
@@ -76,6 +77,7 @@ function registerDashboardKind(): void {
     configSchema: z.object({
       ...baseConfigSchemaShape,
       roles: z.array(z.string().min(1)).min(1),
+      ...dashboardRefreshShape,
     }),
     searchParamsSchema: z.object({
       ...baseSearchSchemaShape,
@@ -100,9 +102,30 @@ function registerDashboardKind(): void {
       },
       subsidiary: {
         roles: input.roles,
+        autoRefresh: input.autoRefresh,
+        refreshIntervalSeconds: input.refreshIntervalSeconds,
       },
     }),
     envelopeFields: [
+      {
+        name: "autoRefresh",
+        label: "Auto-refresh",
+        type: "boolean",
+        defaultValue: false,
+        description: "Refresh this widget automatically while the dashboard tab is visible.",
+      },
+      {
+        name: "refreshIntervalSeconds",
+        label: "Refresh interval (seconds)",
+        type: "number",
+        required: true,
+        defaultValue: 30,
+        minimum: 10,
+        maximum: 86400,
+        step: 1,
+        enabledWhen: "autoRefresh",
+        description: "10 seconds to 24 hours. Fetches widget content; does not force underlying scans to rerun.",
+      },
       {
         name: "roles",
         label: "Visible to roles",

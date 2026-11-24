@@ -124,7 +124,12 @@ export interface PluginConfigEnvelopeField {
   description?: string;
   /** Safe placeholder-only example rendered as structured text. */
   example?: string;
-  type: "string" | "number";
+  type: "string" | "number" | "boolean";
+  defaultValue?: string | number | boolean;
+  minimum?: number;
+  maximum?: number;
+  step?: number;
+  enabledWhen?: string;
   required?: boolean;
   /** When present, render this field as a dropdown populated from this source. */
   options?: PluginConfigEnvelopeFieldOptions;

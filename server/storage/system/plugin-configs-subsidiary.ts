@@ -293,7 +293,11 @@ export function createDashboardSubsidiaryStorage(): SubsidiaryStorage<
         .values(row)
         .onConflictDoUpdate({
           target: pluginConfigsDashboard.id,
-          set: { roles: row.roles },
+          set: {
+            roles: row.roles,
+            autoRefresh: row.autoRefresh,
+            refreshIntervalSeconds: row.refreshIntervalSeconds,
+          },
         })
         .returning();
       return result;

@@ -9,6 +9,7 @@ import { isComponentEnabled } from "../../modules/components";
 import type { User } from "@shared/schema";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
+import { normalizeDashboardRefresh, type DashboardRefreshSettings } from "@shared/dashboard-refresh";
 import type { PluginConfig } from "@shared/schema";
 import { PluginRegistry, enforcePluginGating } from "../_core";
 import type { BasePluginMetadata } from "../_core";
@@ -58,7 +59,7 @@ export interface DashboardManifestEntry {
  * one widget per item (in `ordering` order), so a plugin with several config
  * rows produces several items — each scoped to its own config via `configId`.
  */
-export interface DashboardConfigItem extends DashboardManifestEntry {
+export interface DashboardConfigItem extends DashboardManifestEntry, DashboardRefreshSettings {
   /** The owning `plugin_configs` row id. Used to scope `/content` reads. */
   configId: string;
   /** Per-config display name (admin-set), or null to fall back to plugin name. */
@@ -262,7 +263,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
       roleIn: roleIds,
     });
     const items: DashboardConfigItem[] = [];
-    for (const { config: cfg } of envelopes) {
+    for (const { config: cfg, subsidiary } of envelopes) {
       const plugin = this.get(cfg.pluginId);
       if (!plugin || !plugin.client) continue;
       const entry = pluginToManifestEntry(plugin);
@@ -272,6 +273,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
         configId: cfg.id,
         configName: cfg.name ?? null,
         ordering: cfg.ordering,
+        ...normalizeDashboardRefresh(subsidiary),
       });
     }
     items.sort(

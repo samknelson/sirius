@@ -208,6 +208,7 @@ import "./core/1125_user_email_identity";
 import "./core/1126_worker_id_type_unique";
 import "./core/1127_processes";
 import "./core/1128_semaphores";
+import "./core/1129_dashboard_refresh";
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
 import "./baseline/sirius-dev-20260704";

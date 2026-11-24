@@ -2414,6 +2414,8 @@ export {
 export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
   roles: varchar("roles").array().notNull(),
+  autoRefresh: boolean("auto_refresh").notNull().default(false),
+  refreshIntervalSeconds: integer("refresh_interval_seconds").notNull().default(30),
 });
 
 export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);

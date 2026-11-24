@@ -1103,7 +1103,7 @@ function GenericConfigDialog({
       setEnvelope(
         Object.fromEntries(
           envelopeFields.map((f) => {
-            const v = config[f.name];
+            const v = config[f.name] ?? f.defaultValue;
             return [f.name, v === null || v === undefined ? "" : String(v)];
           }),
         ),
@@ -1126,7 +1126,7 @@ function GenericConfigDialog({
       // config created from an embedded tab belongs to the locking entity.
       setEnvelope(
         Object.fromEntries(
-          envelopeFields.map((f) => [f.name, lockedEnvelope[f.name] ?? ""]),
+          envelopeFields.map((f) => [f.name, lockedEnvelope[f.name] ?? String(f.defaultValue ?? "")]),
         ),
       );
       setPluginData(Object.fromEntries(pluginFields.map((f) => [f.name, ""])));
@@ -1177,6 +1177,8 @@ function GenericConfigDialog({
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
+        } else if (f.type === "boolean") {
+          envelopeBody[f.name] = raw === "true";
         } else if (raw === "") {
           envelopeBody[f.name] = null;
         } else if (f.type === "number") {
@@ -1212,6 +1214,7 @@ function GenericConfigDialog({
       // Plugin configs can drive tab visibility (e.g. dispatch-eligibility
       // gates the job Interviews tab) — drop cached tab-access results.
       queryClient.invalidateQueries({ queryKey: ["/api/access/tabs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/items"] });
       toast({ title: "Success", description: `Configuration ${isEditMode ? "updated" : "created"}.` });
       onOpenChange(false);
     },
@@ -1316,7 +1319,15 @@ function GenericConfigDialog({
                         {field.label}
                         {field.required && <span className="text-destructive"> *</span>}
                       </Label>
-                      {field.multiple && field.options ? (
+                      {field.type === "boolean" ? (
+                        <Switch
+                          aria-label={field.label}
+                          checked={envelope[field.name] === "true"}
+                          onCheckedChange={(value) => setEnvelope(prev => ({ ...prev, [field.name]: String(value) }))}
+                          disabled={isLocked}
+                          data-testid={`input-envelope-${field.name}`}
+                        />
+                      ) : field.multiple && field.options ? (
                         <EnvelopeCheckboxField
                           field={field}
                           value={envelope[field.name] ?? ""}
@@ -1336,12 +1347,16 @@ function GenericConfigDialog({
                       ) : (
                         <Input
                           type={field.type === "number" ? "number" : "text"}
+                          aria-label={field.label}
+                          min={field.minimum}
+                          max={field.maximum}
+                          step={field.step}
                           placeholder={field.required ? "Required" : "Optional"}
                           value={envelope[field.name] ?? ""}
                           onChange={(e) =>
                             setEnvelope((prev) => ({ ...prev, [field.name]: e.target.value }))
                           }
-                          disabled={isLocked}
+                          disabled={isLocked || (!!field.enabledWhen && envelope[field.enabledWhen] !== "true")}
                           data-testid={`input-envelope-${field.name}`}
                         />
                       )}

@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
-import { liveQueryOptions } from "@/lib/live-query-options";
+import { hashKey, useQuery } from "@tanstack/react-query";
+import { createContext, useContext, useLayoutEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import type { DashboardRefreshState } from "./refresh-state";
+import { normalizeDashboardRefresh } from "@shared/dashboard-refresh";
 
 export type DashboardContentParams = Record<
   string,
@@ -23,6 +25,10 @@ export type DashboardContentParams = Record<
 export const DashboardConfigContext = createContext<{
   configId: string | null;
   targetUserId?: string | null;
+  viewerKey?: string;
+  autoRefresh?: boolean;
+  refreshIntervalSeconds?: number;
+  refreshState?: DashboardRefreshState;
 }>({
   configId: null,
   targetUserId: null,
@@ -32,9 +38,6 @@ export interface UseDashboardContentOptions<TParams extends DashboardContentPara
   action?: string;
   params?: TParams;
   enabled?: boolean;
-  refetchIntervalMs?: number;
-  /** Override the application's indefinite cache for live current-state widgets. */
-  live?: boolean;
 }
 
 /**
@@ -52,8 +55,12 @@ export function useDashboardContent<
   TData,
   TParams extends DashboardContentParams = DashboardContentParams,
 >(pluginId: string, options: UseDashboardContentOptions<TParams> = {}) {
-  const { action, params, enabled = true, refetchIntervalMs, live = false } = options;
-  const { configId, targetUserId } = useContext(DashboardConfigContext);
+  const { action, params, enabled = true } = options;
+  const context = useContext(DashboardConfigContext);
+  const { configId, targetUserId, refreshState } = context;
+  const { user, permissions, components } = useAuth();
+  const viewerKey = context.viewerKey ?? JSON.stringify([user?.id, permissions, components]);
+  const { autoRefresh, refreshIntervalSeconds } = normalizeDashboardRefresh(context);
 
   const url = (() => {
     const base = `/api/dashboard-plugins/${pluginId}/content${action ? `/${action}` : ""}`;
@@ -69,9 +76,7 @@ export function useDashboardContent<
     return s ? `${base}?${s}` : base;
   })();
 
-  return useQuery<TData | undefined>({
-    ...(live ? liveQueryOptions : {}),
-    queryKey: [
+  const queryKey = [
       "/api/dashboard-plugins",
       pluginId,
       "content",
@@ -79,10 +84,19 @@ export function useDashboardContent<
       configId ?? null,
       targetUserId ?? null,
       params ?? null,
-    ],
-    queryFn: async () => {
-      const res = await fetch(url, { credentials: "include" });
-      if (res.status === 403 || res.status === 404) return undefined;
+      viewerKey,
+    ];
+  const queryHash = hashKey(queryKey);
+  const active = enabled && !!user;
+  useLayoutEffect(() => {
+    if (active && refreshState) return refreshState.register(queryHash);
+  }, [active, refreshState, queryHash]);
+
+  const query = useQuery<TData | null>({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(url, { credentials: "include", cache: "no-store", signal });
+      if ([401, 403, 404].includes(res.status)) return null;
       if (!res.ok) {
         throw new Error(
           `Failed to load dashboard plugin '${pluginId}' content (${res.status})`,
@@ -90,7 +104,15 @@ export function useDashboardContent<
       }
       return (await res.json()) as TData;
     },
-    enabled,
-    refetchInterval: refetchIntervalMs ?? (live ? liveQueryOptions.refetchInterval : undefined),
+    enabled: active,
+    gcTime: 0,
+    staleTime: autoRefresh ? 0 : Infinity,
+    refetchInterval: autoRefresh ? refreshIntervalSeconds * 1000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnMount: autoRefresh ? () => document.visibilityState === "visible" ? "always" : false : false,
+    refetchOnWindowFocus: autoRefresh ? "always" : false,
+    refetchOnReconnect: autoRefresh ? () => document.visibilityState === "visible" ? "always" : false : false,
+    retry: false,
   });
+  return { ...query, data: active ? query.data ?? undefined : undefined };
 }

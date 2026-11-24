@@ -8,7 +8,8 @@ import {
   hasDashboardComponent,
   resolveDashboardComponent,
 } from "@/plugins/dashboard/registry";
-import { DashboardConfigContext } from "@/plugins/dashboard/useDashboardContent";
+import { DashboardWidget } from "@/plugins/dashboard/DashboardWidget";
+import { normalizeDashboardRefresh } from "@shared/dashboard-refresh";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
@@ -35,6 +36,8 @@ interface DashboardItem {
   configId: string;
   configName: string | null;
   ordering: number;
+  autoRefresh?: boolean;
+  refreshIntervalSeconds?: number;
 }
 
 interface DashboardProps {
@@ -51,6 +54,7 @@ export default function Dashboard({ targetUserId }: DashboardProps = {}) {
   const { user, permissions, components } = useAuth();
 
   const identityUserId = targetUserId ?? user?.id;
+  const viewerKey = JSON.stringify([user?.id ?? null, [...permissions].sort(), [...components].sort()]);
 
   const { data: userRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: [`/api/users/${identityUserId}/roles`],
@@ -58,9 +62,16 @@ export default function Dashboard({ targetUserId }: DashboardProps = {}) {
   });
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<DashboardItem[]>({
-    queryKey: targetUserId
-      ? ["/api/dashboard-plugins/items", { targetUserId }]
-      : ["/api/dashboard-plugins/items"],
+    queryKey: ["/api/dashboard-plugins/items", { targetUserId: targetUserId ?? null, viewerKey }],
+    queryFn: async ({ signal }) => {
+      const url = `/api/dashboard-plugins/items${targetUserId ? `?targetUserId=${encodeURIComponent(targetUserId)}` : ""}`;
+      const response = await fetch(url, { credentials: "include", cache: "no-store", signal });
+      if (!response.ok) throw new Error("Could not load dashboard widgets");
+      return response.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const policiesNeeded = useMemo(
@@ -71,7 +82,7 @@ export default function Dashboard({ targetUserId }: DashboardProps = {}) {
   const { data: policyResults = {}, isLoading: policiesLoading } = useQuery<
     Record<string, { allowed: boolean }>
   >({
-    queryKey: ["/api/access/policies/batch", ...policiesNeeded],
+    queryKey: ["/api/access/policies/batch", viewerKey, ...policiesNeeded],
     queryFn: async () => {
       if (policiesNeeded.length === 0) return {};
       const results: Record<string, { allowed: boolean }> = {};
@@ -160,13 +171,17 @@ export default function Dashboard({ targetUserId }: DashboardProps = {}) {
     const PluginComponent = resolveDashboardComponent(item.componentId);
     return (
       <PluginErrorBoundary
-        key={item.configId}
+        key={`${viewerKey}:${targetUserId ?? ""}:${item.configId}`}
         pluginId={item.id}
         pluginName={item.configName ?? item.name}
         componentId={item.componentId}
       >
-        <DashboardConfigContext.Provider
-          value={{ configId: item.configId, targetUserId: targetUserId ?? null }}
+        <DashboardWidget
+          configId={item.configId}
+          targetUserId={targetUserId}
+          viewerKey={viewerKey}
+          name={item.configName ?? item.name}
+          {...normalizeDashboardRefresh(item)}
         >
           <PluginComponent
             userId={identityUserId || ""}
@@ -175,7 +190,7 @@ export default function Dashboard({ targetUserId }: DashboardProps = {}) {
             configId={item.configId}
             configName={item.configName}
           />
-        </DashboardConfigContext.Provider>
+        </DashboardWidget>
       </PluginErrorBoundary>
     );
   };

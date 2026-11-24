@@ -1,0 +1,9 @@
+/* Preserve existing cards' grid spans through the framework wrapper. The
+   widget components remain responsible for their existing content layout. */
+.dashboard-widget:has(> .col-span-full) { grid-column: 1 / -1; }
+@media (min-width: 768px) {
+  .dashboard-widget:has(> .md\:col-span-2) { grid-column: span 2 / span 2; }
+}
+@media (min-width: 1024px) {
+  .dashboard-widget:has(> .lg\:col-span-3) { grid-column: span 3 / span 3; }
+}

@@ -99,7 +99,13 @@ export interface PluginConfigEnvelopeField {
   /** Safe placeholder-only example rendered as structured text. */
   example?: string;
   /** Input type the UI should render. */
-  type: "string" | "number";
+  type: "string" | "number" | "boolean";
+  defaultValue?: string | number | boolean;
+  minimum?: number;
+  maximum?: number;
+  step?: number;
+  /** Enable editing only while the named boolean envelope field is true. */
+  enabledWhen?: string;
   /** Whether the field must be provided (non-empty). */
   required?: boolean;
   /**

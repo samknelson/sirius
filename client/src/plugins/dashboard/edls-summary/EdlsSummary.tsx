@@ -12,7 +12,6 @@ import {
   CircleX,
   Clock3,
   Loader2,
-  RotateCw,
   Send,
   ThumbsDown,
   ThumbsUp,
@@ -53,9 +52,9 @@ const statusHeaderColors: Record<string, string> = {
 export function EdlsSummary(_props: DashboardPluginProps) {
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
 
-  const { data, isLoading, isError, isFetching, refetch } = useDashboardContent<EdlsSummaryData>(
+  const { data, isLoading, isError } = useDashboardContent<EdlsSummaryData>(
     "edls-summary",
-    { params: { ymd: selectedDate }, live: true },
+    { params: { ymd: selectedDate } },
   );
 
   const hasDemand = !!data && Object.keys(data.demand ?? {}).length > 0;
@@ -152,7 +151,7 @@ export function EdlsSummary(_props: DashboardPluginProps) {
           <div className="flex items-center justify-center py-8" data-testid="loading-edls-summary">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : isError ? (
+        ) : isError && !data ? (
           <p className="text-sm text-destructive py-4" data-testid="error-edls-summary">
             Unable to load EDLS summary data.
           </p>
@@ -313,10 +312,9 @@ export function EdlsSummary(_props: DashboardPluginProps) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base" data-testid="title-edls-assignment-status">Assignment status</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Current status for assignments on {formatYmd(selectedDate, "weekday-short")} — not a historical snapshot. Refreshes every 30 seconds while visible and when you return.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Current status for assignments on {formatYmd(selectedDate, "weekday-short")} — not a historical snapshot.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()} aria-label="Refresh EDLS daily summary"><RotateCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />Refresh</Button>
           {data?.assignmentStatus && (
             <Link href={assignmentExplorerUrl(selectedDate)} className="inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted">
               <span className="text-muted-foreground">All assignments</span>
@@ -329,7 +327,7 @@ export function EdlsSummary(_props: DashboardPluginProps) {
       <CardContent>
         {!data?.assignmentStatus ? (
           isLoading ? <div className="grid gap-4 md:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
-            : isError ? <p className="text-sm text-destructive">Assignment status counts are unavailable.</p>
+            : isError && !data ? <p className="text-sm text-destructive">Assignment status counts are unavailable.</p>
             : <p className="text-sm text-muted-foreground">No assignment status counts returned for this date.</p>
         ) : (
           <>
