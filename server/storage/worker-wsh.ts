@@ -17,6 +17,11 @@ import { parseYmdParts } from '@shared/utils/date';
 export const validate = createNoopValidator();
 
 export interface WorkerWshStorage {
+  /**
+   * The worker's work-status history, newest first, ordered exactly like
+   * `getCurrentWorkStatusId` (date, then createdAt nulls last, then id) so the
+   * first entry is the current status.
+   */
   getWorkerWsh(workerId: string): Promise<any[]>;
   /**
    * The worker's current work status id: the latest work-status history entry
@@ -89,7 +94,9 @@ export function createWorkerWshStorage(
         .from(workerWsh)
         .leftJoin(optionsWorkerWs, eq(workerWsh.wsId, optionsWorkerWs.id))
         .where(eq(workerWsh.workerId, workerId))
-        .orderBy(desc(workerWsh.date));
+        // Same total order as getCurrentWorkStatusId, so the first entry here
+        // is always the worker's current work status.
+        .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id));
 
       return results;
     },

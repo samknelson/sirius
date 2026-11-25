@@ -40,6 +40,9 @@ function findMatchingWorkStatus(
   return match;
 }
 
+/** Inactivity-scan summary shown on the Review step (`ProcessResults.inactivityScan` minus `ran`). */
+export type HtaInactivityScanSummary = Omit<NonNullable<ProcessResults['inactivityScan']>, 'ran'>;
+
 export class HtaUnionImportWizard extends FeedWizard {
   name = 'hta_union_import';
   displayName = 'HTA Union/Apprentice Import';
@@ -233,7 +236,7 @@ export class HtaUnionImportWizard extends FeedWizard {
     return 0;
   }
 
-  private async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
+  protected async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
     if (!this.workStatusCache) {
       const statuses = await unifiedOptionsStorage.list("worker-ws");
       this.workStatusCache = statuses.map((s: any) => ({ id: s.id, name: s.name }));
@@ -260,7 +263,7 @@ export class HtaUnionImportWizard extends FeedWizard {
     return this.employerCache;
   }
 
-  private async getMemberStatusOptions(): Promise<Array<{ id: string; name: string; industryId: string }>> {
+  protected async getMemberStatusOptions(): Promise<Array<{ id: string; name: string; industryId: string }>> {
     if (!this.memberStatusCache) {
       const statuses = await unifiedOptionsStorage.list("worker-ms");
       this.memberStatusCache = statuses.map((s: any) => ({ id: s.id, name: s.name, industryId: s.industryId }));
@@ -601,6 +604,16 @@ export class HtaUnionImportWizard extends FeedWizard {
     this.processedMemberStatusWorkers.add(workerId);
   }
 
+  /**
+   * Post-import inactivity scan hook, run after a Union import. The engine
+   * owns WHEN it runs (Union imports only, after processing, with the
+   * `inactivity_scan` progress phase); the site-specific wizard plugin owns
+   * WHAT it does by overriding this. The base returns null: no scan.
+   */
+  protected async runInactivityScan(): Promise<HtaInactivityScanSummary | null> {
+    return null;
+  }
+
   async processFeedData(
     wizardId: string,
     batchSize: number = 100,
@@ -643,18 +656,10 @@ export class HtaUnionImportWizard extends FeedWizard {
             });
           }
 
-          const { runInactivityScan } = await import('../../../../services/sitespecific/hta/inactivity-scan.js');
-          const scanResult = await runInactivityScan({ mode: 'live' });
-
-          results.inactivityScan = {
-            ran: true,
-            scanned: scanResult.scanned,
-            deactivated: scanResult.deactivated,
-            alreadyInactive: scanResult.alreadyInactive,
-            stillActive: scanResult.stillActive,
-            errors: scanResult.errors,
-            details: scanResult.details,
-          };
+          const scanResult = await this.runInactivityScan();
+          if (scanResult) {
+            results.inactivityScan = { ran: true, ...scanResult };
+          }
         } catch (err) {
           console.error('Failed to run inactivity scan after union import:', err);
           results.inactivityScan = {
@@ -673,5 +678,3 @@ export class HtaUnionImportWizard extends FeedWizard {
     return results;
   }
 }
-
-export const htaUnionImport = new HtaUnionImportWizard();

@@ -32,7 +32,7 @@ import "./plugins/btu-cardcheck-import";
 import "./plugins/btu-building-rep-import";
 import "./plugins/btu-cardcheck-sig-import";
 import "./plugins/btu-cardcheck-scrape-import";
-import "./plugins/hta-union-import";
+import "./plugins/sitespecific-hta-union-import";
 import "./plugins/gbhet-legal-workers";
 import "./plugins/employer-onboarding";
 import "../../../components/worker.ratings/server/plugins/wizards/plugins/worker-ratings-import";
