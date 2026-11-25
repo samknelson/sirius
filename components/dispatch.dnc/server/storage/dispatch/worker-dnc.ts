@@ -1,5 +1,5 @@
-import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { createNoopValidator } from '../../../../../server/storage/utils/validation';
+import { getClient } from '../../../../../server/storage/transaction-context';
 import { 
   workerDispatchDnc,
   employers,
@@ -7,8 +7,8 @@ import {
   type InsertWorkerDispatchDnc
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
-import { eventBus, EventType } from "../../services/event-bus";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../../../../../server/storage/middleware/logging";
+import { eventBus, EventType } from "../../../../../server/services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -63,7 +63,7 @@ export const workerDispatchDncLoggingConfig = defineLoggingConfig<WorkerDispatch
     create: {
       getEntityId: (args, result) => result?.id || 'new dispatch worker dnc',
       getDescription: async (args, result) => {
-        const { storage } = await import('../index');
+        const { storage } = await import('../../../../../server/storage/index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
         return `Created DNC entry (${result?.type}) for ${workerName} at ${employerName}`;
@@ -71,7 +71,7 @@ export const workerDispatchDncLoggingConfig = defineLoggingConfig<WorkerDispatch
     },
     update: {
       getDescription: async (args, result, beforeState) => {
-        const { storage } = await import('../index');
+        const { storage } = await import('../../../../../server/storage/index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.dnc?.workerId);
         const employerName = await getEmployerName(result?.employerId || beforeState?.dnc?.employerId);
         return `Updated DNC entry for ${workerName} at ${employerName}`;
@@ -80,7 +80,7 @@ export const workerDispatchDncLoggingConfig = defineLoggingConfig<WorkerDispatch
     delete: {
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.dnc) {
-          const { storage } = await import('../index');
+          const { storage } = await import('../../../../../server/storage/index');
           const workerName = await storage.workers.getWorkerDisplayName(beforeState.dnc.workerId);
           const employerName = await getEmployerName(beforeState.dnc.employerId);
           return `Deleted DNC entry (${beforeState.dnc.type}) for ${workerName} at ${employerName}`;

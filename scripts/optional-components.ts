@@ -9,8 +9,15 @@ import ts from "typescript";
  * and deleting the directory removes the component.
  */
 export interface OptionalComponentManifest {
+  /**
+   * Transitional: the component is still defined and registered by core
+   * (`shared/components.ts`); the directory only holds files it wholly owns,
+   * which core imports directly. Such a directory has no `definition` and may
+   * list only its `schema` modules. See docs/optional-components.md.
+   */
+  coreRegistered?: boolean;
   /** Module exporting `component: ComponentDefinition` (exactly one). */
-  definition: string;
+  definition?: string;
   shared?: string[];
   server?: string[];
   schema?: string[];
@@ -30,7 +37,7 @@ export interface OptionalComponentManifest {
 
 const MANIFEST = "component.json";
 const MANIFEST_FIELDS = new Set<string>([
-  "definition", "shared", "server", "schema", "migrations", "startup", "storage",
+  "coreRegistered", "definition", "shared", "server", "schema", "migrations", "startup", "storage",
   "metadata", "client", "contributions", "coreMigrations", "maintenanceGuards",
 ]);
 
@@ -39,9 +46,12 @@ export interface DiscoveredComponent {
   id: string;
   /** Workspace-relative directory, e.g. `components/contract.chat`. */
   directory: string;
+  /** True when core still defines and registers this component (see the manifest field). */
+  coreRegistered: boolean;
   /** Every component ID this one declares a dependency on (core or optional). */
   dependsOn: string[];
-  definition: string;
+  /** Definition module; absent for core-registered directories. */
+  definition?: string;
   shared: string[];
   server: string[];
   schema: string[];
@@ -105,27 +115,35 @@ function readDefinition(path: string): { id: string; dependsOn: string[] } {
   const [object] = found;
   const id = objectProperty(object, "id");
   if (!id || !ts.isStringLiteral(id)) throw new Error(`${path}: component id must be a string literal`);
+  return { id: id.text, dependsOn: declaredDependencies(object, path) };
+}
+
+function declaredDependencies(object: ts.ObjectLiteralExpression, where: string): string[] {
   const schemaManifest = objectProperty(object, "schemaManifest");
-  const dependsOn = [
-    ...stringArray(objectProperty(object, "dependsOnComponents"), path),
+  return [...new Set([
+    ...stringArray(objectProperty(object, "dependsOnComponents"), where),
     ...(schemaManifest && ts.isObjectLiteralExpression(schemaManifest)
-      ? stringArray(objectProperty(schemaManifest, "dependsOnComponents"), path) : []),
-  ];
-  return { id: id.text, dependsOn: [...new Set(dependsOn)] };
+      ? stringArray(objectProperty(schemaManifest, "dependsOnComponents"), where) : []),
+  ])];
 }
 
 /** IDs of the components defined in core (`shared/components.ts`), not in `components/`. */
 export function coreComponentIds(root = resolve(import.meta.dirname, "..")): Set<string> {
+  return new Set(coreComponentDependencies(root).keys());
+}
+
+/** Core component IDs mapped to the component IDs each declares a dependency on. */
+function coreComponentDependencies(root: string): Map<string, string[]> {
   const path = resolve(root, "shared/components.ts");
   const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
-  const ids = new Set<string>();
+  const ids = new Map<string, string[]>();
   const visit = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "componentRegistry" &&
       node.initializer && ts.isArrayLiteralExpression(node.initializer)) {
       for (const element of node.initializer.elements) {
         if (!ts.isObjectLiteralExpression(element)) continue;
         const id = objectProperty(element, "id");
-        if (id && ts.isStringLiteral(id)) ids.add(id.text);
+        if (id && ts.isStringLiteral(id)) ids.set(id.text, declaredDependencies(element, path));
       }
     }
     ts.forEachChild(node, visit);
@@ -135,8 +153,18 @@ export function coreComponentIds(root = resolve(import.meta.dirname, "..")): Set
   return ids;
 }
 
-/** Build-time discovery only. Runtime bundles contain literal imports, never filesystem scans. */
+/**
+ * Optional components: directories under `components/` that define and register
+ * themselves. Build-time discovery only; runtime bundles contain literal
+ * imports, never filesystem scans.
+ */
 export function discoverOptionalComponents(root = resolve(import.meta.dirname, "..")): DiscoveredComponent[] {
+  return discoverComponentDirectories(root).filter(c => !c.coreRegistered);
+}
+
+/** Every directory under `components/`, including core-registered ones. */
+export function discoverComponentDirectories(root = resolve(import.meta.dirname, "..")): DiscoveredComponent[] {
+  const core = coreComponentDependencies(root);
   const directory = resolve(root, "components");
   if (!existsSync(directory)) return [];
   const discovered = readdirSync(directory, { withFileTypes: true })
@@ -162,6 +190,30 @@ export function discoverOptionalComponents(root = resolve(import.meta.dirname, "
         }
         return relative(root, absolute).split(sep).join("/");
       };
+      if (manifest.coreRegistered !== undefined && manifest.coreRegistered !== true) {
+        throw new Error(`${where}/${MANIFEST}: "coreRegistered" may only be true; omit it for an optional component`);
+      }
+      if (manifest.coreRegistered) {
+        const extra = Object.keys(manifest).filter(key => key !== "coreRegistered" && key !== "schema");
+        if (extra.length) {
+          throw new Error(`${where}/${MANIFEST}: a core-registered component may list only "schema"; core still registers everything else (found ${extra.map(k => `"${k}"`).join(", ")})`);
+        }
+        if (!core.has(entry.name)) {
+          throw new Error(`${where} is marked coreRegistered, but shared/components.ts defines no component "${entry.name}"`);
+        }
+        return {
+          id: entry.name,
+          directory: where,
+          coreRegistered: true,
+          dependsOn: core.get(entry.name)!,
+          shared: [],
+          server: [],
+          schema: (manifest.schema ?? []).map(modulePath),
+          migrations: [],
+          coreMigrations: [],
+          maintenanceGuards: {},
+        };
+      }
       if (!manifest.definition) throw new Error(`${where}/${MANIFEST} must name its "definition" module`);
       const definition = modulePath(manifest.definition);
       const { id, dependsOn } = readDefinition(resolve(root, definition));
@@ -171,6 +223,7 @@ export function discoverOptionalComponents(root = resolve(import.meta.dirname, "
       return {
         id,
         directory: where,
+        coreRegistered: false,
         dependsOn,
         definition,
         shared: (manifest.shared ?? []).map(modulePath),
@@ -187,9 +240,9 @@ export function discoverOptionalComponents(root = resolve(import.meta.dirname, "
       };
     });
 
-  const core = coreComponentIds(root);
-  const optional = new Set(discovered.map(c => c.id));
+  const optional = new Set(discovered.filter(c => !c.coreRegistered).map(c => c.id));
   for (const component of discovered) {
+    if (component.coreRegistered) continue;
     if (core.has(component.id)) throw new Error(`components/${component.id} duplicates core component "${component.id}"`);
     for (const dependency of component.dependsOn) {
       if (core.has(dependency) || optional.has(dependency)) continue;
@@ -228,13 +281,20 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
+/** Core source roots checked for imports into `components/`. */
+const CORE_SOURCE_ROOTS = ["client/src", "server", "shared", "scripts", "tests"];
+/** Generated bridge modules, which may import any component. */
+const GENERATED_DIRECTORIES = ["shared/generated", "server/generated", "client/src/generated"];
+const GENERATED_FILES = ["scripts/migrate/generated-components.ts"];
+
 /**
  * A component may import only from itself, from core, or from a component it
- * declares as a dependency. Core may not import from any component directory
- * (the generated registration modules are the one bridge).
+ * declares as a dependency. Core may import from a component directory only
+ * while that component is core-registered (transitional); otherwise the
+ * generated registration modules are the one bridge.
  */
 export function checkComponentImports(root = resolve(import.meta.dirname, "..")): string[] {
-  const components = discoverOptionalComponents(root);
+  const components = discoverComponentDirectories(root);
   const byId = new Map(components.map(c => [c.id, c]));
   const componentsDirectory = resolve(root, "components") + sep;
   const violations: string[] = [];
@@ -250,6 +310,22 @@ export function checkComponentImports(root = resolve(import.meta.dirname, ".."))
         violations.push(byId.has(owner)
           ? `${where} imports from component "${owner}", which "${component.id}" does not declare as a dependency.`
           : `${where} imports from components/${owner}, which is not a component "${component.id}" depends on.`);
+      }
+    }
+  }
+  const generated = GENERATED_DIRECTORIES.map(d => resolve(root, d) + sep);
+  const generatedFiles = new Set(GENERATED_FILES.map(f => resolve(root, f)));
+  for (const coreRoot of CORE_SOURCE_ROOTS) {
+    const absoluteRoot = resolve(root, coreRoot);
+    if (!existsSync(absoluteRoot)) continue;
+    for (const file of sourceFiles(absoluteRoot)) {
+      if (generatedFiles.has(file) || generated.some(d => file.startsWith(d))) continue;
+      for (const { specifier, line } of relativeSpecifiers(file)) {
+        const target = resolve(dirname(file), specifier);
+        if (!target.startsWith(componentsDirectory)) continue;
+        const owner = target.slice(componentsDirectory.length).split(sep)[0];
+        if (byId.get(owner)?.coreRegistered) continue;
+        violations.push(`${relative(root, file).split(sep).join("/")}:${line} imports from components/${owner}. Core may import only from core-registered component directories; reach an optional component through the generated registration modules.`);
       }
     }
   }
@@ -272,7 +348,7 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
   const sharedFile = "shared/generated/optional-components.ts";
   emit(sharedFile, [
     'import type { ComponentDefinition } from "../components";',
-    ...components.map((c, i) => `import { component as definition${i} } from ${spec(sharedFile, c.definition)};`),
+    ...components.map((c, i) => `import { component as definition${i} } from ${spec(sharedFile, c.definition!)};`),
     `const discovered: [string, ComponentDefinition][] = [${components.map((c, i) => `[${JSON.stringify(c.id)}, definition${i}]`).join(", ")}];`,
     "for (const [directory, definition] of discovered) {",
     "  if (definition.id !== directory) throw new Error(`components/${directory} defines component ${definition.id}; the directory name must equal the component ID`);",
@@ -296,7 +372,7 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
   const schemasFile = "server/generated/component-schemas.ts";
   emit(schemasFile, [
     "export const componentSchemaLoaders: Record<string, () => Promise<Record<string, unknown>>> = {",
-    ...components.flatMap(c => c.schema.map(path => `  ${JSON.stringify("./" + path)}: () => import(${spec(schemasFile, path)}),`)),
+    ...discoverComponentDirectories(root).flatMap(c => c.schema.map(path => `  ${JSON.stringify("./" + path)}: () => import(${spec(schemasFile, path)}),`)),
     "};",
   ]);
   const modulesFile = "server/generated/component-server-modules.ts";

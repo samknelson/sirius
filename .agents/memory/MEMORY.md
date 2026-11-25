@@ -165,4 +165,4 @@
 - [CSV newline quoting](csv-newline-quoting.md) — CRLF exports need explicit quoting for lone CR/LF inside fields; the installed csv-stringify does not infer it.
 - [Bounded SQL enrichment](bounded-sql-enrichment.md) — selecting a few IDs in WHERE does not bound descriptive joins; fence the selected rows and compare actual plans, including empty schedules.
 - [Removable package safety](component-package-extraction-boundary.md) — absent source must not weaken retained auth or guess worker identities; migration-data correction stays separate.
-- [One component per directory](one-component-per-directory.md) — no "package" concept; folder name = component ID; retire a component by deleting its folder.
+- [One component per directory](one-component-per-directory.md) — no "package" concept; folder = component ID; core components relocate stepwise via `coreRegistered` dirs.

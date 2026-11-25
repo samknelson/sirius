@@ -2,7 +2,7 @@ import { pgTable, text, varchar, jsonb, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers } from "../../schema";
+import { workers, employers } from "../../../../../shared/schema";
 
 export const dispatchWorkerDncTypeEnum = ["employer", "worker"] as const;
 export type DispatchWorkerDncType = typeof dispatchWorkerDncTypeEnum[number];

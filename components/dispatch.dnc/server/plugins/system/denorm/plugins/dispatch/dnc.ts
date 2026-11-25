@@ -1,13 +1,13 @@
-import { registerDenormPlugin } from "../../registry";
-import type { DenormPlugin } from "../../types";
-import { EventType } from "../../../../../services/event-bus";
+import { registerDenormPlugin } from "../../../../../../../../server/plugins/system/denorm/registry";
+import type { DenormPlugin } from "../../../../../../../../server/plugins/system/denorm/types";
+import { EventType } from "../../../../../../../../server/services/event-bus";
 import { createWorkerDispatchDncStorage } from "../../../../../storage/dispatch/worker-dnc";
 import {
   type DispatchEligDenormPayload,
   dispatchEligBackfill,
   dispatchEligFindWidows,
   writeDispatchElig,
-} from "./_shared";
+} from "../../../../../../../../server/plugins/system/denorm/plugins/dispatch/_shared";
 
 const DNC_CATEGORY = "dnc";
 

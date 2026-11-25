@@ -25,8 +25,8 @@
  * Usage: npx tsx scripts/dev/check-denorm-declarations.ts
  */
 
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join, relative } from "path";
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { dirname, join, relative } from "path";
 
 const PLUGINS_DIR = "server/plugins/system/denorm/plugins";
 const SHARED_HELPER = `${PLUGINS_DIR}/dispatch/_shared.ts`;
@@ -238,7 +238,12 @@ function main() {
   const violations: Violation[] = [];
   const cwd = process.cwd();
 
-  const pluginFiles = findTsFiles(join(cwd, PLUGINS_DIR))
+  // Core-registered component directories hold some plugins at the same
+  // host-relative path (components/<id>/server/plugins/system/denorm/plugins).
+  const pluginRoots = [join(cwd, PLUGINS_DIR), ...(existsSync(join(cwd, "components"))
+    ? readdirSync(join(cwd, "components")).map((id) => join(cwd, "components", id, PLUGINS_DIR)).filter((d) => existsSync(d))
+    : [])];
+  const pluginFiles = pluginRoots.flatMap((d) => findTsFiles(d))
     .map((f) => relative(cwd, f).replace(/\\/g, "/"))
     .filter((f) => f !== SHARED_HELPER)
     .sort();
@@ -266,7 +271,9 @@ function main() {
     let usages = extractUsages(file, content);
     // Dispatch plugins route reads/writes through the shared helpers; their
     // effective usage includes _shared.ts's usage.
-    if (/from ["']\.\/_shared["']/.test(content)) {
+    const importsShared = [...content.matchAll(/from ["']([^"']*\/_shared)["']/g)].some((m) =>
+      relative(cwd, join(dirname(join(cwd, file)), m[1])).replace(/\\/g, "/") + ".ts" === SHARED_HELPER);
+    if (importsShared) {
       usages = usages.concat(sharedUsages.map((u) => ({ ...u, line: 0 })));
     }
 
@@ -355,7 +362,7 @@ function main() {
   }
 
   if (soleWriterClaims.size > 0) {
-    const scanRoots = ["server", "scripts"].map((d) => join(cwd, d));
+    const scanRoots = ["server", "scripts", "components"].map((d) => join(cwd, d)).filter((d) => existsSync(d));
     const allFiles: string[] = [];
     for (const root of scanRoots) findTsFiles(root, allFiles);
 

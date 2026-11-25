@@ -84,7 +84,7 @@ export {
   type DispatchWorkerDncType,
   type InsertWorkerDispatchDnc,
   type WorkerDispatchDnc,
-} from "./schema/dispatch/dnc-schema";
+} from "../components/dispatch.dnc/shared/schema/dispatch/dnc-schema";
 
 export {
   workerDispatchHfe,

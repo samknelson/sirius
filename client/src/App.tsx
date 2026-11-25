@@ -67,7 +67,7 @@ const WorkerDashboardPage = lazy(() => import("@/pages/worker-dashboard"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
-const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
+const WorkerDispatchDoNotCall = lazy(() => import("../../components/dispatch.dnc/client/src/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchDepartments = lazy(() => import("@/pages/workers/dispatch-departments"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
 const WorkerDispatchT631Interviews = lazy(() => import("@/pages/workers/dispatch-t631-interviews"));
@@ -280,7 +280,7 @@ const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
 const DispatchJobTypeEligibilityPluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-eligibility-plugins"));
-const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
+const DispatchDncConfigPage = lazy(() => import("../../components/dispatch.dnc/client/src/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
 const DispatchSeniorityResetConfigPage = lazy(() => import("@/pages/config/dispatch-seniority-reset"));

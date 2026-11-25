@@ -156,7 +156,7 @@ import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStora
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
-import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
+import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../../components/dispatch.dnc/server/storage/dispatch/worker-dnc";
 import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "./dispatch/worker-departments";
 import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "./dispatch/job-departments";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";

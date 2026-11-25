@@ -6,7 +6,7 @@ import { buildContext, checkAccess } from "../../services/access-policy-evaluato
 import { isComponentEnabled } from "../components";
 import { dispatchEbaSettingsSchema } from "../dispatch/eba-config";
 import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-reset-config";
-import { dispatchDncNotificationConfigSchema } from "../dispatch/dnc-config";
+import { dispatchDncNotificationConfigSchema } from "../../../components/dispatch.dnc/server/modules/dispatch/dnc-config";
 import { workerBanNotificationConfigSchema } from "../worker-ban-config";
 import { entityFilesConfigSchema } from "../../services/entity-files/config";
 import { entityNotesConfigSchema } from "../../services/entity-notes/config";

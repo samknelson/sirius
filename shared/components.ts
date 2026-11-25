@@ -728,7 +728,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/dnc-schema.ts",
+      schemaPath: "./components/dispatch.dnc/shared/schema/dispatch/dnc-schema.ts",
       tables: ["worker_dispatch_dnc"]
     },
     permissions: [

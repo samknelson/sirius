@@ -49,7 +49,33 @@ may be core components or other directories under `components/`.
   declares as a dependency. The `component-imports` lint rule enforces this.
   Code that several components use lives in the component they all depend on
  .
-- Core never imports from `components/`; the generated modules are the only bridge.
+- Core never imports from an optional component; the generated modules are the
+  only bridge. The one exception is a core-registered directory (below).
+
+## Core-registered directories (transitional)
+
+Components still defined in `shared/components.ts` can move the files they
+wholly own (schema, plugins, storage, routes modules, policies, pages) into
+`components/<component-id>/` before they become removable. Their manifest is:
+
+```json
+{ "coreRegistered": true, "schema": ["shared/schema/dispatch/dnc-schema.ts"] }
+```
+
+- No `definition` and no registration fields: core keeps registering the
+  component and imports the moved files directly. Only `schema` is allowed,
+  so the schema loader can find the module named by `schemaPath`.
+- Discovery requires the ID to exist in core, and generates nothing else.
+- Files keep their host-relative path inside the directory
+  (`server/storage/dispatch/worker-dnc.ts` becomes
+  `components/dispatch.dnc/server/storage/dispatch/worker-dnc.ts`).
+- Core may import from these directories only. The `component-imports` rule
+  rejects core imports into any other component directory, and checks the
+  moved files' own imports against the core definition's dependencies.
+- Shared files that several components touch stay in core.
+
+Making one removable later means adding a definition, replacing the core
+imports with registrations, and dropping `coreRegistered`.
 
 ## Discovery and registration
 

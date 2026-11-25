@@ -107,7 +107,7 @@ export function initializeDispatchEligSystem(): void {
 import "./plugins/ban";
 import "./plugins/ban-facility";
 import "./plugins/ban-jobtype";
-import "./plugins/dnc";
+import "../../../../components/dispatch.dnc/server/plugins/dispatch/eligibility/plugins/dnc";
 import "./plugins/department";
 import "./plugins/eba";
 import "./plugins/hfe";

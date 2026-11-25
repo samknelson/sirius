@@ -108,7 +108,7 @@ import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
 import { registerDispatchForeRoutes } from "./modules/dispatch/fore";
 import { registerWorkerDispatchDepartmentRoutes } from "./modules/dispatch/worker-departments";
 import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
-import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
+import { registerWorkerDispatchDncRoutes } from "../components/dispatch.dnc/server/modules/dispatch/worker-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
 import { registerWorkerDispatchAsiRoutes } from "./modules/dispatch/worker-asi";

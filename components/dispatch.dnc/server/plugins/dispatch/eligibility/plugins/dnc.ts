@@ -1,5 +1,5 @@
-import { registerDispatchEligPlugin } from "../registry";
-import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
+import { registerDispatchEligPlugin } from "../../../../../../../server/plugins/dispatch/eligibility/registry";
+import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../../../../../../../server/plugins/dispatch/eligibility/registry";
 
 const DNC_CATEGORY = "dnc";
 
