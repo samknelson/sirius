@@ -672,7 +672,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/fore-schema.ts",
+      schemaPath: "./components/dispatch.fore/shared/schema/dispatch/fore-schema.ts",
       tables: ["dispatch_job_fore"],
       dependsOnComponents: ["dispatch"]
     }
@@ -700,7 +700,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/department-schema.ts",
+      schemaPath: "./components/dispatch.department/shared/schema/dispatch/department-schema.ts",
       tables: ["worker_dispatch_department", "dispatch_job_department"],
       dependsOnComponents: ["dispatch"]
     }
@@ -714,7 +714,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/bullpen-schema.ts",
+      schemaPath: "./components/dispatch.bullpen/shared/schema/dispatch/bullpen-schema.ts",
       tables: ["dispatch_job_event"],
       dependsOnComponents: ["dispatch"]
     }
@@ -764,7 +764,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/asi-schema.ts",
+      schemaPath: "./components/dispatch.asi/shared/schema/dispatch/asi-schema.ts",
       tables: ["worker_dispatch_asi"]
     },
     permissions: [
@@ -783,7 +783,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/hfe-schema.ts",
+      schemaPath: "./components/dispatch.hfe/shared/schema/dispatch/hfe-schema.ts",
       tables: ["worker_dispatch_hfe"]
     }
   },
@@ -803,7 +803,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/dispatch/eba-schema.ts",
+      schemaPath: "./components/dispatch.eba/shared/schema/dispatch/eba-schema.ts",
       tables: ["worker_dispatch_eba"]
     }
   },

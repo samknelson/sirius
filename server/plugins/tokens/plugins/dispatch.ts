@@ -1,6 +1,6 @@
 import { workers, employers, dispatchJobs } from "@shared/schema";
 import { workerDispatchStatus } from "../../../../shared/schema/dispatch/schema";
-import { dispatchJobFore } from "../../../../shared/schema/dispatch/fore-schema";
+import { dispatchJobFore } from "../../../../components/dispatch.fore/shared/schema/dispatch/fore-schema";
 import { WORKER_EXTRA_FIELDS } from "../../../storage/bulk/tokens";
 import { WORKER_DEFAULT_LEAF } from "./worker";
 import { registerTokenPlugin } from "../registry";

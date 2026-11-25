@@ -104,17 +104,17 @@ export function initializeDispatchEligSystem(): void {
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "./plugins/ban";
-import "./plugins/ban-facility";
-import "./plugins/ban-jobtype";
+import "../../../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban";
+import "../../../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban-facility";
+import "../../../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban-jobtype";
 import "../../../../components/dispatch.dnc/server/plugins/dispatch/eligibility/plugins/dnc";
-import "./plugins/department";
-import "./plugins/eba";
-import "./plugins/hfe";
+import "../../../../components/dispatch.department/server/plugins/dispatch/eligibility/plugins/department";
+import "../../../../components/dispatch.eba/server/plugins/dispatch/eligibility/plugins/eba";
+import "../../../../components/dispatch.hfe/server/plugins/dispatch/eligibility/plugins/hfe";
 import "./plugins/skill";
 import "./plugins/status";
 import "./plugins/ws";
-import "./plugins/singleshift";
+import "../../../../components/dispatch.singleshift/server/plugins/dispatch/eligibility/plugins/singleshift";
 import "./plugins/started";
 import "./plugins/accepted";
 import "./plugins/hta-home-employer";

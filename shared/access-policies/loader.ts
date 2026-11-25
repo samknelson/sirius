@@ -51,7 +51,7 @@ import './employer/dispatch';
 import './employer/dispatch/manage';
 import '../../components/dispatch.dnc/shared/access-policies/worker/dispatch/dnc/view';
 import '../../components/dispatch.dnc/shared/access-policies/worker/dispatch/dnc/edit';
-import './worker/dispatch/asi';
+import '../../components/dispatch.asi/shared/access-policies/worker/dispatch/asi';
 import './dispatch/manage';
 import './dispatch/job-employer-contacts';
 

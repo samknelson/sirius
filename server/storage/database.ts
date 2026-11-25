@@ -139,9 +139,9 @@ import { type DispatchJobGroupStorage, createDispatchJobGroupStorage, dispatchJo
 import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } from "./facility/facilities";
 import { type GbhetPensionStorage, createGbhetPensionStorage } from "./sitespecific/gbhet/pension";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
-import { type DispatchJobForeStorage, createDispatchJobForeStorage, dispatchJobForeLoggingConfig } from "./dispatch/fore";
+import { type DispatchJobForeStorage, createDispatchJobForeStorage, dispatchJobForeLoggingConfig } from "../../components/dispatch.fore/server/storage/dispatch/fore";
 import { type DispatchJobFacilityStorage, createDispatchJobFacilityStorage, dispatchJobFacilityLoggingConfig } from "./dispatch/facility";
-import { type DispatchJobEventStorage, createDispatchJobEventStorage } from "./dispatch/job-events";
+import { type DispatchJobEventStorage, createDispatchJobEventStorage } from "../../components/dispatch.bullpen/server/storage/dispatch/job-events";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
@@ -157,8 +157,8 @@ import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBenefic
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../../components/dispatch.dnc/server/storage/dispatch/worker-dnc";
-import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "./dispatch/worker-departments";
-import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "./dispatch/job-departments";
+import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "../../components/dispatch.department/server/storage/dispatch/worker-departments";
+import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "../../components/dispatch.department/server/storage/dispatch/job-departments";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
 import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./workers/tos";
 import { type WorkerAatStorage, createWorkerAatStorage, workerAatLoggingConfig } from "./workers/aat";

@@ -53,4 +53,4 @@ export function initializeWorkerBanSystem(): void {
 import "./plugins/all-dispatch";
 import "./plugins/facility";
 import "./plugins/dispatch-job-type";
-import "./plugins/eba";
+import "../../../components/dispatch.eba/server/plugins/worker-bans/plugins/eba";

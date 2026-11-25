@@ -24,12 +24,12 @@ import { registerDispatchesRoutes } from "../../server/modules/dispatch/dispatch
 // side — maintains the `ban` facts), and the worker-ban behavior plugins the
 // denorm compute consults. Import the denorm plugin file directly, not the
 // denorm barrel (the barrel's registry init breaks under standalone tsx).
-import "../../server/plugins/dispatch/eligibility/plugins/ban";
-import "../../server/plugins/dispatch/eligibility/plugins/ban-jobtype";
-import "../../server/plugins/dispatch/eligibility/plugins/singleshift";
+import "../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban";
+import "../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban-jobtype";
+import "../../components/dispatch.singleshift/server/plugins/dispatch/eligibility/plugins/singleshift";
 import "../../server/plugins/worker-bans/plugins/all-dispatch";
 import "../../server/plugins/worker-bans/plugins/dispatch-job-type";
-import "../../server/plugins/system/denorm/plugins/dispatch/ban";
+import "../../components/dispatch.ban/server/plugins/system/denorm/plugins/dispatch/ban";
 import { recomputeStaleDenorm } from "../../server/plugins/system/denorm/recompute";
 
 async function main() {

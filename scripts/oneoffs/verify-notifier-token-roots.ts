@@ -103,7 +103,7 @@ async function main() {
     "../../shared/schema/dispatch/schema"
   );
   const { dispatchJobFore } = await import(
-    "../../shared/schema/dispatch/fore-schema"
+    "../../components/dispatch.fore/shared/schema/dispatch/fore-schema"
   );
   type DispatchJobFore = typeof dispatchJobFore.$inferSelect;
   const { grievanceSettlements } = await import(

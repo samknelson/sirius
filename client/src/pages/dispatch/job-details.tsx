@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import type { OptionsSkill, JobTypeData, DispatchJobData } from "@shared/schema";
-import type { DispatchJobForeWithWorker } from "../../../../server/storage/dispatch/fore";
+import type { DispatchJobForeWithWorker } from "../../../../components/dispatch.fore/server/storage/dispatch/fore";
 
 interface DispatchStatusCounts {
   pending: number;

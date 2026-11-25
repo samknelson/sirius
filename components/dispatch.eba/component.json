@@ -1,0 +1,4 @@
+{
+  "coreRegistered": true,
+  "schema": ["shared/schema/dispatch/eba-schema.ts"]
+}

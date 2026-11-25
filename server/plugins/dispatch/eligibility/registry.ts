@@ -4,7 +4,7 @@ import type { BasePluginMetadata } from "../../_core";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig } from "@shared/schema";
 import type { DispatchJobWithRelations } from "../../../storage/dispatch/jobs";
 import type { DispatchJobFacilityWithFacility } from "../../../storage/dispatch/facility";
-import type { DispatchJobDepartmentWithName } from "../../../storage/dispatch/job-departments";
+import type { DispatchJobDepartmentWithName } from "../../../../components/dispatch.department/server/storage/dispatch/job-departments";
 import type { EmployerCompany } from "@shared/schema/employer/company-schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 

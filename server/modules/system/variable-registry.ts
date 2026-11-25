@@ -4,7 +4,7 @@ import type { InsertVariable } from "@shared/schema";
 import { TERMINOLOGY_VARIABLE_NAME, terminologySchema, TERM_REGISTRY } from "@shared/terminology";
 import { buildContext, checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../components";
-import { dispatchEbaSettingsSchema } from "../dispatch/eba-config";
+import { dispatchEbaSettingsSchema } from "../../../components/dispatch.eba/server/modules/dispatch/eba-config";
 import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-reset-config";
 import { dispatchDncNotificationConfigSchema } from "../../../components/dispatch.dnc/server/modules/dispatch/dnc-config";
 import { workerBanNotificationConfigSchema } from "../worker-ban-config";

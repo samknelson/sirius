@@ -18,7 +18,7 @@ import { useTerm } from "@/contexts/TerminologyContext";
 import { formatYmd } from "@shared/utils/date";
 import type { WorkerDispatchStatus } from "@shared/schema";
 import type { DispatchWithRelations } from "../../../../server/storage/dispatch/dispatches";
-import type { DispatchJobForeWithJob } from "../../../../server/storage/dispatch/fore";
+import type { DispatchJobForeWithJob } from "../../../../components/dispatch.fore/server/storage/dispatch/fore";
 
 interface ComponentConfig {
   componentId: string;

@@ -48,7 +48,7 @@ export {
   insertDispatchJobForeSchema,
   type DispatchJobFore,
   type InsertDispatchJobFore,
-} from "./schema/dispatch/fore-schema";
+} from "../components/dispatch.fore/shared/schema/dispatch/fore-schema";
 
 export {
   dispatchJobFacility,
@@ -62,7 +62,7 @@ export {
   insertDispatchJobEventSchema,
   type DispatchJobEvent,
   type InsertDispatchJobEvent,
-} from "./schema/dispatch/bullpen-schema";
+} from "../components/dispatch.bullpen/shared/schema/dispatch/bullpen-schema";
 
 export {
   workerDispatchDepartment,
@@ -75,7 +75,7 @@ export {
   type DispatchJobDepartment,
   type InsertDispatchJobDepartment,
   type WorkerDispatchDepartmentPreference,
-} from "./schema/dispatch/department-schema";
+} from "../components/dispatch.department/shared/schema/dispatch/department-schema";
 
 export {
   workerDispatchDnc,
@@ -91,21 +91,21 @@ export {
   insertWorkerDispatchHfeSchema,
   type InsertWorkerDispatchHfe,
   type WorkerDispatchHfe,
-} from "./schema/dispatch/hfe-schema";
+} from "../components/dispatch.hfe/shared/schema/dispatch/hfe-schema";
 
 export {
   workerDispatchAsi,
   insertWorkerDispatchAsiSchema,
   type InsertWorkerDispatchAsi,
   type WorkerDispatchAsi,
-} from "./schema/dispatch/asi-schema";
+} from "../components/dispatch.asi/shared/schema/dispatch/asi-schema";
 
 export {
   workerDispatchEba,
   insertWorkerDispatchEbaSchema,
   type InsertWorkerDispatchEba,
   type WorkerDispatchEba,
-} from "./schema/dispatch/eba-schema";
+} from "../components/dispatch.eba/shared/schema/dispatch/eba-schema";
 
 export {
   dispatchJobGroups,

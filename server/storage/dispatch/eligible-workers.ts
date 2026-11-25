@@ -11,7 +11,7 @@ import {
 } from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchJobStorage, type DispatchJobWithRelations } from "./jobs";
 import { createDispatchJobFacilityStorage } from "./facility";
-import { createDispatchJobDepartmentStorage } from "./job-departments";
+import { createDispatchJobDepartmentStorage } from "../../../components/dispatch.department/server/storage/dispatch/job-departments";
 import { createEmployerCompanyStorage } from "../employers/companies";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
 import { createPluginConfigStorage } from "../system/plugin-configs";
