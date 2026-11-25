@@ -21,6 +21,8 @@ vi.mock("../../server/middleware/request-context", () => ({ getRequestContext: (
 vi.mock("../../server/services/event-bus", () => ({
   eventBus: { emit: state.emit },
   EventType: { SESSION_SAVE_AFTER: "session.save.after", SESSION_DELETE_AFTER: "session.delete.after" },
+  // The storage aggregate loads component event declarations; preserve their names.
+  registerComponentEvent: (name: string) => name,
 }));
 vi.mock("../../server/logger", () => ({ logger: { error: vi.fn() } }));
 import { createSessionStorage } from "../../server/storage/system/sessions";
