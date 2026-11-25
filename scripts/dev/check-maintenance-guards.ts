@@ -73,7 +73,6 @@ const OUTBOUND_MODULES = [
   "server/services/webclient/vendor-http.ts",
   "server/services/webclient/twilio-http.ts",
   "server/services/comm/validators/address.ts",
-  "server/services/objectStorage.ts",
   "server/services/container-facts.ts",
   "server/modules/webservices/test-request-http.ts",
   "server/services/files/providers/s3.ts",
@@ -782,17 +781,18 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
   "server/services/webclient/twilio-http.ts": {
     request: "SDK adapter delegates only to the supplied plugin-bound webclient HTTP capability; it must not recurse through wcRequest or double-count a vendor operation.",
   },
-  "server/services/objectStorage.ts": {
+  "server/services/files/providers/replit.ts": {
     checkStorageServiceAvailable:
       "Restricted Replit object-storage sidecar health check.",
     signObjectURL:
       "Restricted Replit object-storage sidecar request for a signed object URL.",
-    uploadFile: "Upload to a signed object-storage URL.",
-    downloadFile: "Download from a signed object-storage URL.",
-    deleteFile: "Delete through a signed object-storage URL.",
-    getFileMetadata: "Read metadata through a signed object-storage URL.",
-    generateSignedUrl: "Generate a signed object-storage URL through the storage sidecar.",
-    fileExists: "Check object existence through the storage sidecar.",
+    read: "Configured Replit filesystem provider: download from a signed object URL.",
+    write: "Configured Replit filesystem provider: upload to a signed object URL.",
+    delete: "Configured Replit filesystem provider: delete through a signed object URL.",
+    sign: "Configured Replit filesystem provider: requests a bucket-scoped signed URL from the storage sidecar.",
+    headObject: "Configured Replit filesystem provider: read metadata through a signed object URL.",
+    stat: "Configured Replit filesystem provider: metadata through the storage sidecar.",
+    getSignedUrl: "Configured Replit filesystem provider: sign a GET URL through the storage sidecar.",
   },
   "server/services/container-facts.ts": {
     fetchEcsMetadata:

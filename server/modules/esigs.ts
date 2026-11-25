@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import type { IStorage } from "../storage/database";
 import { insertEsigSchema, insertFileSchema } from "@shared/schema";
-import { ObjectStorageNotConfiguredError, ObjectStorageConnectionError } from "../services/objectStorage";
 import { fileSystemService, FileSystemNotConfiguredError } from "../services/files";
 import multer from "multer";
 import crypto from "crypto";
@@ -241,18 +240,6 @@ export function registerEsigsRoutes(
       
       if (error instanceof FileSystemNotConfiguredError) {
         return res.status(503).json({ message: error.message });
-      }
-      
-      if (error instanceof ObjectStorageNotConfiguredError) {
-        return res.status(503).json({ 
-          message: "Document storage is not configured. Please contact an administrator to set up Object Storage in the Replit workspace." 
-        });
-      }
-      
-      if (error instanceof ObjectStorageConnectionError) {
-        return res.status(503).json({ 
-          message: error.message 
-        });
       }
       
       res.status(500).json({ message: error.message || "Failed to upload document" });
