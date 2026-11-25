@@ -1,4 +1,5 @@
 import { contactEmailInput } from "@shared/utils/contact-email";
+import { packageStartups } from "./generated/component-packages";
 import { respondContactEmailError } from "./services/contact-email-access";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
@@ -138,9 +139,6 @@ import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerT631ArrivalRoutes } from "./modules/sitespecific/t631/arrive";
-import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
-import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
-import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
 import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsAssignmentExplorerRoutes } from "./modules/edls/assignment-explorer";
@@ -1701,14 +1699,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
   registerT631ArrivalRoutes(app);
 
-  // Register Freeman Second Shift routes
-  registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
-
-  // Register Freeman Crew Leads routes
-  registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
-
-  // Register Freeman EDLS migration routes
-  registerFreemanEdlsMigrateRoutes(app, requireAuth, requirePermission);
+  for (const contribution of packageStartups) {
+    contribution.registerRoutes?.(app, requireAuth, requirePermission, requireAccess);
+  }
 
   registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
 

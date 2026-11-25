@@ -1,3 +1,11 @@
+# Optional package registration
+
+Component packages may export a `register` hook from their manifest's `startup`
+module. It runs before permissions initialization and `alterHooks.close()`, so
+package-owned alters participate in the same closure and catalog as host
+components. See [component packages](component-packages.md) for discovery,
+build and retained-schema rules.
+
 # Component alter hooks
 
 An alter hook lets a core function compute a value, then pass it through

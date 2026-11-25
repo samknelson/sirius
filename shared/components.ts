@@ -1,3 +1,5 @@
+import { packageComponents } from "./generated/component-packages";
+
 export interface ComponentPermission {
   key: string;
   description: string;
@@ -78,6 +80,9 @@ export interface ComponentDefinition {
 export interface ComponentConfig {
   componentId: string;
   enabled: boolean;
+  installed?: boolean;
+  configuredEnabled?: boolean;
+  packageId?: string;
   /** Server-registered metadata; old consumers may ignore it. */
   definition?: ComponentDefinition;
 }
@@ -896,42 +901,7 @@ export const componentRegistry: ComponentDefinition[] = [
       },
     ]
   },
-  {
-    id: "sitespecific.freeman",
-    name: "Freeman Customization",
-    description: "Custom functionality for Freeman",
-    enabledByDefault: false,
-    category: "site-specific",
-    managesSchema: true,
-    schemaManifest: {
-      version: 1,
-      schemaPath: "./shared/schema/sitespecific/freeman/schema.ts",
-      tables: ["sitespecific_freeman_crewleads"]
-    }
-  },
-  {
-    id: "sitespecific.freeman.edls_migrate",
-    name: "Freeman EDLS Migration",
-    description: "Migration of EDLS data from Freeman's legacy system",
-    enabledByDefault: false,
-    category: "site-specific",
-    managesSchema: true,
-    schemaManifest: {
-      version: 1,
-      schemaPath: "./shared/schema/sitespecific/freeman/edls-migrate-schema.ts",
-      // A staging table only: it holds legacy rows as fetched and has no
-      // foreign keys into EDLS, so it is not a schema dependency.
-      tables: ["sitespecific_freeman_edls_migrate"]
-    },
-    dependsOnComponents: ["edls", "sitespecific.freeman"]
-  },
-  {
-    id: "sitespecific.freeman.authorization",
-    name: "Freeman Authorization",
-    description: "Bearer authorization service for Freeman integrations",
-    enabledByDefault: false,
-    category: "site-specific"
-  },
+  ...packageComponents,
   {
     id: "sitespecific.t631.client",
     name: "Teamsters 631 Client",
@@ -1039,6 +1009,12 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   }
 ];
+
+const installedComponentIds = new Set<string>();
+for (const component of componentRegistry) {
+  if (installedComponentIds.has(component.id)) throw new Error(`Duplicate installed component id: ${component.id}`);
+  installedComponentIds.add(component.id);
+}
 
 /**
  * Get all registered components

@@ -161,6 +161,8 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
 }
 
 async function loadSchemaModule(schemaPath: string): Promise<Record<string, unknown>> {
+  const { packageSchemaLoaders } = await import("../generated/package-schemas");
+  if (packageSchemaLoaders[schemaPath]) return packageSchemaLoaders[schemaPath]();
   const relativePath = schemaPath.replace(/^\.\//, "");
   const moduleUrl = new URL(`../../${relativePath}`, import.meta.url);
   return await import(moduleUrl.href);
@@ -410,7 +412,7 @@ function buildColumnFragment(
     colDef += " NOT NULL";
   }
   if (col.hasDefault && col.default !== undefined) {
-    const defaultVal = formatDefault(col.default, tableName, colKey);
+    const defaultVal = formatDefault(col.default, tableName, colKey, sqlType);
     colDef += ` DEFAULT ${defaultVal}`;
   }
 
@@ -521,9 +523,15 @@ function renderCreateEnumType(name: string, values: string[]): string {
 END $$`;
 }
 
-function formatDefault(defaultValue: any, tableName: string, colKey: string): string {
+function formatDefault(defaultValue: any, tableName: string, colKey: string, sqlType?: string): string {
   if (is(defaultValue, SQL)) {
     return renderSql(defaultValue, `default of ${tableName}.${colKey}`);
+  }
+  // Drizzle accepts JS values as JSON column defaults (including the core
+  // processes.data default). Fresh package-free databases must be bootstrappable
+  // from the same declaration as upgraded databases.
+  if (defaultValue !== null && (sqlType === "json" || sqlType === "jsonb")) {
+    return `'${JSON.stringify(defaultValue).replace(/'/g, "''")}'::${sqlType}`;
   }
   if (typeof defaultValue === "string") {
     return `'${defaultValue.replace(/'/g, "''")}'`;

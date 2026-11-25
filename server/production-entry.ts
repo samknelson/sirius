@@ -39,7 +39,8 @@ import { serveStatic } from "./vite";
  * `dist/app-init.js`) against a stale `dist/` directory that had not
  * been rebuilt to match the current `server/` source.
  *
- * This guardrail compares the newest mtime under `server/` to the
+ * This guardrail compares the newest mtime under server, shared and optional
+ * component package source roots to the
  * mtime of this compiled bundle (the file currently executing). If
  * source is newer than the build, we exit immediately with a clear
  * error instead of silently serving stale code.
@@ -55,9 +56,9 @@ function assertBuildIsFresh(): void {
 
   try {
     const projectRoot = resolve(import.meta.dirname, "..");
-    const sourceDir = join(projectRoot, "server");
+    const sourceDirs = ["server", "shared", "components"].map(directory => join(projectRoot, directory));
     const selfPath = new URL(import.meta.url).pathname;
-    if (!existsSync(sourceDir) || !existsSync(selfPath)) return;
+    if (!existsSync(sourceDirs[0]) || !existsSync(selfPath)) return;
 
     const buildMtime = statSync(selfPath).mtimeMs;
     let newestSourceMtime = 0;
@@ -77,11 +78,11 @@ function assertBuildIsFresh(): void {
         }
       }
     };
-    walk(sourceDir);
+    for (const sourceDir of sourceDirs) if (existsSync(sourceDir)) walk(sourceDir);
 
     if (newestSourceMtime > buildMtime + 1000) {
       console.error(
-        `[stale-build] dist/ is older than server/ source — refusing to start.\n` +
+        `[stale-build] dist/ is older than application source — refusing to start.\n` +
           `  build mtime:  ${new Date(buildMtime).toISOString()} (${selfPath})\n` +
           `  source mtime: ${new Date(newestSourceMtime).toISOString()} (${newestSourcePath})\n` +
           `Run \`npm run build\` before \`npm run start\`, or use \`npm run dev\` for source-mode development.`,

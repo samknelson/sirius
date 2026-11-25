@@ -11,7 +11,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AssignmentCommStatusIcon } from "@/components/edls/AssignmentCommStatusIcon";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
-import type { FreemanCrewlead } from "@shared/schema/sitespecific/freeman/schema";
+type FreemanCrewlead = { id: string; name: string };
 
 export interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;

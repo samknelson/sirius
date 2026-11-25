@@ -1361,19 +1361,7 @@ export * from "./schema/sitespecific/gbhet-pension/schema";
 
 export * from "./schema/sitespecific/bao/schema";
 
-export {
-  sitespecificFreemanCrewleads,
-  insertFreemanCrewleadSchema,
-  type FreemanCrewlead,
-  type InsertFreemanCrewlead,
-} from "./schema/sitespecific/freeman/schema";
-
-export {
-  sitespecificFreemanEdlsMigrate,
-  insertFreemanEdlsMigrateSchema,
-  type FreemanEdlsMigrateRow,
-  type InsertFreemanEdlsMigrateRow,
-} from "./schema/sitespecific/freeman/edls-migrate-schema";
+export * from "./generated/package-schema";
 
 export {
   optionsGrievanceStatus,

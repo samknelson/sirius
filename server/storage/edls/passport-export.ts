@@ -171,8 +171,16 @@ function assignmentDataField(data: unknown, key: string): string | null {
 async function loadCrewleadSiriusIds(): Promise<Map<string, string>> {
   if (!isComponentEnabledSync("sitespecific.freeman")) return new Map();
   try {
-    if (!(await storage.freemanCrewleads.tableExists())) return new Map();
-    const crewleads = await storage.freemanCrewleads.getAll();
+    // This cross-component export remains a host integration seam. The
+    // implementation and its concrete types belong to the optional package.
+    const { freemanCrewleads } = storage as unknown as {
+      freemanCrewleads?: {
+        tableExists(): Promise<boolean>;
+        getAll(): Promise<{ id: string; siriusId: string }[]>;
+      };
+    };
+    if (!freemanCrewleads || !(await freemanCrewleads.tableExists())) return new Map();
+    const crewleads = await freemanCrewleads.getAll();
     return new Map(crewleads.map((lead) => [lead.id, lead.siriusId]));
   } catch (err) {
     logger.warn(

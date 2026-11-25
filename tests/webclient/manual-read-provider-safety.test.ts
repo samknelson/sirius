@@ -19,7 +19,7 @@ vi.mock("stripe", () => ({
 import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
 import "../../server/plugins/wc-vendors/plugins/email";
 import "../../server/plugins/wc-vendors/plugins/stripe";
-import "../../server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization";
+import "../../server/generated/package-server-modules";
 
 function context(
   pluginId: string,

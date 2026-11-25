@@ -1,5 +1,8 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
+import { generateComponentPackages } from "./scripts/component-packages.ts";
+
+generateComponentPackages();
 
 /**
  * The project's test runner.
@@ -27,7 +30,7 @@ export default defineConfig({
     jsx: { runtime: "automatic" },
   },
   test: {
-    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx", "components/*/tests/**/*.test.ts", "components/*/tests/**/*.test.tsx"],
     environment: "node",
     // Some suites boot real server modules (storage, passport, the env
     // registry) and mutate process-wide state; a process per file keeps them

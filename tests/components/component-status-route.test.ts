@@ -1,6 +1,9 @@
 import express from "express";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../../server/storage/system/component-package-ownership", () => ({
+  componentPackageOwnershipStorage: { read: async () => ({}) },
+}));
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(), refresh: vi.fn(), enabled: vi.fn(() => { throw new Error("Broken cache getter"); }),

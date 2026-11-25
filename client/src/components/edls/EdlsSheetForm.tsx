@@ -19,7 +19,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import type { EdlsSheet, EdlsCrew, InsertEdlsCrew } from "@shared/schema";
-import type { FreemanCrewlead } from "@shared/schema/sitespecific/freeman/schema";
+// Host integration seam: the picker needs only this portable option shape.
+type FreemanCrewlead = { id: string; name: string };
 
 interface SupervisorOption {
   id: string;

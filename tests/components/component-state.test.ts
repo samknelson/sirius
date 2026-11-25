@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentDefinition } from "../../shared/components";
+vi.mock("../../server/storage/system/component-package-ownership", () => ({
+  componentPackageOwnershipStorage: { read: () => mocks.ownership() },
+}));
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), outside: vi.fn((fn: () => unknown) => fn()) }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), ownership: vi.fn(), outside: vi.fn((fn: () => unknown) => fn()) }));
 vi.mock("../../server/storage", () => ({ storage: { variables: { getJsonState: mocks.read } } }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: mocks.outside }));
 vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: mocks.outside }));
@@ -12,7 +15,7 @@ vi.mock("../../server/services/component-cache", () => ({
 import { getAllComponents } from "../../shared/components";
 import { getComponentConfigsFromStorage, readComponentStateFromStorage, resolveComponentEnabled } from "../../server/services/component-state";
 
-beforeEach(() => { vi.clearAllMocks(); mocks.read.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); mocks.read.mockResolvedValue(undefined); mocks.ownership.mockResolvedValue({}); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("direct component storage snapshots", () => {
@@ -41,17 +44,42 @@ describe("direct component storage snapshots", () => {
     mocks.read.mockResolvedValue({ value: { facility: true, "future.retained": false }, version: "42" });
     const configs = await getComponentConfigsFromStorage();
     expect(mocks.read).toHaveBeenCalledOnce();
-    expect(configs.map(c => c.definition)).toEqual(getAllComponents());
+    expect(configs.filter(c => c.installed).map(c => c.definition)).toEqual(getAllComponents());
     expect(configs.find(c => c.componentId === "facility")?.enabled).toBe(true);
     for (const config of configs) {
       if (config.componentId !== "facility") expect(config.enabled).toBe(config.definition?.enabledByDefault);
     }
-    expect(configs.some(c => c.componentId === "future.retained")).toBe(false);
+    expect(configs.find(c => c.componentId === "future.retained")).toMatchObject({
+      installed: false, enabled: false, configuredEnabled: false,
+    });
   });
 
   it("does not substitute defaults after storage fails", async () => {
     mocks.read.mockRejectedValue(new Error("Storage unavailable"));
     await expect(getComponentConfigsFromStorage()).rejects.toThrow("Storage unavailable");
+  });
+
+  it("reports saved enablement separately from an absent package's availability", async () => {
+    mocks.read.mockResolvedValue({ value: { "retained.example": true }, version: "42" });
+    const definition = {
+      id: "retained.example", name: "Retained example", description: "Example",
+      enabledByDefault: false, schemaManifest: { schemaPath: "removed", tables: ["example_rows"] },
+    };
+    mocks.ownership.mockResolvedValue({
+      "retained.example": { packageId: "example-package", definition, tables: ["example_rows"] },
+    });
+    expect((await getComponentConfigsFromStorage()).find(c => c.componentId === definition.id)).toEqual({
+      componentId: definition.id, enabled: false, installed: false, configuredEnabled: true,
+      packageId: "example-package", definition,
+    });
+  });
+
+  it("bounds retained-ownership reads without substituting installed defaults", async () => {
+    vi.useFakeTimers();
+    mocks.ownership.mockReturnValue(new Promise(() => {}));
+    const result = expect(getComponentConfigsFromStorage()).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(5_000);
+    await result;
   });
 
   it.each([null, undefined, [], "invalid", { facility: "true" }])("refuses a malformed present row: %j", async value => {

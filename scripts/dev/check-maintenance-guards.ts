@@ -506,7 +506,7 @@ function auditFrameworkOnlyImports(files: string[]): Violation[] {
 }
 
 /** Only server code is gated; see the header for why client/ and scripts/ are not. */
-const SCANNED_PREFIXES = ["server/", "shared/"];
+const SCANNED_PREFIXES = ["server/", "shared/", "components/"];
 const SCANNED_EXTENSIONS = [".ts", ".tsx"];
 
 interface Violation {
@@ -537,6 +537,7 @@ function listWorkingTreeFiles(): string[] {
 
 function isScanned(file: string): boolean {
   if (!SCANNED_PREFIXES.some((p) => file.startsWith(p))) return false;
+  if (file.startsWith("components/") && !/^components\/[^/]+\/(?:server|shared)\//.test(file)) return false;
   return SCANNED_EXTENSIONS.some((e) => file.endsWith(e));
 }
 
@@ -927,7 +928,7 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
-  "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts": {
+  "components/freeman/server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts": {
     handlerContainers: ["operations", "remoteOperations"],
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
@@ -967,7 +968,7 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
-  "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts": {
+  "components/freeman/server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts": {
     handlerContainers: ["operations"],
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
@@ -1250,7 +1251,7 @@ function isWcVendorRegistration(node: ts.CallExpression, sf: ts.SourceFile): boo
  */
 function discoverTransportBearingPlugins(files: string[]): string[] {
   return files.filter((file) => {
-    if (!file.startsWith(WC_VENDOR_PLUGIN_PREFIX) || !file.endsWith(".ts")) return false;
+    if (!(file.startsWith(WC_VENDOR_PLUGIN_PREFIX) || /^components\/[^/]+\/server\/plugins\/wc-vendors\/plugins\//.test(file)) || !file.endsWith(".ts")) return false;
     const sf = parse(file);
     let registers = false;
     const visit = (node: ts.Node): void => {

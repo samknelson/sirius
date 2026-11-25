@@ -1,6 +1,9 @@
 import { defineConfig } from "drizzle-kit";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { generateComponentPackages } from "./scripts/component-packages";
+
+generateComponentPackages();
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -23,6 +26,9 @@ function loadSchemaPath(): string {
     } catch {
       // ignore — fall back to default
     }
+  }
+  if (process.argv.some(arg => arg === "push")) {
+    throw new Error("Use ALLOW_DB_PUSH=1 npm run db:push; direct push bypasses retained-component protections.");
   }
   return "./shared/schema.ts";
 }

@@ -21,7 +21,7 @@
   // the client off from drizzle for other reasons if you like; it is not the
   // memory lever.
   "extends": "./tsconfig.json",
-  "include": ["client/src/**/*", "shared/**/*"],
+  "include": ["client/src/**/*", "shared/**/*", "components/*/client/**/*", "components/*/shared/**/*"],
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.client"
   }

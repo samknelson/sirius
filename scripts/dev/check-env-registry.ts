@@ -40,7 +40,7 @@ const EXEMPT_FILES = new Set<string>([
   "scripts/dev/check-env-registry.ts",
 ]);
 
-const SCANNED_PREFIXES = ["server/", "shared/", "scripts/"];
+const SCANNED_PREFIXES = ["server/", "shared/", "scripts/", "components/"];
 const SCANNED_EXTENSIONS = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
 function listWorkingTreeFiles(): string[] {

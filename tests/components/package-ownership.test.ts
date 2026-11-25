@@ -1,0 +1,26 @@
+import { describe, expect, it } from "vitest";
+import { absentOwnedTables, parseComponentOwnership } from "../../shared/component-package-ownership";
+
+const definition = { id: "example", name: "Example", description: "", enabledByDefault: false };
+
+describe("retained package schema ownership", () => {
+  it("preserves only recorded tables of absent components, independent of saved enabled flags", () => {
+    const ownership = parseComponentOwnership({
+      example: { packageId: "example-package", definition, tables: ["example_rows"] },
+      present: { packageId: "other", definition: { ...definition, id: "present" }, tables: ["present_rows"] },
+    });
+    const retained = absentOwnedTables(ownership, new Set(["present"]));
+    expect([...retained]).toEqual(["example_rows"]);
+    expect(retained.has("example_unrecorded")).toBe(false);
+    expect(absentOwnedTables(ownership, new Set(["example", "present"])).size).toBe(0);
+  });
+
+  it.each([
+    null,
+    [],
+    { example: { packageId: "p", definition, tables: ["example_rows", "*"] } },
+    { example: { packageId: "p", definition: { ...definition, id: "wrong" }, tables: [] } },
+  ])("refuses corrupt ownership rather than silently discarding protection: %j", value => {
+    expect(() => parseComponentOwnership(value)).toThrow("ownership");
+  });
+});

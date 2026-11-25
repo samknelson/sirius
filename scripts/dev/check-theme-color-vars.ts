@@ -55,7 +55,7 @@ import { existsSync, readFileSync } from "node:fs";
 /** The stylesheet that defines the theme. */
 const THEME_STYLESHEET = "client/src/index.css";
 
-const SCANNED_PREFIXES = ["client/", "server/", "shared/", "scripts/"];
+const SCANNED_PREFIXES = ["client/", "server/", "shared/", "scripts/", "components/"];
 const SCANNED_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css"];
 
 /**

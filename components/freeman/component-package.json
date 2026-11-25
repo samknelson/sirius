@@ -1,0 +1,27 @@
+{
+  "id": "freeman",
+  "definitions": "shared/components.ts",
+  "shared": ["shared/freemanCrewleadsTransfer.ts"],
+  "server": [
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts",
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts"
+  ],
+  "browser": {
+    "freeman.worker-second-shift": "client/src/pages/worker-sitespecific-freeman-2shift.tsx",
+    "freeman.edls-migrate": "client/src/pages/admin/sitespecific/freeman/edls-migrate.tsx",
+    "freeman.bearer-authorization": "client/src/pages/config/ws/client-freeman-bearer-authorization.tsx",
+    "freeman.crewleads": "client/src/pages/sitespecific/freeman/crewleads-list.tsx",
+    "freeman.changelog": "client/src/pages/sitespecific/freeman/changelog.tsx"
+  },
+  "schema": [
+    "shared/schema/sitespecific/freeman/schema.ts",
+    "shared/schema/sitespecific/freeman/edls-migrate-schema.ts"
+  ],
+  "migrations": [
+    "scripts/migrate/components/sitespecific.freeman/001_create_crewleads.ts",
+    "scripts/migrate/components/sitespecific.freeman.edls_migrate/001_create_staging.ts"
+  ],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "metadata": "server/metadata.ts"
+}

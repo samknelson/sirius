@@ -1,4 +1,6 @@
 import { Switch, Route, Redirect, useLocation } from "wouter";
+import { packagePages } from "./generated/component-packages";
+import MissingPackagePage from "./components/MissingPackagePage";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -84,7 +86,7 @@ const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes")
 const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
-const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
+const WorkerSecondShift = packagePages["freeman.worker-second-shift"] ?? MissingPackagePage;
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
 const WorkerBadges = lazy(() => import("@/pages/workers/badges"));
@@ -288,7 +290,7 @@ const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
-const FreemanEdlsMigratePage = lazy(() => import("@/pages/admin/sitespecific/freeman/edls-migrate"));
+const FreemanEdlsMigratePage = packagePages["freeman.edls-migrate"] ?? MissingPackagePage;
 const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
@@ -300,9 +302,7 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
-const WsClientFreemanBearerAuthorizationPage = lazy(
-  () => import("@/pages/config/ws/client-freeman-bearer-authorization"),
-);
+const WsClientFreemanBearerAuthorizationPage = packagePages["freeman.bearer-authorization"] ?? MissingPackagePage;
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
@@ -440,8 +440,8 @@ const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
 const EdlsSheetSnapshotsPage = lazy(() => import("@/pages/edls/sheet-snapshots"));
-const FreemanCrewleadsPage = lazy(() => import("@/pages/sitespecific/freeman/crewleads-list"));
-const FreemanChangelogPage = lazy(() => import("@/pages/sitespecific/freeman/changelog"));
+const FreemanCrewleadsPage = packagePages["freeman.crewleads"] ?? MissingPackagePage;
+const FreemanChangelogPage = packagePages["freeman.changelog"] ?? MissingPackagePage;
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
 const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
 const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));

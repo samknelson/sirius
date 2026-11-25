@@ -24,10 +24,13 @@ import { execSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { rehearseProcessProvenanceMigrations } from "./migration-contracts/process-provenance";
+import { generateComponentPackages } from "./component-packages";
 
-const SCHEMA_PREFIX = /^shared\/schema(\.ts|\/)/;
+generateComponentPackages();
+
+const SCHEMA_PREFIX = /^(?:components\/[^/]+\/)?shared\/schema(\.ts|\/)/;
 const CORE_MIGRATION_PREFIX = /^scripts\/migrate\/core\//;
-const COMPONENT_MIGRATION_PREFIX = /^scripts\/migrate\/components\//;
+const COMPONENT_MIGRATION_PREFIX = /^(?:components\/[^/]+\/)?scripts\/migrate\/components\//;
 const BASELINE_PREFIX = /^scripts\/migrate\/baseline\//;
 const SKIP_MARKER = "[skip-migration-check]";
 

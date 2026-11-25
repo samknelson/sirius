@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../../server/storage/system/component-package-ownership", () => ({
+  componentPackageOwnershipStorage: { read: async () => ({}) },
+}));
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(), write: vi.fn(), inTransaction: vi.fn(() => false),
@@ -85,6 +88,7 @@ describe("committed component state", () => {
     await c.updateComponentCache("facility", true);
     expect(mocks.write).toHaveBeenCalledWith("components", "facility", true);
     expect(c.getComponentCache()).toEqual({ facility: true, "future.retained": true });
+    expect(c.isComponentEnabledSync("future.retained")).toBe(false);
   });
 
   it("defers publication until an outer transaction actually commits", async () => {

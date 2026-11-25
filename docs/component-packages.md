@@ -1,0 +1,97 @@
+# Optional component packages
+
+An optional package is a directory under `components/` with a
+`component-package.json` manifest. Installation means its source is present at
+build time. It does **not** mean its components are enabled. Each component
+keeps its own existing ID, persisted flag, dependencies and schema-migration
+counter.
+
+## Manifest contributions
+
+All paths are relative to the package directory and must name existing files
+inside that directory.
+
+| Field | Contract |
+| --- | --- |
+| `id` | Unique stable package ID |
+| `definitions` | Shared module exporting `components: ComponentDefinition[]` |
+| `shared` | Shared modules exported by the generated shared contribution barrel |
+| `server` | Side-effect server registration modules (for example vendor registrations) |
+| `browser` | Stable page key → module with a default React component export |
+| `schema` | Drizzle schema modules; also exported in the aggregate schema |
+| `migrations` | Modules registering migrations under their existing component IDs and versions |
+| `startup` | Optional `register`, `registerRoutes`, `start` functions |
+| `storage` | Module exporting `createStorage`; its returned namespaces extend host storage |
+| `metadata` | Module exporting `metadataContexts` for record history |
+
+Mirror the host's `shared/`, `server/`, `client/`, and `scripts/` boundaries.
+Schema modules belong under `shared/schema/`; migrations under
+`scripts/migrate/components/<component-id>/`. New tables still require authored
+migrations. Package discovery does not execute migration code.
+
+## Discovery and registration
+
+`npm run packages:discover` generates literal imports in the host's generated
+contribution modules. Generated sources are checked in to support editor
+navigation; do not edit them manually. `npm run dev`, `npm run check`,
+`npm run build`, Vite, Vitest, lint, migration checks, and the schema CLI
+entrypoints regenerate them. If running `tsc` or `tsx server/index.ts` directly
+instead of the supported npm commands, run discovery first.
+
+An absent or empty `components/` directory is valid. A malformed manifest,
+missing contribution or duplicate package ID is an error, not an empty package.
+Add/remove source packages only while stopped, then discover, rebuild and
+restart. Hot installation/removal is not supported.
+
+Server registrations are imported before initialization. The `register`
+startup hook runs before permissions and alter-hook closure. Routes register
+at the normal host route-registration boundary; `start` runs after application
+initialization with the process's service roles. Runtime code is bundled using
+static imports, including package schema loaders; it does not import TypeScript
+source paths from the production filesystem.
+
+The production build is database-independent. Migrations and drift validation
+remain startup operations; `npm run build` must not call the gated, developer-only
+database-push escape hatch.
+
+## Retained ownership and removal
+
+Under the existing serialized schema bring-up lock, the application records
+installed package component definitions and **exact** table names in the
+`component_package_ownership` variable. Entries for absent components are
+never removed. Existing `component_schema_state_<id>` records also provide
+exact ownership evidence for deployments upgrading directly to a build that
+omits a formerly installed component.
+
+Removing source never changes stored switches, plugin configurations,
+component migration history or application data. An absent component is always
+unavailable even if its saved switch says enabled. The Components page shows
+retained settings and the missing-package status; toggling/repairing an absent
+component is refused. Its tables are excluded from active-schema comparison
+but recognized as retained ownership. Unrecorded tables still fail the normal
+drift check. Corrupt ownership fails explicitly.
+
+Schema push refuses to operate while absent components own retained tables;
+this deliberately favors safety over generating destructive DDL from an
+incomplete schema. Direct `drizzle-kit push` is refused; use the guarded wrapper.
+Authored migrations remain the normal upgrade mechanism.
+
+Reinstallation restores the same IDs and schema loaders. Enabled components
+run only pending migrations and then validate against the installed schema;
+disabled components validate when re-enabled. Completed migrations do not
+replay.
+
+## Freeman extraction boundary
+
+The Freeman package owns its three component definitions, crew-lead/staging
+schemas and migrations, routes, vendor adapters, owned storage, browser pages
+and components, transfer helper and operator script. IDs, schema versions,
+settings and migration versions are unchanged. Core migration
+`1024_drop_freeman_crewleads` remains untouched in core: it historically runs
+on every deployment independently of component enablement.
+
+Mixed host integrations (EDLS crew-lead pickers/export, authentication,
+navigation/tab declarations and legacy operation aliases) remain integration
+seams for the separate full-extraction work. They do not statically import
+optional package implementations. This work does not correct Freeman migration
+artifact data.

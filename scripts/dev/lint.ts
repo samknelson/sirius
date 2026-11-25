@@ -25,6 +25,9 @@
  * (`npm test`).
  */
 import { spawnSync } from "node:child_process";
+import { generateComponentPackages } from "../component-packages";
+
+generateComponentPackages();
 
 interface Rule {
   /** Stable id used to select the rule on the command line. */

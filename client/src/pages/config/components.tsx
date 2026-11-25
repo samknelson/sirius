@@ -436,6 +436,8 @@ export default function ComponentsConfigPage() {
             </TableHeader>
             <TableBody>
               {sortedComponents.flatMap((component) => {
+                const config = componentConfigs.find(config => config.componentId === component.id);
+                const absent = config?.installed === false;
                 const isExpanded = !!expandedRows[component.id];
                 const tables = component.schemaManifest?.tables ?? [];
                 const permissions = component.permissions ?? [];
@@ -494,14 +496,24 @@ export default function ComponentsConfigPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">{component.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {component.name}
+                        {absent && <div className="mt-1 text-sm font-normal">
+                          <Badge variant="outline">Package not installed</Badge>
+                          <p className="mt-1 text-muted-foreground">
+                            {config?.packageId ? `Package: ${config.packageId}. ` : ""}
+                            Settings and data retained. Saved switch: {config?.configuredEnabled ? "enabled" : "disabled"}.
+                            Reinstall the package and restart to use this component.
+                          </p>
+                        </div>}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{component.description}</TableCell>
                       <TableCell className="text-right">
                         <Switch
                           id={`component-${component.id}`}
                           checked={states.get(component.id) ?? false}
                           onCheckedChange={(checked) => handleToggle(component.id, checked)}
-                          disabled={busy || !!pendingAction}
+                          disabled={absent || busy || !!pendingAction}
                           data-testid={`switch-component-${component.id}`}
                         />
                       </TableCell>

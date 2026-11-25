@@ -56,7 +56,7 @@ const EXEMPT_FILES = new Set<string>([
   "scripts/dev/check-html-utils.ts",
 ]);
 
-const SCANNED_PREFIXES = ["client/", "server/", "shared/", "scripts/"];
+const SCANNED_PREFIXES = ["client/", "server/", "shared/", "scripts/", "components/"];
 const SCANNED_EXTENSIONS = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
 /**

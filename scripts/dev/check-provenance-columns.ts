@@ -38,7 +38,7 @@
  * Usage: npx tsx scripts/dev/check-provenance-columns.ts
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 
 const INVENTORY_DOC = "docs/provenance-columns.md";
 
@@ -245,15 +245,15 @@ export function scanSchemaSource(file: string, source: string): ProvenanceColumn
  */
 export function schemaFiles(): string[] {
   const listed = [
-    execFileSync("git", ["ls-files", "shared"], { encoding: "utf-8" }),
-    execFileSync("git", ["ls-files", "--others", "--exclude-standard", "shared"], {
+    execFileSync("git", ["ls-files", "shared", "components"], { encoding: "utf-8" }),
+    execFileSync("git", ["ls-files", "--others", "--exclude-standard", "shared", "components"], {
       encoding: "utf-8",
     }),
   ]
     .join("\n")
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.endsWith(".ts"));
+    .filter((line) => /^(?:components\/[^/]+\/)?shared\//.test(line) && line.endsWith(".ts") && existsSync(line));
   return Array.from(new Set(listed)).sort();
 }
 

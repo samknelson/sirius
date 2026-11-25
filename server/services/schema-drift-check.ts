@@ -29,6 +29,8 @@ import { bootStatus } from "./boot-status";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { getMigrations, getMigrationStatus } from "./migration-runner";
 import { recordDriftOutcome } from "./bringup-report";
+import { getAbsentPackageTables } from "./component-package-ownership";
+import { packageSchemaLoaders } from "../generated/package-schemas";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -50,6 +52,7 @@ function buildSchemaTableIndex(module: Record<string, unknown>): Map<string, any
 }
 
 async function loadModule(schemaPath: string): Promise<Record<string, unknown>> {
+  if (packageSchemaLoaders[schemaPath]) return packageSchemaLoaders[schemaPath]();
   const rel = schemaPath.replace(/^\.\//, "");
   const url = new URL(`../../${rel}`, import.meta.url);
   return (await import(url.href)) as Record<string, unknown>;
@@ -176,7 +179,8 @@ export async function checkAggregateSchemaDrift(): Promise<AggregateDriftReport>
 
   // ----- Core tables (everything in shared/schema.ts that isn't owned by a
   //       disabled component's manifest) -----
-  const ignored = getIgnoredTableNames();
+  const retainedAbsent = await getAbsentPackageTables();
+  const ignored = new Set([...getIgnoredTableNames(), ...retainedAbsent]);
   const mainIndex = buildSchemaTableIndex(mainSchema as unknown as Record<string, unknown>);
 
   let coreTableCount = 0;
@@ -196,6 +200,7 @@ export async function checkAggregateSchemaDrift(): Promise<AggregateDriftReport>
   // ----- Extra tables (live tables not owned by any manifest, not in core
   //       schema, and not in the infrastructure allowlist) -----
   const allKnownTables = new Set<string>();
+  for (const table of retainedAbsent) allKnownTables.add(table);
   for (const name of mainIndex.keys()) allKnownTables.add(name);
   for (const c of getAllComponents()) {
     if (!c.managesSchema || !c.schemaManifest) continue;

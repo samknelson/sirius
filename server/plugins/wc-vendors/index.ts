@@ -1,3 +1,4 @@
+import "../../generated/package-server-modules";
 import { z } from "zod";
 import {
   registerPluginKind,
@@ -564,8 +565,6 @@ export async function migrateLegacyBtuScrapeWcVendorConfig(): Promise<void> {
 import "./plugins/stripe";
 import "./plugins/dummy";
 import "./plugins/sitespecific-t631";
-import "./plugins/sitespecific-freeman-edls-migrate";
-import "./plugins/sitespecific-freeman-authorization";
 import "./plugins/postal";
 import "./plugins/email";
 import "./plugins/sms-twilio";

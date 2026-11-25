@@ -1,4 +1,5 @@
 import { getTableName } from "drizzle-orm";
+import { packageMetadataContexts } from "../generated/package-metadata";
 import { PgTable, type TableConfig } from "drizzle-orm/pg-core";
 import * as coreSchema from "@shared/schema";
 import * as t631InterviewSchema from "@shared/schema/sitespecific/t631/interviews-schema";
@@ -30,6 +31,7 @@ const context = (
 ): MetadataRecordContext => ({ table, label, hrefTemplate, entityTypes });
 
 export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
+  ...packageMetadataContexts,
   bargaining_units: context(coreSchema.bargainingUnits, "Bargaining Units", "/bargaining-units/{id}"),
   bookmarks: context(coreSchema.bookmarks, "Bookmarks", null),
   bulk_messages: context(coreSchema.bulkMessages, "Bulk Messages", "/bulk/{id}"),
@@ -88,7 +90,6 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   sitespecific_btu_csg: context(coreSchema.sitespecificBtuCsg, "BTU Class Size Grievances", "/sitespecific/btu/csg/{id}"),
   sitespecific_btu_employer_map: context(coreSchema.sitespecificBtuEmployerMap, "BTU Employer Map", null),
   sitespecific_btu_political_officials: context(coreSchema.sitespecificBtuPoliticalOfficials, "BTU Political Officials", null),
-  sitespecific_freeman_crewleads: context(coreSchema.sitespecificFreemanCrewleads, "Freeman Crew Leads", null),
   sitespecific_t631_job_interviews: context(t631InterviewSchema.sitespecificT631JobInterviews, "T631 Job Interviews", null),
   trust_benefit_eligibility_exemptions: context(coreSchema.trustBenefitEligibilityExemptions, "Benefit Eligibility Exemptions", null),
   trust_benefits: context(coreSchema.trustBenefits, "Trust Benefits", "/trust-benefits/{id}"),

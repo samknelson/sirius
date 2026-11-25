@@ -146,8 +146,7 @@ import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStora
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
-import { type FreemanCrewleadsStorage, createFreemanCrewleadsStorage, freemanCrewleadsLoggingConfig } from "./sitespecific/freeman/crewleads";
-import { type FreemanEdlsMigrateStagingStorage, createFreemanEdlsMigrateStagingStorage } from "./sitespecific/freeman/edls-migrate-staging";
+import { createPackageStorage, type PackageStorage } from "../generated/package-storage";
 import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "./sitespecific/t631/interviews";
 import { type DispatchJobEmployerContactsStorage, createDispatchJobEmployerContactsStorage, dispatchJobEmployerContactsLoggingConfig } from "./dispatch/job-employer-contacts";
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
@@ -220,7 +219,7 @@ import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentia
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentitiesLoggingConfig } from "./auth-identities";
 import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
-export interface IStorage {
+export interface IStorage extends PackageStorage {
   processes: ProcessesStorage;
   variables: VariableStorage;
   users: UserStorage;
@@ -287,8 +286,6 @@ export interface IStorage {
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
-  freemanCrewleads: FreemanCrewleadsStorage;
-  freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
@@ -348,6 +345,7 @@ export interface IStorage {
   grievanceContracts: GrievanceContractStorage;
 }
 
+export interface DatabaseStorage extends PackageStorage {}
 export class DatabaseStorage implements IStorage {
   processes: ProcessesStorage;
   variables: VariableStorage;
@@ -415,8 +413,6 @@ export class DatabaseStorage implements IStorage {
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
-  freemanCrewleads: FreemanCrewleadsStorage;
-  freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
@@ -476,6 +472,7 @@ export class DatabaseStorage implements IStorage {
   grievanceContracts: GrievanceContractStorage;
 
   constructor() {
+    Object.assign(this, createPackageStorage());
     this.processes = createProcessesStorage();
     this.variables = withStorageLogging(
       createVariableStorage(),
@@ -669,13 +666,6 @@ export class DatabaseStorage implements IStorage {
       createBaoBeneficiariesStorage(this.workers),
       baoBeneficiariesLoggingConfig,
     );
-    this.freemanCrewleads = withStorageLogging(
-      createFreemanCrewleadsStorage(),
-      freemanCrewleadsLoggingConfig,
-    );
-    // Unlogged on purpose: this is a bulk copy of legacy rows into a staging
-    // table, and per-row audit entries for a sweep would bury the log.
-    this.freemanEdlsMigrateStaging = createFreemanEdlsMigrateStagingStorage();
     this.t631Interviews = withStorageLogging(
       createT631InterviewsStorage(),
       t631InterviewsLoggingConfig,

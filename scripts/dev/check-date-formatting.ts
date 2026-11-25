@@ -227,7 +227,7 @@ function listWorkingTreeFiles(): string[] {
 }
 
 function isScanned(file: string): boolean {
-  if (!SCANNED_PREFIXES.some((p) => file.startsWith(p))) return false;
+  if (!SCANNED_PREFIXES.some((p) => file.startsWith(p)) && !/^components\/[^/]+\/client\//.test(file)) return false;
   if (!SCANNED_EXTENSIONS.some((e) => file.endsWith(e))) return false;
   if (EXEMPT_FILES.has(file)) return false;
   return true;

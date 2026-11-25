@@ -1,10 +1,12 @@
 import type { Config } from "tailwindcss";
 
 export default {
+  // Package pages use the same shared design system as the host application.
   darkMode: ["class"],
   content: [
     "./client/index.html",
     "./client/src/**/*.{js,jsx,ts,tsx}",
+    "./components/*/client/**/*.{js,jsx,ts,tsx}",
     // Scan rjsf-shadcn's compiled JS so the JIT picks up utility
     // classes baked into its widgets (e.g. CommandItem's
     // `data-[selected=true]:bg-accent`). Without this glob those

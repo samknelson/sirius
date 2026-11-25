@@ -4,7 +4,8 @@ import { storage } from '../storage';
 import { logger, logWsRequest } from '../logger';
 import type { WsClient, WsClientCredential } from '@shared/schema';
 import { wcRequest } from '../services/webclient/client';
-import type { FreemanAuthorizationResult } from '../plugins/wc-vendors/plugins/sitespecific-freeman-authorization';
+import type { WcVendorOperations } from "../plugins/wc-vendors/types";
+type BearerAuthorizationResult = WcVendorOperations["sitespecific.freeman.authorization.bearer"]["result"];
 
 const FREEMAN_AUTHORIZATION_CONFIG_KEY = 'freemanBearerAuthorizationConfigId';
 const FREEMAN_AUTHORIZATION_OPERATION = 'sitespecific.freeman.authorization.bearer' as const;
@@ -173,7 +174,7 @@ async function authenticateFreemanBearer(
     );
   }
 
-  const result = response.value as FreemanAuthorizationResult | undefined;
+  const result = response.value as BearerAuthorizationResult | undefined;
   if (!result) {
     return freemanFailure(
       client,

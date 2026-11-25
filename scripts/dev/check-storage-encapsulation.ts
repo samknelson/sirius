@@ -17,7 +17,7 @@
  * Usage: npx tsx scripts/dev/check-storage-encapsulation.ts
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { join, relative, dirname } from 'path';
 
 interface Violation {
@@ -85,7 +85,7 @@ const READONLY_FLAG_EXEMPT_FILES = [
 ];
 
 function isInAllowedDirectory(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
+  const normalized = filePath.replace(/\\/g, '/').replace(/^components\/[^/]+\//, '');
   return ALLOWED_DIRECTORIES.some(dir => normalized.startsWith(dir + '/'));
 }
 
@@ -162,7 +162,7 @@ function checkFile(filePath: string): Violation[] {
   // `needsReadOnlyDb: true` in their metadata. This keeps the escape hatch
   // visible and auditable. Shared plugin-kind infrastructure is exempt via
   // READONLY_FLAG_EXEMPT_FILES.
-  const normalized = relativePath.replace(/\\/g, '/');
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^components\/[^/]+\//, '');
   if (
     normalized.startsWith('server/plugins/') &&
     /readOnly\.query\s*\(/.test(content) &&
@@ -187,6 +187,11 @@ function main() {
   
   const serverDir = join(process.cwd(), 'server');
   const files = findTsFiles(serverDir);
+  const packagesDir = join(process.cwd(), 'components');
+  if (existsSync(packagesDir)) for (const entry of readdirSync(packagesDir)) {
+    const packageServer = join(packagesDir, entry, 'server');
+    if (existsSync(packageServer) && statSync(packageServer).isDirectory()) findTsFiles(packageServer, files);
+  }
   
   const allViolations: Violation[] = [];
   

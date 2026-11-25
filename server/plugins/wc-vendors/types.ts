@@ -287,6 +287,18 @@ export interface PaymentTypeOption {
  * told so.
  */
 export interface WcVendorOperations {
+  // Retained host authentication seam until the separate full Freeman
+  // extraction. Knowing the request contract does not install its provider.
+  "sitespecific.freeman.authorization.bearer": {
+    args: { bearerCredential: string };
+    result: {
+      success: boolean;
+      outcome: "success" | "network_error" | "http_error" | "malformed_response" | "unexpected_ping_status";
+      status?: number;
+      response?: unknown;
+      error?: string;
+    };
+  };
   "service.test-connection": { args: void; result: GatewayConnectionTest };
   "payments.customer.create": { args: CreateCustomerInput; result: GatewayCustomerResult };
   "payments.customer.retrieve": { args: { customerRef: string }; result: { exists: boolean } };
