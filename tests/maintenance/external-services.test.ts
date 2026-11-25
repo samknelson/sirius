@@ -1,10 +1,8 @@
 /**
- * SAFETY: THIS ENTIRE SUITE IS INTENTIONALLY DISABLED.
- *
- * Its setup deletes paid WC cache data from whichever database the test
- * process is configured to use. Do not re-enable any suite in this file until
- * its database behavior is isolated and cannot alter shared development or
- * production data.
+ * SAFETY: all persistence is mocked before application imports. Cache misses,
+ * writes, usage counts and connection/settings reads are disposable fixtures.
+ * No configured database or real credential is used. Vendor HTTP and browser
+ * launch are blocked, with a socket-level backstop for accidental bypasses.
  *
  * Maintenance mode refuses every outbound vendor call.
  *
@@ -27,9 +25,74 @@
  * that changed, not a missing key or a broken import). `fetch` and the network
  * are stubbed to throw, so a passing run also proves nothing reached a vendor.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { wcCacheStorage } from "../../server/storage/wc-cache";
-import { getRawProcessEnv } from "../../server/config/env-registry";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Socket } from "node:net";
+
+const fixture = vi.hoisted(() => ({
+  cacheRead: vi.fn(),
+  cacheWriteSuccess: vi.fn(),
+  cacheWriteFailure: vi.fn(),
+  canStore: vi.fn(),
+  recordCall: vi.fn(),
+  getConfig: vi.fn(),
+  getByPlugin: vi.fn(),
+  getVariable: vi.fn(),
+  httpFetch: vi.fn(),
+  launch: vi.fn(),
+  forbiddenDatabase: vi.fn(() => { throw new Error("Database access forbidden in maintenance tests"); }),
+}));
+
+vi.mock("../../server/storage", () => ({
+  storage: {
+    pluginConfigs: { get: fixture.getConfig, getByKindAndPlugin: fixture.getByPlugin },
+    variables: { getByName: fixture.getVariable },
+  },
+}));
+// Do not import the real storage even to spread its exports: that loads the
+// configured connection pool. Missing methods must fail, never reach a DB.
+vi.mock("../../server/storage/wc-cache", async () => {
+  const { createHash } = await import("node:crypto");
+  return {
+    wcRequestKeyHash: (key: string) => createHash("sha256").update(key).digest("hex"),
+    wcCacheStorage: {
+      read: fixture.cacheRead,
+      writeSuccess: fixture.cacheWriteSuccess,
+      writeFailure: fixture.cacheWriteFailure,
+      canStore: fixture.canStore,
+    },
+  };
+});
+vi.mock("../../server/storage/wc-stats", () => ({
+  wcStatsStorage: { recordCall: fixture.recordCall },
+}));
+vi.mock("../../server/storage/transaction-context", () => ({
+  runOutsideTransaction: (run: () => unknown) => run(),
+}));
+vi.mock("../../server/storage/db", () => ({
+  db: new Proxy({}, { get: fixture.forbiddenDatabase }),
+  pool: new Proxy({}, { get: fixture.forbiddenDatabase }),
+  registerPoolCheckoutInitializer: fixture.forbiddenDatabase,
+}));
+vi.mock("../../server/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+vi.mock("../../server/config/env-registry", () => ({
+  registerEnvironmentVariable: vi.fn(),
+  registerEnvironmentVariables: vi.fn(),
+  getEnvironmentVariable: (name: string) =>
+    name === "MAINTENANCE_TEST_CREDENTIAL" ? "SG.fixture-never-sent" : undefined,
+}));
+vi.mock("../../server/plugins/_core/gating", () => ({
+  isPluginComponentEnabledAsync: async () => true,
+}));
+vi.mock("../../server/flood/service", () => ({
+  enforceConfiguredFloodLimits: async () => undefined,
+  FloodError: class FloodError extends Error {},
+}));
+vi.mock("../../server/services/webclient/vendor-http", () => ({
+  createVendorHttp: () => ({ fetch: fixture.httpFetch, throwIfRefused: () => undefined }),
+}));
+vi.mock("puppeteer-core", () => ({ default: { launch: fixture.launch } }));
 import {
   MaintenanceModeError,
   assertExternalServiceAllowed,
@@ -46,9 +109,29 @@ import { postalRequest } from "../../server/services/comm/postal-vendor";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
 } from "../../server/plugins/wc-vendors/plugins/btu-cardcheck";
-import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
 import type { PluginConfig } from "@shared/schema";
-import { migrateLegacyCivicWcVendorConfigs } from "../../server/plugins/wc-vendors";
+import "../../server/plugins/wc-vendors/plugins/sms-twilio";
+import "../../server/plugins/wc-vendors/plugins/email";
+import "../../server/plugins/wc-vendors/plugins/postal";
+
+function connection(pluginId: string): PluginConfig {
+  return {
+    id: `maintenance-${pluginId}`,
+    pluginKind: "wc-vendors",
+    pluginId,
+    enabled: true,
+    ordering: 0,
+    data: {
+      secretName: "MAINTENANCE_TEST_CREDENTIAL",
+      accountSid: `AC${"0".repeat(32)}`,
+      fromNumber: "+16175550000",
+      defaultFromEmail: "maintenance@example.com",
+      siteUrl: "https://maintenance.invalid",
+      username: "fixture",
+      chromiumPath: "/never-launch-chromium",
+    },
+  } as PluginConfig;
+}
 
 /** The address-validation shape (Google side). */
 const ADDRESS = {
@@ -144,7 +227,7 @@ function operations() {
     ["Google", "geocodeAddress", () => addressValidationService.geocodeAddress(ADDRESS)],
     ["Google", "lookupRepresentatives", () => lookupRepresentatives("1 Main St, Boston MA")],
 
-    // The two site-specific clients are written to answer rather than throw:
+    // The BTU client is written to answer rather than throw:
     // every remote and network condition comes back as a result an operator
     // reads on a diagnostics page. A refusal must NOT be converted into one of
     // those — it would report the remote system as unwell when nobody asked it
@@ -162,11 +245,34 @@ function operations() {
   ] as const;
 }
 
-/** Any network attempt is a test failure, whichever way the flag is set. */
+/** Any unmocked network attempt is a failure, even if a caller swallows it. */
 let networkAttempts: string[] = [];
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  fixture.cacheRead.mockReset().mockResolvedValue(undefined);
+  fixture.cacheWriteSuccess.mockResolvedValue(undefined);
+  fixture.cacheWriteFailure.mockResolvedValue(undefined);
+  fixture.canStore.mockResolvedValue(true);
+  fixture.recordCall.mockResolvedValue(undefined);
+  fixture.getConfig.mockImplementation(async (id: string) => connection(id.replace(/^maintenance-/, "")));
+  fixture.getByPlugin.mockImplementation(async (_kind: string, pluginId: string) => [connection(pluginId)]);
+  fixture.getVariable.mockImplementation(async (name: string) => {
+    if (name !== "address_validation_config") throw new Error(`Unexpected variable read: ${name}`);
+    return { value: {
+      mode: "google",
+      local: { enabled: true, countries: ["US"], strictValidation: true },
+      google: { enabled: true, components: {} },
+      fallback: { useLocalOnGoogleFailure: true, logValidationAttempts: false },
+    } };
+  });
+  fixture.httpFetch.mockRejectedValue(new Error("Fixture HTTP boundary reached; no request sent"));
+  fixture.launch.mockRejectedValue(new Error("Fixture browser boundary reached; no browser launched"));
   networkAttempts = [];
+  vi.spyOn(Socket.prototype, "connect").mockImplementation(function () {
+    networkAttempts.push("socket");
+    throw new Error("Real sockets forbidden in maintenance tests");
+  });
   vi.stubGlobal("fetch", (input: unknown) => {
     const url = typeof input === "string" ? input : String((input as { url?: string })?.url ?? input);
     networkAttempts.push(url);
@@ -175,11 +281,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-  setMaintenanceActive(false);
+  try {
+    expect(networkAttempts).toEqual([]);
+    expect(fixture.forbiddenDatabase).not.toHaveBeenCalled();
+  } finally {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    setMaintenanceActive(false);
+  }
 });
 
-describe.skip("the refusal itself", () => {
+describe("the refusal itself", () => {
   it("is silent when maintenance is off", () => {
     setMaintenanceActive(false);
     expect(() => assertExternalServiceAllowed("Lob", "send letter")).not.toThrow();
@@ -223,55 +335,20 @@ describe.skip("the refusal itself", () => {
   });
 });
 
-/**
- * Forget every stored answer for the services asserted below.
- *
- * The cacheable operations now answer from the web client cache when a fresh
- * answer is stored, and a stored answer is served without asking anybody —
- * during maintenance too, deliberately, because reading a stored answer is not
- * an outbound call. That includes a stored FAILURE, which is the hold that
- * stops an outage becoming a retry storm.
- *
- * This suite asks the other question: when the vendor WOULD have to be asked,
- * is it refused? So it starts from nothing stored. Without this, a run that
- * stored a failure (this suite stubs the network to throw, so the
- * maintenance-OFF half does exactly that) makes the NEXT run pass its
- * refusals off as stored answers and fail.
- */
-/**
- * Give the civic lookup a key, if this machine has none.
- *
- * The refusal now comes from inside the framework request rather than from a
- * guard at the top of the method, so the caller reads its key first. On a
- * machine without one, "no key configured" answers before maintenance mode
- * ever gets a say — a configuration difference, not the behavior under test.
- * The network is stubbed to throw either way, so the key is never used.
- */
-function ensureCivicKey(): void {
-  const env = getRawProcessEnv();
-  if (!env.GOOGLE_MAPS_API_KEY && !env.GOOGLE_CIVICS_API_KEY) {
-    env.GOOGLE_MAPS_API_KEY = "test-civic-key-never-sent";
-  }
-}
-
-async function forgetStoredAnswers(): Promise<void> {
-  for (const service of ["Google", "Census", "Twilio", "Lob"]) {
-    const rows = await wcCacheStorage.list({ service, page: 1, pageSize: 500 });
-    for (const row of rows) await wcCacheStorage.deleteById(row.id);
-  }
-}
-
-describe.skip("with maintenance ON, no vendor is reached", () => {
-  beforeAll(async () => {
-    ensureCivicKey();
-    await migrateLegacyCivicWcVendorConfigs();
-    await forgetStoredAnswers();
-  });
+// Each test starts with a mocked cache miss. Never clear the configured cache:
+// a fresh stored answer (including a failure hold) may legitimately be served
+// during maintenance, but is not the outbound path these refusal cases cover.
+describe("with maintenance ON, no vendor is reached", () => {
   beforeEach(() => setMaintenanceActive(true));
 
   for (const [service, name, run] of operations()) {
     it(`${service}.${name} refuses`, async () => {
       await expect(run()).rejects.toBeInstanceOf(MaintenanceModeError);
+      expect(fixture.httpFetch).not.toHaveBeenCalled();
+      expect(fixture.launch).not.toHaveBeenCalled();
+      expect(fixture.cacheWriteSuccess).not.toHaveBeenCalled();
+      expect(fixture.cacheWriteFailure).not.toHaveBeenCalled();
+      expect(fixture.recordCall).not.toHaveBeenCalled();
       expect(networkAttempts).toEqual([]);
     });
   }
@@ -291,47 +368,49 @@ describe.skip("with maintenance ON, no vendor is reached", () => {
   });
 
   it("local providers keep working — they call nothing external", async () => {
-    const localEmailTest = getWcVendorHandler("local-email", "service.test-connection");
-    if (!localEmailTest) throw new Error("Local Email test operation is not registered");
-    await expect(localEmailTest({
-      http: { fetch: vi.fn() },
-      credential: { value: "" },
-      config: { id: "test-local-email", pluginKind: "wc-vendors", pluginId: "local-email", enabled: true, ordering: 0 } as PluginConfig,
-    }, undefined as never)).resolves.toMatchObject({
-      status: "connected",
-    });
-    const localPostalTest = getWcVendorHandler("local-postal", "service.test-connection");
-    if (!localPostalTest) throw new Error("Local Postal test operation is not registered");
-    await expect(localPostalTest({
-      http: { fetch: vi.fn() },
-      credential: { value: "" },
-      config: { id: "test-local-postal", pluginKind: "wc-vendors", pluginId: "local-postal", enabled: true, ordering: 0 } as PluginConfig,
-    }, undefined as never)).resolves.toMatchObject({
-      status: "connected",
-    });
+    for (const pluginId of ["local-email", "local-postal"]) {
+      await expect(wcRequest({
+        vendor: { pluginId }, operation: "service.test-connection", args: undefined,
+      })).resolves.toMatchObject({ outcome: "success", value: { status: "connected" } });
+    }
+    expect(fixture.httpFetch).not.toHaveBeenCalled();
+    expect(fixture.launch).not.toHaveBeenCalled();
     expect(networkAttempts).toEqual([]);
   });
 });
 
-describe.skip("with maintenance OFF, nothing is refused", () => {
+describe("with maintenance OFF, nothing is refused", () => {
   beforeEach(() => setMaintenanceActive(false));
 
   for (const [service, name, run] of operations()) {
     it(`${service}.${name} gets past the guard`, async () => {
-      // These still fail — the network is stubbed and no vendor key is
-      // resolvable here — but they must never fail AS a maintenance refusal.
-      // That is what proves the guard, and not something else, is what
-      // maintenance mode changed.
+      // Fake connections and credentials let the real handlers reach their
+      // blocked transport. Merely "not a maintenance error" could pass because
+      // of a missing config or broken import, so assert reachability as well.
+      let result: unknown;
       try {
-        await run();
+        result = await run();
       } catch (error) {
         expect(isMaintenanceModeError(error)).toBe(false);
+      }
+      if (service === "BTU") {
+        expect(fixture.launch).toHaveBeenCalledOnce();
+      } else if (service === "Lob" && name === "testConnection") {
+        // Lob deliberately has no non-destructive remote probe. Prove the
+        // real handler ran, not just that configuration resolution succeeded.
+        expect(result).toMatchObject({
+          status: "unsupported",
+          error: { message: expect.stringContaining("no non-destructive connection probe") },
+        });
+        expect(fixture.httpFetch).not.toHaveBeenCalled();
+      } else {
+        expect(fixture.httpFetch).toHaveBeenCalled();
       }
     });
   }
 });
 
-describe.skip("leaving maintenance restores vendors live, with no restart", () => {
+describe("leaving maintenance restores vendors live, with no restart", () => {
   it("flips on the flag change, in the same process", async () => {
     setMaintenanceActive(true);
     await expect(postalRequest("lob", "communications.postal.template.list", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
@@ -344,6 +423,7 @@ describe.skip("leaving maintenance restores vendors live, with no restart", () =
       refusedAfterExit = isMaintenanceModeError(error);
     }
     expect(refusedAfterExit).toBe(false);
+    expect(fixture.httpFetch).toHaveBeenCalledOnce();
 
     setMaintenanceActive(true);
     await expect(postalRequest("lob", "communications.postal.template.list", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);

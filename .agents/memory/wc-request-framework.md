@@ -143,10 +143,13 @@ throw stores a failure on its own maintenance-off half. The next run then reads
 that failure back and never reaches the refusal, so the suite fails on the
 second run and passes on a fresh database.
 
-**How to apply:** a refusal test must start from nothing stored (clear the
-service's rows first). Related: with the credential now read by the caller
-before the framework request, a machine missing that key answers
-"not configured" before maintenance gets a say — the test has to supply one.
+**How to apply:** model cache misses at a mocked persistence boundary or in
+disposable isolated fixtures. NEVER clear a service's rows in the configured
+database: those include shared paid answers. Mock connection/settings reads,
+cache writes and usage counts too, and supply only fake credentials. A
+maintenance-off assertion must prove it reached the blocked transport (or an
+intentionally local probe's expected result), not merely that an unrelated
+configuration/import error was not a maintenance refusal.
 
 ## Going through the framework is what the lint rule checks
 
