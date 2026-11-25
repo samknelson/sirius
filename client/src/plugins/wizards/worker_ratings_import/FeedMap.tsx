@@ -1,1 +1,1 @@
-export { FeedMap } from "@/components/wizards/framework/feed/FeedMap";
+export { FeedMap } from "../../../../../components/worker.ratings/client/src/plugins/wizards/worker_ratings_import/FeedMap";

@@ -29,7 +29,10 @@ extraction so they could understand the architectural choices first.
 
 **How to apply:** A separately approved extraction can replace registrations
 and invocation boundaries for its named components only; it does not broaden
-the scope of other relocation-only tasks.
+the scope of other relocation-only tasks. In relocation-only work, update
+import and schema paths as needed, but retain existing registration ownership
+and invocation behavior. Do not use relocation as permission to extract hooks
+or change dependencies.
 
 Absence verification must reach full route registration, not just compilation
 or a report-only boot.
@@ -40,3 +43,14 @@ registry has closed; both installed startup and absence builds can still pass.
 
 **How to apply:** Exercise a complete boot in isolation for each removal
 combination, and ensure core declarations have an unconditional early owner.
+Worker children follow the same relocation-only boundary. A component with no
+exclusive implementation may have only a transitional manifest; do not move
+shared authentication just to fill its directory. Fixed browser glob entries may
+remain thin forwarders during relocation.
+
+**Why:** The user explicitly excluded authentication extraction, new registration
+designs and permanent relocation/UI tests from this stage.
+
+**How to apply:** Preserve central registration and use focused existing tests
+plus temporary smoke checks. Review removability and browser discovery contracts
+separately before replacing the retained host integration.

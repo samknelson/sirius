@@ -110,7 +110,7 @@ import {
 } from "./system/entity-metadata-seed";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
-import { type WorkerBadgesDenormStorage, createWorkerBadgesDenormStorage } from "./system/worker-badges-denorm";
+import { type WorkerBadgesDenormStorage, createWorkerBadgesDenormStorage } from "../../components/worker.badges/server/storage/system/worker-badges-denorm";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
@@ -142,7 +142,7 @@ import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } fr
 import { type DispatchJobForeStorage, createDispatchJobForeStorage, dispatchJobForeLoggingConfig } from "../../components/dispatch.fore/server/storage/dispatch/fore";
 import { type DispatchJobFacilityStorage, createDispatchJobFacilityStorage, dispatchJobFacilityLoggingConfig } from "./dispatch/facility";
 import { type DispatchJobEventStorage, createDispatchJobEventStorage } from "../../components/dispatch.bullpen/server/storage/dispatch/job-events";
-import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
+import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "../../components/worker.steward/server/storage/worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
@@ -158,12 +158,12 @@ import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesS
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../../components/dispatch.dnc/server/storage/dispatch/worker-dnc";
 import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "../../components/dispatch.department/server/storage/dispatch/worker-departments";
 import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "../../components/dispatch.department/server/storage/dispatch/job-departments";
-import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
-import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./workers/tos";
-import { type WorkerAatStorage, createWorkerAatStorage, workerAatLoggingConfig } from "./workers/aat";
-import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
-import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./workers/ratings";
-import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
+import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "../../components/worker.skills/server/storage/workers/skills";
+import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "../../components/worker.tos/server/storage/workers/tos";
+import { type WorkerAatStorage, createWorkerAatStorage, workerAatLoggingConfig } from "../../components/worker.aat/server/storage/workers/aat";
+import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "../../components/worker.certifications/server/storage/workers/certifications";
+import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "../../components/worker.ratings/server/storage/workers/ratings";
+import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "../../components/worker.relations/server/storage/workers/relations";
 import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
 import { type TrustBenefitEligibilityExemptionsStorage, createTrustBenefitEligibilityExemptionsStorage, trustBenefitEligibilityExemptionsLoggingConfig } from "./trust/eligibility-exemptions";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";

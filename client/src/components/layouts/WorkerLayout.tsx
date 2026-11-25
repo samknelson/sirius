@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Worker, Contact, WorkerTos } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
 import { useVariableValue } from "@/lib/use-variable";
-import { TOS_BANNER_VARIABLE_NAME, TOS_BANNER_DEFAULT_HTML } from "@/lib/worker-tos-banner";
+import { TOS_BANNER_VARIABLE_NAME, TOS_BANNER_DEFAULT_HTML } from "../../../../components/worker.tos/client/src/lib/worker-tos-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

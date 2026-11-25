@@ -19,7 +19,7 @@ import './employer/manage';
 import './employer/view';
 import './employer/mine';
 import './employer/ledger';
-import './employer/steward-view';
+import '../../components/worker.steward/shared/access-policies/employer/steward-view';
 
 import './worker/list';
 import './worker/view';

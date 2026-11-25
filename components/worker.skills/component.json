@@ -1,0 +1,4 @@
+{
+  "coreRegistered": true,
+  "schema": ["shared/schema/worker/skills/schema.ts"]
+}

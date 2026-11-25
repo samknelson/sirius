@@ -1,6 +1,5 @@
-import { storage } from "../../../../../../../server/storage";
+import { storage, WorkerTosConflictError } from "../../../../../../../server/storage";
 import { logger } from "../../../../../../../server/logger";
-import { WorkerTosConflictError } from "../../../../../../../server/storage/workers/tos";
 
 interface T631TosNode {
   nid?: unknown;

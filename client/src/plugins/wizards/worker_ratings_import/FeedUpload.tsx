@@ -1,1 +1,1 @@
-export { FeedUpload } from "@/components/wizards/framework/feed/FeedUpload";
+export { FeedUpload } from "../../../../../components/worker.ratings/client/src/plugins/wizards/worker_ratings_import/FeedUpload";

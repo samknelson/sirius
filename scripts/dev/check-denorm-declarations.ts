@@ -378,7 +378,7 @@ function main() {
     for (const absPath of allFiles) {
       const file = relative(cwd, absPath).replace(/\\/g, "/");
       // The storage layer itself and this lint are exempt.
-      if (file.startsWith("server/storage/")) continue;
+      if (file.replace(/^components\/[^/]+\//, "").startsWith("server/storage/")) continue;
       if (file === "scripts/dev/check-denorm-declarations.ts") continue;
 
       const content = readFileSync(absPath, "utf-8");

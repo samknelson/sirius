@@ -1,7 +1,7 @@
 import { registerDenormPlugin } from "../../registry";
 import type { DenormPlugin } from "../../types";
 import { EventType } from "../../../../../services/event-bus";
-import { createWorkerSkillStorage } from "../../../../../storage/workers/skills";
+import { createWorkerSkillStorage } from "../../../../../../components/worker.skills/server/storage/workers/skills";
 import {
   type DispatchEligDenormPayload,
   dispatchEligBackfill,

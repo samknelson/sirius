@@ -419,7 +419,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/steward/schema.ts",
+      schemaPath: "./components/worker.steward/shared/schema/worker/steward/schema.ts",
       tables: ["worker_steward_assignments"]
     },
     permissions: [
@@ -438,7 +438,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/skills/schema.ts",
+      schemaPath: "./components/worker.skills/shared/schema/worker/skills/schema.ts",
       tables: ["options_skills", "worker_skills"]
     }
   },
@@ -451,7 +451,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/certifications/schema.ts",
+      schemaPath: "./components/worker.certifications/shared/schema/worker/certifications/schema.ts",
       tables: ["options_certifications", "worker_certifications"]
     }
   },
@@ -464,7 +464,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/badges/schema.ts",
+      schemaPath: "./components/worker.badges/shared/schema/worker/badges/schema.ts",
       tables: ["options_worker_badge_types", "worker_badges_denorm"],
     },
   },
@@ -477,7 +477,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/ratings/schema.ts",
+      schemaPath: "./components/worker.ratings/shared/schema/worker/ratings/schema.ts",
       tables: ["options_worker_ratings", "worker_ratings"]
     }
   },
@@ -490,7 +490,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/tos/schema.ts",
+      schemaPath: "./components/worker.tos/shared/schema/worker/tos/schema.ts",
       tables: ["worker_tos"]
     }
   },
@@ -503,7 +503,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/aat/schema.ts",
+      schemaPath: "./components/worker.aat/shared/schema/worker/aat/schema.ts",
       tables: ["worker_aat"]
     }
   },
@@ -516,7 +516,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/worker/relations/schema.ts",
+      schemaPath: "./components/worker.relations/shared/schema/worker/relations/schema.ts",
       tables: ["options_worker_relation_type", "worker_relations"]
     }
   },

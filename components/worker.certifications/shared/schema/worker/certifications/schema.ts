@@ -1,0 +1,53 @@
+import { foreignKey, pgTable, varchar, jsonb, unique, date, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+import { workers } from "../../../../../../shared/schema";
+
+export const optionsCertifications = pgTable("options_certifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  siriusId: varchar("sirius_id", { length: 100 }),
+  data: jsonb("data"),
+}, (table) => ({
+  uniqueSiriusId: unique().on(table.siriusId),
+}));
+
+export const insertOptionsCertificationsSchema = createInsertSchema(optionsCertifications).omit({
+  id: true,
+});
+
+export type OptionsCertification = typeof optionsCertifications.$inferSelect;
+export type InsertOptionsCertification = z.infer<typeof insertOptionsCertificationsSchema>;
+
+export const workerCertificationStatusEnum = pgEnum("worker_certification_status", [
+  "pending",
+  "granted",
+  "revoked",
+  "expired",
+]);
+
+export const workerCertifications = pgTable("worker_certifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  certificationId: varchar("certification_id").notNull(),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  status: workerCertificationStatusEnum("status").notNull().default("pending"),
+  denormActive: boolean("denorm_active").notNull().default(false),
+  data: jsonb("data"),
+}, (table) => [
+  foreignKey({
+    name: "worker_certifications_certification_id_options_certifications_i",
+    columns: [table.certificationId],
+    foreignColumns: [optionsCertifications.id],
+  }).onDelete("cascade"),
+]);
+
+export const insertWorkerCertificationSchema = createInsertSchema(workerCertifications).omit({
+  id: true,
+  denormActive: true,
+});
+
+export type WorkerCertification = typeof workerCertifications.$inferSelect;
+export type InsertWorkerCertification = z.infer<typeof insertWorkerCertificationSchema>;

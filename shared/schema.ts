@@ -1223,7 +1223,7 @@ export {
   insertWorkerStewardAssignmentSchema,
   type WorkerStewardAssignment,
   type InsertWorkerStewardAssignment,
-} from "./schema/worker/steward/schema";
+} from "../components/worker.steward/shared/schema/worker/steward/schema";
 
 export {
   sitespecificBtuCsg,
@@ -1488,7 +1488,7 @@ export {
   insertWorkerSkillsSchema,
   type WorkerSkill,
   type InsertWorkerSkill,
-} from "./schema/worker/skills/schema";
+} from "../components/worker.skills/shared/schema/worker/skills/schema";
 
 export {
   optionsWorkerBadgeTypes,
@@ -1499,7 +1499,7 @@ export {
   type InsertWorkerBadgeType,
   type WorkerBadgeDenorm,
   type InsertWorkerBadgeDenorm,
-} from "./schema/worker/badges/schema";
+} from "../components/worker.badges/shared/schema/worker/badges/schema";
 
 export {
   optionsCertifications,
@@ -1511,7 +1511,7 @@ export {
   insertWorkerCertificationSchema,
   type WorkerCertification,
   type InsertWorkerCertification,
-} from "./schema/worker/certifications/schema";
+} from "../components/worker.certifications/shared/schema/worker/certifications/schema";
 
 export {
   optionsWorkerRatings,
@@ -1522,21 +1522,21 @@ export {
   insertWorkerRatingsSchema,
   type WorkerRating,
   type InsertWorkerRating,
-} from "./schema/worker/ratings/schema";
+} from "../components/worker.ratings/shared/schema/worker/ratings/schema";
 
 export {
   workerTos,
   insertWorkerTosSchema,
   type WorkerTos,
   type InsertWorkerTos,
-} from "./schema/worker/tos/schema";
+} from "../components/worker.tos/shared/schema/worker/tos/schema";
 
 export {
   workerAat,
   insertWorkerAatSchema,
   type WorkerAat,
   type InsertWorkerAat,
-} from "./schema/worker/aat/schema";
+} from "../components/worker.aat/shared/schema/worker/aat/schema";
 
 export {
   optionsWorkerRelationType,
@@ -1547,7 +1547,7 @@ export {
   insertWorkerRelationSchema,
   type WorkerRelation,
   type InsertWorkerRelation,
-} from "./schema/worker/relations/schema";
+} from "../components/worker.relations/shared/schema/worker/relations/schema";
 
 export {
   workerTrustElections,

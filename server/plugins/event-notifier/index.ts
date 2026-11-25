@@ -370,13 +370,13 @@ export function initializeEventNotifierPluginSystem(): void {
 export { ALL_NOTIFICATION_MEDIA };
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "./plugins/steward-assignment-notifier";
+import "../../../components/worker.steward/server/plugins/event-notifier/plugins/steward-assignment-notifier";
 import "./plugins/trust-wmb-scan";
 import "./plugins/grievance-assignment-notifier";
 import "./plugins/grievance-settlement-notifier";
 import "./plugins/grievance-status-notifier";
 import "./plugins/grievance-deadline-notifier";
-import "./plugins/tos-absence-notifier";
+import "../../../components/worker.tos/server/plugins/event-notifier/plugins/tos-absence-notifier";
 import "./plugins/edls-sheet-status-notifier";
 import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
