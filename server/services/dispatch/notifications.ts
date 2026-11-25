@@ -13,7 +13,7 @@ import type {
   NotificationMedia,
 } from "@shared/schema/dispatch/eligibility-config";
 import type { Comm } from "@shared/schema";
-import { absoluteUrl } from "../../lib/base-url";
+import { absoluteUrl } from "../../utils/base-url";
 
 const SERVICE_NAME = "dispatch-notifications";
 const COMPONENT_ID = "dispatch";

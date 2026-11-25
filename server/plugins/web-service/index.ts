@@ -58,7 +58,7 @@ function registerWebServiceKind(): void {
     validateConfig: async (plugin, config) => {
       if (!plugin.configSchema) return { valid: true };
       const { validateAgainstSchema } = await import(
-        "../../lib/json-schema-validator"
+        "../../utils/json-schema-validator"
       );
       const { alias: _alias, ...rest } = (config ?? {}) as Record<string, unknown>;
       const result = validateAgainstSchema(plugin.configSchema, rest);

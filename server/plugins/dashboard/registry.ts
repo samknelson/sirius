@@ -7,7 +7,7 @@ import { getEffectiveUser } from "../../modules/masquerade";
 import { checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../../modules/components";
 import type { User } from "@shared/schema";
-import { validateAgainstSchema } from "../../lib/json-schema-validator";
+import { validateAgainstSchema } from "../../utils/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
 import { normalizeDashboardRefresh, type DashboardRefreshSettings } from "@shared/dashboard-refresh";
 import type { PluginConfig } from "@shared/schema";

@@ -7,7 +7,7 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "../../../../../../server/plugins/event-notifier/types";
-import { absoluteUrl } from "../../../../../../server/lib/base-url";
+import { absoluteUrl } from "../../../../../../server/utils/base-url";
 
 function payloadOf(ctx: EventNotifierEventContext): GrievanceDeadlineReminderPayload {
   return ctx.payload as GrievanceDeadlineReminderPayload;

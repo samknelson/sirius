@@ -67,7 +67,7 @@ import { getWcVendorPlugin } from "../../../server/plugins/wc-vendors/registry";
 import { setMaintenanceActive } from "../../../server/services/maintenance-flag";
 import { WcEndpointPolicyError, WcRateLimitError } from "../../../server/services/webclient/refusals";
 import { FloodError } from "../../../server/flood/service";
-import { validateAgainstSchema } from "../../../server/lib/json-schema-validator";
+import { validateAgainstSchema } from "../../../server/utils/json-schema-validator";
 import { manualSchemas, validateAsk } from "../../contract.chat/server/contract";
 
 const ask: ContractChatArgs = {

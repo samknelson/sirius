@@ -8,7 +8,7 @@ import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { fileSystemService } from "../services/files/index.js";
-import { validateAgainstSchema } from "../lib/json-schema-validator";
+import { validateAgainstSchema } from "../utils/json-schema-validator";
 
 const upload = multer({
   storage: multer.memoryStorage(),

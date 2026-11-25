@@ -1,6 +1,6 @@
 import type { JsonSchema } from "@shared/json-schema-form";
 import { PluginRegistry } from "../_core";
-import { validateAgainstSchema } from "../../lib/json-schema-validator";
+import { validateAgainstSchema } from "../../utils/json-schema-validator";
 import type {
   QuicksearchPlugin,
   QuicksearchManifestEntry,

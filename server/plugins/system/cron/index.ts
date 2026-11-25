@@ -32,7 +32,7 @@ function registerCronKind(): void {
     validateConfig: async (plugin, config) => {
       if (!plugin.configSchema) return { valid: true };
       const { validateAgainstSchema } = await import(
-        "../../../lib/json-schema-validator"
+        "../../../utils/json-schema-validator"
       );
       const result = validateAgainstSchema(
         plugin.configSchema,

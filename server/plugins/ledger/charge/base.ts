@@ -6,7 +6,7 @@ import type {
   LedgerEntryVerification,
 } from "./types";
 import type { ChargePluginConfig, Ledger } from "@shared/schema";
-import { validateAgainstSchema } from "../../../lib/json-schema-validator";
+import { validateAgainstSchema } from "../../../utils/json-schema-validator";
 
 export abstract class ChargePlugin {
   abstract readonly metadata: ChargePluginMetadata;

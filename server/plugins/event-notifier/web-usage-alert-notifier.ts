@@ -2,7 +2,7 @@ import { escapeHtml } from "@shared/utils/html/escape";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import { getTodayYmd, type Ymd } from "@shared/utils/date";
 import { EventType } from "../../services/event-bus";
-import { absoluteUrl } from "../../lib/base-url";
+import { absoluteUrl } from "../../utils/base-url";
 import { logger, storageLogger } from "../../logger";
 import { usageAlertMessageSendKey } from "../../services/web-usage-alerts";
 import type { FindUsageCrossings, UsageCrossing } from "./usage-alert-crossings";

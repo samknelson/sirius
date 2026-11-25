@@ -33,7 +33,7 @@ import {
   SESSION_HISTORY_CLEANUP_LIMIT,
 } from "../components/system.session_history/server/plugins/system/data-retention/plugins/sessionHistory";
 import { runDataRetention } from "../server/plugins/system/data-retention/sweep";
-import { validateAgainstSchema } from "../server/lib/json-schema-validator";
+import { validateAgainstSchema } from "../server/utils/json-schema-validator";
 
 beforeEach(() => {
   vi.resetAllMocks();

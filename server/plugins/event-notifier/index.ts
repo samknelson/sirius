@@ -188,7 +188,7 @@ function registerEventNotifierKind(): void {
       }
       if (!plugin.configSchema) return { valid: true };
       const { validateAgainstSchema } = await import(
-        "../../lib/json-schema-validator"
+        "../../utils/json-schema-validator"
       );
       const { media: _media, ...rest } = cfg;
       const result = validateAgainstSchema(plugin.configSchema, rest);

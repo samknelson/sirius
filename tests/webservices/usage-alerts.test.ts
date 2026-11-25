@@ -18,7 +18,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../server/lib/base-url", () => ({
+vi.mock("../../server/utils/base-url", () => ({
   absoluteBaseUrl: () => "https://example.test",
   absoluteUrl: (relative: string) => `https://example.test${relative}`,
 }));

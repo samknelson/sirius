@@ -23,7 +23,7 @@
  */
 import { randomUUID } from "crypto";
 import { storage } from "../../server/storage";
-import { absoluteUrl } from "../../server/lib/base-url";
+import { absoluteUrl } from "../../server/utils/base-url";
 import { loadComponentCache, updateComponentCache } from "../../server/services/component-cache";
 import {
   enableComponentSchema,

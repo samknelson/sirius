@@ -5,7 +5,7 @@ import type {
   BaseEligibilityConfig,
 } from "./types";
 import { baseEligibilityConfigSchema } from "./types";
-import { validateAgainstSchema } from "../../../lib/json-schema-validator";
+import { validateAgainstSchema } from "../../../utils/json-schema-validator";
 
 /**
  * Base class for trust eligibility plugins. Each subclass declares its

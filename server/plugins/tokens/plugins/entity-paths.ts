@@ -1,7 +1,7 @@
 import { logger } from "../../../logger";
-// Static import: `server/lib/base-url` is a thin wrapper over the env
+// Static import: `server/utils/base-url` is a thin wrapper over the env
 // registry, itself a pure leaf module with no imports at all.
-import { absoluteBaseUrl } from "../../../lib/base-url";
+import { absoluteBaseUrl } from "../../../utils/base-url";
 import {
   onTokenPluginRegistered,
   registerTokenPlugin,

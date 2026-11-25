@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { storage } from "../../storage";
 import { logger } from "../../logger";
-import { validateAgainstSchema } from "../../lib/json-schema-validator";
+import { validateAgainstSchema } from "../../utils/json-schema-validator";
 import { enforcePluginGating } from "../_core";
 import { wizardPluginRegistry } from "./registry";
 import { buildContentDisposition } from "../../utils/content-disposition";

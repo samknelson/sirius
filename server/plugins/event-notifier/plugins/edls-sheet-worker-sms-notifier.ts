@@ -6,7 +6,7 @@ import {
   EventType,
   type EdlsSheetSavedPayload,
 } from "../../../services/event-bus";
-import { absoluteUrl } from "../../../lib/base-url";
+import { absoluteUrl } from "../../../utils/base-url";
 import { logger } from "../../../logger";
 import { registerEventNotifier } from "../registry";
 import { templatesSchemaBlock } from "../template-schema";

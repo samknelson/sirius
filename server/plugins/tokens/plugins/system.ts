@@ -99,7 +99,7 @@ registerTokenPlugin({
     example: "https://example.com",
   },
   async resolve(_entity, _args, _ctx) {
-    const { absoluteBaseUrl } = await import("../../../lib/base-url");
+    const { absoluteBaseUrl } = await import("../../../utils/base-url");
     return absoluteBaseUrl();
   },
 });

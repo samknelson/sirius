@@ -9,7 +9,7 @@ import {
 } from "../../../../../../server/plugins/event-notifier/types";
 import { optionsGrievanceRoles } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { absoluteUrl } from "../../../../../../server/lib/base-url";
+import { absoluteUrl } from "../../../../../../server/utils/base-url";
 
 function payloadOf(ctx: EventNotifierEventContext): GrievanceAssignmentSavedPayload {
   return ctx.payload as GrievanceAssignmentSavedPayload;

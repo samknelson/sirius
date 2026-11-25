@@ -207,7 +207,7 @@ vi.mock("../../server/services/snapshots/capture", () => ({
   isSnapshotCaptureActive: async () => scenario.captureActive ?? true,
 }));
 
-vi.mock("../../server/lib/base-url", () => ({
+vi.mock("../../server/utils/base-url", () => ({
   absoluteBaseUrl: () => "https://example.test",
   absoluteUrl: (relative: string) => `https://example.test${relative}`,
 }));

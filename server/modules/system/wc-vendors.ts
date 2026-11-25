@@ -9,7 +9,7 @@ import {
   getWcVendorOperationManifest,
 } from "../../plugins/wc-vendors";
 import { wcRequest } from "../../services/webclient";
-import { validateAgainstSchema } from "../../lib/json-schema-validator";
+import { validateAgainstSchema } from "../../utils/json-schema-validator";
 import { addDaysYmd, getTodayYmd } from "@shared/utils/date";
 import type { WcVendorOperationName } from "../../plugins/wc-vendors/types";
 import type { JsonSchema } from "@shared/json-schema-form";

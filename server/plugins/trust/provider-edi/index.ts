@@ -31,7 +31,7 @@ function registerTrustProviderEdiKind(): void {
     sortEntries: (a, b) => a.id.localeCompare(b.id),
     validateConfig: async (plugin, config) => {
       if (!plugin.configSchema) return { valid: true };
-      const { validateAgainstSchema } = await import("../../../lib/json-schema-validator");
+      const { validateAgainstSchema } = await import("../../../utils/json-schema-validator");
       const result = validateAgainstSchema(plugin.configSchema, config);
       if (result.valid) return { valid: true };
       return { valid: false, errors: result.errors ?? ["Invalid configuration"] };
