@@ -18,6 +18,8 @@ export const COVERAGE_READINESS_OPERATIONS = [
   "scan_worker_requeue",
   "scan_worker_reset",
   "scan_worker_bulk_reset",
+  // Historical name (DB check constraint): retained terminations of any
+  // provenance handed off when their scan result becomes available again.
   "scan_completion_inferred_evidence",
   "wmb_scan_completion_handoff",
   "migration_termination_reconciliation",

@@ -500,26 +500,30 @@ describe("maintained coverage on isolated PostgreSQL", () => {
       .toEqual([false, true, undefined, undefined, undefined, undefined]);
   });
 
-  it("invalidates spans at scan completion only for retained inferred evidence", async () => {
+  it("invalidates spans at scan completion for retained evidence an unchanged rewrite would miss", async () => {
     await pool.query(`
       INSERT INTO trust_wmb_scan_status(id,month,year,scope_type,status,queued_at)
         VALUES ('handoff-run',4,2026,'all','running',now()),
                ('plain-run',4,2026,'all','running',now()),
-               ('confirmed-run',4,2026,'all','running',now())
+               ('confirmed-run',4,2026,'all','running',now()),
+               ('rescanned-run',4,2026,'all','running',now())
         ON CONFLICT (id) DO NOTHING;
       INSERT INTO trust_wmb_scan_queue(id,status_id,worker_id,month,year,status,trigger_source)
         VALUES ('handoff-job','handoff-run','handoff-owner',4,2026,'processing','test'),
                ('plain-job','plain-run','plain-owner',4,2026,'processing','test'),
-               ('confirmed-job','confirmed-run','confirmed-owner',4,2026,'processing','test')
+               ('confirmed-job','confirmed-run','confirmed-owner',4,2026,'processing','test'),
+               ('rescanned-job','rescanned-run','rescanned-owner',4,2026,'processing','test')
         ON CONFLICT (id) DO NOTHING;
       INSERT INTO trust_wmb_events(id,worker_id,benefit_id,year,month,event_type,data)
         VALUES ('inferred-event','inferred-worker','benefit',2026,4,'terminate',
           '{"provenance":"coverage_inferred"}'),
                ('confirmed-inferred-event','confirmed-worker','benefit',2026,4,'terminate',
-          '{"provenance":"coverage_inferred"}')
+          '{"provenance":"coverage_inferred"}'),
+               ('rescanned-event','rescanned-worker','benefit',2026,4,'terminate',
+          '{"failedPlugins":[]}')
         ON CONFLICT (id) DO UPDATE SET data=excluded.data;
     `);
-    for (const entityId of ["inferred-worker", "plain-worker", "confirmed-worker"])
+    for (const entityId of ["inferred-worker", "plain-worker", "confirmed-worker", "rescanned-worker"])
       await status.upsertStatus({ ...seed, entityId, status: "ok" });
 
     const queue = createWmbScanQueueStorage();
@@ -542,6 +546,19 @@ describe("maintained coverage on isolated PostgreSQL", () => {
       entityId: "confirmed-worker", entityType: "worker", configId: "terminate-config",
     }]);
 
+    // A reset scan's spans were computed without its result. When it completes
+    // again with identical evidence, the terminate rewrite is unchanged, so the
+    // completion itself must send the retained scan-backed ending back.
+    await queue.recordJobResult("rescanned-job", true, {
+      people: [{ workerId: "rescanned-worker" }],
+      actions: [{ workerId: "rescanned-worker", benefitId: "benefit", scanType: "continue", eligible: false }],
+    }, undefined, [{
+      entityId: "rescanned-worker", entityType: "worker", configId: "terminate-config",
+    }]);
+    await createTrustWmbEventsStorage().replaceForWorkerAndType("rescanned-worker", "terminate", [
+      { benefitId: "benefit", year: 2026, month: 4, data: { failedPlugins: [] } },
+    ]);
+    expect(await status.get("rescanned-worker", "config")).toMatchObject({ status: "stale" });
     expect(await status.get("inferred-worker", "config")).toMatchObject({ status: "stale" });
     expect(await status.get("plain-worker", "config")).toMatchObject({ status: "ok" });
     expect(await status.get("confirmed-worker", "config")).toMatchObject({ status: "ok" });
@@ -556,14 +573,14 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     expect(attribution.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({
         operation: "scan_completion_inferred_evidence",
-        call_count: "1",
-        affected_count: "1",
+        call_count: "2",
+        affected_count: "2",
         last_affected_count: 1,
       }),
       expect.objectContaining({
         operation: "wmb_scan_completion_handoff",
-        call_count: "3",
-        affected_count: "3",
+        call_count: "4",
+        affected_count: "4",
         last_affected_count: 1,
       }),
     ]));

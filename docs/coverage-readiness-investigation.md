@@ -455,6 +455,53 @@ path, and a fresh successful coverage-only check with subsequent
 producer/drain observation. The batch remains operator-paused unless
 reported otherwise.
 
+### Post-scan evidence at 2026-11-25 18:54 UTC and scan-reset handoff defect
+
+GitHub deployment records show `Staging` deployed `d63567789` (which
+contains the current-only producer correction) successfully at
+**2026-11-22 22:33 UTC**. The saved check finished **11/25 09:20:50**
+(display time) and listed 21 examples; the reader caps examples, so 21 is
+not the total. The operator's read-only totals at
+**2026-11-25 18:54:35.587+00** were **1,600** `termination-coverage-missing`,
+**159** `unsupported-termination` and **8** `contradicted-inference`
+issues across all months for the span configuration.
+
+November classification (benefit/month scoped, no identifiers):
+
+| Class | Snapshot prior month | Later October deletion | Terminate computed (naive) | Issues |
+| --- | --- | --- | --- | ---: |
+| Missing coverage, scan-backed | absent | no | 11/20 04:46 – 11/22 15:25 | 252 |
+| Missing coverage, scan-backed | present | yes | 11/20 09:12 – 11/23 15:22 | 326 |
+| Missing coverage, inferred | n/a | yes | 11/20 12:07 – 11/23 12:42 | 57 |
+| Unsupported, scan-backed | present | no | 11/21 14:00 – 11/23 15:30 | 129 |
+| Unsupported, scan-backed | present | yes | 11/21 22:36 | 1 |
+
+None had unfinished October/November scan work; all terminate rows were OK.
+
+* **252 absent-snapshot cases:** exactly what the deployed producer
+  correction excludes, but their terminate rows were last computed before
+  the 22:33 rollout. Nothing re-invalidates a producer when its code changes.
+  Recovery is a bounded terminate recompute of these owners (operator
+  authorization required), after which changed events invalidate spans.
+* **130 unsupported cases (demonstrated defect, fixed locally):** a supporting
+  November scan exists now. Scan reset/requeue nulls the result summary and
+  invalidates spans; spans recompute while the scan is pending and correctly
+  find no support. When the scan completes with identical evidence, the
+  terminate rewrite is unchanged, so no span invalidation followed. Only
+  inferred events had a completion handoff. The correction hands off every
+  retained termination for the completed scan's month and people (inferred
+  rows confirmed by the scan still rely on their real replacement write).
+  A regression test fails without the change. The counter keeps the
+  historical `scan_completion_inferred_evidence` name because of its DB
+  check constraint. Existing affected rows still need a bounded span
+  recompute after rollout.
+* **326 + 57 later-October-deletion cases:** source-authority decision, as
+  before; no code change is justified.
+* The ~965 non-November and 8 contradicted-inference issues remain
+  unclassified.
+
+**Staging remains unresolved.** No staging writes were performed.
+
 ### Initial access and deployment observations
 
 **Unresolved. No staging recovery is established.** The operator's latest

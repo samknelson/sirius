@@ -799,8 +799,10 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         // processing being durably enqueued (a crash or write failure rolls
         // both back and the job is retried). The completion-event handler
         // recomputes immediately. Semantic termination changes invalidate
-        // spans from their owning write; inferred events also need a targeted
-        // handoff because the span reader observes scan-summary availability.
+        // spans from their owning write. Every retained ending in this month
+        // also needs a targeted handoff: the span reader judges it against
+        // scan-summary availability, so a reset scan that completes again with
+        // identical evidence leaves no event change to invalidate spans.
         for (const seed of staleSeed ? (Array.isArray(staleSeed) ? staleSeed : [staleSeed]) : []) {
           const now = new Date();
           await tx
@@ -862,9 +864,10 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
             SELECT to_regclass('public.trust_wmb_events') IS NOT NULL AS present
           `);
           if (eventTable.rows[0]?.present === true) {
-            const inferred = await tx.select({
+            const retained = await tx.select({
               workerId: trustWmbEvents.workerId,
               benefitId: trustWmbEvents.benefitId,
+              inferred: sql<boolean>`coalesce(${trustWmbEvents.data}->>'provenance' = 'coverage_inferred', false)`,
             })
               .from(trustWmbEvents)
               .where(and(
@@ -872,15 +875,18 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
                 eq(trustWmbEvents.year, job.year),
                 eq(trustWmbEvents.month, job.month),
                 eq(trustWmbEvents.eventType, "terminate"),
-                sql`${trustWmbEvents.data}->>'provenance' = 'coverage_inferred'`,
               ));
             const confirmedByThisScan = new Set((summary.actions ?? [])
               .filter(action => action && !action.executionError && action.scanType === "continue" &&
                 (action.eligible === false || action.action === "delete") &&
                 typeof action.benefitId === "string")
               .map(action => `${typeof action.workerId === "string" ? action.workerId : job.workerId}\u0000${action.benefitId}`));
-            const recipientsNeedingDirectInvalidation = inferred
-              .filter(row => !confirmedByThisScan.has(`${row.workerId}\u0000${row.benefitId}`))
+            // A confirmed collision always replaces an inferred row (a real
+            // event change that invalidates from its owning write). Scan-backed
+            // rows may be rewritten unchanged, so they always hand off here.
+            const recipientsNeedingDirectInvalidation = retained
+              .filter(row => !row.inferred ||
+                !confirmedByThisScan.has(`${row.workerId}\u0000${row.benefitId}`))
               .map(row => row.workerId);
             await runWithTransaction(tx, () => enqueueCoverageSpanInvalidations(
               [...new Set(recipientsNeedingDirectInvalidation)],
