@@ -537,6 +537,23 @@ export function isPathInSection(activeItemPath: string | null, section: NavSecti
   return false;
 }
 
+// Install whole sections first, so item contributions can target sections
+// supplied by another component regardless of discovery order. Identities are
+// global (including subsections): never silently replace a core/owned section.
+const sectionIds = new Set<string>();
+function registerSectionIds(sections: NavSection[]): void {
+  for (const section of sections) {
+    if (sectionIds.has(section.id)) throw new Error(`Conflicting configuration section: ${section.id}`);
+    sectionIds.add(section.id);
+    registerSectionIds(section.subsections ?? []);
+  }
+}
+registerSectionIds(configSections);
+for (const contribution of componentBrowserContributions) {
+  registerSectionIds(contribution.configSections ?? []);
+  configSections.push(...contribution.configSections ?? []);
+}
+
 for (const contribution of componentBrowserContributions) for (const {section, item} of contribution.navigation ?? []) {
   const find = (sections: NavSection[]): NavSection | undefined => {
     for (const s of sections) { if (s.id === section) return s; const child = find(s.subsections ?? []); if (child) return child; }

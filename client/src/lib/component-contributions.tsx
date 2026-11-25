@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import type { InsertEdlsCrew } from "@shared/schema";
-import type { NavItem } from "../config/navigation-registry";
+import type { NavItem, NavSection } from "../config/navigation-registry";
 import { componentBrowserContributions } from "../generated/component-contributions";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -11,6 +11,7 @@ export interface CrewExtensionProps {
 }
 export interface ComponentBrowserContributions {
   routes?: { path: string; page: ComponentType<any> }[];
+  configSections?: NavSection[];
   navigation?: { section: string; item: NavItem }[];
   crewUi?: { component: string; editor: ComponentType<CrewExtensionProps>; detail: ComponentType<CrewExtensionProps> }[];
 }

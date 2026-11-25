@@ -28,3 +28,25 @@ All data is synthetic, including an expired-contract warning and citation.
 Configure `scenario` as normal (default), refusal, truncated, budget_exceeded,
 rate_limited, or service_error. Routing questions exactly `ask` and `none`
 exercise those outcomes. Feedback returns `persisted:false`.
+
+## Settings
+
+Administrators can open **Configuration → Contract Chat → Settings** at
+`/config/contract-chat` when `contract.chat` is enabled. First create a connection
+in **Plugins → Webclient Vendors** (`/admin/plugin-configs/wc-vendors`).
+The selector offers enabled, component-available saved configurations declaring
+all five Contract Chat operations, independently of automatic operation assignments.
+
+The component-owned contract is in `shared/settings.ts`. The core by-name
+variable endpoints persist `contract_chat_settings` as a JSON object:
+`{ "providerConfigId": "<saved configuration ID>" }`, or
+`{ "providerConfigId": null }` for an explicit no-provider choice. A missing
+variable also means no provider. This is a configuration ID, not a vendor plugin
+ID. Default core variable access remains administrator-only for both reads and
+writes; there is no new route, permission, or migration.
+
+Unavailable saved IDs stay visible until explicitly replaced or cleared.
+Malformed settings require an explicit replacement; failed reads cannot be
+saved over. This page only records a choice for future consumers: it does not
+resolve a runtime provider, change operation assignments, test a connection,
+or send provider requests. No implicit default is selected.
