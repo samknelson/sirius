@@ -731,7 +731,4 @@ registerEnvironmentVariables([
   { name: "ECS_CONTAINER_METADATA_URI", description: "Amazon ECS task metadata endpoint (v3), the older spelling of the above.", secret: false, category: "platform", changeTakesEffect: "immediate", },
   { name: "AWS_EXECUTION_ENV", description: "Name of the AWS runtime executing this process, e.g. AWS_ECS_FARGATE.", secret: false, category: "platform", changeTakesEffect: "immediate", },
   { name: "KUBERNETES_SERVICE_HOST", description: "Kubernetes API service address, injected into every pod by the kubelet.", secret: false, category: "platform", changeTakesEffect: "immediate", },
-  { name: "DEFAULT_OBJECT_STORAGE_BUCKET_ID", description: "Replit object storage default bucket id.", secret: false, category: "platform", changeTakesEffect: "restart", },
-  { name: "PUBLIC_OBJECT_SEARCH_PATHS", description: "Comma-separated public search paths in object storage.", secret: false, category: "platform", changeTakesEffect: "restart", },
-  { name: "PRIVATE_OBJECT_DIR", description: "Private directory prefix in object storage.", secret: false, category: "platform", changeTakesEffect: "restart", },
 ]);
