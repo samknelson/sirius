@@ -1270,13 +1270,6 @@ export {
 } from "../components/system.sftp.client/shared/schema/system/sftp-client-schema";
 
 export {
-  sessionHistory,
-  insertSessionHistorySchema,
-  type SessionHistory,
-  type InsertSessionHistory,
-} from "../components/system.session_history/shared/schema/system/session-history-schema";
-
-export {
   pluginConfigsTrustProviderEdi,
   insertPluginConfigTrustProviderEdiSchema,
   type PluginConfigTrustProviderEdi,

@@ -3,6 +3,7 @@ import { componentStartups } from "./generated/component-startups";
 // Core hook declarations must precede closure even when no optional component
 // imports them. The route module invoking this hook loads later in boot.
 import "@shared/tab-visibility";
+import "./auth/sign-in-events";
 import type { Server } from "http";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -11,7 +12,6 @@ import { logger } from "./logger";
 import { initAccessControl, registerEntityLoader, clearAccessCache } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { initializeSessionHistoryListener } from "../components/system.session_history/server/services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { installCronShutdownHooks } from "./cron/shutdown";
@@ -310,7 +310,6 @@ export async function bootstrapApp(
   // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
   // without writing anything. See `server/services/boot/bringup.ts`.
   await runSchemaBringUp();
-  initializeSessionHistoryListener(storage.sessionHistory);
 
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that

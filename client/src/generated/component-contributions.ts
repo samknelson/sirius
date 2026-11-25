@@ -16,4 +16,5 @@ import { contributions as contribution12 } from "./../../../components/sitespeci
 import { contributions as contribution13 } from "./../../../components/sitespecific.freeman.edls_migrate/client/src/contributions";
 import { contributions as contribution14 } from "./../../../components/sitespecific.t631.client/client/src/contributions";
 import { contributions as contribution15 } from "./../../../components/sitespecific.t631.interviews/client/src/contributions";
-export const componentBrowserContributions: ComponentBrowserContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5, contribution6, contribution7, contribution8, contribution9, contribution10, contribution11, contribution12, contribution13, contribution14, contribution15];
+import { contributions as contribution16 } from "./../../../components/system.session_history/client/src/contributions";
+export const componentBrowserContributions: ComponentBrowserContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5, contribution6, contribution7, contribution8, contribution9, contribution10, contribution11, contribution12, contribution13, contribution14, contribution15, contribution16];

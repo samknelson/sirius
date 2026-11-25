@@ -11,10 +11,10 @@ const mocks = vi.hoisted(() => ({
   permissions: [] as string[],
   components: [] as string[],
 }));
-vi.mock("../../server/storage", () => ({ storage: {
+vi.mock("../../../../server/storage", () => ({ storage: {
   users: { getUser: mocks.user }, sessionHistory: { getUserPage: mocks.page },
 } }));
-vi.mock("../../server/services/access-policy-evaluator", () => ({
+vi.mock("../../../../server/services/access-policy-evaluator", () => ({
   clearAccessCache: vi.fn(),
   requireAccess: (permission: string) => {
     mocks.permissions.push(permission);
@@ -22,23 +22,20 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
       mocks.admin ? next() : res.status(403).json({ message: "Access denied" });
   },
 }));
-vi.mock("../../server/modules/components", () => ({
+vi.mock("../../../../server/modules/components", () => ({
   requireComponent: (component: string) => {
     mocks.components.push(component);
     return (_req: Request, res: Response, next: NextFunction) =>
       mocks.enabled ? next() : res.status(403).json({ error: "component_disabled" });
   },
 }));
-vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: vi.fn() }));
-vi.mock("../../server/services/clerk-provisioning", () => ({ checkClerkConflict: vi.fn(), provisionClerkAccount: vi.fn() }));
-vi.mock("../../server/modules/system/timezone", () => ({ buildTimeZoneContext: vi.fn(), getTimeZonePolicy: vi.fn() }));
-import { registerUserRoutes } from "../../server/modules/users";
+import { registerSessionHistoryRoutes } from "../../server/modules/session-history";
 
 let server: http.Server;
 let url: string;
 beforeAll(async () => {
   const app = express();
-  registerUserRoutes(app, (_req, _res, next) => next(), () => (_req, _res, next) => next());
+  registerSessionHistoryRoutes(app);
   server = http.createServer(app);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/admin/users/target/session_history`;

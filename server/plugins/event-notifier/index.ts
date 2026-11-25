@@ -368,7 +368,6 @@ import "./plugins/edls-sheet-status-notifier";
 import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
 import "./plugins/cardcheck-status-notifier";
-import "../../../components/system.session_history/server/plugins/event-notifier/plugins/new-ip-sign-in";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";
 import "./plugins/ws-usage-plugin-alert";

@@ -112,6 +112,16 @@ consumer owns its failure policy: propagate for ordinary computations, or catch
 and deny for authorization. Do not silently recover by granting from an earlier
 callback. Log the safe identity at the consuming boundary.
 
+`auth.sign-in.history-decision` is deliberately different from authorization.
+Core authentication has already established the session; optional history may
+capture/classify the immutable private observation and return decisions only.
+Core catches availability/callback failures, discards all intermediate results,
+and continues generic sign-in event delivery with null history decisions.
+Only an explicit successful `restored-session` classification suppresses that
+event. Neither the hook context nor arbitrary callback errors are published or
+projected in catalogs. The history component registers its implementation through
+`startup.register` before closure; registration itself reads no history tables.
+
 `comm.view` validates the ID first, calculates the existing broad read grant,
 then runs the hook. Its EDLS implementation leaves grants unchanged, verifies the
 communication exists, obtains stored links and loads fresh sheets before

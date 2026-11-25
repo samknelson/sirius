@@ -6,7 +6,18 @@ const fakes = vi.hoisted(() => ({
   error: vi.fn(),
   context: { deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2" } as { deviceId?: string },
 }));
-vi.mock("../../components/system.session_history/server/services/session-history", () => ({ recordSuccessfulSignIn: fakes.record }));
+vi.mock("../../shared/alter", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../shared/alter")>();
+  return { ...actual, alterHooks: {
+    declare: (declaration: unknown) => declaration,
+    run: (_hook: unknown, _previous: unknown, observation: unknown) => fakes.record(observation),
+  } };
+});
+vi.mock("../../server/services/event-bus", () => ({
+  EventType: { AUTH_SIGN_IN_AFTER: "auth.sign-in.after" },
+  eventBus: { emit: vi.fn().mockResolvedValue(undefined) },
+}));
+vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: (fn: () => unknown) => fn() }));
 vi.mock("../../server/middleware/request-context", () => ({
   getRequestContext: () => ({ ipAddress: "::ffff:192.0.2.10", userId: "not-the-session-owner", userAgent: "Browser/1 (supplied)", ...fakes.context }),
 }));
@@ -27,7 +38,7 @@ const user = { providerType: "local", dbUser: { id: "actual-session-owner" } };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fakes.record.mockResolvedValue(undefined);
+  fakes.record.mockResolvedValue({ ipDecision: null, deviceDecision: null });
   fakes.context.deviceId = "f865a51a-3656-4e89-bded-dd9e9da3b4c2";
 });
 

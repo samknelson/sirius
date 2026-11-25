@@ -16,8 +16,12 @@ relocation only; the history service also orchestrates generic sign-in delivery.
 Moving that service is not permission to extract shared authentication.
 
 **How to apply:** Reuse existing session save/touch events and normal manifest
-contributions. A later extraction needs separate approval for the typed
-history observer/enricher, not a new lifecycle bus or parallel loader.
+contributions. The approved history extraction uses a typed private-context
+decision alter, not an observer registry or a new lifecycle bus. Its core
+consumer deliberately catches failures, discards intermediate decisions and
+delivers null decisions; an unavailable/failed enrichment is not restoration.
+Keep this fail-open policy local to optional enrichment, never authentication
+authority or global alter execution.
 
 SFTP removal must coordinate its mandatory Trust Provider EDI dependent, or
 remain core-registered. Preserve both FTP and SFTP functionality and the real

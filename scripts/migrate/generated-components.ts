@@ -37,4 +37,7 @@ import "./../../components/sitespecific.freeman/scripts/migrate/core/1024_drop_f
 import "./../../components/sitespecific.freeman/scripts/migrate/components/sitespecific.freeman/001_create_crewleads";
 import "./../../components/sitespecific.freeman.edls_migrate/scripts/migrate/components/sitespecific.freeman.edls_migrate/001_create_staging";
 import "./../../components/sitespecific.t631.interviews/scripts/migrate/components/sitespecific.t631.interviews/001_create_job_interviews";
+import "./../../components/system.session_history/scripts/migrate/components/system.session_history/001_create_session_history";
+import "./../../components/system.session_history/scripts/migrate/components/system.session_history/002_add_device_id";
+import "./../../components/system.session_history/scripts/migrate/components/system.session_history/003_require_user_id";
 export {};

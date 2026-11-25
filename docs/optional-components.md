@@ -120,6 +120,12 @@ wholly own (schema, plugins, storage, routes modules, policies, pages) into
 Making one removable later means adding a definition, replacing the core
 imports with registrations, and dropping `coreRegistered`.
 
+`system.session_history` has completed this transition. Its directory owns
+capture, the history API/page, retention/notifier registrations and migrations.
+Removal keeps all saved observations, settings and migration counters. Core
+successful-login observation and safe sign-in events remain available without
+it, with null history decisions; normal session persistence is independent.
+
 ## Discovery and registration
 
 `npm run components:discover` (`scripts/optional-components.ts`) generates

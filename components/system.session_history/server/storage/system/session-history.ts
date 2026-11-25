@@ -1,4 +1,4 @@
-import { sessionHistory, type InsertSessionHistory } from "@shared/schema";
+import { sessionHistory, type InsertSessionHistory } from "../../../shared/schema/system/session-history-schema";
 import { and, asc, count, desc, eq, lt, sql } from "drizzle-orm";
 import { getClient, runInTransaction } from "../../../../../server/storage/transaction-context";
 import { createHash } from "node:crypto";

@@ -7,25 +7,25 @@ const state = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
   afterCommit: undefined as Array<() => void> | undefined,
 }));
-vi.mock("../../server/storage/transaction-context", () => ({
+vi.mock("../../../../server/storage/transaction-context", () => ({
   getClient: () => state.client,
   runInTransaction: (fn: () => unknown) => fn(),
   runOutsideTransaction: (fn: () => unknown) => fn(),
   onAfterCommit: (fn: () => void) => state.afterCommit ? state.afterCommit.push(fn) : fn(),
 }));
-vi.mock("../../server/storage/maintenance", () => ({
+vi.mock("../../../../server/storage/maintenance", () => ({
   allowInMaintenanceMode: (fn: () => unknown) => fn(),
 }));
-vi.mock("../../server/middleware/request-context", () => ({ getRequestContext: () => state.context }));
-vi.mock("../../server/services/event-bus", () => ({
+vi.mock("../../../../server/middleware/request-context", () => ({ getRequestContext: () => state.context }));
+vi.mock("../../../../server/services/event-bus", () => ({
   EventType: { SESSION_SAVE_AFTER: "session.save.after", SESSION_TOUCH_AFTER: "session.touch.after" },
   eventBus: { emit: state.emit },
 }));
-vi.mock("../../server/logger", () => ({ logger: { error: vi.fn() } }));
-import { createSessionStorage } from "../../server/storage/system/sessions";
-import { createSessionHistoryStorage } from "../../components/system.session_history/server/storage/system/session-history";
-import { insertSessionHistorySchema, type InsertSessionHistory } from "../../components/system.session_history/shared/schema/system/session-history-schema";
-import { onSessionAuthorityEnded } from "../../server/auth/socket-authority";
+vi.mock("../../../../server/logger", () => ({ logger: { error: vi.fn() } }));
+import { createSessionStorage } from "../../../../server/storage/system/sessions";
+import { createSessionHistoryStorage } from "../../server/storage/system/session-history";
+import { insertSessionHistorySchema, type InsertSessionHistory } from "../../shared/schema/system/session-history-schema";
+import { onSessionAuthorityEnded } from "../../../../server/auth/socket-authority";
 
 beforeEach(() => {
   state.context = { ipAddress: "192.0.2.1", userAgent: "Browser/2" };

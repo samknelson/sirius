@@ -9,5 +9,6 @@ import { createStorage as create6 } from "./../../components/grievance.settlemen
 import { createStorage as create7 } from "./../../components/sitespecific.freeman/server/storage";
 import { createStorage as create8 } from "./../../components/sitespecific.freeman.edls_migrate/server/storage";
 import { createStorage as create9 } from "./../../components/sitespecific.t631.interviews/server/storage";
-export function createComponentStorage() { return {...create0(), ...create1(), ...create2(), ...create3(), ...create4(), ...create5(), ...create6(), ...create7(), ...create8(), ...create9()}; }
+import { createStorage as create10 } from "./../../components/system.session_history/server/storage";
+export function createComponentStorage() { return {...create0(), ...create1(), ...create2(), ...create3(), ...create4(), ...create5(), ...create6(), ...create7(), ...create8(), ...create9(), ...create10()}; }
 export type ComponentStorage = ReturnType<typeof createComponentStorage>;

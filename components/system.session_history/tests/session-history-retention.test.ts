@@ -11,7 +11,7 @@ const fakes = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock("../server/storage", () => ({
+vi.mock("../../../server/storage", () => ({
   storage: {
     sessionHistory: {
       countBefore: fakes.countBefore,
@@ -21,19 +21,19 @@ vi.mock("../server/storage", () => ({
     pluginConfigs: { getByKindAndPlugin: fakes.configs },
   },
 }));
-vi.mock("../server/plugins/system/data-retention/registry", () => ({
+vi.mock("../../../server/plugins/system/data-retention/registry", () => ({
   registerDataRetentionPlugin: fakes.register,
   dataRetentionPluginRegistry: { list: fakes.list },
 }));
-vi.mock("../server/plugins/_core", () => ({ isPluginComponentEnabledSync: fakes.enabled }));
-vi.mock("../server/logger", () => ({ logger: { error: fakes.error } }));
+vi.mock("../../../server/plugins/_core", () => ({ isPluginComponentEnabledSync: fakes.enabled }));
+vi.mock("../../../server/logger", () => ({ logger: { error: fakes.error } }));
 
 import {
   sessionHistoryRetentionPlugin as plugin,
   SESSION_HISTORY_CLEANUP_LIMIT,
-} from "../components/system.session_history/server/plugins/system/data-retention/plugins/sessionHistory";
-import { runDataRetention } from "../server/plugins/system/data-retention/sweep";
-import { validateAgainstSchema } from "../server/utils/json-schema-validator";
+} from "../server/plugins/system/data-retention/plugins/sessionHistory";
+import { runDataRetention } from "../../../server/plugins/system/data-retention/sweep";
+import { validateAgainstSchema } from "../../../server/utils/json-schema-validator";
 
 beforeEach(() => {
   vi.resetAllMocks();

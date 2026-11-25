@@ -16,4 +16,5 @@ import * as startup11 from "./../../components/sitespecific.freeman.authorizatio
 import * as startup12 from "./../../components/sitespecific.freeman.edls_migrate/server/startup";
 import * as startup13 from "./../../components/sitespecific.t631.client/server/startup";
 import * as startup14 from "./../../components/sitespecific.t631.interviews/server/startup";
-export const componentStartups: ComponentStartup[] = [startup0, startup1, startup2, startup3, startup4, startup5, startup6, startup7, startup8, startup9, startup10, startup11, startup12, startup13, startup14];
+import * as startup15 from "./../../components/system.session_history/server/startup";
+export const componentStartups: ComponentStartup[] = [startup0, startup1, startup2, startup3, startup4, startup5, startup6, startup7, startup8, startup9, startup10, startup11, startup12, startup13, startup14, startup15];

@@ -44,7 +44,9 @@ vi.mock("../../server/middleware/request-context", () => ({
   captureRequestIpContext: (_req: any, _res: any, next: any) => next(),
   getRequestContext: () => undefined,
 }));
-vi.mock("../../components/system.session_history/server/services/session-history", () => ({ recordSuccessfulSignIn: vi.fn() }));
+vi.mock("../../server/auth/sign-in-events", () => ({
+  observeSuccessfulSignIns: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 vi.mock("../../server/auth/provider-loader", () => ({
   loadProvider: async () => ({
     type: "local",

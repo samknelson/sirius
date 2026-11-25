@@ -211,7 +211,6 @@ const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-dele
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
 const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
-const UserSessionHistory = lazy(() => import("../../components/system.session_history/client/src/pages/admin/user-session-history"));
 
 const UserDashboardPage = lazy(() => import("@/pages/admin/user-dashboard"));
 const UserEmail = lazy(() => import("@/pages/admin/user-email"));
@@ -3760,14 +3759,6 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="user">
           <AuthenticatedLayout>
             <UserLogs />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/users/:id/session_history">
-        <ProtectedRoute tabId="session_history" entityType="user">
-          <AuthenticatedLayout>
-            <UserSessionHistory />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

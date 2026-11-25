@@ -646,7 +646,6 @@ export const userTabTree: HierarchicalTab[] = [
   },
   { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/users/{id}/dashboard', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
-  { id: 'session_history', label: 'Session History', hrefTemplate: '/users/{id}/session_history', permission: 'admin', component: 'system.session_history' },
 ];
 
 /**

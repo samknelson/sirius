@@ -122,7 +122,6 @@ import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, card
 import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig, setCardcheckStorageDeps } from "./cardchecks";
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./system/sessions";
-import { type SessionHistoryStorage, createSessionHistoryStorage } from "../../components/system.session_history/server/storage/system/session-history";
 import { type ProcessesStorage, createProcessesStorage } from "./system/processes";
 import { type FloodStorage, createFloodStorage } from "./system/flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
@@ -228,7 +227,6 @@ export interface IStorage extends ComponentStorage {
   cardchecks: CardcheckStorage;
   esigs: EsigStorage;
   sessions: SessionStorage;
-  sessionHistory: SessionHistoryStorage;
   flood: FloodStorage;
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
@@ -342,7 +340,6 @@ export class DatabaseStorage implements IStorage {
   cardchecks: CardcheckStorage;
   esigs: EsigStorage;
   sessions: SessionStorage;
-  sessionHistory: SessionHistoryStorage;
   flood: FloodStorage;
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
@@ -575,7 +572,6 @@ export class DatabaseStorage implements IStorage {
       sessionLoggingConfig,
     );
     // Internal observations: no audit logging and no entity metadata.
-    this.sessionHistory = createSessionHistoryStorage();
     this.flood = createFloodStorage();
     this.events = withStorageLogging(createEventStorage(), eventLoggingConfig);
     this.eventOccurrences = withStorageLogging(createEventOccurrenceStorage(), eventOccurrenceLoggingConfig);

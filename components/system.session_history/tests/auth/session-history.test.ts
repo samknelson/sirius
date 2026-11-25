@@ -9,17 +9,19 @@ const fakes = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: fakes.enabled }));
-vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: fakes.outside }));
-vi.mock("../../server/logger", () => ({ logger: { error: fakes.error } }));
-vi.mock("../../server/services/event-bus", () => ({
+vi.mock("../../../../server/services/component/cache", () => ({ isComponentEnabledSync: fakes.enabled }));
+vi.mock("../../../../server/storage/transaction-context", () => ({ runOutsideTransaction: fakes.outside }));
+vi.mock("../../../../server/logger", () => ({ logger: { error: fakes.error } }));
+vi.mock("../../../../server/services/event-bus", () => ({
   EventType: { SESSION_SAVE_AFTER: "session.save.after", SESSION_TOUCH_AFTER: "session.touch.after", AUTH_SIGN_IN_AFTER: "auth.sign-in.after" },
   eventBus: { on: fakes.on, emit: fakes.emit },
 }));
 
-import { createSessionHistoryHandler, initializeSessionHistoryListener, recordSuccessfulSignIn } from "../../components/system.session_history/server/services/session-history";
-import { normalizeSessionIp } from "../../server/auth/session-ip";
-import { captureRequestIpContext, getRequestContext, requestContext } from "../../server/middleware/request-context";
+import { createSessionHistoryHandler, initializeSessionHistoryListener } from "../../server/services/session-history";
+import { recordSuccessfulSignIn } from "../../../../server/auth/sign-in-events";
+import { alterHooks } from "../../../../shared/alter";
+import { normalizeSessionIp } from "../../../../server/auth/session-ip";
+import { captureRequestIpContext, getRequestContext, requestContext } from "../../../../server/middleware/request-context";
 
 const transition = {
   sid: "synthetic-session",
@@ -157,6 +159,7 @@ describe("session history capture", () => {
     const history = { create: vi.fn(), recordSignIn: fakes.recordSignIn };
     initializeSessionHistoryListener(history);
     initializeSessionHistoryListener(history);
+    alterHooks.close({ isKnown: () => true, isEnabled: fakes.enabled });
     expect(fakes.on.mock.calls.map(([options]) => options.event)).toEqual([
       "session.save.after", "session.touch.after",
     ]);

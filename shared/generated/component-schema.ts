@@ -12,4 +12,5 @@ export * from "./../../components/grievance.settlement/shared/schema/grievance/s
 export * from "./../../components/sitespecific.freeman/shared/schema/sitespecific/freeman/schema";
 export * from "./../../components/sitespecific.freeman.edls_migrate/shared/schema/sitespecific/freeman/edls-migrate-schema";
 export * from "./../../components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema";
+export * from "./../../components/system.session_history/shared/schema/system/session-history-schema";
 export {};

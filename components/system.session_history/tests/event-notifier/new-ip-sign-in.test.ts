@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EventNotifierEventContext } from "../../server/plugins/event-notifier/types";
+import type { EventNotifierEventContext } from "../../../../server/plugins/event-notifier/types";
 
 const fakes = vi.hoisted(() => ({
   enabled: vi.fn(() => true),
@@ -9,23 +9,23 @@ const fakes = vi.hoisted(() => ({
   optin: vi.fn(),
   variable: vi.fn(),
 }));
-vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: fakes.enabled }));
-vi.mock("../../server/logger", () => ({ logger: { warn: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
-vi.mock("../../server/storage", () => ({
+vi.mock("../../../../server/services/component/cache", () => ({ isComponentEnabledSync: fakes.enabled }));
+vi.mock("../../../../server/logger", () => ({ logger: { warn: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
+vi.mock("../../../../server/storage", () => ({
   storage: {
     users: { getUser: fakes.user },
     variables: { getByName: fakes.variable },
     contacts: { getContactByEmail: fakes.contact, phoneNumbers: { getPhoneNumbersByContact: fakes.phones } },
   },
 }));
-vi.mock("../../server/storage/comm", () => ({
+vi.mock("../../../../server/storage/comm", () => ({
   createCommSmsOptinStorage: () => ({ getSmsOptinByPhoneNumber: fakes.optin }),
 }));
 
-import { EventType } from "../../server/services/event-bus";
-import { newIpSignInNotifier as plugin } from "../../components/system.session_history/server/plugins/event-notifier/plugins/new-ip-sign-in";
-import { resolveTemplates, composeFromTemplates } from "../../server/plugins/event-notifier/token-templates";
-import { notifierTokenRootNames } from "../../server/plugins/event-notifier/token-roots";
+import { EventType } from "../../../../server/services/event-bus";
+import { newIpSignInNotifier as plugin } from "../../server/plugins/event-notifier/plugins/new-ip-sign-in";
+import { resolveTemplates, composeFromTemplates } from "../../../../server/plugins/event-notifier/token-templates";
+import { notifierTokenRootNames } from "../../../../server/plugins/event-notifier/token-roots";
 
 const ctx: EventNotifierEventContext = {
   event: EventType.AUTH_SIGN_IN_AFTER, configId: "config-a",
@@ -132,8 +132,8 @@ describe("new IP sign-in notifier", () => {
     expect(custom.inapp?.title).toBe("[{{system.site_name}}] New login detected");
   });
   it("previews sample session details with the real configured seedless site name", async () => {
-    const { renderTokens, createTokenEvalContext } = await import("../../server/plugins/tokens");
-    const { storage } = await import("../../server/storage");
+    const { renderTokens, createTokenEvalContext } = await import("../../../../server/plugins/tokens");
+    const { storage } = await import("../../../../server/storage");
     const preview = createTokenEvalContext(storage, undefined, { sample: true });
     const result = await renderTokens("{{session.ip}} / {{session.user_agent}} / {{system.site_name}}", preview, { strictUnknown: true });
     expect(result.unknownTokens).toEqual([]);

@@ -110,7 +110,6 @@ describe("notifier template authoring eligibility", () => {
     expect(kind.requiredPolicy).toBe("admin");
     const entries = await kind.decorateEntries!([
       { id: "edls-sheet-worker-sms-notifier", name: "Worker" },
-      { id: "new-ip-sign-in", name: "Sign-in" },
     ], {} as never) as EventNotifierManifestEntry[];
     expect(configReads.mock.calls).toEqual([["event-notifier"]]);
     const worker = entries.find(entry => entry.id === "edls-sheet-worker-sms-notifier")!;
@@ -119,9 +118,5 @@ describe("notifier template authoring eligibility", () => {
     expect(groups.removed_sms["x-token-hidden"]).toBeUndefined();
     expect(groups.email["x-token-hidden"]).toBe(true);
     expect(groups.inapp["x-token-hidden"]).toBe(true);
-    const signIn = entries.find(entry => entry.id === "new-ip-sign-in")!;
-    for (const group of Object.values(groupsOf(signIn.configSchema as Record<string, unknown>))) {
-      expect(group["x-token-hidden"]).toBeUndefined();
-    }
   });
 });

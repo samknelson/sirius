@@ -1,10 +1,12 @@
-import { eventBus, EventType, type SessionSaveAfterPayload, type SessionTransitionPayload, type SignInAfterPayload } from "../../../../server/services/event-bus";
+import { eventBus, EventType, type SessionSaveAfterPayload, type SessionTransitionPayload } from "../../../../server/services/event-bus";
 import { isComponentEnabledSync } from "../../../../server/services/component/cache";
 import { runOutsideTransaction } from "../../../../server/storage/transaction-context";
 import type { SessionHistoryStorage } from "../storage/system/session-history";
 import { logger } from "../../../../server/logger";
 import { suppliedSessionUserAgent, withSessionUserAgent } from "../../../../shared/session-device";
 import { getRequestContext } from "../../../../server/middleware/request-context";
+import { alterHooks } from "../../../../shared/alter";
+import { signInHistoryDecisionHook } from "../../../../server/auth/sign-in-events";
 
 export function createSessionHistoryHandler(
   history: Pick<SessionHistoryStorage, "create">,
@@ -49,12 +51,24 @@ export function createSessionHistoryHandler(
 }
 
 let initialized = false;
-let signInHistory: Pick<SessionHistoryStorage, "recordSignIn"> | undefined;
-
-export function initializeSessionHistoryListener(history: Pick<SessionHistoryStorage, "create"> & Partial<Pick<SessionHistoryStorage, "recordSignIn">>): void {
+export function initializeSessionHistoryListener(history: Pick<SessionHistoryStorage, "create" | "recordSignIn">): void {
   if (initialized) return;
   initialized = true;
-  if (history.recordSignIn) signInHistory = history as Pick<SessionHistoryStorage, "recordSignIn">;
+  alterHooks.register(signInHistoryDecisionHook, {
+    id: "system.session_history.sign-in-decision",
+    component: "system.session_history",
+    priority: 0,
+    description: "Record and classify the signing-in account before sign-in alerts",
+    metadata: {},
+    alter: (_previous, observation) => runOutsideTransaction(() => history.recordSignIn({
+      id: observation.occurrenceId, sid: observation.sid,
+      userId: observation.userId, ip: observation.ip,
+      deviceId: observation.deviceId ?? null,
+      timestamp: new Date(observation.occurredAt),
+      data: withSessionUserAgent(null, observation.userAgent),
+      authenticationSessionReference: observation.authenticationSessionReference,
+    })),
+  });
   const handler = createSessionHistoryHandler(history);
   eventBus.on({
     name: "session-history-save",
@@ -68,37 +82,4 @@ export function initializeSessionHistoryListener(history: Pick<SessionHistorySto
     event: EventType.SESSION_TOUCH_AFTER,
     handler,
   });
-}
-
-export async function recordSuccessfulSignIn(
-  observation: Omit<SignInAfterPayload, "ipDecision" | "deviceDecision" | "userAgent"> & { sid: string; authenticationSessionReference?: string; userAgent?: string | null; deviceId?: string | null },
-): Promise<void> {
-  let ipDecision: SignInAfterPayload["ipDecision"] = null;
-  let deviceDecision: SignInAfterPayload["deviceDecision"] = null;
-  try {
-    if (isComponentEnabledSync("system.session_history")) {
-      if (!signInHistory) throw new Error("Sign-in history capture is not initialized");
-      const decision = await runOutsideTransaction(() => signInHistory!.recordSignIn({
-        id: observation.occurrenceId, sid: observation.sid,
-        userId: observation.userId, ip: observation.ip,
-        deviceId: observation.deviceId ?? null,
-        timestamp: new Date(observation.occurredAt), data: withSessionUserAgent(null, observation.userAgent),
-        authenticationSessionReference: observation.authenticationSessionReference,
-      }));
-      ipDecision = decision.ipDecision;
-      deviceDecision = decision.deviceDecision;
-    }
-  } catch {
-    // No driver messages: they can contain the cookie identifier.
-    logger.error("Sign-in history capture failed", { service: "session-history" });
-  }
-  if (ipDecision === "restored-session") return;
-  const payload: SignInAfterPayload = Object.freeze({
-    occurrenceId: observation.occurrenceId, userId: observation.userId,
-    ip: observation.ip, occurredAt: observation.occurredAt, ipDecision, deviceDecision,
-    userAgent: suppliedSessionUserAgent(observation.userAgent),
-  });
-  // Sign-in succeeds regardless of vendor/delivery failure.
-  void runOutsideTransaction(() => eventBus.emit(EventType.AUTH_SIGN_IN_AFTER, payload))
-    .catch(() => logger.error("Sign-in event delivery failed", { service: "session-history" }));
 }
