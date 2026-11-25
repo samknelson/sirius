@@ -418,8 +418,10 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
   const metadataFile = "server/generated/component-metadata.ts";
   const metadata = components.filter(c => c.metadata);
   emit(metadataFile, [
-    ...metadata.map((c, i) => `import { metadataContexts as contexts${i} } from ${spec(metadataFile, c.metadata!)};`),
-    `export const componentMetadataContexts = {${metadata.map((_, i) => `...contexts${i}`).join(", ")}};`,
+    ...metadata.map((c, i) => `import * as metadata${i} from ${spec(metadataFile, c.metadata!)};`),
+    `export const componentMetadataContexts = {${metadata.map((_, i) => `...metadata${i}.metadataContexts`).join(", ")}};`,
+    "/** Tables a component's metadata module excludes from record history; holds while the component is disabled. */",
+    `export const componentExcludedMetadataTables: readonly string[] = [${metadata.map((_, i) => `...((metadata${i} as { excludedTables?: readonly string[] }).excludedTables ?? [])`).join(", ")}];`,
   ]);
   const browserFile = "client/src/generated/component-contributions.ts";
   const clients = components.filter(c => c.client);

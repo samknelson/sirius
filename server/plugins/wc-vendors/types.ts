@@ -6,7 +6,7 @@ import { componentContributions } from "@shared/generated/component-contribution
  * calls through the web client framework. Each configuration row names the
  * SECRET that holds the vendor's API credentials (the secret NAME, never the
  * value) — the value is resolved at use-time from the environment, mirroring
- * how client-injection resolves WEGLOT_API_KEY.
+ * how client-injection impls resolve their server-only API keys.
  *
  * Beyond metadata, the plugin owns the VENDOR-ONLY behaviour: the operations it
  * declares are pure vendor API calls that receive a resolved context carrying

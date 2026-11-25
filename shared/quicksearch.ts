@@ -10,7 +10,7 @@
 /**
  * Shortest query the framework will run at all. An individual clause inside a
  * searcher is free to demand MORE than this before it participates (a worker
- * ID or a grievance sirius id, for instance) — this is the floor, not the rule.
+ * ID or an employer sirius id, for instance) — this is the floor, not the rule.
  */
 export const QUICKSEARCH_MIN_QUERY_LENGTH = 2;
 

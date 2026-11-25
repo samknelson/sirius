@@ -21,7 +21,7 @@ import type {
  * WHERE A RECORD LIVES — ONE DECLARATION, ONE BUILDER.
  *
  * Every link in a template used to be written out by hand
- * (`{{system.base_url}}/grievance/{{grievance.field(name="id")}}`),
+ * (`{{system.base_url}}/workers/{{worker.field(name="id")}}`),
  * which made each author re-remember a route they cannot see from the
  * editor. The app already knows where everything lives: the shared tab
  * registry holds every entity's tabs and their href templates, and it is
@@ -58,7 +58,7 @@ export interface ResolvedEntityLocation {
   kind: TokenEntityType;
   /** Plugin that declared it, for diagnostics. */
   pluginId: string;
-  /** Human label of the kind ("Grievance"), for token descriptions. */
+  /** Human label of the kind ("Worker"), for token descriptions. */
   kindLabel: string;
   declaration: TokenEntityLocation;
   /** The declaring plugin's component gate, inherited by the leaves. */

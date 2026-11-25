@@ -140,8 +140,8 @@ export default function EntityFilesConfigPage() {
           Configure where file attachments are stored for each area of the app. An area with
           no configuration will not accept uploads. Switching an area on proposes the
           conventional directory{" "}
-          <code className="font-mono">&lt;area id&gt;/{DIRECTORY_TOKEN}</code> — so a grievance
-          file lands in <code className="font-mono">grievance/{DIRECTORY_TOKEN}</code> — which
+          <code className="font-mono">&lt;area id&gt;/{DIRECTORY_TOKEN}</code> — so a worker
+          file lands in <code className="font-mono">worker/{DIRECTORY_TOKEN}</code> — which
           you are free to edit. <code className="font-mono">{DIRECTORY_TOKEN}</code> is the only
           token there is, and expands to the id of the record the files hang off. Any other{" "}
           <code className="font-mono">:token</code> is rejected on save.

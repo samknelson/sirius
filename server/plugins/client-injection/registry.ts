@@ -55,7 +55,7 @@ export function registerClientInjection(plugin: ClientInjectionPlugin): void {
  * row. For each ENABLED row we look up its registered impl by `pluginId`, merge
  * the impl's static defaults with the row's editable `data`
  * ({slot,kind,src,code,attrs}), run the impl's `resolve(...)` if present (this
- * is where server-only secrets like WEGLOT_API_KEY are read — never persisted),
+ * is where server-only secrets such as a vendor API key are read — never persisted),
  * and emit the final injection. Component ownership is handled by the component
  * lifecycle toggling each owned row's `enabled` flag, so the resolver gates
  * purely on `enabled` and no longer consults `requiredComponent`.

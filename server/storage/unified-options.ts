@@ -1,5 +1,4 @@
 import { createNoopValidator } from './utils/validation';
-import { getContributedOptionsFields, declareCoreOptionsFields } from "../modules/options-contributions";
 import { getClient } from './transaction-context';
 import { eq, asc, getTableName, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
@@ -26,13 +25,6 @@ import {
   optionsWorkerMs,
   optionsWorkerRelationType,
   optionsCommTags,
-  optionsGrievanceStatus,
-  optionsGrievanceCategory,
-  optionsGrievanceSteps,
-  optionsGrievanceComplaints,
-  optionsGrievanceRemedies,
-  optionsGrievanceRoles,
-  optionsGrievanceSettlementType,
   optionsWorkerBanType,
   optionsWorkerBadgeTypes,
   insertOptionsWorkerBadgeTypeSchema,
@@ -50,40 +42,41 @@ import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
  */
 export const validate = createNoopValidator();
 
-export type OptionsTypeName = 
-  | "department"
-  | "employer-type"
-  | "employer-contact-type"
-  | "worker-id-type"
-  | "gender"
-  | "trust-benefit-type"
-  | "trust-provider-type"
-  | "worker-ws"
-  | "employment-status"
-  | "event-type"
-  | "dispatch-job-type"
-  | "ledger-payment-type"
-  | "skill"
-  | "edls-task"
-  | "edls-show-status"
-  | "certification"
-  | "worker-rating"
-  | "classification"
-  | "industry"
-  | "worker-ms"
-  | "worker-relation-type"
-  | "comm-tag"
-  | "grievance-status"
-  | "grievance-category"
-  | "grievance-step"
-  | "grievance-complaint"
-  | "grievance-remedy"
-  | "grievance-role"
-  | "grievance-settlement-type"
-  | "worker-ban-type"
-  | "worker-badge-type"
-  | "note-type"
-  | "file-type";
+/**
+ * Every declared options list. A component that declares a whole list of its
+ * own adds its type here by interface augmentation (`declare module`) and
+ * registers the definition with `registerOptionsContribution`.
+ */
+export interface OptionsTypeNames {
+  "department": true;
+  "employer-type": true;
+  "employer-contact-type": true;
+  "worker-id-type": true;
+  "gender": true;
+  "trust-benefit-type": true;
+  "trust-provider-type": true;
+  "worker-ws": true;
+  "employment-status": true;
+  "event-type": true;
+  "dispatch-job-type": true;
+  "ledger-payment-type": true;
+  "skill": true;
+  "edls-task": true;
+  "edls-show-status": true;
+  "certification": true;
+  "worker-rating": true;
+  "classification": true;
+  "industry": true;
+  "worker-ms": true;
+  "worker-relation-type": true;
+  "comm-tag": true;
+  "worker-ban-type": true;
+  "worker-badge-type": true;
+  "note-type": true;
+  "file-type": true;
+}
+
+export type OptionsTypeName = keyof OptionsTypeNames & string;
 
 /**
  * Field definition for dynamic form and table rendering
@@ -306,7 +299,7 @@ export interface OptionsWriteSchema {
   partial(): OptionsWriteSchema;
 }
 
-interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
+export interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   table: T;
   displayName: string;
   description?: string;
@@ -330,7 +323,9 @@ interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   fields: FieldDefinition[];
 }
 
-const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
+// Component-declared lists are added to this map at registration (see
+// server/modules/options-contributions.ts), so readers must not cache its keys.
+const optionsMetadata = {
   "worker-badge-type": {
     table: optionsWorkerBadgeTypes,
     displayName: "Worker Badge Type",
@@ -576,141 +571,13 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "currencyCode", label: "Currency Code", inputType: "text", required: false, placeholder: "e.g., USD", showInTable: true, columnHeader: "Currency" },
     ],
   },
-  "grievance-status": {
-    table: optionsGrievanceStatus,
-    displayName: "Grievance Status",
-    description: "Manage status options for grievances",
-    singularName: "Grievance Status",
-    pluralName: "Grievance Statuses",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceStatus",
-    requiredFields: ["name"],
-    optionalFields: ["description", "siriusId", "open", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Open, In Review, Resolved", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this status", showInTable: true, columnHeader: "Description" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-      { name: "open", label: "Open", inputType: "checkbox", required: false, default: true, helperText: "Marks whether this status represents an open grievance state", showInTable: true, columnHeader: "Open" },
-    ],
-  },
-  "grievance-category": {
-    table: optionsGrievanceCategory,
-    displayName: "Grievance Category",
-    description: "Manage category options for grievances",
-    singularName: "Grievance Category",
-    pluralName: "Grievance Categories",
-    orderByColumn: "name" as const,
-    loggingModule: "options.grievanceCategory",
-    requiredFields: ["name"],
-    optionalFields: ["description", "data"],
-    supportsSequencing: false,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Discipline, Pay, Safety", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this category", showInTable: true, columnHeader: "Description" },
-    ],
-  },
-  "grievance-step": {
-    table: optionsGrievanceSteps,
-    displayName: "Grievance Step",
-    description: "Manage step options for grievances",
-    singularName: "Grievance Step",
-    pluralName: "Grievance Steps",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceStep",
-    requiredFields: ["name", "actor"],
-    optionalFields: ["description", "siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Step 1, Mediation", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this step", showInTable: true, columnHeader: "Description" },
-      { name: "actor", label: "Actor", inputType: "enum", required: true, enumOptions: [{ value: "union", label: "Union" }, { value: "employer", label: "Employer" }], showInTable: true, columnHeader: "Actor" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "grievance-complaint": {
-    table: optionsGrievanceComplaints,
-    displayName: "Grievance Complaint",
-    description: "Manage complaint options for grievances",
-    singularName: "Grievance Complaint",
-    pluralName: "Grievance Complaints",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceComplaint",
-    requiredFields: ["name"],
-    optionalFields: ["description", "siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Wrongful Termination, Pay Dispute", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this complaint", showInTable: true, columnHeader: "Description" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "grievance-remedy": {
-    table: optionsGrievanceRemedies,
-    displayName: "Grievance Remedy",
-    description: "Manage remedy options for grievances",
-    singularName: "Grievance Remedy",
-    pluralName: "Grievance Remedies",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceRemedy",
-    requiredFields: ["name"],
-    optionalFields: ["description", "siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Reinstatement, Back Pay", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this remedy", showInTable: true, columnHeader: "Description" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "grievance-role": {
-    table: optionsGrievanceRoles,
-    displayName: "Grievance Role",
-    description: "Manage role options for grievances",
-    singularName: "Grievance Role",
-    pluralName: "Grievance Roles",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceRole",
-    requiredFields: ["name"],
-    optionalFields: ["description", "siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Grievant, Steward, Witness", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this role", showInTable: true, columnHeader: "Description" },
-      { name: "permittedSystemRoleIds", label: "Permitted System Roles", inputType: "system-roles", required: false, helperText: "Only users holding one of these system roles can be assigned this grievance role. Leave empty to allow any user.", showInTable: false, dataField: true },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "grievance-settlement-type": {
-    table: optionsGrievanceSettlementType,
-    displayName: "Grievance Settlement Type",
-    description: "Manage settlement type options for grievances",
-    singularName: "Grievance Settlement Type",
-    pluralName: "Grievance Settlement Types",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceSettlementType",
-    requiredFields: ["name"],
-    optionalFields: ["description", "siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance.settlement",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Monetary, Reinstatement, Backpay", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this settlement type", showInTable: true, columnHeader: "Description" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
+
+
+
+
+
+
+
   "worker-ban-type": {
     table: optionsWorkerBanType,
     displayName: "Worker Ban Type",
@@ -950,23 +817,8 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
-};
+} as unknown as Record<OptionsTypeName, OptionsTableMetadata<any>>; // component-declared types are installed at registration
 
-// Resolve on read: component modules are registered after this core module loads.
-for (const [type, metadata] of Object.entries(optionsMetadata)) {
-  const coreFields = metadata.fields;
-  declareCoreOptionsFields(type as OptionsTypeName, coreFields);
-  Object.defineProperty(metadata, "fields", {
-    enumerable: true,
-    get() {
-      const fields = [...coreFields, ...getContributedOptionsFields(type as OptionsTypeName)];
-      if (new Set(fields.map(field => field.name)).size !== fields.length) {
-        throw new Error(`Duplicate options field in ${type}`);
-      }
-      return fields;
-    },
-  });
-}
 export type OptionsMetadataMap = typeof optionsMetadata;
 
 export interface UnifiedOptionsStorage {

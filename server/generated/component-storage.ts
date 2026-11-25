@@ -3,8 +3,11 @@ import { createStorage as create0 } from "./../../components/dispatch.bullpen/se
 import { createStorage as create1 } from "./../../components/dispatch.department/server/storage";
 import { createStorage as create2 } from "./../../components/dispatch.dnc/server/storage";
 import { createStorage as create3 } from "./../../components/dispatch.fore/server/storage";
-import { createStorage as create4 } from "./../../components/sitespecific.freeman/server/storage";
-import { createStorage as create5 } from "./../../components/sitespecific.freeman.edls_migrate/server/storage";
-import { createStorage as create6 } from "./../../components/sitespecific.t631.interviews/server/storage";
-export function createComponentStorage() { return {...create0(), ...create1(), ...create2(), ...create3(), ...create4(), ...create5(), ...create6()}; }
+import { createStorage as create4 } from "./../../components/grievance/server/storage";
+import { createStorage as create5 } from "./../../components/grievance.contract/server/storage";
+import { createStorage as create6 } from "./../../components/grievance.settlement/server/storage";
+import { createStorage as create7 } from "./../../components/sitespecific.freeman/server/storage";
+import { createStorage as create8 } from "./../../components/sitespecific.freeman.edls_migrate/server/storage";
+import { createStorage as create9 } from "./../../components/sitespecific.t631.interviews/server/storage";
+export function createComponentStorage() { return {...create0(), ...create1(), ...create2(), ...create3(), ...create4(), ...create5(), ...create6(), ...create7(), ...create8(), ...create9()}; }
 export type ComponentStorage = ReturnType<typeof createComponentStorage>;

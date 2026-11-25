@@ -84,14 +84,6 @@ import {
   createWorkerEmploymentDenormStorage,
 } from "./system/worker-employment-denorm";
 import {
-  type GrievanceNameDenormStorage,
-  createGrievanceNameDenormStorage,
-} from "./system/grievance-name-denorm";
-import {
-  type GrievanceStepsDenormStorage,
-  createGrievanceStepsDenormStorage,
-} from "./system/grievance-steps-denorm";
-import {
   type WorkerWshDenormStorage,
   createWorkerWshDenormStorage,
 } from "./system/worker-wsh-denorm";
@@ -178,32 +170,11 @@ import { type ContractStorage, createContractStorage, contractLoggingConfig } fr
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
 import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
-import { type GrievanceStorage, createGrievanceStorage, grievanceLoggingConfig } from "./grievances/grievances";
-import {
-  type GrievanceSettlementStorage,
-  createGrievanceSettlementStorage,
-  grievanceSettlementLoggingConfig,
-} from "./grievances/grievance-settlements";
 import {
   type EntityFilesStorage,
   createEntityFilesStorage,
   entityFilesLoggingConfig,
 } from "./entity-files";
-import {
-  type GrievanceStatusHistoryStorage,
-  createGrievanceStatusHistoryStorage,
-  grievanceStatusHistoryLoggingConfig,
-} from "./grievances/grievance-status-history";
-import {
-  type GrievanceContractStorage,
-  createGrievanceContractStorage,
-  grievanceContractLoggingConfig,
-} from "./grievances/grievance-contract-links";
-import {
-  type GrievanceTimelineTemplateStorage,
-  createGrievanceTimelineTemplateStorage,
-  grievanceTimelineTemplateLoggingConfig,
-} from "./grievances/grievance-timeline-templates";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -243,8 +214,6 @@ export interface IStorage extends ComponentStorage {
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   ebs: EbsStorage;
-  grievanceNameDenorm: GrievanceNameDenormStorage;
-  grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
   entityMetadataAdmin: EntityMetadataAdminStorage;
   entityMetadataSeed: EntityMetadataSeedStorage;
@@ -325,12 +294,7 @@ export interface IStorage extends ComponentStorage {
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
   comm: CommStorage;
-  grievances: GrievanceStorage;
   letterTemplates: LetterTemplateStorage;
-  grievanceStatusHistory: GrievanceStatusHistoryStorage;
-  grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
-  grievanceSettlements: GrievanceSettlementStorage;
-  grievanceContracts: GrievanceContractStorage;
 }
 
 export interface DatabaseStorage extends ComponentStorage {}
@@ -364,8 +328,6 @@ export class DatabaseStorage implements IStorage {
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   ebs: EbsStorage;
-  grievanceNameDenorm: GrievanceNameDenormStorage;
-  grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
   entityMetadataAdmin: EntityMetadataAdminStorage;
   entityMetadataSeed: EntityMetadataSeedStorage;
@@ -446,12 +408,7 @@ export class DatabaseStorage implements IStorage {
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
   comm: CommStorage;
-  grievances: GrievanceStorage;
   letterTemplates: LetterTemplateStorage;
-  grievanceStatusHistory: GrievanceStatusHistoryStorage;
-  grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
-  grievanceSettlements: GrievanceSettlementStorage;
-  grievanceContracts: GrievanceContractStorage;
 
   constructor() {
     Object.assign(this, createComponentStorage());
@@ -549,8 +506,6 @@ export class DatabaseStorage implements IStorage {
     this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
     // No logging for ebs - internal scheduled-event churn maintained by plugins.
     this.ebs = createEbsStorage();
-    this.grievanceNameDenorm = createGrievanceNameDenormStorage();
-    this.grievanceStepsDenorm = createGrievanceStepsDenormStorage();
     this.logs = createLogsStorage();
     this.entityMetadataAdmin = createEntityMetadataAdminStorage();
     this.entityMetadataSeed = createEntityMetadataSeedStorage();
@@ -802,26 +757,6 @@ export class DatabaseStorage implements IStorage {
           },
         },
       },
-    );
-    this.grievances = withStorageLogging(
-      createGrievanceStorage(),
-      grievanceLoggingConfig,
-    );
-    this.grievanceStatusHistory = withStorageLogging(
-      createGrievanceStatusHistoryStorage(),
-      grievanceStatusHistoryLoggingConfig,
-    );
-    this.grievanceTimelineTemplates = withStorageLogging(
-      createGrievanceTimelineTemplateStorage(),
-      grievanceTimelineTemplateLoggingConfig,
-    );
-    this.grievanceSettlements = withStorageLogging(
-      createGrievanceSettlementStorage(),
-      grievanceSettlementLoggingConfig,
-    );
-    this.grievanceContracts = withStorageLogging(
-      createGrievanceContractStorage(),
-      grievanceContractLoggingConfig,
     );
   }
 }

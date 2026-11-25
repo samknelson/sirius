@@ -114,27 +114,10 @@ const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const CommEdit = lazy(() => import("@/pages/comm-edit"));
-const Grievances = lazy(() => import("@/pages/grievances"));
-const WorkerGrievances = lazy(() => import("@/pages/worker-grievances"));
-const EmployerGrievances = lazy(() => import("@/pages/employer-grievances"));
-const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
-const GrievanceView = lazy(() => import("@/pages/grievance-view"));
-const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
-const GrievanceStatusHistory = lazy(() => import("@/pages/grievance-status-history"));
-const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
-const GrievanceNotes = lazy(() => import("@/pages/grievance-notes"));
-const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
-const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
-const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
 const CatalogsConfigPage = lazy(() => import("@/pages/config/catalogs"));
 const CatalogDetailConfigPage = lazy(() => import("@/pages/config/catalog-detail"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
 const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
-const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
-const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
-const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
-const GrievanceTimelineTemplateItems = lazy(() => import("@/pages/grievance-timeline-template-items"));
-const GrievanceTimelineTemplateLogs = lazy(() => import("@/pages/grievance-timeline-template-logs"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
@@ -626,127 +609,20 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/grievances/add">
-        <ProtectedRoute permission="staff" component="grievance">
-          <AuthenticatedLayout>
-            <GrievancesAdd />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievances">
-        <ProtectedRoute permission="staff" component="grievance">
-          <AuthenticatedLayout>
-            <Grievances />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/edit">
-        <ProtectedRoute tabId="edit" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceEdit />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/status-history">
-        <ProtectedRoute tabId="status-history" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceStatusHistory />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/logs">
-        <ProtectedRoute tabId="logs" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceLogs />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/notes">
-        <ProtectedRoute tabId="notes" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceNotes />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/timeline">
-        <ProtectedRoute tabId="timeline" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceTimeline />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/settlements">
-        <ProtectedRoute tabId="settlements" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceSettlements />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id/files">
-        <ProtectedRoute tabId="files" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceFiles />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance/:id">
-        <ProtectedRoute tabId="details" entityType="grievance">
-          <AuthenticatedLayout>
-            <GrievanceView />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance-timeline-templates">
-        <ProtectedRoute permission="admin" component="grievance">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <GrievanceTimelineTemplatesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance-timeline-template/:id/edit">
-        <ProtectedRoute tabId="edit" entityType="grievanceTimelineTemplate">
-          <AuthenticatedLayout>
-            <GrievanceTimelineTemplateEdit />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance-timeline-template/:id/items">
-        <ProtectedRoute tabId="items" entityType="grievanceTimelineTemplate">
-          <AuthenticatedLayout>
-            <GrievanceTimelineTemplateItems />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance-timeline-template/:id/logs">
-        <ProtectedRoute tabId="logs" entityType="grievanceTimelineTemplate">
-          <AuthenticatedLayout>
-            <GrievanceTimelineTemplateLogs />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/grievance-timeline-template/:id">
-        <ProtectedRoute tabId="details" entityType="grievanceTimelineTemplate">
-          <AuthenticatedLayout>
-            <GrievanceTimelineTemplateView />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/contracts">
         <ProtectedRoute permission="staff" component="contract">
@@ -942,13 +818,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/grievances">
-        <ProtectedRoute tabId="grievances" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerGrievances />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/workers/:id/edls">
         <ProtectedRoute tabId="edls-status" entityType="worker">
@@ -1529,13 +1398,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/employers/:id/grievances">
-        <ProtectedRoute tabId="grievances" entityType="employer">
-          <AuthenticatedLayout>
-            <EmployerGrievances />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/employers/:id/wizards">
         <ProtectedRoute tabId="wizards" entityType="employer">

@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { storage } from "../storage";
+import { workers, employers, trustProviders } from "@shared/schema";
 import { buildContext, checkAccess } from "../services/access-policy-evaluator";
 import {
   registerEntityNoteContext,
@@ -11,14 +12,13 @@ import {
  * server/modules/entity-files-contexts.ts.
  *
  * Every registration here is a code registration only: note rows live in the
- * shared `entity_notes` table keyed by the context id. Adding a fifth area is
- * another entry in this file, one line in the table map used by the orphan
- * sweep (server/storage/entity-notes-context-tables.ts), and switching it on
- * under Config → Entity Notes — no table, no migration, no storage namespace.
+ * shared `entity_notes` table keyed by the context id. Adding another area is
+ * another registration (here, or in a component's startup) naming its table
+ * for the orphan sweep, and switching it on under Config → Entity Notes — no table, no migration, no storage namespace.
  */
 
 /** The access callback for a staff-only area; gates the /api/entity-notes routes. */
-function staffOnly(): Pick<EntityNoteContext, "checkAccess" | "checkAccessForUser"> {
+export function staffOnly(): Pick<EntityNoteContext, "checkAccess" | "checkAccessForUser"> {
   const checkAccessForUser: NonNullable<EntityNoteContext["checkAccessForUser"]> =
     async (_verb, _entityId, user) => (await checkAccess("staff", user)).granted;
   return {
@@ -34,6 +34,7 @@ export function registerEntityNoteContexts(): void {
   // Workers — staff-only.
   registerEntityNoteContext({
     id: "worker",
+    table: workers,
     label: "Workers",
     recordLabel: "Worker",
     async entityExists(entityId: string): Promise<boolean> {
@@ -45,6 +46,7 @@ export function registerEntityNoteContexts(): void {
   // Employers — staff-only.
   registerEntityNoteContext({
     id: "employer",
+    table: employers,
     label: "Employers",
     recordLabel: "Employer",
     async entityExists(entityId: string): Promise<boolean> {
@@ -56,23 +58,12 @@ export function registerEntityNoteContexts(): void {
   // Trust providers — staff-only, and hidden while `trust.providers` is off.
   registerEntityNoteContext({
     id: "trust_provider",
+    table: trustProviders,
     label: "Trust Providers",
     recordLabel: "Trust Provider",
     component: "trust.providers",
     async entityExists(entityId: string): Promise<boolean> {
       return Boolean(await storage.trustProviders.getTrustProvider(entityId));
-    },
-    ...staffOnly(),
-  });
-
-  // Grievances — staff-only, and gated on the `grievance` component.
-  registerEntityNoteContext({
-    id: "grievance",
-    label: "Grievances",
-    recordLabel: "Grievance",
-    component: "grievance",
-    async entityExists(entityId: string): Promise<boolean> {
-      return Boolean(await storage.grievances.get(entityId));
     },
     ...staffOnly(),
   });

@@ -11,7 +11,7 @@ import { eq, and, asc, count, getTableName, isNull } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { fileSystemService } from "../services/files";
 import { logger } from "../logger";
-import { fileContextTables, isFileContextAvailable } from "./entity-files-context-tables";
+import { getFileContextTable, isFileContextAvailable } from "./entity-files-context-tables";
 
 export interface EntityFileWithFile extends EntityFile {
   file: File;
@@ -213,7 +213,7 @@ export function createEntityFilesStorage(): EntityFilesStorage {
       contextId: string,
       limit: number,
     ): Promise<Array<{ id: string; entityId: string }>> {
-      const table = fileContextTables[contextId];
+      const table = getFileContextTable(contextId);
       // Never anti-join against a table that may not exist: a disabled
       // component's attachments are left alone rather than treated as orphans.
       if (!table || !isFileContextAvailable(contextId)) return [];
@@ -282,8 +282,8 @@ export function createEntityFilesStorage(): EntityFilesStorage {
  */
 async function fileHostTable(contextId: unknown): Promise<string | undefined> {
   if (typeof contextId !== "string") return undefined;
-  const { fileContextTables } = await import("./entity-files-context-tables");
-  const table = fileContextTables[contextId];
+  const { getFileContextTable } = await import("./entity-files-context-tables");
+  const table = getFileContextTable(contextId);
   return table ? getTableName(table) : undefined;
 }
 

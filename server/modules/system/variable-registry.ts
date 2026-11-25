@@ -95,9 +95,6 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
     schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
   },
 
-  // Staff-readable, gated by the grievance component (deadline coloring)
-  "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
-
   // Dispatch-owned settings (component-gated in both directions)
   dispatch_seniority_reset_settings: {
     component: "dispatch",

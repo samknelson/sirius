@@ -88,7 +88,7 @@ export function registerUserRoutes(
   
   // GET /api/admin/users/search - Search users by email (staff+)
   // Relaxed from admin to staff so staff can pick users to assign on
-  // grievance roles. The response is already shaped to safe fields only
+  // records by role. The response is already shaped to safe fields only
   // (id, email, names, status). An empty `q` returns the first batch of users
   // (prefill / dropdown mode); a non-empty `q` filters by email substring.
   // The optional `limit` lets callers request one extra row to detect
@@ -99,8 +99,8 @@ export function registerUserRoutes(
 
       // Optional `roleIds` filter (CSV) restricts results to users holding
       // at least one of the given system roles (OR semantics). Used by the
-      // grievance People picker to only surface users eligible for the
-      // selected grievance role.
+      // role-scoped people pickers to only surface users eligible for the
+      // selected role.
       const roleIdsRaw = req.query.roleIds;
       let roleIds: string[] | undefined;
       if (typeof roleIdsRaw === 'string' && roleIdsRaw.trim().length > 0) {

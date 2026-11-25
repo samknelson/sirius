@@ -65,9 +65,9 @@ inside that directory. Unknown fields are an error.
 | `coreMigrations` | Historical global migrations, kept with their original version and scope |
 | `startup` | Optional `register`, `registerRoutes`, `start` functions (`ComponentStartup`) |
 | `storage` | Module exporting `createStorage`; its returned namespaces extend host storage |
-| `metadata` | Module exporting `metadataContexts` for record history |
+| `metadata` | Module exporting `metadataContexts` for record history (a context may carry a `recordGo` access requirement) and optionally `excludedTables` — tables refused record history; holds while the component is disabled |
 | `contributions` | Shared tabs, menus, operation aliases and deployment branches (`ComponentContributions`) |
-| `client` | Browser routes, config navigation, lifecycle observers, EDLS crew UI and scoped dispatch UI contributions (`ComponentBrowserContributions`) |
+| `client` | Browser routes, config navigation, lifecycle observers, page `slots`, EDLS crew UI and scoped dispatch UI contributions (`ComponentBrowserContributions`) |
 | `earlyDocument` | Self-contained classic JavaScript files inlined first in the document head, before resources |
 | `initializers` | Browser modules exporting `initialize()`, called before React mounts |
 | `documentPolicies` | Exact public document paths with `referrerPolicy: "no-referrer"` and `cacheControl: "private, no-store"`, enforced in development and static-only production services |
@@ -189,10 +189,31 @@ Variable declarations use `registerVariableEntry` during `startup.register`;
 duplicate/reserved names are refused and the normal access/schema boundary
 remains authoritative.
 
-Shared tab contributions may name a `parent` tab and a `before` sibling. The
+Shared tab contributions may name a `parent` tab and a `before` sibling. A
+component may also contribute the first tabs of an entity type no core tree
+covers: it adds the type to `TabEntityTypes` by interface augmentation and
+registers a `tabs.entity-policy` alter answering that type's base access policy
+(the batch check otherwise falls back to `authenticated`). The
 `tabs.visibility` alter runs only after authorization, and can hide irrelevant
 tabs. Its result is returned separately from `granted`; direct-route permission
 checks do not become visibility checks.
+
+Menu contributions name a `parent` menu node, or omit it for a top-level entry;
+`before` orders among siblings.
+
+A parent page never imports its dependents. It renders
+`<ComponentSlot name="…" props={…} />` and a dependent contributes a lazy
+`section` for that slot name in its browser `slots`; a section renders only
+while its `component` is enabled. Grievance pages expose
+`grievance.edit.sections` and `grievance.view.sections`.
+
+A component may declare a whole options list with `registerOptionsContribution`
+and a `definition`, adding its type name to `OptionsTypeNames` by interface
+augmentation; `deleteGuard` refuses deleting a row referenced without a foreign
+key. Notes/files areas register in `startup.register` naming their table (so the
+orphan sweeps and retained-data checks know it while the component is disabled)
+and subscribe their own delete cleanup with `cleanUpNotesForDeletedRecord` /
+`cleanUpFilesForDeletedRecord` on the component's delete event.
 
 Routes default to the authenticated layout. A component using `layout: "bare"`
 owns its complete wrapper, including authentication, authorization and any
@@ -226,3 +247,9 @@ T631 synchronization requires an installed, enabled identity strategy and refuse
 before any writes or deactivation otherwise. Reinstalling restores that strategy
 without changing worker identifiers. Component documentation and operator tools
 remain inside the owning component directory.
+
+Grievance (`grievance`, `grievance.settlement`, `grievance.contract`) and
+translation (`internationalization`, `internationalization.weglot`) are
+removable: remove children before parents (settlement/contract before grievance,
+Weglot before internationalization). Settlement and contract never import each
+other.

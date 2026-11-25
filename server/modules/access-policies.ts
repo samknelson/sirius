@@ -17,7 +17,7 @@ import { isEntityContextAvailable } from './entity-contexts';
 import { logger } from '../logger';
 import { edlsSheetStatusEnum } from '@shared/schema';
 import { alterHooks } from '@shared/alter';
-import { tabVisibilityHook } from '@shared/tab-visibility';
+import { tabEntityPolicyHook, tabVisibilityHook } from '@shared/tab-visibility';
 
 /**
  * Check if a tab's component requirement is met
@@ -284,8 +284,6 @@ export function registerAccessPolicyRoutes(app: Express) {
         dispatch_job_group: 'staff',
         trust_election: 'staff',
         comm: 'comm.view',
-        grievance: 'staff',
-        grievanceTimelineTemplate: 'admin',
         contract: 'staff',
         edls_sheet: 'edls.sheet.view',
         business_calendar: 'admin',
@@ -295,7 +293,11 @@ export function registerAccessPolicyRoutes(app: Express) {
         denorm: 'admin',
         record_metadata: 'admin',
       };
-      const basePolicy = entityPolicyMap[entityType] || 'authenticated';
+      const basePolicy = await alterHooks.run(
+        tabEntityPolicyHook,
+        entityPolicyMap[entityType] || 'authenticated',
+        { entityType },
+      );
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);
       
       if (!baseAccessResult.granted) {

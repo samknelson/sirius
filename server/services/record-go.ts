@@ -1,5 +1,5 @@
 import { entityMetadataStorage, type EntityMetadataView } from "../storage/system/entity-metadata";
-import { getMetadataRecordContext, metadataRecordHref } from "../storage/entity-metadata-record-tables";
+import { entityMetadataContexts, getMetadataRecordContext, metadataRecordHref } from "../storage/entity-metadata-record-tables";
 import { formatRecordRevision, formatRecordSequence } from "@shared/utils/record-sequence";
 import type { RecordGoPresentation } from "@shared/utils/record-go";
 
@@ -38,8 +38,6 @@ const recordGoAccessRequirements: Record<string, RecordGoAccessRequirement> = {
   entity_notes: { kind: "permission", id: "staff" },
   events: { kind: "policy", id: "admin", componentId: "event" },
   facilities: { kind: "policy", id: "facility.view", componentId: "facility" },
-  grievance_timeline_templates: { kind: "policy", id: "staff", componentId: "grievance" },
-  grievances: { kind: "policy", id: "staff", componentId: "grievance" },
   policies: { kind: "policy", id: "admin" },
   sftp_client_destinations: { kind: "policy", id: "admin", componentId: "system.sftp.client" },
   sitespecific_btu_csg: { kind: "policy", id: "authenticated", componentId: "sitespecific.btu" },
@@ -55,8 +53,25 @@ const recordGoAccessRequirements: Record<string, RecordGoAccessRequirement> = {
   ws_clients: { kind: "permission", id: "admin" },
 };
 
+let mergedRequirements: Record<string, RecordGoAccessRequirement> | undefined;
+
+/**
+ * Core requirements above, plus each component's, declared on its metadata
+ * context. A context declared in both places is a wiring bug.
+ */
+function allRecordGoAccessRequirements(): Record<string, RecordGoAccessRequirement> {
+  if (mergedRequirements) return mergedRequirements;
+  const merged = { ...recordGoAccessRequirements };
+  for (const [contextId, declaration] of Object.entries(entityMetadataContexts)) {
+    if (!declaration.recordGo) continue;
+    if (merged[contextId]) throw new Error(`Record Go access for "${contextId}" is declared twice`);
+    merged[contextId] = declaration.recordGo;
+  }
+  return (mergedRequirements = merged);
+}
+
 export function recordGoAccessRequirement(contextId: string): RecordGoAccessRequirement | undefined {
-  return recordGoAccessRequirements[contextId];
+  return allRecordGoAccessRequirements()[contextId];
 }
 
 const SEQUENCE_PART = /^\d+(?:\.\d+)*$/;

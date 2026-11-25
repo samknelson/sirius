@@ -500,7 +500,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       res.status(204).send();
     } catch (error: any) {
       // FK RESTRICT violation: the option is still referenced by another
-      // row (e.g. a grievance role assigned to people on a grievance).
+      // row (e.g. a department assigned to a dispatch job).
       // Surface a clear 409 instead of an opaque 500.
       if (error?.code === "23503") {
         return res.status(409).json({ message: optionInUseDeleteMessage(config?.name) });

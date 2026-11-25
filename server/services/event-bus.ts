@@ -4,8 +4,6 @@ import { logger } from "../logger";
 import type {
   DispatchJob,
   EdlsSheet,
-  Grievance,
-  GrievanceSettlement,
   WorkerDispatchStatus,
 } from "@shared/schema";
 
@@ -78,11 +76,6 @@ export enum EventType {
   WORKER_WSH_SAVED = "worker.wsh.saved",
   WORKER_MSH_SAVED = "worker.msh.saved",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
-  GRIEVANCE_SAVED = "grievance.saved",
-  GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
-  GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
-  GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
-  GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
@@ -96,7 +89,6 @@ export enum EventType {
   CRON_TICK_4H = "cron.tick.4h",
   CRON_TICK_8H = "cron.tick.8h",
   CRON_TICK_DAY = "cron.tick.day",
-  GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
   EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   // Record deletions, announced after the delete commits. One per record type
@@ -104,7 +96,6 @@ export enum EventType {
   WORKER_DELETE_AFTER = "worker.delete.after",
   EMPLOYER_DELETE_AFTER = "employer.delete.after",
   TRUST_PROVIDER_DELETE_AFTER = "trust.provider.delete.after",
-  GRIEVANCE_DELETE_AFTER = "grievance.delete.after",
   CRON = "cron",
   LOG = "log",
 }
@@ -298,75 +289,6 @@ export interface StewardAssignmentSavedPayload {
   operation: "created" | "updated" | "deleted";
 }
 
-export interface GrievanceSavedPayload {
-  grievanceId: string;
-}
-
-/**
- * Emitted after any grievance status-history mutation (create/update/delete)
- * commits. Consumed by the `grievance_timeline` denorm plugin to recompute the
- * grievance's timeline steps (which only needs `grievanceId`).
- *
- * Also carries the grievance's derived *current* status before and after the
- * mutation, so a notifier can detect a genuine transition ("grievance attained
- * status X") without re-querying: the current status is the latest-dated
- * status-history entry. Both ids are null when the grievance has no history at
- * that point in time (e.g. `previous*` on the very first entry, `new*` after
- * the last entry is deleted). Status names are resolved for rendering and may be
- * null if the referenced status option is missing.
- *
- * `newStatusHistoryId` identifies the status-history ROW that is current after
- * the mutation. A consumer that has to render the transition loads that exact
- * row rather than re-reading "the grievance's current status", which a later
- * transition could have moved on by then.
- */
-export interface GrievanceStatusHistorySavedPayload {
-  grievanceId: string;
-  previousStatusId: string | null;
-  previousStatusName: string | null;
-  newStatusId: string | null;
-  newStatusName: string | null;
-  newStatusHistoryId: string | null;
-}
-
-/**
- * Emitted after a grievance save commits ONLY when the grievance's
- * `timeline_template_id` actually changed (set, swapped, or cleared) — so the
- * `grievance_timeline` denorm plugin does not recompute on every unrelated
- * grievance edit.
- */
-export interface GrievanceTimelineChangedPayload {
-  grievanceId: string;
-}
-
-export interface GrievanceAssignmentSavedPayload {
-  grievanceId: string;
-  userId: string;
-  roleId: string;
-  operation: "created" | "updated" | "deleted";
-}
-
-export interface GrievanceSettlementSavedPayload {
-  grievanceId: string;
-  settlementId: string;
-  operation: "created" | "updated" | "deleted";
-  /**
-   * The settlement row as of the event (the pre-delete row on delete).
-   * Carried in full so a consumer can describe the settlement even for a
-   * delete, where the row no longer exists by the time it runs.
-   */
-  row: GrievanceSettlement;
-  /**
-   * The grievance the settlement is on, as of the event, with the parts its
-   * display title is composed from (both live outside the row: the name is
-   * denormalised, the category name is a join). A settlement notice names
-   * the grievance, so re-reading it at delivery time would let a later
-   * rename change the wording — or a later deletion drop the notice.
-   */
-  grievance: Grievance | null;
-  grievanceTitleParts: { name: string | null; categoryName: string | null } | null;
-}
-
 /**
  * Emitted after an EDLS sheet create or update commits. Carries the sheet's
  * status before and after the write so a notifier can detect a genuine
@@ -478,23 +400,6 @@ export interface TosAbsenceReminderPayload {
 }
 
 /**
- * A single grievance deadline reminder that fell due. Emitted by the generic
- * EBS pump cron from an `ebs_denorm` row scheduled by the
- * `grievance_deadline_reminder` denorm plugin; delivered by the
- * `grievance-deadline-notifier` event-notifier plugin. `offset` is the number
- * of days BEFORE `dueDate` this reminder fires; `dueDate` is the step's due
- * date (YYYY-MM-DD). `stepName` is the timeline step's display name (null if it
- * can no longer be resolved).
- */
-export interface GrievanceDeadlineReminderPayload {
-  grievanceId: string;
-  stepId: string;
-  stepName: string | null;
-  dueDate: string;
-  offset: number;
-}
-
-/**
  * A single employer-monthly event that fell due. Emitted by the generic EBS
  * pump cron from an `ebs_denorm` row scheduled by the `employer_monthly` denorm
  * plugin. `month` is the calendar month this event is for, in `YYYY-MM` form.
@@ -510,14 +415,16 @@ export interface EmployerMonthlyPayload {
 /**
  * One record has been deleted, and the delete has committed.
  *
- * These four exist so the polymorphic areas that hang off a record — its
+ * These exist so the polymorphic areas that hang off a record — its
  * notes (`entity_notes`) and its file attachments (`entity_files`), neither
  * of which has a foreign key back to the record — can clean up at the moment
  * of deletion instead of waiting for a nightly sweep. A handler runs after
  * the commit and best effort: it can never fail or roll back the delete.
  *
  * Only the record's id is carried. A handler that needs more cannot have it —
- * the row is gone by the time the event is delivered.
+ * the row is gone by the time the event is delivered. A component whose
+ * records carry notes or attachments registers its own delete event the
+ * same way (see `registerComponentEvent`).
  */
 export interface WorkerDeleteAfterPayload {
   workerId: string;
@@ -529,10 +436,6 @@ export interface EmployerDeleteAfterPayload {
 
 export interface TrustProviderDeleteAfterPayload {
   trustProviderId: string;
-}
-
-export interface GrievanceDeleteAfterPayload {
-  grievanceId: string;
 }
 
 export interface CronPayload {
@@ -599,11 +502,6 @@ export interface EventPayloadMap extends ComponentEventPayloadMap {
   [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;
   [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
-  [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
-  [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
-  [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
-  [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
-  [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
@@ -614,13 +512,11 @@ export interface EventPayloadMap extends ComponentEventPayloadMap {
   [EventType.CRON_TICK_4H]: CronTickPayload;
   [EventType.CRON_TICK_8H]: CronTickPayload;
   [EventType.CRON_TICK_DAY]: CronTickPayload;
-  [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
   [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.WORKER_DELETE_AFTER]: WorkerDeleteAfterPayload;
   [EventType.EMPLOYER_DELETE_AFTER]: EmployerDeleteAfterPayload;
   [EventType.TRUST_PROVIDER_DELETE_AFTER]: TrustProviderDeleteAfterPayload;
-  [EventType.GRIEVANCE_DELETE_AFTER]: GrievanceDeleteAfterPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

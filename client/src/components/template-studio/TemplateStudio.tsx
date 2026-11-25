@@ -114,7 +114,7 @@ export interface StudioSeedRecord {
   /**
    * The container's occurrence(s) this record came out of. Records in
    * different roots that share one were true together — a notifier
-   * replaying an event knows its grievance, its status entry and its
+   * replaying an event knows its job, its membership row and its
    * recipient came from that one moment — so choosing one chooses its
    * siblings. Absent when a container's records are unrelated (a bulk
    * message's recipients), and each root is then picked on its own.
@@ -850,10 +850,10 @@ export function TemplateStudio({
    * come in coherent sets, what the roots that shared that occurrence
    * render as too.
    *
-   * A notifier's records are one event's records: the grievance, the
-   * status entry it moved into and the person it was sent to were all
+   * A notifier's records are one event's records: the job, the
+   * membership row it changed and the person it was sent to were all
    * true at one moment. Left to pick independently, an author could
-   * preview Tuesday's grievance beside this morning's status entry and
+   * preview Tuesday's job beside this morning's membership row and
    * be shown a message that was never sent and could not be. So a pick
    * carries its siblings with it: every other root holding a record
    * from the same occurrence follows. Roots with nothing from that

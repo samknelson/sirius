@@ -1,0 +1,21 @@
+{
+  "definition": "shared/component.ts",
+  "schema": [
+    "shared/schema/grievance/settlement-schema.ts"
+  ],
+  "server": [
+    "server/events.ts",
+    "server/options.ts",
+    "server/template-token-migrations.ts",
+    "server/plugins/tokens/plugins/grievance-settlement.ts",
+    "server/plugins/event-notifier/plugins/grievance-settlement-notifier.ts"
+  ],
+  "migrations": [
+    "scripts/migrate/components/grievance.settlement/001_create_grievance_settlement.ts"
+  ],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "metadata": "server/metadata.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx"
+}

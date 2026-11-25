@@ -178,15 +178,6 @@ export const configSections: NavSection[] = [
     ],
   },
   {
-    id: "grievance",
-    title: "Grievance",
-    description: "Grievance tracking configuration",
-    icon: FileText,
-    items: [
-      { path: "/grievance-timeline-templates", label: "Timeline Templates", icon: List, testId: "nav-config-grievance-timeline-templates", permission: "admin", requiresComponent: "grievance" },
-    ],
-  },
-  {
     id: "trust",
     title: "Trust",
     description: "Trust benefits and provider configuration",

@@ -373,15 +373,6 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
       testId: "nav-ledger-accounts",
       gate: { policy: "staff" },
     },
-    {
-      id: "grievances",
-      label: "Grievances",
-      icon: "FileText",
-      href: "/grievances",
-      active: { type: "prefix", value: "/grievance" },
-      testId: "nav-grievances-top",
-      gate: { allOf: [{ component: "grievance" }, { policy: "staff" }] },
-    },
     buildUsersMenuItem(),
     {
       id: "reports",
@@ -591,9 +582,10 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
       for (const n of nodes) { if (n.id === id) return n; const child = find(n.children ?? [], id); if (child) return child; }
     };
     for (const c of componentContributions) for (const {parent, before, node} of c.menu ?? []) {
-      const target = find(tree, parent);
-      if (!target) continue;
-      const children = target.children ?? (target.children = []);
+      // No parent: a top-level entry.
+      const target = parent === undefined ? undefined : find(tree, parent);
+      if (parent !== undefined && !target) continue;
+      const children = target ? (target.children ??= []) : tree;
       const index = before ? children.findIndex(n => n.id === before) : -1;
       children.splice(index < 0 ? children.length : index, 0, node);
     }

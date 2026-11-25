@@ -14,12 +14,12 @@ import { resolveRowKey } from "./field";
 /**
  * OPTIONS TOKENS — GENERATED, NOT HAND-WRITTEN.
  *
- * An options table (`options_grievance_status`, `options_department`, …)
+ * An options table (`options_department`, `options_employer_type`, …)
  * is reference data every entity points at by id. The generic `field`
  * leaf already renders the referenced row's `name` instead of the raw id
- * (`{{grievance_status_history.field(name="status_id")}}` says "Filed"),
+ * (`{{dispatch_job.field(name="department_id")}}` says "Electrical"),
  * but the option ROW itself was unreachable: nothing could say "the
- * description of that status" or "its sequence".
+ * description of that department" or "its sequence".
  *
  * Both halves of what that needs are already declared elsewhere, so
  * nothing here is written per options type or per referencing column:
@@ -32,13 +32,13 @@ import { resolveRowKey } from "./field";
  * registers a relation segment NAMED AFTER THE TARGET TABLE, plus a
  * descriptor for the options kind itself:
  *
- *   {{grievance_status_history.options_grievance_status}}
- *       → the status's name (its default leaf)
- *   {{grievance_status_history.options_grievance_status.field(name="description")}}
+ *   {{dispatch_job.options_department}}
+ *       → the department's name (its default leaf)
+ *   {{dispatch_job.options_department.field(name="description")}}
  *       → any other field of the same row
  *
- * Table-derived naming is deliberate. A segment called `status` would
- * mean a different table under every parent; `options_grievance_status`
+ * Table-derived naming is deliberate. A segment called `department` would
+ * mean a different table under every parent; `options_department`
  * names exactly one table wherever it appears.
  *
  * Deliberately NOT generated:

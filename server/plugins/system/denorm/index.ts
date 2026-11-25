@@ -109,10 +109,7 @@ export function initializeDenormPluginSystem(): void {
 import "./plugins/workerMs";
 import "./plugins/workerWs";
 import "./plugins/workerEmployment";
-import "./plugins/grievanceName";
-import "./plugins/grievanceTimeline";
 import "../../../../components/worker.tos/server/plugins/system/denorm/plugins/tosAbsenceReminder";
-import "./plugins/grievanceDeadlineReminder";
 import "./plugins/employerMonthly";
 // Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,
 // one event_type slice each).

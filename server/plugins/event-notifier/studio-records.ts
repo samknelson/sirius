@@ -19,9 +19,9 @@ import type {
  * the last hundred emits of each event type in memory, and this replays
  * the notifier's OWN root builders over those recorded payloads, which
  * is exactly what the dispatcher did when each one fired. An author
- * previewing "Grievance status changed" therefore sees the grievances
+ * previewing "Dispatch status changed" therefore sees the workers
  * whose status actually changed, and sees them as coherent sets: the
- * grievance and the status entry offered together came out of one
+ * worker and the status entry offered together came out of one
  * emit.
  *
  * The config being edited decides which of those times count: the same
@@ -54,7 +54,7 @@ export const NOTIFIER_STUDIO_SEED_LIMIT = 5;
  * One remembered event the editor is replaying, under the id its
  * records are grouped by. Every root's record and every recipient built
  * from this event carries that id, which is how the studio keeps a
- * preview to ONE event: the grievance and the status entry it shows
+ * preview to ONE event: the worker and the status entry it shows
  * were true at the same moment, not one from Tuesday and one from now.
  */
 interface ReplayedEvent {
@@ -236,10 +236,10 @@ async function replayRoot(
     }
     if (!id) continue;
     // One record can be the subject of several of these events (the
-    // same grievance moving twice), and it is then one picker row that
+    // same worker's status moving twice), and it is then one picker row that
     // belongs to both: keep the newest and let it carry every
     // occurrence, so choosing the older event's status entry still
-    // brings its grievance along.
+    // brings its worker along.
     const seen = byId.get(id);
     if (seen) {
       seen.occurrenceIds?.push(occurrenceId);

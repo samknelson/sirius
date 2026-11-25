@@ -24,12 +24,12 @@ import type { TokenEntity, TokenEntityType } from "../types";
  * A kind that declared where its records live (see `../entity-location`)
  * gets two leaves for free:
  *
- *   {{grievance.path}}              → /grievance/<id>
- *   {{grievance.url}}               → https://<site>/grievance/<id>
- *   {{grievance.path(tab="notes")}} → /grievance/<id>/notes
+ *   {{worker.path}}              → /workers/<id>
+ *   {{worker.url}}               → https://<site>/workers/<id>
+ *   {{worker.path(tab="notes")}} → /workers/<id>/notes
  *
  * Generated per kind rather than once for all of them, because the `tab`
- * argument's choices ARE per kind: a grievance's tabs are not a worker's,
+ * argument's choices ARE per kind: an employer's tabs are not a worker's,
  * and a picker offering a blank text box is exactly the guessing game
  * this replaces.
  *

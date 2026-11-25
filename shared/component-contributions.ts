@@ -4,7 +4,8 @@ import type { MenuItemDef } from "../server/plugins/menu/types";
 /** Additive declarations. These are not replacement-value alter hooks. */
 export interface ComponentContributions {
   tabs?: { entity: TabEntityType; parent?: string; before?: string; tab: HierarchicalTab }[];
-  menu?: { parent: string; before?: string; node: MenuItemDef }[];
+  /** `parent` omitted: a top-level menu entry. */
+  menu?: { parent?: string; before?: string; node: MenuItemDef }[];
   operationAliases?: Record<string, string>;
   carryingBranches?: string[];
 }

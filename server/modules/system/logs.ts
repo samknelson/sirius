@@ -93,12 +93,6 @@ export function registerLogRoutes(
       return requireAccess('employer.manage', () => employer.id)(req, res, next);
     }
 
-    const grievance = await safeGet(() => storage.grievances.get(hostEntityId));
-    if (grievance) {
-      (req as any).logHostIds = [grievance.id];
-      return requireAccess('staff')(req, res, next);
-    }
-
     const contract = await safeGet(() => storage.contracts.getById(hostEntityId));
     if (contract) {
       // Roll up contract + article + section activity under the one contract.

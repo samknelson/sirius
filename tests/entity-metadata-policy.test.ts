@@ -28,7 +28,6 @@ describe("entity metadata eligibility", () => {
     "bulk_participants",
     "comm",
     "event_occurrences",
-    "grievance_status_history",
     "sessions",
     "snapshots",
     "trust_wmb",

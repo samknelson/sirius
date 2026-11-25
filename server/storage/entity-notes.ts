@@ -10,7 +10,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, getTableName, isNull, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
-import { noteContextTables, isNoteContextAvailable } from "./entity-notes-context-tables";
+import { getNoteContextTable, isNoteContextAvailable } from "./entity-notes-context-tables";
 
 function emitNoteChanged(
   event: EventType.ENTITY_NOTE_SAVE_AFTER | EventType.ENTITY_NOTE_DELETE_AFTER,
@@ -109,8 +109,8 @@ function redactNote<T extends Record<string, any> | null | undefined>(row: T): T
  */
 async function noteHostTable(contextId: unknown): Promise<string | undefined> {
   if (typeof contextId !== "string") return undefined;
-  const { noteContextTables } = await import("./entity-notes-context-tables");
-  const table = noteContextTables[contextId];
+  const { getNoteContextTable } = await import("./entity-notes-context-tables");
+  const table = getNoteContextTable(contextId);
   return table ? getTableName(table) : undefined;
 }
 
@@ -211,7 +211,7 @@ export function createEntityNotesStorage(): EntityNotesStorage {
     },
 
     async findOrphanIds(contextId: string, limit: number): Promise<string[]> {
-      const table = noteContextTables[contextId];
+      const table = getNoteContextTable(contextId);
       // Never anti-join against a table that may not exist: a disabled
       // component's notes are left alone rather than treated as orphans.
       if (!table || !isNoteContextAvailable(contextId)) return [];

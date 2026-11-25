@@ -54,7 +54,7 @@ export interface TokenRootSeed {
  *    is read as a read of its WORKER), which is why a search hit and a
  *    load both carry the subject id they were authorized on.
  *  - `route` — the broad gate the kind's own pages use, with no entity
- *    id at all (a grievance read is `staff` plus the grievance
+ *    id at all (a contract read is `staff` plus the contract
  *    component; a dispatch job read is `admin` plus dispatch). Preview
  *    enforces the SAME gate: it is not preview's job to invent a
  *    per-record rule the rest of the app does not have.
@@ -85,9 +85,9 @@ export interface TokenPreviewRecordRef {
   /**
    * The occurrence(s) this record came out of, when a container's
    * records come in coherent sets — one replayed event yields the
-   * grievance AND the status entry AND the recipient it fired for.
+   * worker AND the status entry AND the recipient it fired for.
    * Records sharing an occurrence belong together, and the picker moves
-   * them together, so a preview cannot show one event's grievance
+   * them together, so a preview cannot show one event's worker
    * beside another event's status entry. Ids are the container's own
    * and mean nothing outside its list.
    *
@@ -215,10 +215,10 @@ export interface TokenSampleSet {
  * token plugin would be a second copy of the route table, free to rot
  * the first time someone restructures a page.
  *
- * A SUB-ENTITY borrows its parent's page: a grievance status-history row
- * has no page of its own, but the grievance's timeline tab lists it, so
- * it declares `tabEntity: "grievance"`, `idField: "grievanceId"`,
- * `defaultTab: "timeline"`. One mechanism, no special case — a
+ * A SUB-ENTITY borrows its parent's page: a worker dispatch-status row
+ * has no page of its own, but the worker's dispatch tab lists it, so
+ * it declares `tabEntity: "worker"`, `idField: "workerId"`,
+ * `defaultTab: "dispatch"`. One mechanism, no special case — a
  * sub-entity is just a location whose id comes from a foreign key, which
  * is exactly what `idField !== "id"` says.
  *

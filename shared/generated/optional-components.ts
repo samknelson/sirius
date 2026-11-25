@@ -11,12 +11,17 @@ import { component as definition7 } from "./../../components/dispatch.eba/shared
 import { component as definition8 } from "./../../components/dispatch.fore/shared/component";
 import { component as definition9 } from "./../../components/dispatch.hfe/shared/component";
 import { component as definition10 } from "./../../components/dispatch.singleshift/shared/component";
-import { component as definition11 } from "./../../components/sitespecific.freeman/shared/component";
-import { component as definition12 } from "./../../components/sitespecific.freeman.authorization/shared/component";
-import { component as definition13 } from "./../../components/sitespecific.freeman.edls_migrate/shared/component";
-import { component as definition14 } from "./../../components/sitespecific.t631.client/shared/component";
-import { component as definition15 } from "./../../components/sitespecific.t631.interviews/shared/component";
-const discovered: [string, ComponentDefinition][] = [["contract.chat", definition0], ["contract.chat.foray", definition1], ["dispatch.asi", definition2], ["dispatch.ban", definition3], ["dispatch.bullpen", definition4], ["dispatch.department", definition5], ["dispatch.dnc", definition6], ["dispatch.eba", definition7], ["dispatch.fore", definition8], ["dispatch.hfe", definition9], ["dispatch.singleshift", definition10], ["sitespecific.freeman", definition11], ["sitespecific.freeman.authorization", definition12], ["sitespecific.freeman.edls_migrate", definition13], ["sitespecific.t631.client", definition14], ["sitespecific.t631.interviews", definition15]];
+import { component as definition11 } from "./../../components/grievance/shared/component";
+import { component as definition12 } from "./../../components/grievance.contract/shared/component";
+import { component as definition13 } from "./../../components/grievance.settlement/shared/component";
+import { component as definition14 } from "./../../components/internationalization/shared/component";
+import { component as definition15 } from "./../../components/internationalization.weglot/shared/component";
+import { component as definition16 } from "./../../components/sitespecific.freeman/shared/component";
+import { component as definition17 } from "./../../components/sitespecific.freeman.authorization/shared/component";
+import { component as definition18 } from "./../../components/sitespecific.freeman.edls_migrate/shared/component";
+import { component as definition19 } from "./../../components/sitespecific.t631.client/shared/component";
+import { component as definition20 } from "./../../components/sitespecific.t631.interviews/shared/component";
+const discovered: [string, ComponentDefinition][] = [["contract.chat", definition0], ["contract.chat.foray", definition1], ["dispatch.asi", definition2], ["dispatch.ban", definition3], ["dispatch.bullpen", definition4], ["dispatch.department", definition5], ["dispatch.dnc", definition6], ["dispatch.eba", definition7], ["dispatch.fore", definition8], ["dispatch.hfe", definition9], ["dispatch.singleshift", definition10], ["grievance", definition11], ["grievance.contract", definition12], ["grievance.settlement", definition13], ["internationalization", definition14], ["internationalization.weglot", definition15], ["sitespecific.freeman", definition16], ["sitespecific.freeman.authorization", definition17], ["sitespecific.freeman.edls_migrate", definition18], ["sitespecific.t631.client", definition19], ["sitespecific.t631.interviews", definition20]];
 for (const [directory, definition] of discovered) {
   if (definition.id !== directory) throw new Error(`components/${directory} defines component ${definition.id}; the directory name must equal the component ID`);
 }

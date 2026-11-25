@@ -8,7 +8,7 @@
  */
 import { getEntityNoteContext } from "../services/entity-notes/registry";
 import { getEntityFileContext } from "../services/entity-files/registry";
-import { validateContributedOptionsData } from "./options-contributions";
+import { checkContributedOptionsDelete, validateContributedOptionsData } from "./options-contributions";
 import { storage } from "../storage";
 import type { OptionsTypeConfig } from "./options-registry";
 
@@ -228,19 +228,9 @@ export async function checkOptionDeleteGuard(
   type: string,
   id: string,
 ): Promise<{ status: number; message: string } | null> {
-  // A grievance status that is referenced by any timeline-template step
-  // cannot be deleted — the step stores status ids as plain arrays (no FK),
-  // so we guard the delete here to avoid orphaning those references.
-  if (type === "grievance-status") {
-    const referenced = await storage.grievanceTimelineTemplates.isStatusReferenced(id);
-    if (referenced) {
-      return {
-        status: 409,
-        message:
-          "This status is used by a grievance timeline template and cannot be deleted. Remove it from all timeline steps first.",
-      };
-    }
-  }
+  // A component's own guard (for a list it declares or extends) runs first.
+  const contributed = await checkContributedOptionsDelete(type, id);
+  if (contributed) return contributed;
 
   // A note type still used by any note cannot be deleted. The FK is ON
   // DELETE RESTRICT so the database would refuse anyway; this pre-check

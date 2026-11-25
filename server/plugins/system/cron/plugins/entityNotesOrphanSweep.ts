@@ -32,7 +32,7 @@ const BATCH_LIMIT = 500;
  * stored, and a deleted record's notes should not survive because the area is
  * currently hidden.
  *
- * A record type owned by a disabled component (grievances, say) has no table
+ * A record type owned by a disabled component has no table
  * to join against, so it is SKIPPED rather than swept, and named in the run
  * summary. Its notes survive until the component is switched back on — the
  * conservative choice, since "the table is missing" is not evidence that the

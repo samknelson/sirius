@@ -52,16 +52,16 @@ const FILE_CONTEXT_BY_EVENT: ReadonlyArray<{
     contextId: "trust_provider",
     recordId: (p: EventPayloadMap[EventType.TRUST_PROVIDER_DELETE_AFTER]) => p.trustProviderId,
   },
-  {
-    event: EventType.GRIEVANCE_DELETE_AFTER,
-    contextId: "grievance",
-    recordId: (p: EventPayloadMap[EventType.GRIEVANCE_DELETE_AFTER]) => p.grievanceId,
-  },
 ];
 
 const handlerIds: string[] = [];
 
-async function cleanUp(contextId: string, entityId: string): Promise<void> {
+/**
+ * The immediate-cleanup step for one deleted record. Core record types are
+ * wired below; a component whose records carry files subscribes to its own
+ * delete event and calls this, so both layers keep one definition.
+ */
+export async function cleanUpFilesForDeletedRecord(contextId: string, entityId: string): Promise<void> {
   // A context that is not registered carries no attachments: nothing to remove.
   if (!getEntityFileContext(contextId)) return;
   try {
@@ -101,7 +101,7 @@ export function initEntityFilesDeleteCleanup(): void {
         description: `Removes a deleted ${contextId} record's file attachments, one attachment at a time.`,
         event: mapping.event,
         handler: async (payload) => {
-          await cleanUp(contextId, mapping.recordId(payload));
+          await cleanUpFilesForDeletedRecord(contextId, mapping.recordId(payload));
         },
       }),
     );

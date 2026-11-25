@@ -1,3 +1,4 @@
+import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import type { Request } from "express";
 import type { File } from "@shared/schema";
 import type { PolicyContext } from "@shared/access-policies";
@@ -39,6 +40,11 @@ export interface EntityFileContext {
   recordLabel: string;
   /** Optional component gate; when set the context 404s while disabled. */
   component?: string;
+  /**
+   * The table holding this area's records. The orphan sweep anti-joins
+   * against it, which no per-record callback can express.
+   */
+  table: PgTable<TableConfig>;
   /** Whether the entity exists (drives 404s before any file work). */
   entityExists(entityId: string): Promise<boolean>;
   /** Access callback: may this request view/manage this entity's files? */

@@ -9,8 +9,8 @@ export type QuicksearchDb = Parameters<Parameters<typeof storage.readOnly.query>
  * A reference to a column of the row being selected, for use inside a
  * correlated subquery.
  *
- * Interpolating the column itself (`${grievances.id}`) is NOT safe here.
- * Drizzle renders a column qualified (`"grievances"."id"`) in a WHERE clause
+ * Interpolating the column itself (`${workers.id}`) is NOT safe here.
+ * Drizzle renders a column qualified (`"workers"."id"`) in a WHERE clause
  * but UNQUALIFIED (`"id"`) in the select list of a single-table select — so
  * the same fragment used to filter and to report what a row matched on means
  * two different things, and the select-list copy is ambiguous against

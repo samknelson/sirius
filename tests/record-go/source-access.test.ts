@@ -15,10 +15,9 @@ vi.mock("../../server/storage/entity-metadata-record-tables", () => ({
     worker_skills: { label: "Worker Skills", entityTypes: ["worker_skill"] },
     workers: { label: "Workers", entityTypes: ["worker"] },
     employers: { label: "Employers", entityTypes: ["employer"] },
-    grievances: { label: "Grievances", entityTypes: ["grievance"] },
   } as Record<string, unknown>)[id],
   metadataRecordHref: (type: string, id: string) => {
-    const prefix = ({ workers: "/workers", employers: "/employers", grievances: "/grievance" } as Record<string, string>)[type];
+    const prefix = ({ workers: "/workers", employers: "/employers" } as Record<string, string>)[type];
     return prefix ? `${prefix}/${id}` : null;
   },
 }));
@@ -134,7 +133,6 @@ describe("shared Go source authorization", () => {
   });
   it.each([
     ["employer", "employers", "/employers"],
-    ["grievance", "grievances", "/grievance"],
   ])("keeps the declared %s source alias on its existing Go destination", async (kind, context, href) => {
     f.metadata.mockResolvedValue(meta(context));
     expect((await presentAuthorizedRecordGoSource(viewer, kind, id))?.href).toBe(`${href}/${id}`);

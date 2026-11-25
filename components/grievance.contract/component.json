@@ -1,0 +1,14 @@
+{
+  "definition": "shared/component.ts",
+  "schema": [
+    "shared/schema/grievance/contract-schema.ts"
+  ],
+  "migrations": [
+    "scripts/migrate/components/grievance.contract/001_create_grievance_contract_sections.ts",
+    "scripts/migrate/components/grievance.contract/002_create_grievance_contracts.ts"
+  ],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "metadata": "server/metadata.ts",
+  "client": "client/src/contributions.tsx"
+}

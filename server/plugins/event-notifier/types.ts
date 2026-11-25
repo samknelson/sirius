@@ -125,7 +125,7 @@ export interface NotifierChannelTemplates {
  * ONE RECORD this notifier's messages are about, seeded as a token root
  * of its own and written as itself:
  * `{{dispatch.field(name="status_label")}}`,
- * `{{grievance_settlement.grievance.field(name="number")}}`.
+ * `{{dispatch_fore.dispatch_job.field(name="title")}}`.
  *
  * A notifier declares one root per record it has to talk about. There
  * is no `{{event.<record>}}` spelling — `event` is the envelope (which
@@ -135,9 +135,9 @@ export interface NotifierRecordRoot {
   /**
    * Root name as written in templates. It IS the token entity kind, which
    * is the table, which is the code: a template author reading
-   * `{{grievance_status_history.…}}` can look the record up and find out
-   * exactly what it holds. A shortened or prettified name (`grievance_status`
-   * for a `grievance_status_history` row) reads like a different record than
+   * `{{dispatch_worker_status.…}}` can look the record up and find out
+   * exactly what it holds. A shortened or prettified name (`dispatch`
+   * for a `dispatch_worker_status` row) reads like a different record than
    * the one it carries. Nothing enforces this — it is on the author.
    *
    * The name is global across notifiers: two notifiers may share one, but
@@ -156,7 +156,7 @@ export interface NotifierRecordRoot {
    * `[unknown token: …]` in a delivered message.
    *
    * Use sparingly, and never for a value that belongs to a RELATED record:
-   * a flattened `grievance_title` reads like a column of the record it is
+   * a flattened `job_title` reads like a column of the record it is
    * merged onto, so the template says something the schema does not, and it
    * only resolves for as long as whoever seeds the record remembers to merge
    * it. Reach the related record instead.
@@ -166,9 +166,9 @@ export interface NotifierRecordRoot {
    * Component the ROOT is gated on, when that is not the notifier's own.
    * A root inherits `requiredComponent` from its notifier, which is right
    * for the record the notifier is about and wrong for a related record it
-   * seeds: the settlement notifier is gated on `grievance.settlement`, but
-   * the grievance it seeds alongside is a `grievance` record and another
-   * notifier declaring the same root says so. Two surfaces sharing a root
+   * seeds: a notifier gated on a child component (`dispatch.fore`) may
+   * seed a parent record alongside (a `dispatch_job`, owned by `dispatch`)
+   * that another notifier declares as a root too. Two surfaces sharing a root
    * name must gate it identically, so gate a root on the component that
    * OWNS its entity kind.
    */
@@ -243,7 +243,7 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
    * list (its "self-notification suppression"). Suppression exists so a user
    * who just performed an action isn't notified about their own real-time
    * change; but for scheduled EBS-pump reminders (e.g. "2 days until this
-   * grievance's deadline") the recipient legitimately wants the reminder even
+   * record's deadline") the recipient legitimately wants the reminder even
    * if they created or last touched the entity — and manually running the pump
    * would otherwise suppress the operator. Defaults to false (suppress).
    */

@@ -566,25 +566,6 @@ export function useCommTabAccess(commId: string | undefined, enabled = true) {
   });
 }
 
-export function useGrievanceTabAccess(grievanceId: string | undefined, enabled = true) {
-  return useTabAccess({
-    entityType: 'grievance',
-    entityId: grievanceId,
-    enabled,
-  });
-}
-
-export function useGrievanceTimelineTemplateTabAccess(
-  templateId: string | undefined,
-  enabled = true,
-) {
-  return useTabAccess({
-    entityType: 'grievanceTimelineTemplate',
-    entityId: templateId,
-    enabled,
-  });
-}
-
 export function useContractTabAccess(contractId: string | undefined, enabled = true) {
   return useTabAccess({
     entityType: 'contract',

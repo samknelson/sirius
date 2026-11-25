@@ -63,7 +63,7 @@ function registerClientInjectionKind(): void {
     },
     // Validate a unified plugin_configs `data` payload against the impl's own
     // JSON schema (when it declares one). Impls without a schema (e.g. the
-    // Weglot init, whose output is fully computed) accept any data.
+    // an injection whose output is fully computed) accept any data.
     validateConfig: async (plugin, config) => {
       if (!plugin.configSchema) return { valid: true };
       const { validateAgainstSchema } = await import(
@@ -148,8 +148,6 @@ export function registerClientInjectionManifestRoute(
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "./plugins/weglot-sdk";
-import "./plugins/weglot-init";
 import "./plugins/custom-css-inline";
 import "./plugins/custom-css-href";
 import "./plugins/custom-js-inline";

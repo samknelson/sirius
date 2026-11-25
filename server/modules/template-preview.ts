@@ -73,7 +73,7 @@ export interface RenderTemplatePreviewRequest {
   templates: Record<string, string>;
   /**
    * The COMPLETE ordered list of roots this render reports on and may
-   * be seeded at, by root NAME (`grievance`, `event`, `contact`).
+   * be seeded at, by root NAME (`dispatch_job`, `event`, `contact`).
    *
    * Nothing is implicit: a root left off this list cannot be seeded and
    * is not reported on, which is how a surface keeps its report to the

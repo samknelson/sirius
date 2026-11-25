@@ -20,7 +20,6 @@ import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
-import { registerGrievanceRoutes } from "./modules/grievances/grievances";
 import { registerEntityFileContexts } from "./modules/entity-files-contexts";
 import { registerCatalogRoutes } from "./modules/catalogs";
 import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog";
@@ -33,9 +32,7 @@ import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
 import { registerRecordGoRoutes } from "./modules/record-go";
 import { wireEntityFilesFileReadAccess } from "./services/entity-files/file-read-access";
 import { initEntityFilesDeleteCleanup } from "./services/entity-files/delete-cleanup";
-import { assertFileContextTablesComplete } from "./storage/entity-files-context-tables";
 import { assertEntityMetadataRecordTablesComplete } from "./storage/entity-metadata-record-tables";
-import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
@@ -109,7 +106,6 @@ import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-st
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerEntityNoteContexts } from "./modules/entity-notes-contexts";
 import { registerEntityNotesRoutes } from "./modules/entity-notes";
-import { assertNoteContextTablesComplete } from "./storage/entity-notes-context-tables";
 import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
 import { registerWorkerSkillsRoutes } from "../components/worker.skills/server/modules/workers/skills";
 import { registerWorkerBadgesRoutes } from "../components/worker.badges/server/modules/workers/badges";
@@ -320,16 +316,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register communication routes
   registerCommRoutes(app, requireAuth, requirePermission, requireAccess);
 
-  // Register grievance routes
-  registerGrievanceRoutes(app, requireAuth, requireAccess);
 
-  // Entity file attachments framework: register contexts, assert each one has
-  // a table binding for the orphan sweep, subscribe the immediate cleanup that
-  // removes a deleted record's attachments, then the generic routes.
+  // Entity file attachments framework: register core contexts (components
+  // register theirs at startup), subscribe the immediate cleanup that removes
+  // a deleted record's attachments, then the generic routes.
   registerEntityFileContexts();
   registerEntityFileAreasCatalog();
   registerPluginKindsCatalog();
-  assertFileContextTablesComplete();
   initEntityFilesDeleteCleanup();
   wireEntityFilesFileReadAccess();
   registerEntityFileRoutes(app, requireAuth);
@@ -342,8 +335,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerCatalogRoutes(app);
   registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
 
-  // Register grievance timeline template routes
-  registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
 
   // Register employer contact routes
   registerEmployerContactRoutes(app, requireAuth, requirePermission);
@@ -1636,11 +1627,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
 
   // Register notes routes (staff-only, all record types)
-  // Entity notes framework: register contexts, assert each one has a table
-  // binding for the orphan sweep, then the generic routes.
+  // Entity notes framework: register core contexts (components register
+  // theirs at startup), then the generic routes.
   registerEntityNoteContexts();
   registerEntityNoteAreasCatalog();
-  assertNoteContextTablesComplete();
   initEntityNotesDeleteCleanup();
   registerEntityNotesRoutes(app, requireAuth);
 

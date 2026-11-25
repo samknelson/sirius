@@ -70,66 +70,72 @@ export interface FlatTab extends TabDefinition {
 }
 
 /**
- * Entity type for tab registry
+ * Entity types that have a tab tree. A component that contributes a tree of
+ * its own (tabs on an entity no core tree covers) adds its entity type here
+ * by interface augmentation (`declare module "@shared/tabRegistry"`).
  */
-export type TabEntityType = 
-  | 'worker' 
-  | 'worker_certification'
-  | 'employer' 
-  | 'employer_contact' 
-  | 'company'
-  | 'provider' 
-  | 'provider_contact' 
-  | 'policy' 
-  | 'event'
-  | 'bargaining_unit'
-  | 'btu_csg'
-  | 'cron_job'
-  | 'dispatch'
-  | 'dispatch_job'
-  | 'dispatch_job_type'
-  | 'dispatch_job_group'
-  | 'edls_sheet'
-  | 'ledger_account'
-  | 'ledger_payment'
-  | 'trust_benefit'
-  | 'worker_hours'
-  | 'user'
-  | 'ws_client'
-  | 'sftp_client_destination'
-  | 'bulk_message'
-  | 'ledger_payment_batch'
-  | 'facility'
-  | 'trust_election'
-  | 'comm'
-  | 'grievance'
-  | 'grievanceTimelineTemplate'
-  | 'contract'
-  | 'business_calendar'
+export interface TabEntityTypes {
+  worker: true;
+  worker_certification: true;
+  employer: true;
+  employer_contact: true;
+  company: true;
+  provider: true;
+  provider_contact: true;
+  policy: true;
+  event: true;
+  bargaining_unit: true;
+  btu_csg: true;
+  cron_job: true;
+  dispatch: true;
+  dispatch_job: true;
+  dispatch_job_type: true;
+  dispatch_job_group: true;
+  edls_sheet: true;
+  ledger_account: true;
+  ledger_payment: true;
+  trust_benefit: true;
+  worker_hours: true;
+  user: true;
+  ws_client: true;
+  sftp_client_destination: true;
+  bulk_message: true;
+  ledger_payment_batch: true;
+  facility: true;
+  trust_election: true;
+  comm: true;
+  contract: true;
+  business_calendar: true;
   /** A unified-options type; the entity id is the type slug (e.g. `department`). */
-  | 'options'
+  options: true;
   /**
    * The incoming web services page. A single admin page, not a row, so the
    * entity id is the constant {@link WS_ADMIN_ENTITY_ID}.
    */
-  | 'ws'
+  ws: true;
   /**
    * The outgoing web services page. A single admin page, not a row, so the
    * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
    */
-  | 'wc'
+  wc: true;
   /** Denorm operations: a single admin page, not an entity record. */
-  | 'denorm'
+  denorm: true;
   /**
    * The record history admin page. A single admin page, not a row, so the
    * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
    */
-  | 'record_metadata'
+  record_metadata: true;
   /**
    * User role administration. A single admin page, not a row, so the entity id
    * is the constant {@link USER_ROLES_ADMIN_ENTITY_ID}.
    */
-  | 'user_roles';
+  user_roles: true;
+}
+
+/**
+ * Entity type for tab registry
+ */
+export type TabEntityType = keyof TabEntityTypes & string;
 
 /**
  * Tab check request for batch access evaluation
@@ -256,7 +262,6 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
-  { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'worker' } },
   { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
@@ -299,7 +304,6 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
-  { id: 'grievances', label: 'Grievances', hrefTemplate: '/employers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
   { id: 'sitespecific-bao-immediate-eligibility', label: 'Immediate Eligibility', hrefTemplate: '/employers/{id}/sitespecific-bao-immediate-eligibility', permission: 'staff', component: 'sitespecific.bao' },
 ];
@@ -520,31 +524,6 @@ export const commTabTree: HierarchicalTab[] = [
   { id: 'edit', label: 'Edit', hrefTemplate: '/comm/{id}/edit', permission: 'staff' },
 ];
 
-/**
- * Grievance entity tab tree
- */
-export const grievanceTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/grievance/{id}', permission: 'staff', component: 'grievance' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/grievance/{id}/edit', permission: 'staff', component: 'grievance' },
-  {
-    id: 'timeline', label: 'Timeline', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance',
-    children: [
-      { id: 'timeline-view', label: 'View', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance' },
-      { id: 'status-history', label: 'Edit', hrefTemplate: '/grievance/{id}/status-history', permission: 'staff', component: 'grievance' },
-    ],
-  },
-  { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
-  { id: 'files', label: 'Files', hrefTemplate: '/grievance/{id}/files', permission: 'staff', component: 'grievance', entityContext: { framework: 'entity-files', contextId: 'grievance' } },
-  { id: 'notes', label: 'Notes', hrefTemplate: '/grievance/{id}/notes', permission: 'staff', component: 'grievance', entityContext: { framework: 'entity-notes', contextId: 'grievance' } },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
-];
-
-export const grievanceTimelineTemplateTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/grievance-timeline-template/{id}', permission: 'admin', component: 'grievance' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/grievance-timeline-template/{id}/edit', permission: 'admin', component: 'grievance' },
-  { id: 'items', label: 'Steps', hrefTemplate: '/grievance-timeline-template/{id}/items', permission: 'admin', component: 'grievance' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/grievance-timeline-template/{id}/logs', permission: 'admin', component: 'grievance' },
-];
 
 /**
  * Contract entity tab tree
@@ -808,7 +787,7 @@ export const userRolesTabTree: HierarchicalTab[] = [
 /**
  * Entity tab trees by type
  */
-export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
+export const tabTreeRegistry: Partial<Record<TabEntityType, HierarchicalTab[]>> = {
   worker: workerTabTree,
   worker_certification: workerCertificationTabTree,
   employer: employerTabTree,
@@ -838,8 +817,6 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   facility: facilityTabTree,
   trust_election: trustElectionTabTree,
   comm: commTabTree,
-  grievance: grievanceTabTree,
-  grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
   contract: contractTabTree,
   business_calendar: businessCalendarTabTree,
   options: optionsTabTree,
@@ -1005,12 +982,14 @@ function findContributedTab(tree: HierarchicalTab[], id: string): HierarchicalTa
 const pendingTabs = componentContributions.flatMap(contribution => contribution.tabs ?? []);
 while (pendingTabs.length) {
   const next = pendingTabs.findIndex(({entity, parent, before}) =>
-    (!parent || !!findContributedTab(tabTreeRegistry[entity], parent)) &&
+    (!parent || !!findContributedTab(tabTreeRegistry[entity] ?? [], parent)) &&
     (!before || !pendingTabs.some(other => other.entity === entity && other.tab.id === before)));
   if (next < 0) throw new Error("Component tabs have an unknown parent or cyclic ordering");
   const {entity, parent, before, tab} = pendingTabs.splice(next, 1)[0];
-  const parentTab = parent ? findContributedTab(tabTreeRegistry[entity], parent) : undefined;
-  const tree = parentTab ? (parentTab.children ??= []) : tabTreeRegistry[entity];
+  // A component may contribute the first tabs of an entity no core tree covers.
+  const entityTree = (tabTreeRegistry[entity] ??= []);
+  const parentTab = parent ? findContributedTab(entityTree, parent) : undefined;
+  const tree = parentTab ? (parentTab.children ??= []) : entityTree;
   const index = before ? tree.findIndex(t => t.id === before) : -1;
   tree.splice(index < 0 ? tree.length : index, 0, tab);
 }

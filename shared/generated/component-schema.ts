@@ -6,6 +6,9 @@ export * from "./../../components/dispatch.dnc/shared/schema/dispatch/dnc-schema
 export * from "./../../components/dispatch.eba/shared/schema/dispatch/eba-schema";
 export * from "./../../components/dispatch.fore/shared/schema/dispatch/fore-schema";
 export * from "./../../components/dispatch.hfe/shared/schema/dispatch/hfe-schema";
+export * from "./../../components/grievance/shared/schema/grievance/schema";
+export * from "./../../components/grievance.contract/shared/schema/grievance/contract-schema";
+export * from "./../../components/grievance.settlement/shared/schema/grievance/settlement-schema";
 export * from "./../../components/sitespecific.freeman/shared/schema/sitespecific/freeman/schema";
 export * from "./../../components/sitespecific.freeman.edls_migrate/shared/schema/sitespecific/freeman/edls-migrate-schema";
 export * from "./../../components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema";

@@ -1,0 +1,7 @@
+{
+  "definition": "shared/component.ts",
+  "server": [
+    "server/plugins/client-injection/plugins/weglot-sdk.ts",
+    "server/plugins/client-injection/plugins/weglot-init.ts"
+  ]
+}

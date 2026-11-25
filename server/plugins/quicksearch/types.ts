@@ -46,7 +46,7 @@ export interface QuicksearchContext {
  * A searcher decides for itself which of its clauses the typed string could
  * plausibly be and drops the rest — this is deliberately NOT a fixed OR across
  * every configured field. Typing `008` must not pull in every identifier
- * beginning `008`, and typing `2026` must not return every grievance filed
+ * beginning `008`, and typing `2026` must not return every record created
  * this year.
  */
 export interface QuicksearchPlugin extends BasePluginMetadata {

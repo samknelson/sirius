@@ -41,7 +41,7 @@ export interface ComponentPolicyRule {
 export interface ComponentManagedPluginConfig {
   /** PluginKind discriminator, e.g. "client-injection". */
   pluginKind: string;
-  /** Registered impl id, e.g. "weglot-sdk". */
+  /** Registered impl id, e.g. "stripe". */
   pluginId: string;
   /** Stable, unique, editable identifier. Use `auto.<componentId>.<localId>`. */
   siriusId: string;
@@ -170,8 +170,7 @@ export const componentRegistry: ComponentDefinition[] = [
     // Seed a default wc-vendors config naming the secret that holds the
     // Stripe API credentials. Materialized on enable (and at boot for an
     // already-enabled component); admin edits to name/ordering/data are
-    // preserved on re-enable. Mirrors how internationalization.weglot seeds
-    // its client-injection rows.
+    // preserved on re-enable.
     pluginConfigs: [
       {
         pluginKind: "wc-vendors",
@@ -227,47 +226,6 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/cardcheck/schema.ts",
       tables: ["cardcheck_definitions", "cardchecks"]
-    }
-  },
-  {
-    id: "grievance",
-    name: "Grievance",
-    description: "Functionality for tracking and managing grievances",
-    enabledByDefault: false,
-    category: "core",
-    managesSchema: true,
-    schemaManifest: {
-      version: 16,
-      schemaPath: "./shared/schema/grievance/schema.ts",
-      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history"]
-    }
-  },
-  {
-    id: "grievance.settlement",
-    name: "Grievance Settlement",
-    description: "Tracking settlements recorded against grievances. Requires the Grievance component to be enabled — settlements reference grievance records.",
-    enabledByDefault: false,
-    category: "grievance",
-    managesSchema: true,
-    schemaManifest: {
-      version: 1,
-      schemaPath: "./shared/schema/grievance/settlement-schema.ts",
-      tables: ["options_grievance_settlement_type", "grievance_settlements"],
-      dependsOnComponents: ["grievance"]
-    }
-  },
-  {
-    id: "grievance.contract",
-    name: "Grievance Contract",
-    description: "Linking grievances to contract sections. Requires the Grievance and Contract components to be enabled — its foreign keys reference the grievances and contract_sections tables.",
-    enabledByDefault: false,
-    category: "grievance",
-    managesSchema: true,
-    schemaManifest: {
-      version: 2,
-      schemaPath: "./shared/schema/grievance/contract-schema.ts",
-      tables: ["grievance_contract_sections", "grievance_contracts"],
-      dependsOnComponents: ["grievance", "contract"]
     }
   },
   {
@@ -763,36 +721,6 @@ export const componentRegistry: ComponentDefinition[] = [
     permissions: [
       { key: "staff.bulk", description: "Access to bulk messaging functionality" }
     ]
-  },
-  {
-    id: "internationalization",
-    name: "Internationalization",
-    description: "Umbrella feature flag for translation and localization providers.",
-    enabledByDefault: false,
-    category: "core"
-  },
-  {
-    id: "internationalization.weglot",
-    name: "Weglot Translation",
-    description: "Injects the Weglot SDK and initializer so site content can be translated on the fly.",
-    enabledByDefault: false,
-    category: "internationalization",
-    pluginConfigs: [
-      {
-        pluginKind: "client-injection",
-        pluginId: "weglot-sdk",
-        siriusId: "auto.internationalization.weglot.sdk",
-        name: "Weglot SDK",
-        ordering: 10,
-      },
-      {
-        pluginKind: "client-injection",
-        pluginId: "weglot-init",
-        siriusId: "auto.internationalization.weglot.init",
-        name: "Weglot Initialization",
-        ordering: 20,
-      },
-    ],
   },
   {
     id: "system.session_history",

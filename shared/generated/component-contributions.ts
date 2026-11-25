@@ -6,9 +6,11 @@ import { contributions as contribution2 } from "./../../components/dispatch.dnc/
 import { contributions as contribution3 } from "./../../components/dispatch.eba/shared/contributions";
 import { contributions as contribution4 } from "./../../components/dispatch.fore/shared/contributions";
 import { contributions as contribution5 } from "./../../components/dispatch.hfe/shared/contributions";
-import { contributions as contribution6 } from "./../../components/sitespecific.freeman/shared/contributions";
-import { contributions as contribution7 } from "./../../components/sitespecific.freeman.authorization/shared/contributions";
-import { contributions as contribution8 } from "./../../components/sitespecific.freeman.edls_migrate/shared/contributions";
-import { contributions as contribution9 } from "./../../components/sitespecific.t631.client/shared/contributions";
-import { contributions as contribution10 } from "./../../components/sitespecific.t631.interviews/shared/contributions";
-export const componentContributions: ComponentContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5, contribution6, contribution7, contribution8, contribution9, contribution10];
+import { contributions as contribution6 } from "./../../components/grievance/shared/contributions";
+import { contributions as contribution7 } from "./../../components/grievance.settlement/shared/contributions";
+import { contributions as contribution8 } from "./../../components/sitespecific.freeman/shared/contributions";
+import { contributions as contribution9 } from "./../../components/sitespecific.freeman.authorization/shared/contributions";
+import { contributions as contribution10 } from "./../../components/sitespecific.freeman.edls_migrate/shared/contributions";
+import { contributions as contribution11 } from "./../../components/sitespecific.t631.client/shared/contributions";
+import { contributions as contribution12 } from "./../../components/sitespecific.t631.interviews/shared/contributions";
+export const componentContributions: ComponentContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5, contribution6, contribution7, contribution8, contribution9, contribution10, contribution11, contribution12];

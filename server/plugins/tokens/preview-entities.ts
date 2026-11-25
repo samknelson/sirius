@@ -342,7 +342,7 @@ export type TokenPreviewEntityResult =
  *
  * The record is loaded before the record-scoped gate runs, because the
  * subject the gate asks about lives ON the record (a status entry is
- * read as a read of its grievance). Nothing loaded is ever handed back
+ * read as a read of its worker). Nothing loaded is ever handed back
  * until the gate says yes.
  *
  * Returns a result rather than throwing so the calling route decides

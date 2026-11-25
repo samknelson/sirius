@@ -7,7 +7,7 @@ export const OPTIONS_INDEX_PATH = "/config/options";
 
 /**
  * The title a page administering one dropdown list goes by. The registry
- * stores the list's name ("Grievance Step"); the word "Options" is added here,
+ * stores the list's name ("Department"); the word "Options" is added here,
  * at the point of display, so it never becomes part of a stored name again.
  */
 export function optionsPageTitle(name: string): string {

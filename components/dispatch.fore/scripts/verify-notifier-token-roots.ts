@@ -1,6 +1,6 @@
 /**
  * One-off end-to-end verification for the remaining notifiers' token roots,
- * after applying the rules the grievance status notifier established: a root
+ * after applying the rules the first converted notifier established: a root
  * is named after its entity kind, advertises nothing its record cannot
  * supply, and reaches related values through the related record.
  *
@@ -109,11 +109,7 @@ async function main() {
     "../shared/schema/dispatch/fore-schema"
   );
   type DispatchJobFore = typeof dispatchJobFore.$inferSelect;
-  const { grievanceSettlements } = await import(
-    "../../../shared/schema/grievance/settlement-schema"
-  );
   const { edlsSheets } = await import("../../../shared/schema/edls/schema");
-  const { grievances } = await import("../../../shared/schema");
 
   // --- dispatch status: the availability row the event carried ---
   const [wds] = await db.select().from(workerDispatchStatus).limit(1);
@@ -148,29 +144,6 @@ async function main() {
       action: "removed",
       fore,
       job,
-    });
-  }
-
-  // --- settlement: the settlement off the event, grievance from the grievance ---
-  const [settlement] = await db.select().from(grievanceSettlements).limit(1);
-  if (!settlement) console.log("SKIP: no grievance_settlements rows");
-  else {
-    const titleInfo = await storage.grievances.getAssignmentTitleInfo(
-      settlement.grievanceId,
-    );
-    const [grievanceRow] = await db
-      .select()
-      .from(grievances)
-      .where(eq(grievances.id, settlement.grievanceId));
-    await verify("grievance-settlement", {
-      grievanceId: settlement.grievanceId,
-      settlementId: settlement.id,
-      operation: "updated",
-      row: settlement,
-      grievance: grievanceRow ?? null,
-      grievanceTitleParts: titleInfo
-        ? { name: titleInfo.name, categoryName: titleInfo.categoryName }
-        : null,
     });
   }
 
@@ -291,54 +264,6 @@ async function main() {
           "an unparseable token, left alone",
           "{{dispatch_fore.field(name=unquoted)}}",
           "{{dispatch_fore.field(name=unquoted)}}",
-        ],
-      ],
-    },
-    {
-      pluginId: "grievance-settlement",
-      legacy:
-        '{{grievance_settlement.field(name="grievance_title")}}: ' +
-        '{{grievance_settlement.field(name="summary")}} ' +
-        '({{grievance_settlement.grievance.field(name="sirius_id")}})',
-      expected:
-        '{{grievance.field(name="display_title")}}: ' +
-        '{{grievance_settlement.field(name="summary")}} ' +
-        '({{grievance.field(name="sirius_id")}})',
-      awkward: [
-        [
-          "arguments in the other order",
-          '{{grievance_settlement.field(default="—", name="grievance_title")}}',
-          '{{grievance.field(default="—", name="display_title")}}',
-        ],
-        [
-          "whitespace around the chain and arguments",
-          '{{  grievance_settlement.field( name = "grievance_title" )  }}',
-          '{{grievance.field(name="display_title")}}',
-        ],
-        [
-          "a brace inside an argument value",
-          '{{grievance_settlement.field(name="grievance_title", default="{unset}")}}',
-          '{{grievance.field(name="display_title", default="{unset}")}}',
-        ],
-        [
-          "an escaped quote inside an argument value",
-          '{{grievance_settlement.field(name="grievance_title", default="say \\"none\\"")}}',
-          '{{grievance.field(name="display_title", default="say \\"none\\"")}}',
-        ],
-        [
-          "a field that stayed on the settlement",
-          '{{grievance_settlement.field(name="amount")}}',
-          '{{grievance_settlement.field(name="amount")}}',
-        ],
-        [
-          "a deeper chain off the grievance hop",
-          '{{grievance_settlement.grievance.field(name="name", default="—")}}',
-          '{{grievance.field(name="name", default="—")}}',
-        ],
-        [
-          "an unparseable token, left alone",
-          "{{grievance_settlement.field(name=unquoted)}}",
-          "{{grievance_settlement.field(name=unquoted)}}",
         ],
       ],
     },

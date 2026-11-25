@@ -62,7 +62,7 @@ describe("tables the metadata sweep refuses", () => {
   it("refuses a table that is not there", () => {
     // A component that manages its own schema has no tables at all while it is
     // off. "The table is missing" is not evidence that the records are gone.
-    expect(refusal("grievances", facts({ exists: false }))).not.toBe("SWEPT");
+    expect(refusal("bullpen_entries", facts({ exists: false }))).not.toBe("SWEPT");
   });
 
   it("refuses a name that is not a plain identifier, without asking the database", () => {
@@ -104,7 +104,7 @@ describe("tables the metadata sweep refuses", () => {
     // The reason is what the run summary shows an operator, so it has to say
     // which refusal happened, not just that one did.
     const reasons = new Set([
-      refusal("grievances", facts({ exists: false })),
+      refusal("bullpen_entries", facts({ exists: false })),
       refusal("session", facts({ idColumnType: null })),
       refusal("job_runs", facts({ idColumnType: "integer" })),
       refusal("components", facts({ sampleIds: ["dispatch"] })),

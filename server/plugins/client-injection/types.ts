@@ -10,7 +10,7 @@ export type InjectionKind = "js-src" | "js-inline" | "css-href" | "css-inline";
  * client-injection config. Every field is optional: the resolver merges these
  * over the registered impl's static defaults, so an admin can override the
  * slot/kind/src/code/attrs (e.g. for the custom CSS/JS injections) while a
- * component-owned impl (e.g. Weglot) can ship sane defaults and leave the row
+ * component-owned impl (e.g. a vendor SDK loader) can ship sane defaults and leave the row
  * `data` empty.
  */
 export interface ClientInjectionData {
@@ -42,7 +42,7 @@ export interface ClientInjectionPlugin extends BasePluginMetadata {
   /**
    * JSON Schema describing the editable `data` fields the generic admin UI
    * renders for a config row of this impl. Omit for impls whose output is
-   * fully computed (e.g. Weglot init resolves its code from the API key).
+   * fully computed (e.g. an initializer that resolves its code from an API key).
    */
   configSchema?: JsonSchema;
   /** Optional RJSF UI hints paired with {@link configSchema}. */

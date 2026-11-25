@@ -39,7 +39,7 @@ const BATCH_LIMIT = 500;
  * are still stored, and a deleted record's files should not survive because
  * the area is currently unconfigured.
  *
- * A record type owned by a disabled component (grievances, say) has no table
+ * A record type owned by a disabled component has no table
  * to join against, so it is SKIPPED rather than swept, and named in the run
  * summary. Its attachments survive until the component is switched back on —
  * the conservative choice, since "the table is missing" is not evidence that

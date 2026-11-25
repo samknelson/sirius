@@ -147,7 +147,13 @@ for other executable-registry catalogs.
 
 ## Scope
 
-Only communication viewing currently invokes a production hook. This is an
+Production hooks include communication viewing, `tabs.visibility` (hide an
+authorized tab) and `tabs.entity-policy` (the base access policy for an entity
+type's tab batch check; answer only for entity types the component owns). Facts
+that must hold while a component is disabled — record-history exclusions, record
+"go" access, notes/files context tables — are manifest/metadata/registration
+data, not hooks, because hooks skip disabled components. There is no synchronous
+run variant. This is an
 incremental extraction boundary, not physical component packaging, build-time
 discovery, deployment profiles, a general lifecycle framework, or editable
 priority/configuration. Existing plugin, event and catalog frameworks keep their

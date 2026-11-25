@@ -222,7 +222,7 @@ function rootIsSeeded(ctx: TokenEvalContext, plugin: TokenPlugin): boolean {
  * What a value leaf renders in sample mode. The persona chosen for the
  * chain's ROOT wins when it names this leaf, so one pick renders a
  * coherent story through everything hanging off that root — martian
- * grievance, martian grievant, martian employer; otherwise the token's
+ * worker, martian contact, martian employer; otherwise the token's
  * own declared sample data applies (which is what a kind with no named
  * set always uses).
  *

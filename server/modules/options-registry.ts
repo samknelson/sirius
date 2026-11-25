@@ -74,21 +74,10 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
 }
 
 /**
- * Every declared options list, keyed by type.
- *
- * The keys are `optionsMetadata`'s keys and are not written out again here.
- * They used to be: a hand-kept object literal of all 32 identifiers, sitting
- * beside the metadata that already named them, where adding a list meant
- * declaring it twice and forgetting the second one meant the list existed but
- * had no routes.
+ * Configs for declared options lists, keyed by type. The keys are
+ * `optionsMetadata`'s keys and are not written out again here.
  */
-export const optionsTypeRegistry: Record<string, OptionsTypeConfig> =
-  Object.fromEntries(
-    (Object.keys(optionsMetadata) as OptionsTypeName[]).map((type) => [
-      type,
-      createTypeConfig(type),
-    ]),
-  );
+const typeConfigs = new Map<string, OptionsTypeConfig>();
 
 /**
  * The declared config for a type, or undefined if no such list is declared.
@@ -100,7 +89,12 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> =
  * component-filtered source would have left the same list looking unknown.
  */
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {
-  return optionsTypeRegistry[type];
+  // Built on first use: a component declares its lists during boot, after
+  // this module is imported.
+  if (!Object.prototype.hasOwnProperty.call(optionsMetadata, type)) return undefined;
+  let config = typeConfigs.get(type);
+  if (!config) typeConfigs.set(type, (config = createTypeConfig(type as OptionsTypeName)));
+  return config;
 }
 
 export function getOptionsStorage(): UnifiedOptionsStorage {

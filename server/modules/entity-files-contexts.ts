@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { storage } from "../storage";
+import { workers, employers, trustProviders } from "@shared/schema";
 import { buildContext, checkAccess } from "../services/access-policy-evaluator";
 import {
   registerEntityFileContext,
@@ -11,7 +12,7 @@ import {
  *
  * Every registration here is a code registration only: attachment rows live
  * in the shared `entity_files` table keyed by the context id, and the
- * directory token `:entity-id` is framework-supplied. Adding a fifth area is
+ * directory token `:entity-id` is framework-supplied. Adding another area is
  * another entry in this file plus operator configuration under
  * Config → Entity Files — no table, no migration, no storage namespace.
  */
@@ -22,7 +23,7 @@ import {
  * the `file.read` policy. They MUST stay exactly as strict as each other,
  * which is why they are built here as a pair rather than declared twice.
  */
-function staffOnly(): Pick<EntityFileContext, "checkAccess" | "checkPolicyAccess"> {
+export function staffOnly(): Pick<EntityFileContext, "checkAccess" | "checkPolicyAccess"> {
   return {
     async checkAccess(_verb, _entityId, req: Request): Promise<boolean> {
       const context = await buildContext(req);
@@ -36,21 +37,10 @@ function staffOnly(): Pick<EntityFileContext, "checkAccess" | "checkPolicyAccess
 }
 
 export function registerEntityFileContexts(): void {
-  // Grievances — staff-only, and gated on the `grievance` component.
-  registerEntityFileContext({
-    id: "grievance",
-    label: "Grievances",
-    recordLabel: "Grievance",
-    component: "grievance",
-    async entityExists(entityId: string): Promise<boolean> {
-      return Boolean(await storage.grievances.get(entityId));
-    },
-    ...staffOnly(),
-  });
-
   // Workers — staff-only, matching the worker Notes/Logs tabs.
   registerEntityFileContext({
     id: "worker",
+    table: workers,
     label: "Workers",
     recordLabel: "Worker",
     async entityExists(entityId: string): Promise<boolean> {
@@ -62,6 +52,7 @@ export function registerEntityFileContexts(): void {
   // Employers — staff-only, matching the employer Notes/Logs tabs.
   registerEntityFileContext({
     id: "employer",
+    table: employers,
     label: "Employers",
     recordLabel: "Employer",
     async entityExists(entityId: string): Promise<boolean> {
@@ -73,6 +64,7 @@ export function registerEntityFileContexts(): void {
   // Trust providers — staff-only, and hidden while `trust.providers` is off.
   registerEntityFileContext({
     id: "trust_provider",
+    table: trustProviders,
     label: "Trust Providers",
     recordLabel: "Trust Provider",
     component: "trust.providers",

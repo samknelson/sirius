@@ -8,6 +8,7 @@ import {
 } from "./middleware/logging";
 import { isMetadataTableEligible } from "./system/entity-metadata-policy";
 import { metadataComponentEnabled } from "./entity-metadata-component-gate";
+import type { RecordGoAccessRequirement } from "../services/record-go";
 
 /**
  * The metadata context registry is keyed by the stable value stored in
@@ -22,6 +23,12 @@ export interface MetadataRecordContext {
   hrefTemplate: string | null;
   /** Source-kind names used by denorm; navigation still uses this same context. */
   entityTypes?: readonly string[];
+  /**
+   * What a viewer needs to be sent to this record from Go to record. A
+   * context with a page must declare it (core contexts declare theirs in
+   * server/services/record-go.ts); one without fails closed.
+   */
+  recordGo?: RecordGoAccessRequirement;
 }
 
 const context = (
@@ -66,16 +73,6 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   events: context(coreSchema.events, "Events", "/events/{id}"),
   facilities: context(coreSchema.facilities, "Facilities", "/facility/{id}"),
   files: context(coreSchema.files, "Files", null),
-  grievance_complaints: context(coreSchema.grievanceComplaints, "Grievance Complaints", null),
-  grievance_contracts: context(coreSchema.grievanceContracts, "Grievance Contract Citations", null),
-  grievance_employers: context(coreSchema.grievanceEmployers, "Grievance Employers", null),
-  grievance_remedies: context(coreSchema.grievanceRemedies, "Grievance Remedies", null),
-  grievance_settlements: context(coreSchema.grievanceSettlements, "Grievance Settlements", null),
-  grievance_timeline_template_steps: context(coreSchema.grievanceTimelineTemplateSteps, "Grievance Timeline Template Steps", null),
-  grievance_timeline_templates: context(coreSchema.grievanceTimelineTemplates, "Grievance Timeline Templates", "/grievance-timeline-template/{id}"),
-  grievance_users: context(coreSchema.grievanceUsers, "Grievance Staff", null),
-  grievance_workers: context(coreSchema.grievanceWorkers, "Grievance Workers", null),
-  grievances: context(coreSchema.grievances, "Grievances", "/grievance/{id}", ["grievance"]),
   ledger_accounts: context(coreSchema.ledgerAccounts, "Ledger Accounts", "/ledger/accounts/{id}"),
   ledger_payment_batches: context(coreSchema.ledgerPaymentBatches, "Ledger Payment Batches", "/ledger/payment-batch/{id}"),
   ledger_paymentmethods: context(coreSchema.ledgerPaymentMethods, "Ledger Payment Methods", null),

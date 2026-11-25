@@ -1,53 +1,21 @@
-import { workers, employers, trustProviders, grievances } from "@shared/schema";
-import {
-  getEntityFileContext,
-  listEntityFileContexts,
-} from "../services/entity-files/registry";
+import { getEntityFileContext } from "../services/entity-files/registry";
 import { isComponentEnabledSync } from "../services/component-cache";
 import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
 
 /**
- * Table bindings for the file contexts: maps each registered file context
- * (server/modules/entity-files-contexts.ts) to the table that holds its
- * records.
- *
- * The twin of server/storage/entity-notes-context-tables.ts, and separate
- * from it on purpose: notes and files are separate registries with their own
- * context ids, both of which are persisted (`entity_notes.context_id`,
- * `entity_files.context_id`), so neither set can be renamed to unify them.
- *
- * This exists for the orphan sweep alone. Per-record existence is answered by
- * the context's own `entityExists`; a sweep needs an anti-join, which no
- * per-record callback can express, so the table itself has to be nameable.
+ * The table holding a registered file context's records, as declared on the
+ * context registration. Used by the orphan sweep alone: per-record existence
+ * is answered by the context's own `entityExists`, but a sweep needs an
+ * anti-join, which no per-record callback can express.
  */
-export const fileContextTables: Record<string, PgTable<TableConfig>> = {
-  worker: workers,
-  employer: employers,
-  trust_provider: trustProviders,
-  grievance: grievances,
-};
-
-/**
- * Every registered context must have a table binding. A context declared
- * without one is a wiring bug — fail fast at boot rather than letting the
- * sweep silently skip that context's orphaned attachments.
- */
-export function assertFileContextTablesComplete(): void {
-  const missing = listEntityFileContexts()
-    .filter((c) => !fileContextTables[c.id])
-    .map((c) => c.id);
-  if (missing.length > 0) {
-    throw new Error(
-      `File contexts missing a table binding in server/storage/entity-files-context-tables.ts: ${missing.join(", ")}`,
-    );
-  }
+export function getFileContextTable(contextId: string): PgTable<TableConfig> | undefined {
+  return getEntityFileContext(contextId)?.table;
 }
 
 /**
  * Is this context's table queryable right now?
  *
- * A record type owned by a component that manages its own schema (grievances,
- * for one) has NO TABLE AT ALL while that component is disabled — the tables
+ * A record type owned by a component that manages its own schema has NO TABLE AT ALL while that component is disabled — the tables
  * are created when it is switched on. Querying such a table throws
  * "relation does not exist", so the orphan sweep must ask this first and skip
  * the context when it answers false. The rule is registry-driven: any future
@@ -60,7 +28,7 @@ export function assertFileContextTablesComplete(): void {
  */
 export function isFileContextAvailable(contextId: string): boolean {
   const context = getEntityFileContext(contextId);
-  if (!context || !fileContextTables[contextId]) return false;
+  if (!context) return false;
   if (!context.component) return true;
   return isComponentEnabledSync(context.component);
 }
