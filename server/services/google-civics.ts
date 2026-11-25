@@ -1,6 +1,9 @@
 import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
 import type { BtuPoliticalStorage } from "../storage/sitespecific/btu/political";
-import { geocodeWithGoogle } from "./google-geocode";
+import {
+  GOOGLE_GEOCODE_OPERATION,
+  GOOGLE_GEOCODING_PLUGIN_ID,
+} from "../plugins/wc-vendors/plugins/google-geocoding";
 import {
   CivicApiError,
   type CivicOfficial,
@@ -31,23 +34,25 @@ interface GeocodingResult {
 /**
  * Address → coordinates, through the shared Google geocode request.
  *
- * Shared with the comm address validator on purpose: it is the same question
- * to the same vendor, so an address geocoded there is free here and the other
- * way round. Only the key differs — this lookup is billed to the civic key —
- * and a key decides who pays, not what the answer is, so it stays out of the
- * request key.
+ * Shared with the comm address validator: the same resolved Google connection
+ * and request arguments use the same cached answer.
  *
  * There is no maintenance guard here any more: the framework refuses the call
  * it is about to make, and a stored answer is not a call. During maintenance
  * an address we have already geocoded still resolves, and one we have not
- * raises the refusal from inside `geocodeWithGoogle`.
+ * raises the refusal from the web client framework.
  */
 async function geocodeAddress(address: string): Promise<GeocodingResult> {
-  const outcome = await geocodeWithGoogle({ address });
-  const data = outcome.response;
+  const outcome = await wcRequest({
+    vendor: { pluginId: GOOGLE_GEOCODING_PLUGIN_ID },
+    operation: GOOGLE_GEOCODE_OPERATION,
+    args: { address },
+  });
+  const data = outcome.outcome === "success" && outcome.value ? outcome.value : outcome.fallback;
+  const error = outcome.outcome === "success" && outcome.value ? undefined : outcome.error;
 
   if (!data) {
-    throw new CivicApiError(outcome.error || "Geocoding request failed", 502);
+    throw new CivicApiError(error || "Geocoding request failed", 502);
   }
 
   if (data.status === "ZERO_RESULTS") {

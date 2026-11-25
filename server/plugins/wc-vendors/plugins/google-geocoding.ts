@@ -18,11 +18,18 @@ export interface GoogleGeocodeArgs {
   region?: string;
 }
 
+export interface GoogleAddressComponent {
+  long_name?: string;
+  short_name?: string;
+  types: string[];
+  [key: string]: unknown;
+}
+
 export interface GoogleGeocodeResult {
   formatted_address?: string;
   place_id?: string;
   types?: string[];
-  address_components?: any[];
+  address_components?: GoogleAddressComponent[];
   geometry?: {
     location?: { lat?: number; lng?: number };
     location_type?: string;

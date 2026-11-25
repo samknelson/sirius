@@ -1,7 +1,13 @@
 import { storage } from "../../../storage";
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { isWcRateLimitError } from "../../webclient/refusals";
-import { geocodeWithGoogle } from "../../google-geocode";
+import { wcRequest } from "../../webclient";
+import {
+  GOOGLE_GEOCODE_OPERATION,
+  GOOGLE_GEOCODING_PLUGIN_ID,
+  type GoogleAddressComponent,
+  type GoogleGeocodeResult,
+} from "../../../plugins/wc-vendors/plugins/google-geocoding";
 import { 
   ParseAddressRequest, 
   ParseAddressResponse, 
@@ -261,14 +267,19 @@ class AddressValidationService {
 
       // Google's geocode, shared with every other caller that asks it about
       // an address — the civic lookup included.
-      const outcome = await geocodeWithGoogle({ address: addressString });
-      const data = outcome.response;
+      const outcome = await wcRequest({
+        vendor: { pluginId: GOOGLE_GEOCODING_PLUGIN_ID },
+        operation: GOOGLE_GEOCODE_OPERATION,
+        args: { address: addressString },
+      });
+      const data = outcome.outcome === "success" && outcome.value ? outcome.value : outcome.fallback;
+      const error = outcome.outcome === "success" && outcome.value ? undefined : outcome.error;
 
       if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
         return {
           isValid: false,
           errors: [
-            `Google validation failed: ${data?.status || outcome.error || 'no answer'} - ${data?.error_message || 'No results found'}`,
+            `Google validation failed: ${data?.status || error || 'no answer'} - ${data?.error_message || 'No results found'}`,
           ],
           warnings: [],
           source: "google",
@@ -458,12 +469,17 @@ class AddressValidationService {
     try {
       // The same shared geocode the validate path uses: an address parsed here
       // and validated there is one answer, bought once.
-      const outcome = await geocodeWithGoogle({ address: rawAddress });
-      const data = outcome.response;
+      const outcome = await wcRequest({
+        vendor: { pluginId: GOOGLE_GEOCODING_PLUGIN_ID },
+        operation: GOOGLE_GEOCODE_OPERATION,
+        args: { address: rawAddress },
+      });
+      const data = outcome.outcome === "success" && outcome.value ? outcome.value : outcome.fallback;
+      const error = outcome.outcome === "success" && outcome.value ? undefined : outcome.error;
 
       if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
         throw new Error(
-          `Google geocoding failed: ${data?.status || outcome.error || 'no answer'} - ${data?.error_message || 'No results found'}`,
+          `Google geocoding failed: ${data?.status || error || 'no answer'} - ${data?.error_message || 'No results found'}`,
         );
       }
 
@@ -517,16 +533,16 @@ class AddressValidationService {
     }
   }
 
-  private parseGoogleAddressComponents(components: any[], result: any): StructuredAddress {
+  private parseGoogleAddressComponents(components: GoogleAddressComponent[], result: GoogleGeocodeResult): StructuredAddress {
     const getComponent = (types: string[]) => {
-      const component = components.find((comp: any) => 
+      const component = components.find((comp) =>
         types.some(type => comp.types.includes(type))
       );
       return component?.long_name || "";
     };
 
     const getShortComponent = (types: string[]) => {
-      const component = components.find((comp: any) => 
+      const component = components.find((comp) =>
         types.some(type => comp.types.includes(type))
       );
       return component?.short_name || "";
@@ -548,7 +564,7 @@ class AddressValidationService {
     };
   }
 
-  private calculateGoogleConfidence(result: any, structured: StructuredAddress): number {
+  private calculateGoogleConfidence(result: GoogleGeocodeResult, structured: StructuredAddress): number {
     let confidence = 0.7; // Base confidence for Google results
     
     // Boost confidence based on location type
@@ -844,7 +860,7 @@ class AddressValidationService {
     latitude?: number;
     longitude?: number;
     accuracy?: string;
-    validationResponse?: any;
+    validationResponse?: GoogleGeocodeResult;
     error?: string;
   }> {
     // No guard at the head any more: the framework refuses the call it is
@@ -866,13 +882,18 @@ class AddressValidationService {
         };
       }
 
-      const outcome = await geocodeWithGoogle({ address: addressString });
-      const data = outcome.response;
+      const outcome = await wcRequest({
+        vendor: { pluginId: GOOGLE_GEOCODING_PLUGIN_ID },
+        operation: GOOGLE_GEOCODE_OPERATION,
+        args: { address: addressString },
+      });
+      const data = outcome.outcome === "success" && outcome.value ? outcome.value : outcome.fallback;
+      const error = outcome.outcome === "success" && outcome.value ? undefined : outcome.error;
 
       if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
         return {
           success: false,
-          error: `Geocoding failed: ${data?.status || outcome.error || 'no answer'}`,
+          error: `Geocoding failed: ${data?.status || error || 'no answer'}`,
         };
       }
 
