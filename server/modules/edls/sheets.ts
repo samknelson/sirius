@@ -871,6 +871,7 @@ export function registerEdlsSheetsRoutes(
           startTime: crew.startTime,
           endTime: crew.endTime,
           taskId: crew.taskId,
+          data: crew.data as InsertEdlsCrew["data"],
         }));
         
         // Create the new sheet with crews
@@ -891,6 +892,10 @@ export function registerEdlsSheetsRoutes(
           employerId: sourceSheet.employerId,
           supervisor: sourceSheet.supervisor,
           assignee: sourceSheet.assignee,
+          jobGroupId: sourceSheet.jobGroupId,
+          facilityId: sourceSheet.facilityId,
+          showStatusId: sourceSheet.showStatusId,
+          notes: sourceSheet.notes,
           status: 'draft' as const,
           data: Object.keys(copiedData).length > 0 ? copiedData : undefined,
         };

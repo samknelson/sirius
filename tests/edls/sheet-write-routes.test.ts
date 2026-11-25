@@ -5,6 +5,7 @@ import editPolicy from "../../shared/access-policies/edls/sheet/edit";
 import assignPolicy from "../../shared/access-policies/edls/sheet/assign";
 import statusPolicy from "../../shared/access-policies/edls/sheet/set-status";
 import managePolicy from "../../shared/access-policies/edls/sheet/manage";
+import copyPolicy from "../../shared/access-policies/edls/sheet/copy";
 import { edlsSheetStatusEnum, insertEdlsSheetsSchema } from "../../shared/schema";
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getWithRelations: vi.fn(),
   getCrews: vi.fn(),
   assignments: vi.fn(),
+  createAssignment: vi.fn(),
   supervisorContext: vi.fn(),
   validateSupervisor: vi.fn(),
 }));
@@ -33,7 +35,7 @@ vi.mock("../../server/storage", () => ({
       getCrewsTotalWorkerCount: vi.fn(async () => 1),
       getBySheetId: mocks.getCrews,
     },
-    edlsAssignments: { getBySheetId: mocks.assignments },
+    edlsAssignments: { getBySheetId: mocks.assignments, create: mocks.createAssignment },
   },
 }));
 vi.mock("../../server/modules/masquerade", () => ({
@@ -61,6 +63,7 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
       "edls.sheet.assign": assignPolicy,
       "edls.sheet.set_status": statusPolicy,
       "edls.sheet.manage": managePolicy,
+      "edls.sheet.copy": copyPolicy,
     };
     const policy = policies[id as keyof typeof policies];
     if (!policy) throw new Error(`Unexpected policy: ${id}`);
@@ -71,6 +74,11 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
       loadEntity: async () => mocks.sheet,
       hasPermission: async (permission: string) => mocks.permissions.includes(permission),
       hasAnyPermission: async (permissions: string[]) => permissions.some(p => mocks.permissions.includes(p)),
+      checkPolicy: async (policyId: keyof typeof policies, entityId?: string) => {
+        const delegated = policies[policyId];
+        if (!delegated) throw new Error(`Unexpected policy: ${policyId}`);
+        return (await delegated.evaluate!({ ...ctx, entityId })).granted;
+      },
     } as unknown as PolicyContext;
     const result = await policy.evaluate!(ctx);
     if (result.granted) next();
@@ -113,6 +121,7 @@ beforeEach(() => {
   mocks.getWithRelations.mockImplementation(async () => mocks.sheet);
   mocks.getCrews.mockResolvedValue([{ id: "crew", sheetId: "sheet", ...crew, sequence: 0 }]);
   mocks.assignments.mockResolvedValue([]);
+  mocks.createAssignment.mockResolvedValue({ id: "new-assignment" });
   mocks.create.mockImplementation(async (sheet, crews) => ({ id: "copy", ...sheet, crews }));
   mocks.update.mockImplementation(async (_id, patch, crews) => {
     // Same partial-update semantics as storage: absent fields remain untouched.
@@ -149,6 +158,7 @@ function expectNoSave() {
   expect(mocks.update).not.toHaveBeenCalled();
   expect(mocks.getCrews).not.toHaveBeenCalled();
   expect(mocks.assignments).not.toHaveBeenCalled();
+  expect(mocks.createAssignment).not.toHaveBeenCalled();
 }
 
 describe("ordinary EDLS HTTP write boundary", () => {
@@ -276,15 +286,102 @@ describe("dedicated EDLS actions and trusted inputs", () => {
     expectNoSave();
   });
 
-  it("copies to draft, removing only trash protection from application data", async () => {
-    // Copy uses its existing separate permission middleware.
+  it.each([
+    { jobGroupId: "job-group", facilityId: "facility", showStatusId: "show-status", notes: "Keep these notes\nand this line" },
+    { jobGroupId: null, facilityId: null, showStatusId: null, notes: null },
+    { jobGroupId: "", facilityId: "", showStatusId: "", notes: "" },
+  ])("copies ordinary sheet and crew values unchanged: %j", async fields => {
     mocks.permissions = ["edls.manager"];
+    Object.assign(mocks.sheet, fields, { status: "lock", changed: new Date("2026-10-01") });
+    const sourceCrews = [
+      { id: "crew-a", sheetId: "sheet", ...crew, taskId: "task", location: "Dock", sequence: 0,
+        data: { nested: { values: [null, "", false, 0, { code: "keep" }] } } },
+      { id: "crew-b", sheetId: "sheet", ...crew, sequence: 1, data: null },
+      { id: "crew-c", sheetId: "sheet", ...crew, sequence: 2, data: {} },
+    ];
+    mocks.sheet.workerCount = 3;
+    mocks.getCrews.mockResolvedValue(sourceCrews);
+    const before = structuredClone(mocks.sheet);
     const result = await request("post", { targetDate: "2026-11-01" }, "/:id/copy");
     expect(result.status).toBe(201);
-    const input = mocks.create.mock.calls[0][0];
-    expect(input.status).toBe("draft");
-    expect(input.data).toEqual({ extension: mocks.sheet.data.extension });
-    expect(input).not.toHaveProperty("notificationsEnabled");
+    expect(result.body).toEqual({ newSheetId: "copy", successCount: 0, failedAssignments: [] });
+    expect(mocks.create).toHaveBeenCalledExactlyOnceWith({
+      ymd: "2026-11-01", title: before.title, workerCount: 3,
+      departmentId: before.departmentId, employerId: before.employerId,
+      supervisor: before.supervisor, assignee: before.assignee, ...fields,
+      status: "draft", data: { extension: before.data.extension },
+    }, sourceCrews.map(({ id, sheetId, ...values }) => values));
+    // Exact input assertions exclude old identities, watermark and notification opt-in.
+    expect(mocks.sheet).toEqual(before);
+  });
+
+  it("maps workers to fresh crews and reports conflicts and unmatched crews without losing other assignments", async () => {
+    mocks.permissions = ["edls.coordinator"];
+    const sourceCrews = [
+      { id: "old-a", sheetId: "sheet", ...crew, sequence: 0 },
+      { id: "old-b", sheetId: "sheet", ...crew, sequence: 1 },
+    ];
+    // Return new crews in the opposite order so mapping must use sequence.
+    mocks.getCrews.mockResolvedValueOnce(sourceCrews).mockResolvedValueOnce([
+      { ...sourceCrews[1], id: "new-b", sheetId: "copy" },
+      { ...sourceCrews[0], id: "new-a", sheetId: "copy" },
+    ]);
+    const data = { classificationId: "classification", nested: { keep: [false, null, ""] } };
+    mocks.assignments.mockResolvedValue([
+      { id: "answer-yes", crewId: "old-b", workerId: "worker-b", data,
+        ymd: form.ymd, accepted: true, commId: "receipt-b", generationId: "old-generation-b" },
+      { id: "conflict", crewId: "old-a", workerId: "busy", data: {},
+        worker: { family: "Busy", given: "Worker" } },
+      { id: "unmatched", crewId: "missing", workerId: "unmatched", data: null,
+        worker: { displayName: "Unmatched Worker" } },
+      { id: "answer-no", crewId: "old-a", workerId: "worker-a", data: null,
+        accepted: false, commId: "receipt-a", generationId: "old-generation-a" },
+    ]);
+    mocks.createAssignment.mockResolvedValueOnce({ id: "fresh-b" })
+      .mockRejectedValueOnce(new Error("Worker already assigned on target date"))
+      .mockResolvedValueOnce({ id: "fresh-a" });
+    const result = await request("post", { targetDate: "2026-11-01" }, "/:id/copy");
+    expect(result.status).toBe(201);
+    // Only assignment input survives: answers, receipts, IDs and generations are storage-owned.
+    expect(mocks.createAssignment.mock.calls).toEqual([
+      [{ ymd: "2026-11-01", crewId: "new-b", workerId: "worker-b", data }],
+      [{ ymd: "2026-11-01", crewId: "new-a", workerId: "busy", data: {} }],
+      [{ ymd: "2026-11-01", crewId: "new-a", workerId: "worker-a", data: null }],
+    ]);
+    expect(result.body).toEqual({
+      newSheetId: "copy", successCount: 2,
+      failedAssignments: [
+        { workerId: "busy", workerName: "Busy, Worker", reason: "Worker already assigned on target date" },
+        { workerId: "unmatched", workerName: "Unmatched Worker", reason: "Could not find matching crew in new sheet" },
+      ],
+    });
+  });
+
+  it.each([
+    ["admin", "lock", "other", 201],
+    ["edls.manager", "lock", "other", 201],
+    ["edls.coordinator", "lock", "other", 201],
+    ["edls.worker.advisor", "draft", "other", 201],
+    ["edls.worker.advisor", "lock", "other", 403],
+    ["edls.supervisor", "lock", "supervisor", 201],
+    ["edls.supervisor", "draft", "other", 403],
+    ["unrelated", "draft", "supervisor", 403],
+  ])("retains copy access for %s on %s supervised by %s", async (permission, status, supervisor, expected) => {
+    mocks.permissions = [permission as string];
+    Object.assign(mocks.sheet, { status, supervisor });
+    expect((await request("post", { targetDate: "2026-11-01" }, "/:id/copy")).status).toBe(expected);
+    if (expected === 403) expectNoSave();
+  });
+
+  it.each([form.ymd, "11/01/2026", "", null])("refuses an unchanged or malformed copy date %j", async targetDate => {
+    expect((await request("post", { targetDate }, "/:id/copy")).status).toBe(400);
+    expectNoSave();
+  });
+
+  it("retains component gating for copies", async () => {
+    mocks.componentEnabled = false;
+    expect((await request("post", { targetDate: "2026-11-01" }, "/:id/copy")).status).toBe(403);
+    expectNoSave();
   });
 
   it("keeps the shared trusted insert schema capable of status and application data writes", () => {

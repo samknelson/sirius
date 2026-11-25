@@ -23,6 +23,7 @@ const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     changes: [
       "Allow users to view comm delivery records",
       "Add summary views of notification status, acceptance status",
+      "Fixed sheet copying to retain Job Group, Facility, Show Status, Notes, and crew data.",
     ],
   },
   {

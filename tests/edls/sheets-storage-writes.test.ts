@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sql } from "drizzle-orm";
 import { edlsSheetStatusEnum, edlsSheets } from "../../shared/schema";
 
 const mocks = vi.hoisted(() => ({
@@ -115,6 +116,28 @@ describe("EDLS storage ordinary saves and trusted writes", () => {
     const result = await storage.create(input, []);
     expect(result.status).toBe(status);
     expect(written.data).toEqual(input.data);
+  });
+
+  it("persists copied sheet and crew values with fresh identities and a database change watermark", async () => {
+    const input = {
+      employerId: "employer", departmentId: "department", title: "Copied",
+      ymd: "2026-11-01", workerCount: 1, status: "draft",
+      jobGroupId: "job-group", facilityId: "facility", showStatusId: "show-status",
+      notes: "Copied notes", data: { extension: { keep: true } },
+    };
+    const crew = {
+      id: "source-crew", title: "Crew", workerCount: 1, sequence: 0,
+      startTime: "08:00", endTime: "17:00", data: { nested: [null, "", false] },
+    };
+    const result = await storage.create(input, [crew]);
+    expect(written).toEqual({ ...input, changed: sql`now()` });
+    expect(written).not.toHaveProperty("id");
+    expect(written).not.toHaveProperty("notificationsEnabled");
+    expect(result).toMatchObject({ ...input, id: "created" });
+    const { id, ...crewData } = crew;
+    expect(mocks.crews.createMany).toHaveBeenCalledExactlyOnceWith([
+      { ...crewData, sheetId: "created" },
+    ]);
   });
 
   it("still permits trusted status and JSON updates", async () => {
