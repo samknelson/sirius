@@ -26,6 +26,7 @@
 import { getSchemaManagingComponents } from "../../shared/components";
 import * as mainSchema from "../../shared/schema";
 import { sortTablesByDependencies } from "../../server/services/component-schema-push";
+import { componentSchemaLoaders } from "../../server/generated/component-schemas";
 
 function getSym(obj: any, description: string): symbol | undefined {
   return Object.getOwnPropertySymbols(obj).find((s) => s.description === description);
@@ -44,6 +45,7 @@ function findTable(mod: Record<string, unknown>, tableName: string): any {
 }
 
 async function loadModule(schemaPath: string): Promise<Record<string, unknown>> {
+  if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
   const rel = schemaPath.replace(/^\.\/shared\//, "../../shared/").replace(/\.ts$/, "");
   try {
     return (await import(rel)) as Record<string, unknown>;

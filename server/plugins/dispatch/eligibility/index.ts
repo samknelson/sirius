@@ -118,4 +118,4 @@ import "../../../../components/dispatch.singleshift/server/plugins/dispatch/elig
 import "./plugins/started";
 import "./plugins/accepted";
 import "./plugins/hta-home-employer";
-import "./plugins/sitespecific-t631-interview";
+import "../../../../components/sitespecific.t631.interviews/server/plugins/dispatch/eligibility/plugins/sitespecific-t631-interview";

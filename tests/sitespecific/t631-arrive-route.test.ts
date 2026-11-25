@@ -68,8 +68,8 @@ vi.mock("../../server/logger", () => ({
 }));
 
 import { storage } from "../../server/storage";
-import { scheduleDestination } from "../../client/src/lib/t631-arrival-request";
-import { registerT631ArrivalRoutes } from "../../server/modules/sitespecific/t631/arrive";
+import { scheduleDestination } from "../../components/sitespecific.t631.client/client/src/lib/t631-arrival-request";
+import { registerT631ArrivalRoutes } from "../../components/sitespecific.t631.client/server/modules/sitespecific/t631/arrive";
 import { redactSensitiveUrlQuery } from "../../server/utils/redact-url-query";
 import {
   WcVendorNoAssignedOperationError,
@@ -79,7 +79,7 @@ import {
   T631_ARRIVAL_IP_FLOOD_EVENT,
   T631_ARRIVAL_WORKER_FLOOD_EVENT,
 } from "../../server/flood/constants";
-import "../../server/plugins/system/flood/plugins/t631-arrival";
+import "../../components/sitespecific.t631.client/server/plugins/system/flood/plugins/t631-arrival";
 import { floodPluginRegistry } from "../../server/plugins/system/flood/registry";
 
 type Middleware = (

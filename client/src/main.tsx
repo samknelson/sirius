@@ -5,7 +5,7 @@ import "./index.css";
 import { ClerkProvider, useClerk } from "@clerk/react";
 import { registerClerkSignOut } from "@/contexts/AuthContext";
 import { installTimeZoneRedirection } from "@/lib/display-timezone";
-import { initializeT631ArrivalRequest } from "@/lib/t631-arrival-request";
+import { initializeT631ArrivalRequest } from "../../components/sitespecific.t631.client/client/src/lib/t631-arrival-request";
 
 // Before anything renders, so no date is ever formatted by an unredirected
 // path. A no-op for everyone whose display zone is their own browser's.

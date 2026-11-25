@@ -888,7 +888,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/sitespecific/t631/interviews-schema.ts",
+      schemaPath: "./components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema.ts",
       tables: ["sitespecific_t631_job_interviews"],
       dependsOnComponents: ["dispatch"]
     }

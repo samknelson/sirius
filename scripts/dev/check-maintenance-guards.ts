@@ -922,7 +922,7 @@ export const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["Stripe", "client"],
   },
-  "server/plugins/wc-vendors/plugins/sitespecific-t631.ts": {
+  "components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631.ts": {
     // T631 has no SDK: it reaches its remote service with a bare `fetch`, and
     // the remote operations are written in their own map that the plugin
     // literal spreads in, so both maps are named here.

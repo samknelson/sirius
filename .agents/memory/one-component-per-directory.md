@@ -19,3 +19,15 @@ Stepwise relocation of core components (user, 2026-11-25): first move only the f
 **Why:** User wants a pure rename step with no registration/callback rework.
 
 **How to apply:** Shared files (job pages, App routes, nav, storage aggregate) stay in core. Lints that scan fixed host paths (e.g. denorm declarations) must also scan the component copies of those paths, or moved files silently escape them.
+
+T631 follows the same relocation-only stage. The broader review of remaining
+`sitespecific.t631*` and `sitespecific.freeman*` references is a separate step;
+the user wants to understand callback-hook versus self-registration choices
+before those integration points change.
+
+**Why:** User explicitly requested the straight file move first, without moving
+registrations or invocation sites.
+
+**How to apply:** Update import and schema paths as needed, but retain existing
+registration ownership, invocation behavior, and shared T631/Freeman boundaries.
+Do not use the relocation as permission to extract hooks or change dependencies.

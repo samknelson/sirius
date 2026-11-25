@@ -1,6 +1,12 @@
 {
   "include": ["client/src/**/*", "shared/**/*", "server/**/*", "tests/**/*", "components/**/*"],
-  "exclude": ["node_modules", "build", "dist"],
+  // These historical oneoffs were outside the typecheck before their pure
+  // relocation. Preserve that scope rather than fixing old API usages here.
+  "exclude": [
+    "node_modules", "build", "dist",
+    "components/sitespecific.t631.client/scripts/oneoffs/**/*",
+    "components/sitespecific.t631.interviews/scripts/oneoffs/**/*"
+  ],
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",

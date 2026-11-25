@@ -564,7 +564,7 @@ export async function migrateLegacyBtuScrapeWcVendorConfig(): Promise<void> {
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/stripe";
 import "./plugins/dummy";
-import "./plugins/sitespecific-t631";
+import "../../../components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631";
 import "./plugins/postal";
 import "./plugins/email";
 import "./plugins/sms-twilio";

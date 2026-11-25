@@ -131,7 +131,7 @@ import "../../../../components/dispatch.ban/server/plugins/system/denorm/plugins
 import "../../../../components/dispatch.department/server/plugins/system/denorm/plugins/dispatch/department";
 import "../../../../components/dispatch.dnc/server/plugins/system/denorm/plugins/dispatch/dnc";
 // Passed-interview facts for T631 (gated by sitespecific.t631.interviews).
-import "./plugins/dispatch/sitespecific-t631-interview";
+import "../../../../components/sitespecific.t631.interviews/server/plugins/system/denorm/plugins/dispatch/sitespecific-t631-interview";
 import "../../../../components/dispatch.eba/server/plugins/system/denorm/plugins/dispatch/eba";
 import "../../../../components/dispatch.hfe/server/plugins/system/denorm/plugins/dispatch/hfe";
 import "./plugins/dispatch/hta-home-employer";

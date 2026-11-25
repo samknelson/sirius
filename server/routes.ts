@@ -137,9 +137,9 @@ import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/ba
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
-import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
-import { registerT631ArrivalRoutes } from "./modules/sitespecific/t631/arrive";
-import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
+import { registerT631ClientFetchRoutes } from "../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch";
+import { registerT631ArrivalRoutes } from "../components/sitespecific.t631.client/server/modules/sitespecific/t631/arrive";
+import { registerT631InterviewsRoutes } from "../components/sitespecific.t631.interviews/server/modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsAssignmentExplorerRoutes } from "./modules/edls/assignment-explorer";
 import { registerSnapshotsRoutes } from "./modules/snapshots";

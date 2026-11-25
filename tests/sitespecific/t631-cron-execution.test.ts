@@ -32,7 +32,7 @@ vi.mock("../../server/modules/components", () => ({
   isComponentEnabled: async () => fixture.enabled,
   getEnabledComponentIds: async () => fixture.enabled ? ["edls", "sitespecific.t631.client"] : [],
 }));
-vi.mock("../../server/modules/sitespecific/t631/client/fetch", () => ({
+vi.mock("../../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch", () => ({
   t631Fetch: fixture.fetch, isT631ConfigurationError: (e: any) => e?.name === "ConfigError",
 }));
 vi.mock("../../server/modules/sitespecific/t631/client/sync-workers", () => ({
@@ -75,7 +75,7 @@ import { setMaintenanceActive } from "../../server/services/maintenance-flag";
 import { semaphoreStorage } from "../../server/storage/system/semaphores";
 import { CronScheduler } from "../../server/cron/scheduler";
 import { jobRuns } from "@shared/schema";
-import "../../server/plugins/system/cron/plugins/t631WorkerFetch";
+import "../../components/sitespecific.t631.client/server/plugins/system/cron/plugins/t631WorkerFetch";
 
 const KEY = "cron:execution:sitespecific-t631-worker-fetch";
 const result = {

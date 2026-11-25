@@ -9,4 +9,5 @@ export const componentSchemaLoaders: Record<string, () => Promise<Record<string,
   "./components/dispatch.hfe/shared/schema/dispatch/hfe-schema.ts": () => import("./../../components/dispatch.hfe/shared/schema/dispatch/hfe-schema"),
   "./components/sitespecific.freeman/shared/schema/sitespecific/freeman/schema.ts": () => import("./../../components/sitespecific.freeman/shared/schema/sitespecific/freeman/schema"),
   "./components/sitespecific.freeman.edls_migrate/shared/schema/sitespecific/freeman/edls-migrate-schema.ts": () => import("./../../components/sitespecific.freeman.edls_migrate/shared/schema/sitespecific/freeman/edls-migrate-schema"),
+  "./components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema.ts": () => import("./../../components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema"),
 };

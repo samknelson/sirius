@@ -44,7 +44,7 @@ import { lookupRepresentatives } from "../../server/services/google-civics";
 import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
 import { wcRequest } from "../../server/services/webclient";
 import { postalRequest } from "../../server/services/comm/postal-vendor";
-import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
+import { T631_PLUGIN_ID } from "../../components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
 } from "../../server/plugins/wc-vendors/plugins/btu-cardcheck";

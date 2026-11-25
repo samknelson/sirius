@@ -2,7 +2,7 @@ import { getTableName } from "drizzle-orm";
 import { componentMetadataContexts } from "../generated/component-metadata";
 import { PgTable, type TableConfig } from "drizzle-orm/pg-core";
 import * as coreSchema from "@shared/schema";
-import * as t631InterviewSchema from "@shared/schema/sitespecific/t631/interviews-schema";
+import * as t631InterviewSchema from "../../components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema";
 import {
   getLoggedTableNames,
   getModulesNamingTablesAtRuntime,

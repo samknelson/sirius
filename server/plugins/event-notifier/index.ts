@@ -382,7 +382,7 @@ import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
 import "./plugins/new-ip-sign-in";
 import "../../../components/dispatch.fore/server/plugins/event-notifier/plugins/dispatch-fore-notifier";
-import "./plugins/sitespecific-t631-interview";
+import "../../../components/sitespecific.t631.interviews/server/plugins/event-notifier/plugins/sitespecific-t631-interview";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";
 import "./plugins/ws-usage-plugin-alert";

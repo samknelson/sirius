@@ -147,7 +147,7 @@ import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
 import { createComponentStorage, type ComponentStorage } from "../generated/component-storage";
-import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "./sitespecific/t631/interviews";
+import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "../../components/sitespecific.t631.interviews/server/storage/sitespecific/t631/interviews";
 import { type DispatchJobEmployerContactsStorage, createDispatchJobEmployerContactsStorage, dispatchJobEmployerContactsLoggingConfig } from "./dispatch/job-employer-contacts";
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
 import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/btu/regions";

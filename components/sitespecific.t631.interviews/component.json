@@ -1,0 +1,4 @@
+{
+  "coreRegistered": true,
+  "schema": ["shared/schema/sitespecific/t631/interviews-schema.ts"]
+}

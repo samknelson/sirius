@@ -53,6 +53,6 @@ import "./plugins/bookmark";
 import "./plugins/local-login";
 import "./plugins/local-password-change";
 import "./plugins/edls-schedule-answer";
-import "./plugins/t631-arrival";
+import "../../../../components/sitespecific.t631.client/server/plugins/system/flood/plugins/t631-arrival";
 import "./plugins/notifications";
 import "./plugins/webclient-vendor-operation";

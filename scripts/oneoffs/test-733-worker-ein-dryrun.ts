@@ -1,4 +1,4 @@
-import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
+import { t631Fetch } from "../../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch";
 import { syncWorkerEins } from "../../server/modules/sitespecific/t631/client/sync-workers";
 
 async function main() {

@@ -43,7 +43,7 @@ const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
-const T631ArrivalPage = lazy(() => import("@/pages/sitespecific/t631-arrive"));
+const T631ArrivalPage = lazy(() => import("../../components/sitespecific.t631.client/client/src/pages/sitespecific/t631-arrive"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
@@ -70,9 +70,9 @@ const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"
 const WorkerDispatchDoNotCall = lazy(() => import("../../components/dispatch.dnc/client/src/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchDepartments = lazy(() => import("../../components/dispatch.department/client/src/pages/workers/dispatch-departments"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("../../components/dispatch.hfe/client/src/pages/workers/dispatch-hold-for-employer"));
-const WorkerDispatchT631Interviews = lazy(() => import("@/pages/workers/dispatch-t631-interviews"));
-const DispatchJobT631InterviewsPage = lazy(() => import("@/pages/dispatch/job-t631-interviews"));
-const DispatchJobT631InterviewOffersPage = lazy(() => import("@/pages/dispatch/job-t631-interview-offers"));
+const WorkerDispatchT631Interviews = lazy(() => import("../../components/sitespecific.t631.interviews/client/src/pages/workers/dispatch-t631-interviews"));
+const DispatchJobT631InterviewsPage = lazy(() => import("../../components/sitespecific.t631.interviews/client/src/pages/dispatch/job-t631-interviews"));
+const DispatchJobT631InterviewOffersPage = lazy(() => import("../../components/sitespecific.t631.interviews/client/src/pages/dispatch/job-t631-interview-offers"));
 const DispatchJobEmployerContactsPage = lazy(() => import("@/pages/dispatch/job-employer-contacts"));
 const WorkerDispatchEba = lazy(() => import("../../components/dispatch.eba/client/src/pages/workers/dispatch-eba"));
 const WorkerDispatchAsi = lazy(() => import("../../components/dispatch.asi/client/src/pages/workers/dispatch-asi"));
@@ -288,7 +288,7 @@ const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
-const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
+const T631MemberStatusSyncPage = lazy(() => import("../../components/sitespecific.t631.client/client/src/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
 const WsStatsPage = lazy(() => import("@/pages/admin/ws-stats"));
