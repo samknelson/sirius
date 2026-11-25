@@ -1,0 +1,9 @@
+{
+  "id": "contract-chat",
+  "definitions": "shared/components.ts",
+  "shared": ["shared/types.ts"],
+  "server": [
+    "server/plugins/wc-vendors/plugins/contract-chat-dummy.ts",
+    "server/plugins/wc-vendors/plugins/contract-chat-foray.ts"
+  ]
+}

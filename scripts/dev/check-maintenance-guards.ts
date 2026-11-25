@@ -973,6 +973,11 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
+  "components/contract-chat/server/plugins/wc-vendors/plugins/contract-chat-foray.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
 };
 
 const WC_VENDOR_PLUGIN_PREFIX = "server/plugins/wc-vendors/plugins/";

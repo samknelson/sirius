@@ -15,3 +15,14 @@ reproduced the discrepancy with the installed dependency.
 responses and the actual installed SDK. Prefer type-only response dependencies
 where the SDK accepts a structural response. Never invoke a billable vendor
 request just to check module interoperability.
+
+Keep the real transport in deadline/cancellation tests; mock its socket or
+clock, not the entire destination-checked HTTP capability.
+
+**Why:** replacing the HTTP capability hid a shorter framework deadline that
+overrode a chat adapter's longer caller signal, aborting potentially paid work.
+Adapter mapping tests and successful builds could not expose that conflict.
+
+**How to apply:** verify both the adapter's requested budget and its composition
+in the real transport, including the ordinary default, longer bounded requests,
+and earlier caller cancellation. Never use paid requests to test timeouts.

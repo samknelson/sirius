@@ -285,22 +285,6 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
-    id: "contract.chat",
-    name: "Contract Chat",
-    description: "Chat about a specific contract through a contract chat webclient vendor. Placeholder component; chat functionality is not implemented yet.",
-    enabledByDefault: false,
-    category: "contract",
-    dependsOnComponents: ["contract"]
-  },
-  {
-    id: "contract.chat.foray",
-    name: "Contract Chat — Foray",
-    description: "Foray webclient vendor implementation for Contract Chat. Placeholder component; vendor integration is not implemented yet.",
-    enabledByDefault: false,
-    category: "contract.chat",
-    dependsOnComponents: ["contract.chat"]
-  },
-  {
     id: "sitespecific.gbhet",
     name: "GBHET Customization",
     description: "Custom functionality for GBHET",

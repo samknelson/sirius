@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IncomingMessage, RequestOptions } from "node:http";
 
 const fixture = vi.hoisted(() => ({
@@ -17,6 +17,11 @@ import { createVendorHttp } from "../../server/services/webclient/vendor-http";
 import { WcEndpointPolicyError } from "../../server/services/webclient/refusals";
 import { WcTwilioHttpClient } from "../../server/services/webclient/twilio-http";
 const publicPolicy = () => ({ allowedHosts: ["api.example.com"], allowPrivateAddresses: false });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   fixture.status = 200;
@@ -44,6 +49,71 @@ beforeEach(() => {
 });
 
 describe("webclient HTTP socket handoff", () => {
+  it("allows explicitly bounded long requests past 30s but keeps ordinary requests at 30s", async () => {
+    vi.useFakeTimers();
+    // Node's native AbortSignal.timeout uses its internal real clock. Substitute
+    // only that clock; run the REAL transport's timeout composition and request.
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new Error("Deadline exceeded")), ms);
+      return controller.signal;
+    });
+    fixture.request.mockImplementation((_url: URL, options: RequestOptions, receive: (res: IncomingMessage) => void) => {
+      const req = new EventEmitter() as EventEmitter & { end(): void };
+      req.end = () => {
+        options.signal!.addEventListener("abort", () => req.emit("error", new Error("Aborted")), { once: true });
+        setTimeout(() => {
+          if (options.signal!.aborted) return;
+          const response = Object.assign(new PassThrough(), {
+            statusCode: 200, rawHeaders: ["Content-Type", "application/json"],
+          });
+          receive(response as unknown as IncomingMessage);
+          response.end('{"ok":true}');
+        }, 45_000);
+      };
+      return req;
+    });
+    const http = createVendorHttp("test", publicPolicy);
+    const long = http.fetch("https://api.example.com/chat", { timeoutMs: 180_000 });
+    const ordinary = http.fetch("https://api.example.com/catalog");
+    // Attach rejection observation before advancing the clock.
+    const ordinaryCheck = expect(ordinary).rejects.toThrow("HTTPS request failed");
+    await vi.advanceTimersByTimeAsync(30_001);
+    await ordinaryCheck;
+    expect(fixture.request.mock.calls[0][1].signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await (await long).json()).toEqual({ ok: true });
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([180_000, 30_000]);
+  });
+
+  it("caps opted-in deadlines and preserves earlier caller cancellation", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), ms);
+      return controller.signal;
+    });
+    const http = createVendorHttp("test", publicPolicy);
+    for (const timeoutMs of [0, -1, 180_001, Infinity, NaN, 1.5]) {
+      await expect(http.fetch("https://api.example.com", { timeoutMs })).rejects.toThrow("HTTPS request failed");
+    }
+    expect(fixture.request).not.toHaveBeenCalled();
+    fixture.request.mockImplementation((_url: URL, options: RequestOptions) => {
+      const req = new EventEmitter() as EventEmitter & { end(): void };
+      req.end = () => options.signal!.addEventListener("abort", () => req.emit("error", new Error("Aborted")), { once: true });
+      return req;
+    });
+    const controller = new AbortController();
+    const cancelled = http.fetch("https://api.example.com/chat", { timeoutMs: 180_000, signal: controller.signal });
+    const cancelledCheck = expect(cancelled).rejects.toThrow("HTTPS request failed");
+    controller.abort();
+    await cancelledCheck;
+    const bounded = http.fetch("https://api.example.com/chat", { timeoutMs: 180_000 });
+    const boundedCheck = expect(bounded).rejects.toThrow("HTTPS request failed");
+    await vi.advanceTimersByTimeAsync(180_001);
+    await boundedCheck;
+  });
+
   it("rereads private access for subsequent requests without broadening another plugin", async () => {
     let allowPrivateAddresses = true;
     const http = createVendorHttp("private", () => ({ ...publicPolicy(), allowPrivateAddresses }));

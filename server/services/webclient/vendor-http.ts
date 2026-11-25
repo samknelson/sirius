@@ -4,8 +4,14 @@ import { request as httpsRequest } from "node:https";
 import { hostMatches, type VendorDestinationPolicy } from "./endpoint-policy";
 import { WcEndpointPolicyError } from "./refusals";
 
+export interface WcVendorHttpRequestInit extends RequestInit {
+  /** Overall deadline including response body. Defaults to 30s; max 180s.
+   * A longer caller abort signal alone never extends this framework deadline. */
+  timeoutMs?: number;
+}
+
 export interface WcVendorHttp {
-  fetch(url: string | URL, init?: RequestInit): Promise<Response>;
+  fetch(url: string | URL, init?: WcVendorHttpRequestInit): Promise<Response>;
 }
 
 const blockedV4 = [
@@ -156,9 +162,12 @@ export function createVendorHttp(
             !(body instanceof URLSearchParams) && !(body instanceof Uint8Array)) {
           throw new WcEndpointPolicyError(pluginId, "unsupported HTTP request body");
         }
-        const signal = init.signal
-          ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
-          : AbortSignal.timeout(30_000);
+        const timeoutMs = init.timeoutMs ?? 30_000;
+        if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180_000) {
+          throw new Error("Vendor timeout must be between 1 and 180000 milliseconds");
+        }
+        const deadline = AbortSignal.timeout(timeoutMs);
+        const signal = init.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
         return await new Promise<Response>(function executeVendorHttps(resolve, reject) {
           const req = httpsRequest(url, {
             method,

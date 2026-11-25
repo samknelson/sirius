@@ -64,6 +64,7 @@ export type ExternalService =
   | "Freeman EDLS"
   | "Freeman Authorization"
   | "BTU"
+  | "Foray Contract Chat"
   | "Web service test";
 
 let maintenanceActive = false;
