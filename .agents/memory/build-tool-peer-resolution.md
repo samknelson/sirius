@@ -13,3 +13,9 @@ Run the lockfile-registry check after the **last** package installation, includi
 **Why:** A successful install can leave Replit-internal download URLs in the lockfile. Local clean installs still succeed, masking a GitHub/Docker DNS failure. Lint results from before the install do not validate the rewritten lockfile.
 
 **How to apply:** Restore only known internal proxy URL prefixes to public registry URLs while preserving versions and integrity hashes. Recheck the final lockfile after any further install; do not bypass the package firewall.
+
+Do not diagnose encoding or missing-module errors against a server that was running while dependencies were replaced.
+
+**Why:** Reinstallation can temporarily remove lazily loaded files. The JSON parser's encoding library swallows its loader exception and reports `unsupported charset "UTF-8"`, while Vite can retain references to replaced chunks.
+
+**How to apply:** Let installation finish, restart the existing workflow, and check a harmless JSON request through the preview proxy before changing authentication or charset handling.
