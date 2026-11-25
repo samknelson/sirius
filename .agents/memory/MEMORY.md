@@ -1,4 +1,5 @@
 - [EDLS sheet list layout](edls-sheet-list-layout.md) — preserve the table at every width; wrap text and controls rather than switching to stacked cards.
+- [Contract Chat direction](contract-chat-direction.md) — thin vendor-neutral wrapper for contract-specific chat; Foray is the first provider, not the only intended one.
 - [Supervisor sheet management](edls-supervisor-management.md) — use the existing Manage tab with action-specific permissions, not a separate Details button.
 - [Build tool peer resolution](build-tool-peer-resolution.md) — coordinated peer upgrades, stale lockfile conflicts, and clean-install verification during package security-block recovery.
 - [EDLS layoff feed terminology](edls-layoff-feed.md) — “layoff” sheet requests mean reserved, not the dispatch assignment status.
