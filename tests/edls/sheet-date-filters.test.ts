@@ -28,7 +28,7 @@ vi.mock("../../server/modules/edls/supervisor-context", () => ({
   getSupervisorContext: vi.fn(), validateSupervisorForSave: vi.fn(), getEdlsSettings: vi.fn(),
 }));
 vi.mock("../../server/modules/masquerade", () => ({ getEffectiveUser: vi.fn() }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => mocks.jobGroupsEnabled,
 }));
 

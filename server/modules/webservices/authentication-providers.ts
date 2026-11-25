@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import type { WsClient, WsClientCredential } from "@shared/schema";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import type { AuthResult } from "../../middleware/webservice-auth";
 import { hasLegacyAuthenticationSelection } from "@shared/webservice-authentication";
 export type AuthenticationResult = AuthResult;

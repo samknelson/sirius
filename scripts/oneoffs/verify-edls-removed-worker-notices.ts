@@ -29,7 +29,7 @@
 import { randomUUID } from "node:crypto";
 import type { Comm, Variable } from "@shared/schema";
 import { formatYmd } from "@shared/utils/date";
-import { loadComponentCache } from "../../server/services/component-cache";
+import { loadComponentCache } from "../../server/services/component/cache";
 import { eventBus, EventType, type EdlsSheetSavedPayload } from "../../server/services/event-bus";
 import { SNAPSHOTS_SETTINGS_VARIABLE } from "../../server/services/snapshots/capture";
 import { storage, createCommSmsOptinStorage } from "../../server/storage";

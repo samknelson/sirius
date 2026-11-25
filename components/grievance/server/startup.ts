@@ -1,4 +1,4 @@
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import { alterHooks } from "../../../shared/alter";
 import { tabEntityPolicyHook } from "../../../shared/tab-visibility";
 import { eventBus } from "../../../server/services/event-bus";

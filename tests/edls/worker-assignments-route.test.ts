@@ -74,7 +74,7 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isCacheInitialized: () => true,
   loadComponentCache: vi.fn(),
   isComponentEnabledSync: (componentId: string) => componentState.enabled[componentId] === true,
@@ -85,7 +85,7 @@ vi.mock("@shared/components", () => ({
   getComponentById: (componentId: string) => ({ id: componentId, name: componentId }),
 }));
 
-vi.mock("../../server/services/component-lifecycle", () => ({
+vi.mock("../../server/services/component/lifecycle", () => ({
   enableComponentSchema: vi.fn(),
   disableComponentSchema: vi.fn(),
   repairComponentSchema: vi.fn(),
@@ -94,7 +94,7 @@ vi.mock("../../server/services/component-lifecycle", () => ({
   getComponentSchemaInfo: vi.fn(),
 }));
 
-vi.mock("../../server/services/component-permissions", () => ({
+vi.mock("../../server/services/component/permissions", () => ({
   syncComponentPermissions: vi.fn(),
 }));
 

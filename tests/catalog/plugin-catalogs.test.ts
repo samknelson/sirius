@@ -11,7 +11,7 @@ const state = vi.hoisted(() => ({
   revision: 0,
 }));
 vi.mock("../../server/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn() } }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: (id: string) => state.components.has(id),
 }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({

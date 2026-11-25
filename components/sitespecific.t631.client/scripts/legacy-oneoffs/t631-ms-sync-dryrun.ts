@@ -1,7 +1,7 @@
 import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
 import { syncWorkerEins } from "../../../../server/services/worker-sync";
 import "../../../../server/generated/component-startups";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 
 async function main() {
   await loadComponentCache();

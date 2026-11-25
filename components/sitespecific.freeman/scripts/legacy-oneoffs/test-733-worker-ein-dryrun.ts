@@ -1,7 +1,7 @@
 import { wcRequest } from "../../../../server/services/webclient";
 import { syncWorkerEins } from "../../../../server/services/worker-sync";
 import "../../../../server/generated/component-startups";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 
 async function main() {
   await loadComponentCache();

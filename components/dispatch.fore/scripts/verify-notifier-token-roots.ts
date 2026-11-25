@@ -27,7 +27,7 @@ import {
   rewriteTemplateTokens,
 } from "../../../server/plugins/event-notifier/template-token-migrations";
 import { storage } from "../../../server/storage";
-import { loadComponentCache } from "../../../server/services/component-cache";
+import { loadComponentCache } from "../../../server/services/component/cache";
 import { db } from "../../../server/storage/db";
 
 let failures = 0;

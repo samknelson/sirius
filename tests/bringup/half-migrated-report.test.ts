@@ -33,7 +33,7 @@ vi.mock("../../server/services/empty-db-bootstrap", () => ({
   ensureEmptyDatabaseBootstrap: async () => false,
 }));
 
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   loadComponentCache: async () => {},
 }));
 

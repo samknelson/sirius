@@ -5,7 +5,7 @@ import { sendEmail } from "./comm/senders/email";
 import { sendInapp } from "./comm/senders/inapp";
 import { storage } from "../storage";
 import { logger } from "../logger";
-import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";
+import { isComponentEnabledSync, isCacheInitialized } from "./component/cache";
 
 const SERVICE_NAME = "worker-ban-notifications";
 const COMPONENT_ID = "worker.ban";

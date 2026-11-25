@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import { registerVariableEntry } from "../../../server/modules/system/variable-registry";
 import { registerPrivateHttpScope } from "../../../server/services/http-response-privacy";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";

@@ -1,4 +1,4 @@
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import "../shared/access-policies/worker/dispatch/dnc/view";
 import "../shared/access-policies/worker/dispatch/dnc/edit";
 import { registerVariableEntry } from "../../../server/modules/system/variable-registry";

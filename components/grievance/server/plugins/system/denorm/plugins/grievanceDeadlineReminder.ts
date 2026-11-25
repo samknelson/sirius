@@ -5,7 +5,7 @@ import { eventBus } from "../../../../../../../server/services/event-bus";
 import { GRIEVANCE_DEADLINE_REMINDER, GRIEVANCE_TIMELINE_CHANGED, type GrievanceDeadlineReminderPayload } from "../../../../events";
 import { storage } from "../../../../../../../server/storage";
 import { isPluginComponentEnabledSync } from "../../../../../../../server/plugins/_core";
-import { isCacheInitialized } from "../../../../../../../server/services/component-cache";
+import { isCacheInitialized } from "../../../../../../../server/services/component/cache";
 import { logger } from "../../../../../../../server/logger";
 import { ymdToLocalDate } from "@shared/utils/date";
 

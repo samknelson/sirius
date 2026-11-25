@@ -14,7 +14,7 @@ import "../../../../server/plugins/dispatch/eligibility";
 import { db } from "../../../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../../../server/storage";
-import { loadComponentCache, isComponentEnabledSync } from "../../../../server/services/component-cache";
+import { loadComponentCache, isComponentEnabledSync } from "../../../../server/services/component/cache";
 import { initAccessControl, requireAccess, requireAuth } from "../../../../server/services/access-policy-evaluator";
 import { initializePermissions } from "../../../../shared/permissions";
 import "../../../../shared/access-policies/loader";

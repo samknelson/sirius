@@ -12,7 +12,7 @@
  *   - missing constraints (FK, unique, PK, check)
  *   - missing indexes (or with wrong unique/method/columns/predicate)
  *
- * Reuses the structural drift comparator in `component-schema-push.ts`.
+ * Reuses the structural drift comparator in `component/schema-push.ts`.
  *
  * Tables belonging to disabled components are intentionally IGNORED —
  * their data may legitimately exist in the DB (retainData on disable) but
@@ -20,16 +20,16 @@
  */
 
 import { getAllComponents } from "../../shared/components";
-import { isComponentEnabledSync } from "./component-cache";
-import { detectSchemaDrift, type SchemaDriftReport } from "./component-schema-push";
+import { isComponentEnabledSync } from "./component/cache";
+import { detectSchemaDrift, type SchemaDriftReport } from "./component/schema-push";
 import * as mainSchema from "../../shared/schema";
 import { tableExists, listAllPublicTables } from "../storage/utils";
 import { logger } from "../logger";
-import { bootStatus } from "./boot-status";
+import { bootStatus } from "./boot/status";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { getMigrations, getMigrationStatus } from "./migration-runner";
 import { recordDriftOutcome } from "./bringup-report";
-import { getAbsentComponentTables } from "./component-ownership";
+import { getAbsentComponentTables } from "./component/ownership";
 import { componentSchemaLoaders } from "../generated/component-schemas";
 
 const NAME_SYM_DESC = "drizzle:Name";

@@ -9,7 +9,7 @@
  */
 import { getSchemaManagingComponents, getComponentById } from "../../shared/components";
 import * as mainSchema from "../../shared/schema";
-import { sortTablesByDependencies } from "../../server/services/component-schema-push";
+import { sortTablesByDependencies } from "../../server/services/component/schema-push";
 
 const NAME_SYM_PREFIX = "drizzle:Name";
 function getSym(obj: any, description: string): symbol | undefined {

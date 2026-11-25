@@ -15,7 +15,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import { getTodayYmd } from "@shared/utils/date";
 import { formatEdlsSheetLabel } from "@shared/utils/edls-sheet-label";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
-import { isComponentEnabledSync } from "../../../services/component-cache";
+import { isComponentEnabledSync } from "../../../services/component/cache";
 import { registerQuicksearchPlugin } from "../registry";
 import type {
   QuicksearchContext,

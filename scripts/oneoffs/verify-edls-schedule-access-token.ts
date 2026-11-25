@@ -24,11 +24,11 @@
 import { randomUUID } from "crypto";
 import { storage } from "../../server/storage";
 import { absoluteUrl } from "../../server/utils/base-url";
-import { loadComponentCache, updateComponentCache } from "../../server/services/component-cache";
+import { loadComponentCache, updateComponentCache } from "../../server/services/component/cache";
 import {
   enableComponentSchema,
   disableComponentSchema,
-} from "../../server/services/component-lifecycle";
+} from "../../server/services/component/lifecycle";
 import { edlsSheetWorkerSmsNotifier } from "../../server/plugins/event-notifier/plugins/edls-sheet-worker-sms-notifier";
 
 let failures = 0;

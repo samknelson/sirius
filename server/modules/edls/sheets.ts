@@ -5,7 +5,7 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { z } from "zod";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { getEffectiveUser } from "../masquerade";
 import { calendarDateSchema } from "@shared/calendar-date";
 

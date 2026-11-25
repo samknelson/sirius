@@ -1,5 +1,5 @@
-import { enableComponentSchema } from "../../../../server/services/component-lifecycle";
-import { updateComponentCache } from "../../../../server/services/component-cache";
+import { enableComponentSchema } from "../../../../server/services/component/lifecycle";
+import { updateComponentCache } from "../../../../server/services/component/cache";
 
 async function main() {
   const result = await enableComponentSchema("dispatch.asi");

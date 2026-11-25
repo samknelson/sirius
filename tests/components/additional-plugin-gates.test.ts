@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 const enabled = new Set(["owner"]);
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: (id: string) => enabled.has(id) }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: (id: string) => enabled.has(id) }));
 vi.mock("../../server/modules/components", () => ({ isComponentEnabled: async (id: string) => enabled.has(id) }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({ checkAccessInline: vi.fn() }));
 import { isPluginComponentEnabledSync, isPluginComponentEnabledAsync, enforcePluginGating } from "../../server/plugins/_core/gating";

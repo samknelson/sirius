@@ -21,7 +21,7 @@ vi.mock("../../server/plugins/_core/singleton-seeder", () => ({
   }),
 }));
 vi.mock("../../server/modules/components", () => ({ isComponentEnabled: mocks.component }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => true,
 }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({

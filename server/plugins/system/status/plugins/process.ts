@@ -1,4 +1,4 @@
-import { getBootIdentity } from "../../../../services/boot-identity";
+import { getBootIdentity } from "../../../../services/boot/identity";
 import { getLocalProcessReporter } from "../../../../services/process-reporter";
 import { createProcessesStorage } from "../../../../storage/system/processes";
 import { processReportingStatus } from "@shared/processes";

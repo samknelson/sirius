@@ -13,7 +13,7 @@
  */
 import express from "express";
 import { storage } from "../../server/storage";
-import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
+import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component/cache";
 import { initAccessControl } from "../../server/services/access-policy-evaluator";
 import { initializePermissions } from "../../shared/permissions";
 import "../../shared/access-policies/loader";

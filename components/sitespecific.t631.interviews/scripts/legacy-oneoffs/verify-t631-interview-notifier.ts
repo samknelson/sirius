@@ -314,7 +314,7 @@ async function main(): Promise<void> {
     const { renderTokens, createTokenEvalContext, initializeTokenPluginSystem } =
       await import("../../../../server/plugins/tokens");
     const { loadComponentCache } = await import(
-      "../../../../server/services/component-cache"
+      "../../../../server/services/component/cache"
     );
     await loadComponentCache();
     initializeTokenPluginSystem();

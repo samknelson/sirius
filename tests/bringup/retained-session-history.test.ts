@@ -33,16 +33,16 @@ vi.mock("../../server/storage/utils", () => ({
   tableHasRows: async () => mocks.rows.length > 0,
 }));
 vi.mock("../../server/logger", () => ({ storageLogger: { error: vi.fn() } }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => false, isCacheInitialized: () => true, loadComponentCache: vi.fn(),
 }));
 vi.mock("../../server/services/migration-runner", () => ({
   getComponentMigrations: () => [{ version: 1 }, { version: 2 }, { version: 3 }],
   runComponentMigrations: mocks.migrate,
 }));
-vi.mock("../../server/services/component-schema-push", () => ({ pushComponentSchema: mocks.push }));
+vi.mock("../../server/services/component/schema-push", () => ({ pushComponentSchema: mocks.push }));
 
-import { disableComponentSchema, enableComponentSchema } from "../../server/services/component-lifecycle";
+import { disableComponentSchema, enableComponentSchema } from "../../server/services/component/lifecycle";
 
 beforeEach(() => {
   vi.clearAllMocks();

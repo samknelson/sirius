@@ -22,8 +22,8 @@ import { initializeSystemStatusPluginSystem } from "./plugins/system/status";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { runSchemaBringUp } from "./services/bringup";
-import { syncComponentPermissions } from "./services/component-permissions";
-import { onComponentCacheChange } from "./services/component-cache";
+import { syncComponentPermissions } from "./services/component/permissions";
+import { onComponentCacheChange } from "./services/component/cache";
 import { refreshComponentStateForApi } from "./middleware/component-state";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
@@ -70,7 +70,7 @@ import {
 import {
   getComponentCacheRevision,
   isComponentEnabledSync,
-} from "./services/component-cache";
+} from "./services/component/cache";
 import { runOrDeferStartupOperation } from "./services/startup-deferrals";
 import { registerPluginCatalogs } from "./plugins/_core/catalogs";
 import { captureCallbackBody, refuseCallbackParseError } from "./services/comm/callback-handlers/verification";
@@ -443,7 +443,7 @@ export async function bootstrapApp(
   await runOrDeferStartupOperation("component-plugin-config-reconciliation", async () => {
     const { getAllComponents } = await import("../shared/components");
     const { reconcileComponentPluginConfigs } = await import(
-      "./services/component-lifecycle"
+      "./services/component/lifecycle"
     );
     // Self-heal, so the writes are the framework's own: stamped with no
     // person and kept out of the audit log, unlike the same reconcile run

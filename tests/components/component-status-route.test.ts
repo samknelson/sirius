@@ -11,12 +11,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../server/storage", () => ({ storage: { variables: { getJsonState: mocks.read } } }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: (fn: () => unknown) => fn() }));
 vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: (fn: () => unknown) => fn() }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   loadComponentCache: mocks.refresh, isComponentEnabledSync: mocks.enabled,
   getEnabledComponentIdsSync: vi.fn(), updateComponentCache: vi.fn(),
 }));
-vi.mock("../../server/services/component-lifecycle", () => ({}));
-vi.mock("../../server/services/component-permissions", () => ({ syncComponentPermissions: vi.fn() }));
+vi.mock("../../server/services/component/lifecycle", () => ({}));
+vi.mock("../../server/services/component/permissions", () => ({ syncComponentPermissions: vi.fn() }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({
   requireAccess: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   clearAccessCache: vi.fn(),

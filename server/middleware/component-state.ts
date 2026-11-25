@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { loadComponentCache } from "../services/component-cache";
+import { loadComponentCache } from "../services/component/cache";
 
 /** Mounted at /api. Exempt only the exact read-only storage-status endpoint. */
 export const refreshComponentStateForApi: RequestHandler = async (req, res, next) => {

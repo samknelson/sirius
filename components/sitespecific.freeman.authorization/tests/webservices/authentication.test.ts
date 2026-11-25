@@ -29,7 +29,7 @@ vi.mock("../../../../server/services/webclient/client", () => ({
   wcRequest,
 }));
 
-vi.mock("../../../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
+vi.mock("../../../../server/services/component/cache", () => ({ isComponentEnabledSync: () => true }));
 await import("../../server/bearer-auth");
 const { createWebServiceAuthMiddleware } = await import(
   "../../../../server/middleware/webservice-auth"

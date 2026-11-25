@@ -10,7 +10,7 @@ import { MaintenanceModeError, setMaintenanceActive } from "../../../../server/s
 import { wcRequest } from "../../../../server/services/webclient";
 import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
 import "../../server/plugins/system/flood/plugins/t631-arrival";
-import { componentDocumentPolicy } from "../../../../server/services/component-document-policy";
+import { componentDocumentPolicy } from "../../../../server/services/component/document-policy";
 
 afterEach(() => { setMaintenanceActive(false); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("component-owned declarations", () => {

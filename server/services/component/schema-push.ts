@@ -1,12 +1,12 @@
-import { getComponentById } from "../../shared/components";
-import { storage } from "../storage";
+import { getComponentById } from "../../../shared/components";
+import { storage } from "../../storage";
 import {
   tableExists,
   getTableColumnInfo,
   getTableConstraintInfo,
   getTableIndexInfo,
-} from "../storage/utils";
-import * as mainSchema from "../../shared/schema";
+} from "../../storage/utils";
+import * as mainSchema from "../../../shared/schema";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { is, SQL } from "drizzle-orm";
 
@@ -161,10 +161,10 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
 }
 
 async function loadSchemaModule(schemaPath: string): Promise<Record<string, unknown>> {
-  const { componentSchemaLoaders } = await import("../generated/component-schemas");
+  const { componentSchemaLoaders } = await import("../../generated/component-schemas");
   if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
   const relativePath = schemaPath.replace(/^\.\//, "");
-  const moduleUrl = new URL(`../../${relativePath}`, import.meta.url);
+  const moduleUrl = new URL(`../../../${relativePath}`, import.meta.url);
   return await import(moduleUrl.href);
 }
 

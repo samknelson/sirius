@@ -19,7 +19,7 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isCacheInitialized: () => true,
   loadComponentCache: vi.fn(),
   isComponentEnabledSync: () => componentState.enabled,
@@ -28,7 +28,7 @@ vi.mock("@shared/components", () => ({
   getAllComponents: () => [],
   getComponentById: (id: string) => ({ id, name: id }),
 }));
-vi.mock("../../server/services/component-lifecycle", () => ({
+vi.mock("../../server/services/component/lifecycle", () => ({
   enableComponentSchema: vi.fn(),
   disableComponentSchema: vi.fn(),
   repairComponentSchema: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock("../../server/services/component-lifecycle", () => ({
   checkComponentSchemaDrift: vi.fn(),
   getComponentSchemaInfo: vi.fn(),
 }));
-vi.mock("../../server/services/component-permissions", () => ({ syncComponentPermissions: vi.fn() }));
+vi.mock("../../server/services/component/permissions", () => ({ syncComponentPermissions: vi.fn() }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({
   requireAccess: () => (_req: any, res: any, next: () => void) => {
     if (accessDecision.granted) return next();

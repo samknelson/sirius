@@ -1,9 +1,9 @@
-import { storage } from "../storage";
-import { getAllComponents, getComponentById } from "../../shared/components";
-import { logger } from "../logger";
-import { isInTransaction, onAfterCommit } from "../storage/transaction-context";
-import { COMPONENTS_VARIABLE_NAME, readComponentStateFromStorage, resolveComponentEnabled, type ComponentEnabledMap } from "./component-state";
-export type { ComponentEnabledMap } from "./component-state";
+import { storage } from "../../storage";
+import { getAllComponents, getComponentById } from "../../../shared/components";
+import { logger } from "../../logger";
+import { isInTransaction, onAfterCommit } from "../../storage/transaction-context";
+import { COMPONENTS_VARIABLE_NAME, readComponentStateFromStorage, resolveComponentEnabled, type ComponentEnabledMap } from "./state";
+export type { ComponentEnabledMap } from "./state";
 
 let cachedComponentState: ComponentEnabledMap | null = null;
 let cacheInitialized = false;

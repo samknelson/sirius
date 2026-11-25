@@ -10,7 +10,7 @@ import { dispatchEligPluginRegistry } from "../../plugins/dispatch/eligibility/r
 import { getDenormPlugin } from "../../plugins/system/denorm/registry";
 import { backfillAllDenorm } from "../../plugins/system/denorm/backfill";
 import { createDispatchEligibleWorkersStorage } from "../../storage/dispatch/eligible-workers";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { runPoll } from "../../services/dispatch/poll";
 import { sendInapp } from "../../services/comm/senders/inapp";
 import { logger } from "../../logger";

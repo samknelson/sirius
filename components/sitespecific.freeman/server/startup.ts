@@ -1,4 +1,4 @@
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerWorkerSyncStrategy } from "../../../server/services/worker-sync";

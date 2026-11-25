@@ -4,7 +4,7 @@
  *
  * A component's manifest tables are created in FK-dependency order at
  * enable time (`sortTablesByDependencies` in
- * `server/services/component-schema-push.ts`). That sort can fail in two
+ * `server/services/component/schema-push.ts`). That sort can fail in two
  * ways that would break a fresh production enable with
  * "relation does not exist" (or refuse the enable outright):
  *
@@ -25,7 +25,7 @@
  */
 import { getSchemaManagingComponents } from "../../shared/components";
 import * as mainSchema from "../../shared/schema";
-import { sortTablesByDependencies } from "../../server/services/component-schema-push";
+import { sortTablesByDependencies } from "../../server/services/component/schema-push";
 import { componentSchemaLoaders } from "../../server/generated/component-schemas";
 
 function getSym(obj: any, description: string): symbol | undefined {

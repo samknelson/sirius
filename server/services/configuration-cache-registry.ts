@@ -16,7 +16,7 @@ let initialized = false;
 /** Shared boot path for api-user AND api-ws. Executable work has explicit ownership. */
 export async function initializeConfigurationCoherency(ownsCron: boolean): Promise<void> {
   if (initialized) return;
-  const { loadComponentCache } = await import("./component-cache");
+  const { loadComponentCache } = await import("./component/cache");
   const { invalidateAllPluginConfigCaches } = await import("../plugins/_core/plugin-config-cache");
   const { refreshEnvOverrides, invalidateEnvOverrideSnapshot } = await import("./env-overrides");
   const { loadTerminology, invalidateTerminologyCache } = await import("../modules/terminology");

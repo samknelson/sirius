@@ -16,7 +16,7 @@ vi.mock("../../server/storage/unified-options", () => ({
 vi.mock("../../server/storage/edls/crews", () => ({
   createEdlsCrewsStorage: vi.fn(),
 }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => mocks.jobGroups,
 }));
 

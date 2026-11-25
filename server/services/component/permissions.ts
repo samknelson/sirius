@@ -1,7 +1,7 @@
-import { componentRegistry, ComponentDefinition } from "../../shared/components";
-import { permissionRegistry, PermissionDefinition } from "../../shared/permissions";
-import { isComponentEnabledSync } from "./component-cache";
-import { logger } from "../logger";
+import { componentRegistry, ComponentDefinition } from "../../../shared/components";
+import { permissionRegistry, PermissionDefinition } from "../../../shared/permissions";
+import { isComponentEnabledSync } from "./cache";
+import { logger } from "../../logger";
 
 export function syncComponentPermissions(): void {
   const enabledComponents = componentRegistry.filter(component => 

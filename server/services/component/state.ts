@@ -1,7 +1,7 @@
-import { storage } from "../storage";
-import { readConfigurationSnapshot } from "../storage/configuration-revisions";
-import { getAllComponents, type ComponentConfig, type ComponentDefinition } from "../../shared/components";
-import { getAbsentComponents } from "./component-ownership";
+import { storage } from "../../storage";
+import { readConfigurationSnapshot } from "../../storage/configuration-revisions";
+import { getAllComponents, type ComponentConfig, type ComponentDefinition } from "../../../shared/components";
+import { getAbsentComponents } from "./ownership";
 
 export type ComponentEnabledMap = Record<string, boolean>;
 export const COMPONENTS_VARIABLE_NAME = "components";

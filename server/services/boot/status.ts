@@ -2,7 +2,7 @@
  * Boot-status registry.
  *
  * A tiny, dependency-free module that boot-time services write into and the
- * boot-status HTTP surface (`server/services/boot-status-http.ts`) reads
+ * boot-status HTTP surface (`server/services/boot/status-http.ts`) reads
  * from. It MUST stay free of imports (no logger, no db, no shared/schema) so
  * the entry points can import it before DATABASE_URL is assembled and
  * regardless of whether app-init ever loaded successfully.

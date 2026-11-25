@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
-import { getBootIdentity } from "./boot-identity";
+import { getBootIdentity } from "./boot/identity";
 import { guardSemaphoreTransaction, semaphoreStorage, SemaphoreLost, SEMAPHORE_LEASE_MS, type SemaphoreIdentity } from "../storage/system/semaphores";
 
 export const LEASE_PROBE_MS = 5_000;

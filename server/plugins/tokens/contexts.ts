@@ -1,5 +1,5 @@
 import type { TokenContextDeclaration } from "@shared/token-contexts";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 
 /**
  * THE TOKEN CONTEXT REGISTRY.

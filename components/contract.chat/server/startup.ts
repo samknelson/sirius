@@ -1,4 +1,4 @@
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import { requireComponent } from "../../../server/modules/components";
 import { registerPrivateHttpScope } from "../../../server/services/http-response-privacy";
 import { contextHandler, askHandler } from "./routes";

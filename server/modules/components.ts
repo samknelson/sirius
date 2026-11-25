@@ -8,15 +8,15 @@ import {
   reconcileComponentPluginConfigs,
   checkComponentSchemaDrift,
   getComponentSchemaInfo,
-} from "../services/component-lifecycle";
+} from "../services/component/lifecycle";
 import {
   isComponentEnabledSync,
   getEnabledComponentIdsSync,
   loadComponentCache,
   updateComponentCache,
-} from "../services/component-cache";
-import { syncComponentPermissions } from "../services/component-permissions";
-import { getComponentConfigsFromStorage } from "../services/component-state";
+} from "../services/component/cache";
+import { syncComponentPermissions } from "../services/component/permissions";
+import { getComponentConfigsFromStorage } from "../services/component/state";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

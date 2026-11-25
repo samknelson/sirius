@@ -1,5 +1,5 @@
 import { storage } from "../../server/storage";
-import { loadComponentCache } from "../../server/services/component-cache";
+import { loadComponentCache } from "../../server/services/component/cache";
 
 async function main() {
   await loadComponentCache();

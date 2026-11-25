@@ -34,7 +34,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getClient } from "../../../../../server/storage/transaction-context";
 import { storage } from "../../../../../server/storage";
 import { createUnifiedOptionsStorage } from "../../../../../server/storage/unified-options";
-import { isComponentEnabledSync } from "../../../../../server/services/component-cache";
+import { isComponentEnabledSync } from "../../../../../server/services/component/cache";
 import { logger } from "../../../../../server/logger";
 
 const SERVICE_NAME = "edls-passport-export";

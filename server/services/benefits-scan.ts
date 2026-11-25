@@ -7,7 +7,7 @@ import type { EligibilityRule, ScanType } from "../plugins/trust/eligibility/typ
 import type { IStorage } from "../storage";
 import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } from "@shared/schema";
 import { logger } from "../logger";
-import { isComponentEnabledSync } from "./component-cache";
+import { isComponentEnabledSync } from "./component/cache";
 
 interface PolicyData {
   benefitIds?: string[];

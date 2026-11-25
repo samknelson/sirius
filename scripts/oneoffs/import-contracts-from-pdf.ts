@@ -21,9 +21,9 @@ import { execFileSync } from "child_process";
 import { escapeHtml } from "../../shared/utils/html/escape";
 import { storage } from "../../server/storage/database";
 import { runInTransaction } from "../../server/storage/transaction-context";
-import { enableComponentSchema, reconcileComponentPluginConfigs } from "../../server/services/component-lifecycle";
-import { updateComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
-import { syncComponentPermissions } from "../../server/services/component-permissions";
+import { enableComponentSchema, reconcileComponentPluginConfigs } from "../../server/services/component/lifecycle";
+import { updateComponentCache, isComponentEnabledSync } from "../../server/services/component/cache";
+import { syncComponentPermissions } from "../../server/services/component/permissions";
 import { clearAccessCache } from "../../server/services/access-policy-evaluator";
 
 // ---------------------------------------------------------------------------

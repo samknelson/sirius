@@ -35,7 +35,7 @@ vi.mock("../../server/services/event-bus", () => ({
   eventBus: { emit: mocks.emit },
   EventType: { EDLS_SHEET_SAVED: "EDLS_SHEET_SAVED" },
 }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => false,
 }));
 vi.mock("../../server/storage/middleware/logging", () => ({

@@ -1,5 +1,5 @@
 import { getEntityNoteContext } from "../services/entity-notes/registry";
-import { isComponentEnabledSync } from "../services/component-cache";
+import { isComponentEnabledSync } from "../services/component/cache";
 import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
 
 /**

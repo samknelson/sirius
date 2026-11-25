@@ -3,7 +3,7 @@ import { registerEventNotifier } from "../../../../../../server/plugins/event-no
 import { templatesSchemaBlock } from "../../../../../../server/plugins/event-notifier/template-schema";
 import type { EventNotifierEventContext, EventNotifierPlugin, NotifierChannelTemplates } from "../../../../../../server/plugins/event-notifier/types";
 import { normalizeSessionIp } from "../../../../../../server/auth/session-ip";
-import { isComponentEnabledSync } from "../../../../../../server/services/component-cache";
+import { isComponentEnabledSync } from "../../../../../../server/services/component/cache";
 import { suppliedSessionUserAgent } from "@shared/session-device";
 
 const payloadOf = (ctx: EventNotifierEventContext) => ctx.payload as SignInAfterPayload;

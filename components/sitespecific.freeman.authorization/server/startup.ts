@@ -1,4 +1,4 @@
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import "./bearer-auth";
 import { storage } from "../../../server/storage";
 import { runOrDeferStartupOperation } from "../../../server/services/startup-deferrals";

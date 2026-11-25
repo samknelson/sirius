@@ -9,7 +9,7 @@ const fakes = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: fakes.enabled }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: fakes.enabled }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: fakes.outside }));
 vi.mock("../../server/logger", () => ({ logger: { error: fakes.error } }));
 vi.mock("../../server/services/event-bus", () => ({

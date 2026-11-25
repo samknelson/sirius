@@ -1,7 +1,7 @@
 import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
 import { syncWorkerEins } from "../../../../server/services/worker-sync";
 import "../../../../server/generated/component-startups";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 import { storage, createCommSmsOptinStorage } from "../../../../server/storage";
 
 const TARGET_REMOTE_ID = "OA989593";

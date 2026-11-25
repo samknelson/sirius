@@ -1,4 +1,4 @@
-import type { ComponentStartup } from "../../../server/services/component-startup-types";
+import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import { alterHooks } from "../../../shared/alter";
 import { tabVisibilityHook } from "../../../shared/tab-visibility";
 import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";

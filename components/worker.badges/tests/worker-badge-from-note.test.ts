@@ -29,7 +29,7 @@ vi.mock("../../../server/storage", () => ({ storage: state.storage }));
 vi.mock("../../../server/logger", () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("../../../server/services/component-cache", () => ({
+vi.mock("../../../server/services/component/cache", () => ({
   isCacheInitialized: () => state.initialized,
 }));
 vi.mock("../../../server/storage/transaction-context", () => ({

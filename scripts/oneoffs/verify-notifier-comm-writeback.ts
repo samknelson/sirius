@@ -22,7 +22,7 @@
  *
  * Run: npx tsx scripts/oneoffs/verify-notifier-comm-writeback.ts
  */
-import { loadComponentCache } from "../../server/services/component-cache";
+import { loadComponentCache } from "../../server/services/component/cache";
 import { getSystemMode } from "../../server/services/system-mode";
 import { eventBus, EventType } from "../../server/services/event-bus";
 import { storage, createCommSmsOptinStorage, createCommStorage } from "../../server/storage";

@@ -8,12 +8,12 @@ const mocks = vi.hoisted(() => ({ read: vi.fn(), ownership: vi.fn(), outside: vi
 vi.mock("../../server/storage", () => ({ storage: { variables: { getJsonState: mocks.read } } }));
 vi.mock("../../server/storage/transaction-context", () => ({ runOutsideTransaction: mocks.outside }));
 vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: mocks.outside }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   loadComponentCache: () => { throw new Error("Broken runtime cache"); },
   isComponentEnabledSync: () => { throw new Error("Uninitialized runtime cache"); },
 }));
 import { getAllComponents } from "../../shared/components";
-import { getComponentConfigsFromStorage, readComponentStateFromStorage, resolveComponentEnabled } from "../../server/services/component-state";
+import { getComponentConfigsFromStorage, readComponentStateFromStorage, resolveComponentEnabled } from "../../server/services/component/state";
 
 beforeEach(() => { vi.clearAllMocks(); mocks.read.mockResolvedValue(undefined); mocks.ownership.mockResolvedValue({}); });
 afterEach(() => { vi.useRealTimers(); });

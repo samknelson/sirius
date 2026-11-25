@@ -1,6 +1,6 @@
 import { registerDashboardPlugin } from "../registry";
 import { getAccessStorage } from "../../../services/access-policy-evaluator";
-import { isComponentEnabledSync } from "../../../services/component-cache";
+import { isComponentEnabledSync } from "../../../services/component/cache";
 import type { DashboardPlugin } from "../types";
 import { wizardEmployerMonthly, wizards } from "@shared/schema";
 import { and, or, inArray, eq, desc } from "drizzle-orm";

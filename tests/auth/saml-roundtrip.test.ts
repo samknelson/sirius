@@ -48,7 +48,7 @@ vi.mock("../../server/auth/provisioning", () => ({
 vi.mock("../../server/auth/session-idle-timeout", () => ({
   getSessionIdleTimeoutSettings: async () => ({ enabled: false, timeoutMinutes: 30 }),
 }));
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => false }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: () => false }));
 vi.mock("../../server/middleware/request-context", () => ({ getRequestContext: () => undefined }));
 vi.mock("../../server/config/env-registry", () => ({
   getEnvironmentVariable: (key: string) => ({

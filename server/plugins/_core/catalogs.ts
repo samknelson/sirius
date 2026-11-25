@@ -1,5 +1,5 @@
 import { registerCatalog } from "@shared/catalog";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { pluginDefinitionEntry } from "./definition-catalog";
 import { listPluginKindRegistrations } from "./kinds";
 import { prettifyKind } from "./kinds-catalog";

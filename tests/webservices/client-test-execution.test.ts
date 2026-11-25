@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => false }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: () => false }));
 
 const { executeWsTestHttp, getClient, validateSecret, getByClientKey, recordUsage } = vi.hoisted(() => ({
   executeWsTestHttp: vi.fn(),

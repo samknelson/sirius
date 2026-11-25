@@ -1,5 +1,5 @@
 import { eventBus, EventType, type SessionSaveAfterPayload, type SessionTransitionPayload, type SignInAfterPayload } from "../../../../server/services/event-bus";
-import { isComponentEnabledSync } from "../../../../server/services/component-cache";
+import { isComponentEnabledSync } from "../../../../server/services/component/cache";
 import { runOutsideTransaction } from "../../../../server/storage/transaction-context";
 import type { SessionHistoryStorage } from "../storage/system/session-history";
 import { logger } from "../../../../server/logger";

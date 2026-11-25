@@ -4,8 +4,8 @@ import { existsSync, rmSync } from "fs";
 import { resolve } from "path";
 import { setupVite, serveStatic, log } from "./vite";
 import { getEnvironmentVariable } from "./config/env-registry";
-import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot-status";
-import { bootStatusGate, registerBootStatusRoutes } from "./services/boot-status-http";
+import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot/status";
+import { bootStatusGate, registerBootStatusRoutes } from "./services/boot/status-http";
 import {
   installServiceRoleOwnershipGuard,
   resolveServiceRoles,

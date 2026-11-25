@@ -26,7 +26,7 @@ import { getClient, runInSavepoint, runInTransaction, onAfterCommit } from "../t
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { storage } from "../index";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { getRequestContext } from "../../middleware/request-context";
 import { entityMetadataStorage } from "../system/entity-metadata";
 import type { SnapshotNode } from "@shared/snapshots";

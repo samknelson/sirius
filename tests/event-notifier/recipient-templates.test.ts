@@ -5,7 +5,7 @@ import { templatesSchemaBlock, stampNotifierTemplateIds, hideUnsupportedTemplate
 import { renderWorkerAssignmentSms, EDLS_REVIEW_NOTICE } from "@shared/edls-worker-assignment";
 import { formatYmd } from "@shared/utils/date";
 
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: () => true }));
 vi.mock("../../server/storage", () => ({ storage: {} }));
 
 import { edlsSheetWorkerSmsNotifier } from "../../server/plugins/event-notifier/plugins/edls-sheet-worker-sms-notifier";

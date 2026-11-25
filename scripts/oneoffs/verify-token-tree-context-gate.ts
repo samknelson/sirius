@@ -17,7 +17,7 @@ import { storage } from "../../server/storage";
 import {
   loadComponentCache,
   isComponentEnabledSync,
-} from "../../server/services/component-cache";
+} from "../../server/services/component/cache";
 import {
   initAccessControl,
   requireAccess,

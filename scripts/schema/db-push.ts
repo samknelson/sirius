@@ -44,7 +44,7 @@ import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import * as fullSchema from "../../shared/schema";
 import { getSchemaManagingComponents } from "../../shared/components";
-import { getAbsentComponentTables } from "../../server/services/component-ownership";
+import { getAbsentComponentTables } from "../../server/services/component/ownership";
 import { getEnvironmentVariable, getRawProcessEnv } from "../../server/config/env-registry";
 
 const RUNTIME_SCHEMA_FILE = resolve(process.cwd(), ".drizzle-runtime-schema.ts");

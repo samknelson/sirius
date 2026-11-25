@@ -72,8 +72,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function runChild(role: string): Promise<void> {
-  const { getBootIdentity } = await import("../../server/services/boot-identity");
-  const { bootStatus } = await import("../../server/services/boot-status");
+  const { getBootIdentity } = await import("../../server/services/boot/identity");
+  const { bootStatus } = await import("../../server/services/boot/status");
   const { registerMigration, getHighestCoreMigrationVersion } = await import(
     "../../server/services/migration-runner"
   );

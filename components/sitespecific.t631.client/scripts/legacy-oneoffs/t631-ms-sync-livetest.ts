@@ -1,7 +1,7 @@
 import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
 import { syncWorkerEins } from "../../../../server/services/worker-sync";
 import "../../../../server/generated/component-startups";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 import { storage } from "../../../../server/storage";
 
 const APP_MS = "60e8bf6f-3dc3-4dc8-bce6-06f20bcb440a"; // Apprentice (APP)

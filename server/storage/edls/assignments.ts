@@ -28,7 +28,7 @@ import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
 import { assignmentAnswerMetadataMode, assignmentUpdateMetadataMode } from "./assignment-provenance";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
 import {

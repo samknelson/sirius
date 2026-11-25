@@ -15,7 +15,7 @@ import { eq } from "drizzle-orm";
 import { storage } from "../../../server/storage";
 import { db } from "../../../server/storage/db";
 import { optionsDispatchJobType } from "@shared/schema";
-import { loadComponentCache, isComponentEnabledSync } from "../../../server/services/component-cache";
+import { loadComponentCache, isComponentEnabledSync } from "../../../server/services/component/cache";
 import { initAccessControl } from "../../../server/services/access-policy-evaluator";
 import { initializePermissions } from "../../../shared/permissions";
 import "../../../shared/access-policies/loader";

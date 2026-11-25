@@ -23,7 +23,7 @@ import * as edlsSchema from "../../shared/schema/edls/schema";
 import {
   generateCreateStatements,
   sortTablesByDependencies,
-} from "../../server/services/component-schema-push";
+} from "../../server/services/component/schema-push";
 import { getEnvironmentVariable } from "../../server/config/env-registry";
 
 function getSym(obj: any, description: string): symbol | undefined {

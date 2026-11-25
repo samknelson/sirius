@@ -37,7 +37,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { generateCreateStatements, detectSchemaDrift } from "../../server/services/component-schema-push";
+import { generateCreateStatements, detectSchemaDrift } from "../../server/services/component/schema-push";
 
 const colorEnum = pgEnum("smoke_color", ["red", "green", "blue"]);
 

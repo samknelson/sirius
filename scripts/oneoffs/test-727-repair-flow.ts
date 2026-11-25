@@ -12,8 +12,8 @@ import {
   enableComponentSchema,
   repairComponentSchema,
   disableComponentSchema,
-} from "../../server/services/component-lifecycle";
-import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
+} from "../../server/services/component/lifecycle";
+import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component/cache";
 import { getAllComponents } from "../../shared/components";
 
 async function pickComponent(): Promise<{ id: string; tables: string[] }> {

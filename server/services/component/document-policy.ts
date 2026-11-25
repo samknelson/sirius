@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { componentDocumentPolicies } from "../generated/component-document-policies";
+import { componentDocumentPolicies } from "../../generated/component-document-policies";
 
 /** Serializable build-time declarations also work in database-free static services. */
 export const componentDocumentPolicy: RequestHandler = (req, res, next) => {

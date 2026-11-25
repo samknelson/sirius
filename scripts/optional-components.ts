@@ -403,7 +403,7 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
   const serverFile = "server/generated/component-startups.ts";
   const startups = components.filter(c => c.startup);
   emit(serverFile, [
-    'import type { ComponentStartup } from "../services/component-startup-types";',
+    'import type { ComponentStartup } from "../services/component/startup-types";',
     'import "./component-server-modules";',
     ...startups.map((c, i) => `import * as startup${i} from ${spec(serverFile, c.startup!)};`),
     `export const componentStartups: ComponentStartup[] = [${startups.map((_, i) => `startup${i}`).join(", ")}];`,

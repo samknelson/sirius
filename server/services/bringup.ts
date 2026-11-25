@@ -42,8 +42,8 @@ import "../../scripts/migrate";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { logger } from "../logger";
 import type { AdvisoryLockHandle } from "../storage/advisory-lock";
-import { bootStatus, type BringUpConcurrency } from "./boot-status";
-import { BootStepTimeoutError, withBootDeadline } from "./boot-deadline";
+import { bootStatus, type BringUpConcurrency } from "./boot/status";
+import { BootStepTimeoutError, withBootDeadline } from "./boot/deadline";
 import {
   printBringUpReport,
   recordBringUpConcurrency,
@@ -84,8 +84,8 @@ import {
   runPendingComponentMigrationsAtStartup,
 } from "./migration-runner";
 import { enforceStartupSchemaDrift, reportSchemaDriftOnly } from "./schema-drift-check";
-import { loadComponentCache } from "./component-cache";
-import { recordInstalledComponentOwnership } from "./component-ownership";
+import { loadComponentCache } from "./component/cache";
+import { recordInstalledComponentOwnership } from "./component/ownership";
 
 /**
  * Thrown to stop the boot after a report-only run. Not a failure: the

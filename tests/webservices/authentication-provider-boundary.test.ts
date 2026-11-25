@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WsClient } from "@shared/schema";
 
 const state = vi.hoisted(() => ({ enabled: false, connectionAvailable: true }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => state.enabled,
 }));
 vi.mock("../../server/storage", () => ({ storage: {

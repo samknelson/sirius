@@ -1,5 +1,5 @@
 #!/usr/bin/env npx tsx
-import { pushComponentSchema, dropComponentSchema } from "../../server/services/component-schema-push";
+import { pushComponentSchema, dropComponentSchema } from "../../server/services/component/schema-push";
 import { getComponentById, getSchemaManagingComponents } from "../../shared/components";
 
 async function main() {

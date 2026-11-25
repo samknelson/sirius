@@ -4,7 +4,7 @@ import { sendEmail } from "../comm/senders/email";
 import { sendInapp } from "../comm/senders/inapp";
 import { storage } from "../../storage";
 import { logger } from "../../logger";
-import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
+import { isComponentEnabledSync, isCacheInitialized } from "../component/cache";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { createDispatchJobStorage } from "../../storage/dispatch/jobs";
 import { createDispatchStorage } from "../../storage/dispatch/dispatches";

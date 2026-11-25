@@ -1,7 +1,7 @@
-import { storage } from "../storage";
-import { tableExists, tableHasRows } from "../storage/utils";
-import { storageLogger } from "../logger";
-import type { SchemaDriftReport } from "./component-schema-push";
+import { storage } from "../../storage";
+import { tableExists, tableHasRows } from "../../storage/utils";
+import { storageLogger } from "../../logger";
+import type { SchemaDriftReport } from "./schema-push";
 import {
   getComponentById,
   getComponentSchemaStateVariableName,
@@ -9,9 +9,9 @@ import {
   ComponentTableState,
   ComponentSchemaDrift,
   ComponentDefinition,
-} from "../../shared/components";
-import { runComponentMigrations, getComponentMigrations } from "./migration-runner";
-import { isComponentEnabledSync, isCacheInitialized, loadComponentCache } from "./component-cache";
+} from "../../../shared/components";
+import { runComponentMigrations, getComponentMigrations } from "../migration-runner";
+import { isComponentEnabledSync, isCacheInitialized, loadComponentCache } from "./cache";
 
 export interface SchemaOperationResult {
   success: boolean;
@@ -268,7 +268,7 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
         }
       }
     }
-    const { pushComponentSchema } = await import("./component-schema-push");
+    const { pushComponentSchema } = await import("./schema-push");
     await pushComponentSchema(componentId);
     
     for (const tableName of component.schemaManifest.tables) {
@@ -437,7 +437,7 @@ export async function repairComponentSchema(componentId: string): Promise<Compon
   // Collect current drift reports by attempting the push.
   let reports: SchemaDriftReport[] = [];
   try {
-    const { pushComponentSchema } = await import("./component-schema-push");
+    const { pushComponentSchema } = await import("./schema-push");
     await pushComponentSchema(componentId);
     // No drift — nothing to repair; fall through to the normal enable to
     // record state (and run migrations).

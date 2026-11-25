@@ -21,7 +21,7 @@ import { employers } from "../../shared/schema";
 import { initializeTokenPluginSystem } from "../../server/plugins/tokens";
 import { currentYearMonth } from "../../server/plugins/tokens/plugins/compliance";
 import { storage } from "../../server/storage/database";
-import { loadComponentCache } from "../../server/services/component-cache";
+import { loadComponentCache } from "../../server/services/component/cache";
 
 let failures = 0;
 function check(label: string, ok: boolean, detail?: string) {

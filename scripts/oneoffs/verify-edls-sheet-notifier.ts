@@ -10,7 +10,7 @@
  * Run: npx tsx scripts/oneoffs/verify-edls-sheet-notifier.ts
  */
 import { storage } from "../../server/storage";
-import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
+import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component/cache";
 import "../../server/plugins/event-notifier/index";
 import { initializeEventNotifierDispatcher } from "../../server/plugins/event-notifier/dispatcher";
 import { createCommInappStorage } from "../../server/storage/comm";

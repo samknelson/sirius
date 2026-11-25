@@ -341,7 +341,7 @@ export async function collectComponentMigrationStatus(): Promise<{
   }[];
 }> {
   const { getAllComponents } = await import("../../shared/components");
-  const { isComponentEnabledSync } = await import("./component-cache");
+  const { isComponentEnabledSync } = await import("./component/cache");
 
   let enabledCount = 0;
   const schemaManaging: {
@@ -519,7 +519,7 @@ export async function runComponentMigrations(componentId: string): Promise<Compo
  */
 export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
   const { getAllComponents } = await import("../../shared/components");
-  const { isComponentEnabledSync } = await import("./component-cache");
+  const { isComponentEnabledSync } = await import("./component/cache");
   const errors: string[] = [];
   let totalRan = 0;
   for (const component of getAllComponents()) {
@@ -538,7 +538,7 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
     // pending migrations itself.
     const { state } = await readComponentSchemaState(component.id);
     if (!state) {
-      const { enableComponentSchema } = await import("./component-lifecycle");
+      const { enableComponentSchema } = await import("./component/lifecycle");
       let enable = await enableComponentSchema(component.id);
       if (
         !enable.success &&

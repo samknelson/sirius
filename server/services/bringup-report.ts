@@ -101,7 +101,7 @@ export interface BringUpReport {
 /**
  * The outcome of contending for the schema bring-up lock (Task #1350).
  *
- * Kept as its own string union rather than imported from `boot-status.ts`:
+ * Kept as its own string union rather than imported from `boot/status.ts`:
  * both modules are pure leaves reached at different points of the boot, and
  * neither may grow an import. The two unions are intentionally the same
  * vocabulary so a reader comparing /health to the report sees one word.

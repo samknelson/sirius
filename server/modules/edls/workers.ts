@@ -6,7 +6,7 @@ import { requireComponent } from "../components";
 import { getEdlsSettings } from "./supervisor-context";
 import { getTodayYmd } from "@shared/utils/date";
 import { calendarDateSchema } from "@shared/calendar-date";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 

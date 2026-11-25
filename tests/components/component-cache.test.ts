@@ -22,7 +22,7 @@ vi.mock("../../server/storage/transaction-context", () => ({
 }));
 
 async function cache() {
-  return import("../../server/services/component-cache");
+  return import("../../server/services/component/cache");
 }
 beforeEach(() => {
   vi.resetModules();
@@ -40,7 +40,7 @@ describe("committed component state", () => {
     const listener = vi.fn(() => { throw new Error("Listener failed"); });
     c.onComponentCacheChange(listener);
     mocks.read.mockResolvedValue({ value: { facility: true }, version: "2" });
-    const { getComponentConfigsFromStorage } = await import("../../server/services/component-state");
+    const { getComponentConfigsFromStorage } = await import("../../server/services/component/state");
     expect((await getComponentConfigsFromStorage()).find(row => row.componentId === "facility")?.enabled).toBe(true);
     expect(c.isComponentEnabledSync("facility")).toBe(false);
     expect(c.getComponentCacheRevision()).toBe(revision);

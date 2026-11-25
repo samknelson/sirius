@@ -23,7 +23,7 @@ import { storage } from "../../../../server/storage";
 import "../../server/plugins/event-notifier/plugins/grievance-status-notifier";
 import "../../server/plugins/tokens/plugins/grievance";
 import "../../server/template-token-migrations";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 import { db } from "../../../../server/storage/db";
 import { grievanceStatusHistory } from "../../shared/schema/grievance/schema";
 import { desc } from "drizzle-orm";

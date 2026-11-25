@@ -5,7 +5,7 @@ import { storage } from "../../storage";
 import { allowInMaintenanceMode } from "../../storage/maintenance";
 import { getRequestContext } from "../../middleware/request-context";
 import { logger } from "../../logger";
-import { getBootIdentity } from "../../services/boot-identity";
+import { getBootIdentity } from "../../services/boot/identity";
 import { getContainerFacts } from "../../services/container-facts";
 import {
   buildRestartPrediction,

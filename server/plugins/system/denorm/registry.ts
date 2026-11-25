@@ -1,5 +1,5 @@
 import { logger } from "../../../logger";
-import { isCacheInitialized } from "../../../services/component-cache";
+import { isCacheInitialized } from "../../../services/component/cache";
 import { eventBus, EventType } from "../../../services/event-bus";
 import { storage } from "../../../storage";
 import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";

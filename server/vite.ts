@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
-import { componentDocumentPolicy } from "./services/component-document-policy";
+import { componentDocumentPolicy } from "./services/component/document-policy";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
 import { classifySystemServicePath } from "@shared/system-service-roles";
 

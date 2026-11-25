@@ -1,7 +1,7 @@
 import { parseRemoteWorkerName } from "../../server/modules/t631/sync-workers";
 import { syncWorkerEins } from "../../../../server/services/worker-sync";
 import "../../../../server/generated/component-startups";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 import { storage } from "../../../../server/storage";
 
 async function main() {

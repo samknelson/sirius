@@ -1,5 +1,5 @@
-import { enableComponentSchema } from "../../../../server/services/component-lifecycle";
-import { updateComponentCache } from "../../../../server/services/component-cache";
+import { enableComponentSchema } from "../../../../server/services/component/lifecycle";
+import { updateComponentCache } from "../../../../server/services/component/cache";
 import "../migrate/components/sitespecific.t631.interviews/001_create_job_interviews";
 
 async function main() {

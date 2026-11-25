@@ -16,7 +16,7 @@
  *   2. If empty and `ALLOW_EMPTY_DB_BOOTSTRAP=1` is set, creates the full
  *      current schema — every core table in `shared/schema.ts` plus the
  *      tables of every default-enabled schema-managing component — by
- *      reusing the Drizzle→DDL generator in `component-schema-push.ts`
+ *      reusing the Drizzle→DDL generator in `component/schema-push.ts`
  *      (enums, tables with constraints, indexes), ordered by foreign-key
  *      dependencies.
  *   3. Stamps `migrations_version` to the highest registered core migration
@@ -36,7 +36,7 @@
  * gate, this is bootstrap infrastructure that must run before the app is
  * functional — it uses the sanctioned introspection helpers in
  * `server/storage/utils.ts` and executes its generated DDL through
- * `storage.rawSql`, the same path `component-schema-push.ts` uses.
+ * `storage.rawSql`, the same path `component/schema-push.ts` uses.
  */
 
 import {
@@ -48,7 +48,7 @@ import {
 } from "../../shared/components";
 import * as mainSchema from "../../shared/schema";
 import { componentSchemaLoaders } from "../generated/component-schemas";
-import { generateCreateStatements } from "./component-schema-push";
+import { generateCreateStatements } from "./component/schema-push";
 import { storage } from "../storage";
 import { runInTransaction } from "../storage/transaction-context";
 import { tableExists, listAllPublicTables } from "../storage/utils";

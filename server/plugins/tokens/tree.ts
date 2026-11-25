@@ -1,7 +1,7 @@
 import { MAX_CHAIN_DEPTH, type TokenArgSpec } from "@shared/tokens";
 import { tokenPluginRegistry } from "./registry";
 import { buildTokenFieldIndex } from "./evaluate";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import type { TokenEntityType, TokenPlugin } from "./types";
 
 /**

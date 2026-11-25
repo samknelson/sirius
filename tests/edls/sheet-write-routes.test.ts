@@ -46,7 +46,7 @@ vi.mock("../../server/modules/edls/supervisor-context", () => ({
   getSupervisorContext: mocks.supervisorContext,
   validateSupervisorForSave: mocks.validateSupervisor,
 }));
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => mocks.componentEnabled,
 }));
 vi.mock("../../server/modules/components", () => ({

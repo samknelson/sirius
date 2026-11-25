@@ -29,7 +29,7 @@ vi.mock("../../server/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock("../../server/services/access-policy-evaluator", () => ({ clearAccessCache: f.clearCache }));
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: f.debug }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: f.debug }));
 vi.mock("../../server/middleware/request-context", () => ({ getRequestContext: () => undefined }));
 vi.mock("../../server/config/env-registry", () => ({
   getEnvironmentVariable: (key: string) => ({

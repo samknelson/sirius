@@ -1,4 +1,4 @@
-import { getBootIdentity } from "./boot-identity";
+import { getBootIdentity } from "./boot/identity";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { createProcessesStorage, type ProcessIdentity, type ProcessesStorage } from "../storage/system/processes";
 

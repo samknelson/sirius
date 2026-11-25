@@ -25,7 +25,7 @@ import type { SnapshotWithProvenance } from "../../server/storage/system/snapsho
 import type { SnapshotNode } from "@shared/snapshots";
 import { buildRecipientTemplateContext, composeFromTemplates, resolveTemplates } from "../../server/plugins/event-notifier/token-templates";
 
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: () => true }));
 vi.mock("../../server/storage/system/entity-metadata", () => ({
   entityMetadataStorage: { getMany: async () => new Map() },
 }));

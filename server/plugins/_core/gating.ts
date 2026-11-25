@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { checkAccessInline } from "../../services/access-policy-evaluator";
 import type { BasePluginMetadata } from "./types";
 

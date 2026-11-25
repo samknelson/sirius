@@ -19,7 +19,7 @@ vi.mock("../../server/storage", () => ({ storage: {
 vi.mock("../../server/storage/configuration-revisions", () => ({
   readConfigurationSnapshot: (fn: () => unknown) => fn(),
 }));
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => state.component }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: () => state.component }));
 vi.mock("../../server/modules/components", () => ({ isComponentEnabled: async () => state.component }));
 vi.mock("../../server/storage/wc-stats", () => ({ wcStatsStorage: { recordCall: (...args: unknown[]) => state.call(...args) } }));
 vi.mock("../../server/storage/wc-cache", async importOriginal => ({

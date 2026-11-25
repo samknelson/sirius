@@ -9,7 +9,7 @@ const fakes = vi.hoisted(() => ({
   optin: vi.fn(),
   variable: vi.fn(),
 }));
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: fakes.enabled }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: fakes.enabled }));
 vi.mock("../../server/logger", () => ({ logger: { warn: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
 vi.mock("../../server/storage", () => ({
   storage: {

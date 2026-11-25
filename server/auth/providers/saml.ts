@@ -7,7 +7,7 @@ import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
 import { maybeProvisionUser, reconcileMappedRoles, type RoleReconciliationDiagnostics } from "../provisioning";
 import { getEnvironmentVariable } from "../../config/env-registry";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isComponentEnabledSync } from "../../services/component/cache";
 import { samlMilestone, samlHandoffFailure, samlHandoffError, setSamlCallbackPath } from "../saml-roundtrip";
 
 const STRATEGY_NAME = "saml";

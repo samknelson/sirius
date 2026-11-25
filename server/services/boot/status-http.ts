@@ -37,15 +37,15 @@
  * blocker, which is safe to show anywhere.
  */
 import type { Express, Request, Response } from "express";
-import { bootStatus, type BootPhase } from "./boot-status";
-import { getBootIdentity } from "./boot-identity";
-import { formatBringUpReport } from "./bringup-report";
-import { getEnvironmentVariable } from "../config/env-registry";
+import { bootStatus, type BootPhase } from "./status";
+import { getBootIdentity } from "./identity";
+import { formatBringUpReport } from "../bringup-report";
+import { getEnvironmentVariable } from "../../config/env-registry";
 // Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
 // under Node) and this module runs before the application exists.
-import { escapeHtml } from "../../shared/utils/html/escape";
+import { escapeHtml } from "../../../shared/utils/html/escape";
 import { classifySystemServicePath } from "@shared/system-service-roles";
-import type { ResolvedServiceRoles } from "./service-roles";
+import type { ResolvedServiceRoles } from "../service-roles";
 
 /**
  * Every address the boot status answers on.

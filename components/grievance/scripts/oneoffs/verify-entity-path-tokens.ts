@@ -21,7 +21,7 @@ import { initializeEventNotifierPluginSystem } from "../../../../server/plugins/
 import { initializeTokenPluginSystem } from "../../../../server/plugins/tokens";
 import { tokenPluginRegistry } from "../../../../server/plugins/tokens/registry";
 import { storage } from "../../../../server/storage";
-import { loadComponentCache } from "../../../../server/services/component-cache";
+import { loadComponentCache } from "../../../../server/services/component/cache";
 
 let failures = 0;
 function check(label: string, ok: boolean, detail?: string) {

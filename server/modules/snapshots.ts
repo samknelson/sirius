@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { isComponentEnabledSync } from "../services/component-cache";
+import { isComponentEnabledSync } from "../services/component/cache";
 import {
   snapshotRevisionFromNode,
   type SnapshotNode,

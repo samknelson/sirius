@@ -22,7 +22,7 @@ import {
   createAsyncStorageValidator
 } from "./utils/validation";
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
-import { isComponentEnabledSync } from "../services/component-cache";
+import { isComponentEnabledSync } from "../services/component/cache";
 import { provenanceCreatedDate } from "./system/entity-metadata-order";
 import { eventBus, EventType } from "../services/event-bus";
 

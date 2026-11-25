@@ -14,13 +14,13 @@ import express from "express";
 import { createServer } from "http";
 import { existsSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
-import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot-status";
+import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot/status";
 // Pure leaf, like boot-status: safe to import before DATABASE_URL exists and
 // whether or not app-init ever loaded.
 import {
   bootStatusGate,
   registerBootStatusRoutes,
-} from "./services/boot-status-http";
+} from "./services/boot/status-http";
 import { getEnvironmentVariable } from "./config/env-registry";
 import {
   installServiceRoleOwnershipGuard,
@@ -117,7 +117,7 @@ const roles = resolveServiceRoles();
  * publicly). Without the flag the response still names the phase and the
  * blocker, and points the operator at the server logs.
  *
- * Both the phase and the rendering live in `services/boot-status{,-http}.ts`,
+ * Both the phase and the rendering live in `services/boot/status{,-http}.ts`,
  * shared with the development entry point so the two cannot diverge.
  *
  * Boot-status addresses are registered FIRST: they must answer while the

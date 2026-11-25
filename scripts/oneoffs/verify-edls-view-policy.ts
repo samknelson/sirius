@@ -6,7 +6,7 @@
  * Run: npx tsx scripts/oneoffs/verify-edls-view-policy.ts
  */
 import { storage } from "../../server/storage";
-import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
+import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component/cache";
 import {
   initAccessControl,
   registerEntityLoader,

@@ -1,7 +1,7 @@
 import { getAllComponents, getComponentById } from "@shared/components";
 import { optionalComponentIds } from "@shared/generated/optional-components";
 import { absentOwnedTables, type ComponentOwnership } from "@shared/component-ownership";
-import { componentOwnershipStorage } from "../storage/system/component-ownership";
+import { componentOwnershipStorage } from "../../storage/system/component-ownership";
 
 export async function recordInstalledComponentOwnership(): Promise<void> {
   const installed: ComponentOwnership = {};

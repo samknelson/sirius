@@ -10,7 +10,7 @@ vi.mock("../../server/storage/transaction-context", () => ({
   runInTransaction: (callback: () => Promise<unknown>) => callback(),
 }));
 
-vi.mock("../../server/services/component-cache", () => ({
+vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => false,
 }));
 

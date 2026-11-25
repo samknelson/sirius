@@ -14,7 +14,7 @@
  *
  * Run: npx tsx scripts/oneoffs/verify-options-transfer.ts
  */
-import { loadComponentCache } from "../../server/services/component-cache";
+import { loadComponentCache } from "../../server/services/component/cache";
 import type { OptionsImportResult } from "../../shared/optionsTransfer";
 
 let failures = 0;
