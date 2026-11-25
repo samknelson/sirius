@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../server/db";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 import { logger } from "../../../server/logger";
 
 const SERVICE = "migration-1106";

@@ -23,7 +23,7 @@
  * `migrations_version` afterwards.
  */
 import { storage } from "../../../server/storage";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 import { getAllComponents } from "../../../shared/components";
 import { isComponentEnabledSync, loadComponentCache } from "../../../server/services/component/cache";
 import { generateDriftFixStatements } from "../../../server/services/component/schema-push";

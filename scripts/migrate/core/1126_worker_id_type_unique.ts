@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../server/db";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 

@@ -5,7 +5,7 @@ import { logger } from "../../../server/logger";
 import {
   registerMigration,
   type Migration,
-} from "../../../server/services/migration-runner";
+} from "../../../server/services/boot/migration-runner";
 
 const SERVICE = "migration-1117";
 type MigrationTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];

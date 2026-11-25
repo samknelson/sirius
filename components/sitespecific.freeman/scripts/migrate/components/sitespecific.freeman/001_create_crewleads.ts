@@ -1,6 +1,6 @@
 import { db } from "../../../../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerComponentMigration, type Migration } from "../../../../../../server/services/migration-runner";
+import { registerComponentMigration, type Migration } from "../../../../../../server/services/boot/migration-runner";
 import { logger } from "../../../../../../server/logger";
 
 const COMPONENT_ID = "sitespecific.freeman";

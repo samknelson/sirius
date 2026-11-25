@@ -3,7 +3,7 @@ import { db } from "../../../server/db";
 import {
   registerMigration,
   type Migration,
-} from "../../../server/services/migration-runner";
+} from "../../../server/services/boot/migration-runner";
 import { logger } from "../../../server/logger";
 
 /**

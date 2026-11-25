@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDriftRemediation,
   type AggregateDriftReport,
-} from "../../server/services/schema-drift-check";
+} from "../../server/services/boot/schema-drift-check";
 
 const MIGRATIONS = [
   { version: 1008, name: "add_trust_benefit_sirius_id", description: "Add sirius_id to trust benefits" },

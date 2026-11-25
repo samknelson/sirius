@@ -10,7 +10,7 @@ import {
   ComponentSchemaDrift,
   ComponentDefinition,
 } from "../../../shared/components";
-import { runComponentMigrations, getComponentMigrations } from "../migration-runner";
+import { runComponentMigrations, getComponentMigrations } from "../boot/migration-runner";
 import { isComponentEnabledSync, isCacheInitialized, loadComponentCache } from "./cache";
 
 export interface SchemaOperationResult {

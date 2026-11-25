@@ -28,7 +28,7 @@ vi.mock("../../server/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 
-vi.mock("../../server/services/empty-db-bootstrap", () => ({
+vi.mock("../../server/services/boot/empty-db-bootstrap", () => ({
   classifyDatabaseState: async () => ({ state: "initialized", tableNames: ["variables"] }),
   ensureEmptyDatabaseBootstrap: async () => false,
 }));
@@ -37,12 +37,12 @@ vi.mock("../../server/services/component/cache", () => ({
   loadComponentCache: async () => {},
 }));
 
-vi.mock("../../server/services/schema-drift-check", () => ({
+vi.mock("../../server/services/boot/schema-drift-check", () => ({
   enforceStartupSchemaDrift: async () => {},
   reportSchemaDriftOnly: async () => {},
 }));
 
-vi.mock("../../server/services/migration-runner", () => {
+vi.mock("../../server/services/boot/migration-runner", () => {
   class CoreMigrationFailedError extends Error {
     constructor(
       readonly failed: { version: number; name: string; error: string },
@@ -91,8 +91,8 @@ let text = "";
 
 describe("bring-up report after a partially applied core migration run", () => {
   beforeAll(async () => {
-    const { runSchemaBringUp } = await import("../../server/services/bringup");
-    const { formatBringUpReport } = await import("../../server/services/bringup-report");
+    const { runSchemaBringUp } = await import("../../server/services/boot/bringup");
+    const { formatBringUpReport } = await import("../../server/services/boot/bringup-report");
     await expect(runSchemaBringUp()).rejects.toThrow(/create_notes/);
     text = formatBringUpReport();
   });

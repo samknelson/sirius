@@ -1,7 +1,7 @@
 import type { ComponentStartup } from "../../../server/services/component/startup-types";
 import "./bearer-auth";
 import { storage } from "../../../server/storage";
-import { runOrDeferStartupOperation } from "../../../server/services/startup-deferrals";
+import { runOrDeferStartupOperation } from "../../../server/services/boot/startup-deferrals";
 
 export const start: NonNullable<ComponentStartup["start"]> = async () => {
   // Core client settings only: also upgrade when this component is disabled,

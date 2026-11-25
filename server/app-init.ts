@@ -21,7 +21,7 @@ import { initializeDataRetentionPluginSystem } from "./plugins/system/data-reten
 import { initializeSystemStatusPluginSystem } from "./plugins/system/status";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
-import { runSchemaBringUp } from "./services/bringup";
+import { runSchemaBringUp } from "./services/boot/bringup";
 import { syncComponentPermissions } from "./services/component/permissions";
 import { onComponentCacheChange } from "./services/component/cache";
 import { refreshComponentStateForApi } from "./middleware/component-state";
@@ -71,7 +71,7 @@ import {
   getComponentCacheRevision,
   isComponentEnabledSync,
 } from "./services/component/cache";
-import { runOrDeferStartupOperation } from "./services/startup-deferrals";
+import { runOrDeferStartupOperation } from "./services/boot/startup-deferrals";
 import { registerPluginCatalogs } from "./plugins/_core/catalogs";
 import { captureCallbackBody, refuseCallbackParseError } from "./services/comm/callback-handlers/verification";
 import { captureHttpPrivacy, isHttpBodyPrivate } from "./services/http-response-privacy";
@@ -308,7 +308,7 @@ export async function bootstrapApp(
   // component cache, apply per-component migrations, and enforce the drift
   // gate. It prints the bring-up report exactly once, on success and on
   // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
-  // without writing anything. See `server/services/bringup.ts`.
+  // without writing anything. See `server/services/boot/bringup.ts`.
   await runSchemaBringUp();
   initializeSessionHistoryListener(storage.sessionHistory);
 

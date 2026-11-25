@@ -16,7 +16,7 @@ vi.mock("../../server/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), 
 vi.mock("../../server/services/system-mode", () => ({
   getSystemMode: mocks.mode, isMaintenanceMode: (mode: string) => mode === "maintenance",
 }));
-vi.mock("../../server/services/startup-deferrals", () => ({ runDeferredStartupOperations: mocks.defer }));
+vi.mock("../../server/services/boot/startup-deferrals", () => ({ runDeferredStartupOperations: mocks.defer }));
 vi.mock("../../server/plugins/system/cron", () => ({
   cronPluginRegistry: { has: () => true }, executeCronPlugin: vi.fn(),
 }));

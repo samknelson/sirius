@@ -4,7 +4,7 @@ import { logger } from "../../../server/logger";
 import {
   registerMigration,
   type Migration,
-} from "../../../server/services/migration-runner";
+} from "../../../server/services/boot/migration-runner";
 
 /**
  * Keep existing outgoing-usage alerts attached to the live Twilio operation.

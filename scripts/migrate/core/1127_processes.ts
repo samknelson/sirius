@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../server/db";
-import { registerMigration } from "../../../server/services/migration-runner";
+import { registerMigration } from "../../../server/services/boot/migration-runner";
 
 registerMigration({
   version: 1127,

@@ -75,7 +75,7 @@ core schema already exists (the migration runner itself stores its
 version in the `variables` table).
 
 The empty-database bootstrap
-(`server/services/empty-db-bootstrap.ts`) closes that gap. At startup,
+(`server/services/boot/empty-db-bootstrap.ts`) closes that gap. At startup,
 before anything else touches the database, the app checks its state:
 
 - **Initialized database** (a `variables` table exists): bootstrap is a

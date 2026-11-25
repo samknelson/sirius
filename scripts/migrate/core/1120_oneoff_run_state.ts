@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../server/db";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 
 async function up(): Promise<void> {
   await db.transaction(async (tx) => {

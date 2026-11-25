@@ -75,9 +75,9 @@ async function runChild(role: string): Promise<void> {
   const { getBootIdentity } = await import("../../server/services/boot/identity");
   const { bootStatus } = await import("../../server/services/boot/status");
   const { registerMigration, getHighestCoreMigrationVersion } = await import(
-    "../../server/services/migration-runner"
+    "../../server/services/boot/migration-runner"
   );
-  const { runSchemaBringUp } = await import("../../server/services/bringup");
+  const { runSchemaBringUp } = await import("../../server/services/boot/bringup");
   const { storage } = await import("../../server/storage");
   const { bootId } = getBootIdentity();
 
@@ -196,7 +196,7 @@ function spawnChild(
 async function runTimeoutScenario(): Promise<void> {
   const { spawn } = await import("node:child_process");
   const { storage } = await import("../../server/storage");
-  const { BRINGUP_LOCK_NAME } = await import("../../server/services/bringup-lock");
+  const { BRINGUP_LOCK_NAME } = await import("../../server/services/boot/bringup-lock");
 
   const holder = await storage.advisoryLock.tryAcquireSession(BRINGUP_LOCK_NAME, {
     timeoutMs: 5_000,
@@ -236,7 +236,7 @@ async function runTimeoutScenario(): Promise<void> {
 async function runStallScenario(): Promise<void> {
   const { spawn } = await import("node:child_process");
   const { storage } = await import("../../server/storage");
-  const { BRINGUP_LOCK_NAME } = await import("../../server/services/bringup-lock");
+  const { BRINGUP_LOCK_NAME } = await import("../../server/services/boot/bringup-lock");
 
   const before = await storage.variables.getByName(MIGRATIONS_VARIABLE);
   console.log(

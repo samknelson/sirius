@@ -38,12 +38,12 @@
 // Side-effect import: registers every core, per-component and baseline
 // migration with the runner. Without it the registry is empty and every
 // version reported below would be a lie.
-import "../../scripts/migrate";
-import { getEnvironmentVariable } from "../config/env-registry";
-import { logger } from "../logger";
-import type { AdvisoryLockHandle } from "../storage/advisory-lock";
-import { bootStatus, type BringUpConcurrency } from "./boot/status";
-import { BootStepTimeoutError, withBootDeadline } from "./boot/deadline";
+import "../../../scripts/migrate";
+import { getEnvironmentVariable } from "../../config/env-registry";
+import { logger } from "../../logger";
+import type { AdvisoryLockHandle } from "../../storage/advisory-lock";
+import { bootStatus, type BringUpConcurrency } from "./status";
+import { BootStepTimeoutError, withBootDeadline } from "./deadline";
 import {
   printBringUpReport,
   recordBringUpConcurrency,
@@ -84,8 +84,8 @@ import {
   runPendingComponentMigrationsAtStartup,
 } from "./migration-runner";
 import { enforceStartupSchemaDrift, reportSchemaDriftOnly } from "./schema-drift-check";
-import { loadComponentCache } from "./component/cache";
-import { recordInstalledComponentOwnership } from "./component/ownership";
+import { loadComponentCache } from "../component/cache";
+import { recordInstalledComponentOwnership } from "../component/ownership";
 
 /**
  * Thrown to stop the boot after a report-only run. Not a failure: the
@@ -409,7 +409,7 @@ export async function runSchemaBringUp(): Promise<void> {
 
     // Empty-database bootstrap stamps past migrations; functions/triggers aren't
     // represented by Drizzle. Install for fresh and upgraded DBs under this lock.
-    const { installConfigurationRevisionInfrastructure } = await import("../storage/configuration-revisions");
+    const { installConfigurationRevisionInfrastructure } = await import("../../storage/configuration-revisions");
     await installConfigurationRevisionInfrastructure();
     await step("drift-gate", "the schema drift gate", () => enforceStartupSchemaDrift());
 

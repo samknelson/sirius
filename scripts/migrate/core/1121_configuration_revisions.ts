@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../server/db";
 import { CONFIGURATION_REVISION_DDL } from "../../../server/storage/configuration-revision-ddl";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 
 const migration: Migration = {
   version: 1121,

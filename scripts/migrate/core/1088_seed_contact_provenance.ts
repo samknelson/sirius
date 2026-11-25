@@ -1,4 +1,4 @@
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 import { storage } from "../../../server/storage";
 import { logger } from "../../../server/logger";
 

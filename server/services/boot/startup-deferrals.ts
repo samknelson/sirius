@@ -1,5 +1,5 @@
-import { logger } from "../logger";
-import { isMaintenanceActive } from "./maintenance-flag";
+import { logger } from "../../logger";
+import { isMaintenanceActive } from "../maintenance-flag";
 
 export type StartupOperation = () => Promise<void>;
 

@@ -14,7 +14,7 @@ import {
   resetStartupDeferralsForTest,
   runDeferredStartupOperations,
   runOrDeferStartupOperation,
-} from "../../server/services/startup-deferrals";
+} from "../../server/services/boot/startup-deferrals";
 
 describe("maintenance-aware startup reconciliation", () => {
   beforeEach(() => {

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../server/db";
 import { logger } from "../../../server/logger";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 
 async function up(): Promise<void> {
   // The runner does not wrap migrations in a transaction. Keep the rename,

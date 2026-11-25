@@ -10,7 +10,7 @@ async function snapshot() {
   // Lazy imports avoid adding a migration-runner/storage edge to status boot.
   const [{ storage }, { getMigrations }] = await Promise.all([
     import("../../../../storage"),
-    import("../../../../services/migration-runner"),
+    import("../../../../services/boot/migration-runner"),
   ]);
   const variable = await storage.variables.getByName("migrations_version");
   const migrations = getMigrations().sort((a, b) => b.version - a.version);

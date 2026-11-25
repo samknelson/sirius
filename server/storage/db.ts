@@ -25,7 +25,7 @@ import ws from "ws";
 import * as schema from "@shared/schema";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { getDatabaseUrlSource, isIamAuth } from "../config/assemble-database-url";
-import { recordDatabaseIdentity, type BringUpDatabaseIdentity } from "../services/bringup-report";
+import { recordDatabaseIdentity, type BringUpDatabaseIdentity } from "../services/boot/bringup-report";
 import { buildPgPoolConfig, parseConnectionUrl } from "./pg-pool-config";
 
 const databaseUrl = getEnvironmentVariable("DATABASE_URL");

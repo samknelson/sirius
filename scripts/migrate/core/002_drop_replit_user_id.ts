@@ -1,5 +1,5 @@
 import { storage } from "../../../server/storage";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 import { logger } from "../../../server/logger";
 
 async function up(): Promise<void> {

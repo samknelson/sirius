@@ -1,7 +1,7 @@
 // Migration infrastructure owns this one-time data write.
 import { db } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
 
 const migration: Migration = {
   version: 1130,

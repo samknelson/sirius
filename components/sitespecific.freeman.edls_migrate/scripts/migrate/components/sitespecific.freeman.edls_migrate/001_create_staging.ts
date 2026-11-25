@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   registerComponentMigration,
   type Migration,
-} from "../../../../../../server/services/migration-runner";
+} from "../../../../../../server/services/boot/migration-runner";
 import { logger } from "../../../../../../server/logger";
 
 const COMPONENT_ID = "sitespecific.freeman.edls_migrate";

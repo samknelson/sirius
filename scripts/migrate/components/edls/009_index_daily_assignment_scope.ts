@@ -1,6 +1,6 @@
 import { db } from "../../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerComponentMigration, type Migration } from "../../../../server/services/migration-runner";
+import { registerComponentMigration, type Migration } from "../../../../server/services/boot/migration-runner";
 
 async function up(): Promise<void> {
   // The daily explorer follows sheet date -> crews -> filled assignments.

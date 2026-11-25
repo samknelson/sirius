@@ -45,19 +45,19 @@ import {
   type ComponentDefinition,
   type ComponentSchemaState,
   type ComponentTableState,
-} from "../../shared/components";
-import * as mainSchema from "../../shared/schema";
-import { componentSchemaLoaders } from "../generated/component-schemas";
-import { generateCreateStatements } from "./component/schema-push";
-import { storage } from "../storage";
-import { runInTransaction } from "../storage/transaction-context";
-import { tableExists, listAllPublicTables } from "../storage/utils";
+} from "../../../shared/components";
+import * as mainSchema from "../../../shared/schema";
+import { componentSchemaLoaders } from "../../generated/component-schemas";
+import { generateCreateStatements } from "../component/schema-push";
+import { storage } from "../../storage";
+import { runInTransaction } from "../../storage/transaction-context";
+import { tableExists, listAllPublicTables } from "../../storage/utils";
 import {
   getMigrations,
   getAllComponentMigrations,
-} from "../../scripts/migrate";
-import { logger } from "../logger";
-import { getEnvironmentVariable } from "../config/env-registry";
+} from "../../../scripts/migrate";
+import { logger } from "../../logger";
+import { getEnvironmentVariable } from "../../config/env-registry";
 import type { DatabaseState } from "./bringup-report";
 
 const NAME_SYM_DESC = "drizzle:Name";
@@ -100,7 +100,7 @@ async function loadComponentSchemaModule(
   try {
     if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
     const rel = schemaPath.replace(/^\.\//, "");
-    const url = new URL(`../../${rel}`, import.meta.url);
+    const url = new URL(`../../../${rel}`, import.meta.url);
     return (await import(url.href)) as Record<string, unknown>;
   } catch {
     return mainSchema as unknown as Record<string, unknown>;

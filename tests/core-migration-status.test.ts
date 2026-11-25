@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   register: vi.fn(),
 }));
 vi.mock("../server/storage", () => ({ storage: { variables: { getByName: state.getByName } } }));
-vi.mock("../server/services/migration-runner", () => ({ getMigrations: state.getMigrations }));
+vi.mock("../server/services/boot/migration-runner", () => ({ getMigrations: state.getMigrations }));
 vi.mock("../server/plugins/system/status/registry", () => ({ registerSystemStatusPlugin: state.register }));
 
 import { coreMigrationStatusPlugin as plugin } from "../server/plugins/system/status/plugins/core-migrations";

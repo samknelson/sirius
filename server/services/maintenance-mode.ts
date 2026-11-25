@@ -70,7 +70,7 @@ export async function refreshMaintenanceFlag(waitForDeferred = true): Promise<vo
   if (current !== generation) return;
   applyMaintenanceFlag(isMaintenanceMode(mode));
   if (!isMaintenanceActive()) {
-    const { runDeferredStartupOperations } = await import("./startup-deferrals");
+    const { runDeferredStartupOperations } = await import("./boot/startup-deferrals");
     const deferred = runOutsideTransaction(() => runDeferredStartupOperations());
     // Deferred boot repairs are separate work, not an infrastructure poll.
     // They retain their own failure queue and cannot stall revision observation.

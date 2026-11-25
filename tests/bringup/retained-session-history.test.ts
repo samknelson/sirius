@@ -36,7 +36,7 @@ vi.mock("../../server/logger", () => ({ storageLogger: { error: vi.fn() } }));
 vi.mock("../../server/services/component/cache", () => ({
   isComponentEnabledSync: () => false, isCacheInitialized: () => true, loadComponentCache: vi.fn(),
 }));
-vi.mock("../../server/services/migration-runner", () => ({
+vi.mock("../../server/services/boot/migration-runner", () => ({
   getComponentMigrations: () => [{ version: 1 }, { version: 2 }, { version: 3 }],
   runComponentMigrations: mocks.migrate,
 }));

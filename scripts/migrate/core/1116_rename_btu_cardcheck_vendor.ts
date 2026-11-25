@@ -4,7 +4,7 @@ import { logger } from "../../../server/logger";
 import {
   registerMigration,
   type Migration,
-} from "../../../server/services/migration-runner";
+} from "../../../server/services/boot/migration-runner";
 
 const OLD_PLUGIN_ID = "btu-cardcheck";
 const NEW_PLUGIN_ID = "sitespecific-btu-cardcheck";

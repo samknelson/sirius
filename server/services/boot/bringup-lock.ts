@@ -29,11 +29,11 @@
  * table. It is a diagnostic breadcrumb, never an authority — the waiter still
  * re-reads the database's ACTUAL state before deciding it has nothing to do.
  */
-import { getEnvironmentVariable } from "../config/env-registry";
-import { logger } from "../logger";
-import { storage } from "../storage";
-import type { AdvisoryLockHandle } from "../storage/advisory-lock";
-import { getBootIdentity } from "./boot/identity";
+import { getEnvironmentVariable } from "../../config/env-registry";
+import { logger } from "../../logger";
+import { storage } from "../../storage";
+import type { AdvisoryLockHandle } from "../../storage/advisory-lock";
+import { getBootIdentity } from "./identity";
 import type { BringUpPeerRun } from "./bringup-report";
 
 /** Advisory lock name. Every booting process contends for this one name. */

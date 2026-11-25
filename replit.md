@@ -293,8 +293,8 @@ previous result.
 
 There is exactly one way to change the database shape: write a migration
 file under `scripts/migrate/` and register it from
-`scripts/migrate/index.ts`. The startup drift gate (`server/services/
-schema-drift-check.ts`) reflects the live database, compares it to the
+`scripts/migrate/index.ts`. The startup drift gate
+(`server/services/boot/schema-drift-check.ts`) reflects the live database, compares it to the
 expected Drizzle schema for the core plus every currently-enabled
 schema-managing component, and refuses to boot the server if anything is
 missing, extra, or mistyped.

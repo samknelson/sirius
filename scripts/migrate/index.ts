@@ -185,4 +185,4 @@ export {
   runComponentMigrations,
   getComponentMigrations,
   getAllComponentMigrations,
-} from "../../server/services/migration-runner";
+} from "../../server/services/boot/migration-runner";

@@ -39,7 +39,7 @@
 import type { Express, Request, Response } from "express";
 import { bootStatus, type BootPhase } from "./status";
 import { getBootIdentity } from "./identity";
-import { formatBringUpReport } from "../bringup-report";
+import { formatBringUpReport } from "./bringup-report";
 import { getEnvironmentVariable } from "../../config/env-registry";
 // Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
 // under Node) and this module runs before the application exists.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   findExtraTables,
   isOneoffScratchTable,
-} from "../../server/services/schema-drift-check";
+} from "../../server/services/boot/schema-drift-check";
 
 describe("oneoff schema-drift scratch namespace", () => {
   it("recognizes only the reserved oneoff_ table prefix", () => {

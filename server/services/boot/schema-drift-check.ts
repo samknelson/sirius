@@ -19,18 +19,18 @@
  * we do not require their schema to match the latest Drizzle definition.
  */
 
-import { getAllComponents } from "../../shared/components";
-import { isComponentEnabledSync } from "./component/cache";
-import { detectSchemaDrift, type SchemaDriftReport } from "./component/schema-push";
-import * as mainSchema from "../../shared/schema";
-import { tableExists, listAllPublicTables } from "../storage/utils";
-import { logger } from "../logger";
-import { bootStatus } from "./boot/status";
-import { getEnvironmentVariable } from "../config/env-registry";
+import { getAllComponents } from "../../../shared/components";
+import { isComponentEnabledSync } from "../component/cache";
+import { detectSchemaDrift, type SchemaDriftReport } from "../component/schema-push";
+import * as mainSchema from "../../../shared/schema";
+import { tableExists, listAllPublicTables } from "../../storage/utils";
+import { logger } from "../../logger";
+import { bootStatus } from "./status";
+import { getEnvironmentVariable } from "../../config/env-registry";
 import { getMigrations, getMigrationStatus } from "./migration-runner";
 import { recordDriftOutcome } from "./bringup-report";
-import { getAbsentComponentTables } from "./component/ownership";
-import { componentSchemaLoaders } from "../generated/component-schemas";
+import { getAbsentComponentTables } from "../component/ownership";
+import { componentSchemaLoaders } from "../../generated/component-schemas";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -54,7 +54,7 @@ function buildSchemaTableIndex(module: Record<string, unknown>): Map<string, any
 async function loadModule(schemaPath: string): Promise<Record<string, unknown>> {
   if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
   const rel = schemaPath.replace(/^\.\//, "");
-  const url = new URL(`../../${rel}`, import.meta.url);
+  const url = new URL(`../../../${rel}`, import.meta.url);
   return (await import(url.href)) as Record<string, unknown>;
 }
 
