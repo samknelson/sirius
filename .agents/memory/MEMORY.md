@@ -171,3 +171,4 @@
 - [One component per directory](one-component-per-directory.md) — no "package" concept; folder = component ID; core components relocate stepwise via `coreRegistered` dirs.
 - [Early credential cleanup](early-document-referrer-policy.md) — first-in-head scripts do not stop speculative referrer leaks; sensitive documents need an HTTP policy, including static-only services.
 - [System child extraction](system-child-extraction-boundaries.md) — history login enrichment is the invocation seam; SFTP removal requires coordinating the mandatory Trust EDI dependent.
+- [Vitest import-time mock lifecycle](vitest-import-time-mock-lifecycle.md) — Vitest 5 clears mock calls before tests; observe registration with a fresh import after cleanup.

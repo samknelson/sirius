@@ -9,19 +9,25 @@ vi.mock("../server/storage", () => ({ storage: { variables: { getByName: state.g
 vi.mock("../server/services/boot/migration-runner", () => ({ getMigrations: state.getMigrations }));
 vi.mock("../server/plugins/system/status/registry", () => ({ registerSystemStatusPlugin: state.register }));
 
-import { coreMigrationStatusPlugin as plugin } from "../server/plugins/system/status/plugins/core-migrations";
+let plugin: typeof import("../server/plugins/system/status/plugins/core-migrations").coreMigrationStatusPlugin;
 
 const migrations = Array.from({ length: 8 }, (_, i) => ({
   version: 100 + i, name: `script-${i}`, description: `Description ${i}`,
   up: vi.fn(),
 }));
-beforeEach(() => {
+beforeEach(async () => {
   state.getMigrations.mockReturnValue([...migrations]);
   state.getByName.mockReset().mockResolvedValue({ value: 107 });
+  // Vitest clears import-time mock calls before each test. Re-evaluate the
+  // module after that cleanup so registration is observed, not replayed.
+  state.register.mockClear();
+  vi.resetModules();
+  ({ coreMigrationStatusPlugin: plugin } = await import("../server/plugins/system/status/plugins/core-migrations"));
 });
 
 describe("core migration system status", () => {
   it("registers an immediate plugin with a details view", () => {
+    expect(state.register).toHaveBeenCalledTimes(1);
     expect(state.register).toHaveBeenCalledWith(plugin);
     expect(plugin.scanMode).toBe("immediate");
     expect(plugin.details).toBeTypeOf("function");
