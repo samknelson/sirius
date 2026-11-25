@@ -19,7 +19,7 @@ function notes(snapshot: SemaphoreStatusSnapshot): StatusMessage[] {
   }];
   if (snapshot.truncated) messages.push({
     priority: "notice", title: `Showing the first ${SEMAPHORE_STATUS_LIMIT} resources`,
-    details: "More semaphore resources exist. The scheduler resource is shown first; remaining resources are ordered by key.",
+    details: "More semaphore resources exist. Counts cover only this displayed subset, not the entire job catalog. The scheduler resource is shown first; remaining resources are ordered by key.",
   });
   if (!snapshot.entries.length) messages.push({
     priority: "info", title: "No semaphore resources recorded",
@@ -35,13 +35,35 @@ export const semaphoreStatusPlugin: SystemStatusPlugin = {
   scanMode: "immediate",
   async scan() {
     const snapshot = await semaphoreStorage.status();
+    const scheduler = snapshot.entries.find(entry => entry.key === "cron:scheduler");
+    const jobs = snapshot.entries.filter(entry => entry.key.startsWith("cron:execution:"));
+    const counts = { held: 0, expired: 0, unowned: 0 };
+    for (const job of jobs) counts[job.state]++;
+
     return [
-      ...notes(snapshot),
-      ...snapshot.entries.map((entry): StatusMessage => ({
-        priority: entry.state === "expired" ? "notice" : "info",
-        title: `${entry.key}: ${entry.state}`,
-        details: describe(entry),
-      })),
+      {
+        priority: scheduler?.state === "expired" ? "notice" : "info",
+        title: `Scheduler ownership: ${scheduler?.state ?? "not recorded in this snapshot"}`,
+      },
+      {
+        priority: counts.expired > 0 ? "notice" : "info",
+        title: `Recorded job execution resources${snapshot.truncated ? " (displayed subset only)" : ""}: ${counts.held} held, ${counts.expired} expired, ${counts.unowned} unowned`,
+        details: jobs.length === 0
+          ? "No job execution resources recorded in this snapshot; the scheduler is counted separately."
+          : "Lease ownership only, not last-run success or failure; the scheduler is counted separately.",
+      },
+      {
+        priority: snapshot.truncated || snapshot.entries.some(entry => entry.state === "expired") ? "notice" : "info",
+        title: snapshot.entries.length === 0
+          ? "No semaphore resources recorded"
+          : snapshot.truncated
+            ? `Truncated snapshot: first ${snapshot.entries.length} resources only`
+            : `Database observation: ${snapshot.observedAt.toISOString()}`,
+        details: [
+          ...(snapshot.truncated ? ["Counts cover only the displayed subset, not the entire job catalog."] : []),
+          "An expired lease does not prove work stopped. Open Details for individual resources, owners, lease expiry, and snapshot caveats.",
+        ].join(" "),
+      },
     ];
   },
   async details() {
