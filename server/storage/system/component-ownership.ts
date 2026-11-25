@@ -1,7 +1,7 @@
 import { eq, like, or, sql } from "drizzle-orm";
 import { variables } from "@shared/schema";
 import {
-  COMPONENT_OWNERSHIP_VARIABLE, LEGACY_COMPONENT_OWNERSHIP_VARIABLE, parseComponentOwnership, type ComponentOwnership,
+  COMPONENT_OWNERSHIP_VARIABLE, parseComponentOwnership, type ComponentOwnership,
 } from "@shared/component-ownership";
 import { getClient } from "../transaction-context";
 import { tableExists } from "../utils";
@@ -12,16 +12,10 @@ export const componentOwnershipStorage = {
     const rows = await getClient().select({ name: variables.name, value: variables.value }).from(variables)
       .where(or(
         eq(variables.name, COMPONENT_OWNERSHIP_VARIABLE),
-        eq(variables.name, LEGACY_COMPONENT_OWNERSHIP_VARIABLE),
         like(variables.name, "component\\_schema\\_state\\_%"),
       ));
-    const legacy = rows.find(row => row.name === LEGACY_COMPONENT_OWNERSHIP_VARIABLE);
     const recorded = rows.find(row => row.name === COMPONENT_OWNERSHIP_VARIABLE);
-    // Current records win; legacy entries fill in components recorded only by older builds.
-    const ownership: ComponentOwnership = {
-      ...(legacy ? parseComponentOwnership(legacy.value) : {}),
-      ...(recorded ? parseComponentOwnership(recorded.value) : {}),
-    };
+    const ownership: ComponentOwnership = recorded ? parseComponentOwnership(recorded.value) : {};
     // Existing deployments already recorded exact schema ownership here.
     // Honor that evidence even if the first build without a component omits it.
     for (const row of rows) {

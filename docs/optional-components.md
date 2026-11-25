@@ -84,9 +84,7 @@ database-push escape hatch.
 Under the serialized schema bring-up lock, the application records each
 installed optional component's definition and **exact** table names in the
 `component_ownership` variable, keyed by component ID. Entries for absent
-components are never removed. Older builds wrote the `component_package_ownership`
-variable (entries with a `packageId`); it is still read and normalized, never
-written. Existing `component_schema_state_<id>` records also provide exact
+components are never removed. Existing `component_schema_state_<id>` records also provide exact
 ownership evidence for deployments upgrading directly to a build that omits a
 formerly installed component.
 

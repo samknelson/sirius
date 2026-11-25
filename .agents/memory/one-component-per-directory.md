@@ -8,4 +8,8 @@ Each directory under components/ is exactly one component, named by its componen
 
 **How to apply:** Shared code goes in the parent component it depends on; never import from a component you don't declare as a dependency. Deleting a directory does not drop its tables (separate decision).
 
-Ownership: `component_ownership` is the current record; the old `component_package_ownership` variable (packageId entries) is read-merged, never written — don't delete it without a deliberate data decision. Leaf-deletion (delete dir → check/build/start → restore) is the removability proof; keep it throwaway, not a committed test.
+The old package-ownership variable needs no migration or compatibility reader.
+
+**Why:** The owner confirmed on 2026-11-25 that no other deployment used the new components directory and no bundle had been made since the work began; direct deletion was authorized.
+
+**How to apply:** Do not restore the legacy ownership fallback. Leaf-deletion checks remain throwaway verification, not committed tests.
