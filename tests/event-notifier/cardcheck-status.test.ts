@@ -5,7 +5,7 @@ import type { EventNotifierEventContext } from "../../server/plugins/event-notif
 const fakes = vi.hoisted(() => ({
   worker: vi.fn(), contact: vi.fn(), user: vi.fn(), latest: vi.fn(), cardcheck: vi.fn(), definition: vi.fn(),
 }));
-vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
+vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: () => true }));
 vi.mock("../../server/storage", () => ({
   storage: {
     workers: { getWorker: fakes.worker },
