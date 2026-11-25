@@ -123,13 +123,23 @@ metadata; this is documentation, not a second execution hook.
 
 ## Catalog projection
 
-After closing alter registration, startup registers the ordinary admin-gated
-`alter-hooks` catalog, before catalog registration closes. The generic Catalogs
-screens need no new routes or UI. Every declaration appears even with zero
-callbacks. Each implementation is a separate component-owned entry containing
-target, owner, priority, description and JSON metadata. Disabled implementations
-are filtered by the existing catalog reader; never embed them in unfiltered hook
-detail. No functions, live contexts or runtime results are projected.
+After closing alter registration, startup registers two ordinary admin-gated
+catalogs, before catalog registration closes. The generic Catalogs screens need
+no new routes or UI:
+
+- **Alter Hooks** (`alter-hooks`) lists every declared hook, even with zero
+  callbacks. Entries use the plain hook id and retain the description, semantics,
+  ordering, execution and error notes.
+- **Alter Hook Implementations** (`alter-hook-implementations`) lists callbacks
+  by plain callback id, ordered by hook id, then execution order within each hook
+  (ascending priority, then callback id in code-point order). Each entry carries
+  its owning component and description, with hook id, priority and frozen JSON
+  metadata in detail.
+
+Both derive their entries on read from the alter registry. Disabled
+implementations are filtered by the existing catalog reader; never embed them
+in unfiltered hook detail. No functions, live contexts or runtime results are
+projected, and neither catalog needs a `type` discriminator.
 
 The source set is frozen before the catalog's version becomes final. Component
 changes use the existing catalog component revision. This does not change caching

@@ -1,4 +1,4 @@
-import { registerCatalog, type CatalogEntry, type CatalogValue } from '../catalog';
+import { registerCatalog, type CatalogValue } from '../catalog';
 import { alterHooks } from './index';
 
 export function registerAlterCatalog(): void {
@@ -6,31 +6,35 @@ export function registerAlterCatalog(): void {
   registerCatalog({
     id: 'alter-hooks',
     label: 'Alter Hooks',
-    description: 'Code-defined extension points and their ordered component implementations.',
+    description: 'Code-defined extension points and their execution contracts.',
     audience: 'gated',
     viewPermission: 'admin',
-    entries: () => alterHooks.declarations().flatMap(hook => {
-      const entries: CatalogEntry[] = [{
-        id: `hook:${hook.id}`, name: hook.id, description: hook.description,
+    entries: () => alterHooks.declarations().map(hook => ({
+      id: hook.id, name: hook.id, description: hook.description,
+      detail: {
+        semantics: hook.semantics,
+        ordering: 'Ascending priority, then callback ID in code-point order',
+        execution: 'Sequential awaited replacement values; no callbacks preserves the original value',
+        errors: 'Abort and throw safe hook/callback identities; caller defines safe failure result',
+      },
+    })),
+  });
+  registerCatalog({
+    id: 'alter-hook-implementations',
+    label: 'Alter Hook Implementations',
+    description: 'Component-owned implementations, ordered by hook and execution order.',
+    audience: 'gated',
+    viewPermission: 'admin',
+    entries: () => [...alterHooks.declarations()]
+      .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      .flatMap(hook => alterHooks.implementations(hook).map(cb => ({
+        id: cb.id, name: cb.id, description: cb.description,
+        component: cb.component,
         detail: {
-          type: 'hook', semantics: hook.semantics,
-          ordering: 'Ascending priority, then callback ID in code-point order',
-          execution: 'Sequential awaited replacement values; no callbacks preserves the original value',
-          errors: 'Abort and throw safe hook/callback identities; caller defines safe failure result',
+          hook: hook.id, priority: cb.priority,
+          // Validated, copied and frozen JSON at registration; never executable data.
+          metadata: cb.metadata as CatalogValue,
         },
-      }];
-      for (const cb of alterHooks.implementations(hook)) {
-        entries.push({
-          id: `callback:${cb.id}`, name: cb.id, description: cb.description,
-          component: cb.component,
-          detail: {
-            type: 'callback', hook: hook.id, owner: cb.component, priority: cb.priority,
-            // Validated, copied and frozen JSON at registration; never executable data.
-            metadata: cb.metadata as CatalogValue,
-          },
-        });
-      }
-      return entries;
-    }),
+      }))),
   });
 }

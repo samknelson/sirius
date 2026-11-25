@@ -118,6 +118,12 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **Component alter hooks**: `shared/alter/` holds the typed replacement-value
     framework; `docs/alter-hooks.md` documents declaration, invocation,
     component-owned registration, startup closure and catalog projection.
+    The shared catalog framework exposes two ordinary admin-gated catalogs:
+    **Alter Hooks** (`alter-hooks`) for declarations and **Alter Hook
+    Implementations** (`alter-hook-implementations`) for component-owned callbacks.
+    Both derive on read; implementations are filtered by component and ordered
+    by hook, then execution order. They use plain hook/callback ids, with no
+    parent/child relationship or special renderer.
 
 -   **Database Schema**: `server/schema.ts` (implied by Drizzle ORM usage)
 -   **API Routes**: `server/modules/` (feature-based modules)
