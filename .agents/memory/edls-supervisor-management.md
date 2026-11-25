@@ -8,6 +8,12 @@ Supervisors should use the sheet's existing Manage tab, with each action shown a
 
 **How to apply:** Keep supervisor draft-to-Requested actions in Manage; use the same action-specific policies for controls and their write endpoints.
 
+Supervisors may create sheets. Their supervisor-only status authority remains limited to Draft → Requested on sheets assigned to them; it does not include scheduling or other status changes.
+
+**Why:** The user explicitly approved retaining both creation and the limited scheduling-request permission when resolving conflicting expectations in the authorization tests.
+
+**How to apply:** Preserve both grants and the ownership restriction. Additional roles retain their independent grants; Scheduled and trash-lock protections still apply.
+
 Supervisors must also be able to copy their assigned sheets from Manage, including scheduled source sheets. A copy creates a new draft; this does not authorize broader source-sheet management.
 
 **Why:** The user explicitly requested supervisor copying after reviewing the restricted Manage tab.

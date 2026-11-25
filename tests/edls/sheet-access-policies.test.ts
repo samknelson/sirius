@@ -78,28 +78,50 @@ describe("EDLS sheet details and assignment authorization", () => {
 });
 
 describe("EDLS sheet creation and dedicated status authority", () => {
-  it("permits creation for staff and advisors, not supervisors alone", async () => {
-    for (const permission of ["admin", "edls.manager", "edls.coordinator", "edls.worker.advisor", "edls.supervisor"]) {
+  it("permits creation for staff, advisors, and supervisors, but not unprivileged users", async () => {
+    const permissions = ["admin", "edls.manager", "edls.coordinator", "edls.worker.advisor", "edls.supervisor"];
+    for (const permission of permissions) {
       expect((await create.evaluate!(context([permission], null))).granted)
-        .toBe(permission !== "edls.supervisor");
+        .toBe(true);
+      expect(create.describeRequirements!()).toContainEqual({ permission });
+    }
+    for (const held of [[], ["staff"]]) {
+      expect((await create.evaluate!(context(held, null))).granted).toBe(false);
     }
   });
 
   it("preserves the transition matrix, including Scheduled and trash-lock refusals", async () => {
-    for (const permission of ["admin", "edls.manager", "edls.coordinator", "edls.worker.advisor", "edls.supervisor"]) {
+    const permissions = ["admin", "edls.manager", "edls.coordinator", "edls.worker.advisor", "edls.supervisor"];
+    for (let mask = 0; mask < 32; mask++) {
+      const held = permissions.filter((_, index) => mask & (1 << index));
       for (const current of edlsSheetStatusEnum) {
         for (const target of edlsSheetStatusEnum) {
           for (const trashLock of [true, false]) {
-            const ctx = context([permission], { status: current, supervisor: "supervisor", data: { trashLock } });
-            ctx.entityData = { targetStatus: target };
-            const blockedTrash = target === "trash" && (current === "lock" || trashLock);
-            const staff = ["admin", "edls.manager", "edls.coordinator"].includes(permission);
-            const advisor = permission === "edls.worker.advisor" && current !== "lock" && target !== "lock";
-            expect((await setStatus.evaluate!(ctx)).granted).toBe(!blockedTrash && (staff || advisor));
+            for (const supervisor of ["supervisor", "someone-else"]) {
+              const ctx = context(held, { status: current, supervisor, data: { trashLock } });
+              ctx.entityData = { targetStatus: target };
+              const blockedTrash = target === "trash" && (current === "lock" || trashLock);
+              const staff = ["admin", "edls.manager", "edls.coordinator"].some(permission => held.includes(permission));
+              const advisor = held.includes("edls.worker.advisor") && current !== "lock" && target !== "lock";
+              // Supervisor authority is deliberately limited to requesting
+              // scheduling for an assigned draft; it never grants scheduling.
+              const ownDraftRequest = held.includes("edls.supervisor") &&
+                supervisor === ctx.user.id && current === "draft" && target === "request";
+              expect((await setStatus.evaluate!(ctx)).granted).toBe(
+                !blockedTrash && (staff || advisor || ownDraftRequest),
+              );
+            }
           }
         }
       }
     }
+    const missingSheet = context(["edls.supervisor"], null);
+    missingSheet.entityData = { targetStatus: "request" };
+    expect((await setStatus.evaluate!(missingSheet)).granted).toBe(false);
+    expect(setStatus.describeRequirements!()).toContainEqual({
+      permission: "edls.supervisor",
+      condition: "request scheduling for their assigned draft sheets",
+    });
     expect(setStatus.skipCache).toBe(true);
     expect(setStatus.noAdminBypass).toBe(true);
   });
