@@ -40,8 +40,6 @@ vi.mock("../../../../server/services/worker-sync", () => ({
 }));
 vi.mock("../../../../server/plugins/system/cron/registry", () => ({
   registerCronPlugin: (plugin: CronPlugin) => { fixture.plugin = plugin; },
-}));
-vi.mock("../../../../server/plugins/system/cron", () => ({
   cronPluginRegistry: { has: () => true, get: () => fixture.plugin },
   executeCronPlugin: async (_name: string, context: Parameters<CronPlugin["execute"]>[0], assertOwned: () => void) => {
     assertOwned(); const result = await fixture.plugin!.execute(context); assertOwned(); return result;
@@ -73,7 +71,7 @@ import { getClient, onAfterCommit, runInTransaction } from "../../../../server/s
 import { requestContext } from "../../../../server/middleware/request-context";
 import { setMaintenanceActive } from "../../../../server/services/maintenance-flag";
 import { semaphoreStorage } from "../../../../server/storage/system/semaphores";
-import { CronScheduler } from "../../../../server/cron/scheduler";
+import { CronScheduler } from "../../../../server/plugins/system/cron/scheduler";
 import { jobRuns } from "@shared/schema";
 import "../../server/plugins/system/cron/plugins/t631WorkerFetch";
 

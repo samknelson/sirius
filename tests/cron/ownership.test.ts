@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("../../server/storage/db", () => ({ pool: {} }));
-import { CronOwnership, CRON_RETRY_MAX_MS } from "../../server/cron/ownership";
-import type { CronExecutionLock } from "../../server/cron/execution-lock";
+import { CronOwnership, CRON_RETRY_MAX_MS } from "../../server/plugins/system/cron/ownership";
+import type { CronExecutionLock } from "../../server/plugins/system/cron/execution-lock";
 const owners: CronOwnership[] = [];
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function setup() {

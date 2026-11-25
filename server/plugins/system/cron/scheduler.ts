@@ -1,14 +1,14 @@
 import * as cron from 'node-cron';
-import { storage } from "../storage";
-import type { PluginConfigWithSubsidiary } from "../storage/system/plugin-configs";
-import { logger } from "../logger";
+import { storage } from "../../../storage";
+import type { PluginConfigWithSubsidiary } from "../../../storage/system/plugin-configs";
+import { logger } from "../../../logger";
 import {
   cronPluginRegistry,
   executeCronPlugin,
-} from "../plugins/system/cron";
-import { getEnabledComponentIds } from "../modules/components";
-import { readConfigurationSnapshot } from "../storage/configuration-revisions";
-import { isMaintenanceActive } from "../services/maintenance-flag";
+} from "./registry";
+import { getEnabledComponentIds } from "../../../modules/components";
+import { readConfigurationSnapshot } from "../../../storage/configuration-revisions";
+import { isMaintenanceActive } from "../../../services/maintenance-flag";
 import { CronOwnership } from "./ownership";
 import { CronExecutionLock, CronExecutionLost } from "./execution-lock";
 

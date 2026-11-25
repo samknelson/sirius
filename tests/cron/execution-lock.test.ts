@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 vi.mock("../../server/storage/db", () => ({ pool: {} }));
-import { CronExecutionLock, type SemaphoreStore } from "../../server/cron/execution-lock";
+import { CronExecutionLock, type SemaphoreStore } from "../../server/plugins/system/cron/execution-lock";
 const locks: CronExecutionLock[] = [];
 function store() {
   return {

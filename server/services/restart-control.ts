@@ -188,7 +188,7 @@ export async function shutdownAndExit(server: Server | undefined): Promise<void>
   // otherwise waits for that checked-out session forever.
   const { stopProcessReporter } = await import("./process-reporter");
   await stopProcessReporter();
-  const { cronScheduler } = await import("../cron");
+  const { cronScheduler } = await import("../plugins/system/cron/scheduler");
   await cronScheduler.stop();
 
   try {

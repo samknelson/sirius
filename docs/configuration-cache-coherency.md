@@ -35,7 +35,7 @@ solely because another participant failed.
 | Environment override map (`env-overrides`) | Active reload on `environment` | Both API roles; real non-released environment values still take precedence |
 | Site terminology (`modules/terminology`) | Active reload on `terminology` | Both API roles; deletion restores default terms |
 | Maintenance flag (`maintenance-mode`, import-free `maintenance-flag`) | Active reload on `maintenance` | Both API roles; pool read-only control and vendor refusal use the same flag |
-| Live cron schedule (`cron/scheduler`) | Active reload on `cron`; stage before replacing old jobs | `api-user` only; plugin invalidation and maintenance refresh precede it |
+| Live cron schedule (`plugins/system/cron/scheduler`) | Active reload on `cron`; stage before replacing old jobs | `api-user` only; plugin invalidation and maintenance refresh precede it |
 | Component state (`component-cache`) | Authoritative storage read **every tick**, including unchanged flags / changed commits | Both API roles; existing permissions, access-cache and catalog listeners retained |
 | Derived component permission/catalog caches | Existing component revision/listener invalidation | Not replaced by a generic cache clear |
 | Filesystem configuration/providers (`files`) | Explicit selected reload or global admin reload only | Both API roles; override map must succeed first |

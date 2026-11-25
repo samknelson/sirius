@@ -17,13 +17,13 @@ vi.mock("../../server/services/system-mode", () => ({
   getSystemMode: mocks.mode, isMaintenanceMode: (mode: string) => mode === "maintenance",
 }));
 vi.mock("../../server/services/boot/startup-deferrals", () => ({ runDeferredStartupOperations: mocks.defer }));
-vi.mock("../../server/plugins/system/cron", () => ({
+vi.mock("../../server/plugins/system/cron/registry", () => ({
   cronPluginRegistry: { has: () => true }, executeCronPlugin: vi.fn(),
 }));
 vi.mock("../../server/modules/components", () => ({ getEnabledComponentIds: vi.fn() }));
 // Scheduling authority is a database-backed lease elected asynchronously after
 // start(); stand in an always-granted lease so these tests cover scheduling.
-vi.mock("../../server/cron/execution-lock", () => ({
+vi.mock("../../server/plugins/system/cron/execution-lock", () => ({
   CronExecutionLock: {
     acquireKey: vi.fn(async () => ({
       assertOwned: () => {}, close: async () => {}, lost: new Promise<never>(() => {}),
@@ -83,7 +83,7 @@ it("keeps maintenance armed on database failure and rejects an obsolete exit sna
 });
 
 it("never starts cron in a non-owning role and discards an obsolete schedule load", async () => {
-  const { cronScheduler: c } = await import("../../server/cron/scheduler");
+  const { cronScheduler: c } = await import("../../server/plugins/system/cron/scheduler");
   await c.start();
   await c.reload();
   expect(mocks.search).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ it("never starts cron in a non-owning role and discards an obsolete schedule loa
 });
 
 it("isolates a persisted invalid cron expression at startup and refreshes healthy jobs on reload", async () => {
-  const { cronScheduler: c } = await import("../../server/cron/scheduler");
+  const { cronScheduler: c } = await import("../../server/plugins/system/cron/scheduler");
   c.setOwnership(true);
   const job = (id: string, schedule: string) => ({
     config: { id, pluginId: id, enabled: true, data: {} }, subsidiary: { schedule },

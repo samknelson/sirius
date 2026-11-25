@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
 import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
 import { requireAccess } from "../../services/access-policy-evaluator";
-import { cronScheduler } from "../../cron";
+import { cronScheduler } from "../../plugins/system/cron/scheduler";
 import { cronPluginRegistry } from "../../plugins/system/cron";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

@@ -21,7 +21,7 @@ export async function initializeConfigurationCoherency(ownsCron: boolean): Promi
   const { refreshEnvOverrides, invalidateEnvOverrideSnapshot } = await import("./env-overrides");
   const { loadTerminology, invalidateTerminologyCache } = await import("../modules/terminology");
   const { refreshMaintenanceFlag, invalidateMaintenanceSnapshot } = await import("./maintenance-mode");
-  const { cronScheduler } = await import("../cron/scheduler");
+  const { cronScheduler } = await import("../plugins/system/cron/scheduler");
   const { getReloadableSubsystem } = await import("./reload-registry");
   cronScheduler.setOwnership(ownsCron);
 

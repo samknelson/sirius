@@ -13,8 +13,8 @@ import { initAccessControl, registerEntityLoader, clearAccessCache } from "./ser
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
-import { cronScheduler } from "./cron";
-import { installCronShutdownHooks } from "./cron/shutdown";
+import { cronScheduler } from "./plugins/system/cron/scheduler";
+import { installCronShutdownHooks } from "./plugins/system/cron/shutdown";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
 import { initializeDenormPluginSystem } from "./plugins/system/denorm";
 import { initializeDataRetentionPluginSystem } from "./plugins/system/data-retention";

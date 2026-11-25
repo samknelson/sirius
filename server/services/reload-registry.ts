@@ -87,7 +87,7 @@ const reloadable: ReloadableSubsystem[] = [
       "re-registered from the current configuration.",
     makesLive: [],
     async reload() {
-      const { cronScheduler } = await import("../cron/scheduler");
+      const { cronScheduler } = await import("../plugins/system/cron/scheduler");
       if (!cronScheduler.isStarted()) return "Cron is not active in this process (non-owning role or deferred startup); no jobs started.";
       await cronScheduler.reload();
       return cronScheduler.getScheduleSummary();

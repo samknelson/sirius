@@ -13,7 +13,7 @@ vi.mock("../server/storage", () => ({
   },
 }));
 vi.mock("../server/services/access-policy-evaluator", () => ({ requireAccess: () => () => {} }));
-vi.mock("../server/cron", () => ({ cronScheduler: {} }));
+vi.mock("../server/plugins/system/cron/scheduler", () => ({ cronScheduler: {} }));
 vi.mock("../server/plugins/system/cron", () => ({ cronPluginRegistry: {} }));
 
 import { registerCronJobRoutes } from "../server/modules/system/cron";

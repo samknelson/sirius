@@ -16,11 +16,17 @@ vi.mock("../../server/storage", () => ({ storage: {
   pluginConfigs: { search: mocks.search, getWithSubsidiary: mocks.get, getByKindAndPlugin: async () => [{ id: "config" }] },
   jobRuns: { create: mocks.create, update: mocks.update, interruptAbandonedCronRuns: mocks.recover, interruptIfRunning: mocks.interrupt, getById: mocks.getById },
 } }));
-vi.mock("../../server/cron", () => ({ cronScheduler: { manualRun: mocks.manualRun } }));
+vi.mock("../../server/plugins/system/cron/scheduler", async importOriginal => ({
+  ...await importOriginal<typeof import("../../server/plugins/system/cron/scheduler")>(),
+  cronScheduler: { manualRun: mocks.manualRun },
+}));
 vi.mock("../../server/services/access-policy-evaluator", () => ({ requireAccess: () => () => {} }));
 vi.mock("../../server/auth/helpers", () => ({ resolveDbUser: async () => ({ id: "user" }) }));
 vi.mock("../../server/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("../../server/plugins/system/cron", () => ({
+  cronPluginRegistry: { has: () => true, get: () => ({ metadata: {} }) },
+}));
+vi.mock("../../server/plugins/system/cron/registry", () => ({
   cronPluginRegistry: { has: () => true, get: () => ({ metadata: {} }) }, executeCronPlugin: mocks.execute,
 }));
 vi.mock("../../server/modules/components", () => ({ getEnabledComponentIds: async () => [] }));
@@ -32,7 +38,7 @@ vi.mock("node-cron", () => ({
     const task = { callback, start: vi.fn(), destroy: vi.fn() }; mocks.tasks.push(task); return task;
   },
 }));
-import { CronScheduler } from "../../server/cron/scheduler";
+import { CronScheduler } from "../../server/plugins/system/cron/scheduler";
 import { registerCronJobRoutes } from "../../server/modules/system/cron";
 const envelope = { config: { id: "config", pluginId: "job", enabled: true, pluginKind: "cron", data: {} }, subsidiary: { schedule: "* * * * *" } };
 const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
