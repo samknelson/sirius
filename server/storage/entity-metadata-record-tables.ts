@@ -1,5 +1,5 @@
 import { getTableName } from "drizzle-orm";
-import { packageMetadataContexts } from "../generated/package-metadata";
+import { componentMetadataContexts } from "../generated/component-metadata";
 import { PgTable, type TableConfig } from "drizzle-orm/pg-core";
 import * as coreSchema from "@shared/schema";
 import * as t631InterviewSchema from "@shared/schema/sitespecific/t631/interviews-schema";
@@ -33,7 +33,7 @@ const context = (
 ): MetadataRecordContext => ({ table, label, hrefTemplate, entityTypes });
 
 export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
-  ...packageMetadataContexts,
+  ...componentMetadataContexts,
   bargaining_units: context(coreSchema.bargainingUnits, "Bargaining Units", "/bargaining-units/{id}"),
   bookmarks: context(coreSchema.bookmarks, "Bookmarks", null),
   bulk_messages: context(coreSchema.bulkMessages, "Bulk Messages", "/bulk/{id}"),

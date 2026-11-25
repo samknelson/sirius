@@ -29,8 +29,8 @@ import { bootStatus } from "./boot-status";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { getMigrations, getMigrationStatus } from "./migration-runner";
 import { recordDriftOutcome } from "./bringup-report";
-import { getAbsentPackageTables } from "./component-package-ownership";
-import { packageSchemaLoaders } from "../generated/package-schemas";
+import { getAbsentComponentTables } from "./component-ownership";
+import { componentSchemaLoaders } from "../generated/component-schemas";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -52,7 +52,7 @@ function buildSchemaTableIndex(module: Record<string, unknown>): Map<string, any
 }
 
 async function loadModule(schemaPath: string): Promise<Record<string, unknown>> {
-  if (packageSchemaLoaders[schemaPath]) return packageSchemaLoaders[schemaPath]();
+  if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
   const rel = schemaPath.replace(/^\.\//, "");
   const url = new URL(`../../${rel}`, import.meta.url);
   return (await import(url.href)) as Record<string, unknown>;
@@ -179,7 +179,7 @@ export async function checkAggregateSchemaDrift(): Promise<AggregateDriftReport>
 
   // ----- Core tables (everything in shared/schema.ts that isn't owned by a
   //       disabled component's manifest) -----
-  const retainedAbsent = await getAbsentPackageTables();
+  const retainedAbsent = await getAbsentComponentTables();
   const ignored = new Set([...getIgnoredTableNames(), ...retainedAbsent]);
   const mainIndex = buildSchemaTableIndex(mainSchema as unknown as Record<string, unknown>);
 

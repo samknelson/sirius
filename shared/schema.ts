@@ -1361,7 +1361,7 @@ export * from "./schema/sitespecific/gbhet-pension/schema";
 
 export * from "./schema/sitespecific/bao/schema";
 
-export * from "./generated/package-schema";
+export * from "./generated/component-schema";
 
 export {
   optionsGrievanceStatus,

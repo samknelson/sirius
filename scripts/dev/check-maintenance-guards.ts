@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { discoverComponentPackages } from "../component-packages";
+import { discoverOptionalComponents } from "../optional-components";
 /**
  * Check Outbound Calls Go Through The Web Client Framework
  *
@@ -916,7 +916,7 @@ export const HANDLERS_ON_FRAMEWORK: Record<
     vendorIdentifiers: string[];
   }
 > = {
-  ...Object.fromEntries(discoverComponentPackages().flatMap(p => Object.entries(p.maintenanceGuards ?? {}))),
+  ...Object.fromEntries(discoverOptionalComponents().flatMap(p => Object.entries(p.maintenanceGuards ?? {}))),
   "server/plugins/wc-vendors/plugins/stripe.ts": {
     handlerContainers: ["operations"],
     handlerProperty: "run",
@@ -966,12 +966,6 @@ export const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
-  "components/contract-chat/server/plugins/wc-vendors/plugins/contract-chat-foray.ts": {
-    handlerContainers: ["operations"],
-    handlerProperty: "run",
-    vendorIdentifiers: ["fetch"],
-  },
-
 };
 
 const WC_VENDOR_PLUGIN_PREFIX = "server/plugins/wc-vendors/plugins/";

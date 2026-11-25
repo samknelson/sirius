@@ -1,8 +1,8 @@
 import express from "express";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../../server/storage/system/component-package-ownership", () => ({
-  componentPackageOwnershipStorage: { read: async () => ({}) },
+vi.mock("../../server/storage/system/component-ownership", () => ({
+  componentOwnershipStorage: { read: async () => ({}) },
 }));
 
 const mocks = vi.hoisted(() => ({

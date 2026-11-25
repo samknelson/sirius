@@ -1,9 +1,9 @@
 import { defineConfig } from "drizzle-kit";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateComponentPackages } from "./scripts/component-packages";
+import { generateOptionalComponents } from "./scripts/optional-components";
 
-generateComponentPackages();
+generateOptionalComponents();
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {

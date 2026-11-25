@@ -1,4 +1,4 @@
-import { packageContributions } from "./generated/package-contributions";
+import { componentContributions } from "./generated/component-contributions";
 /**
  * Shared Tab Registry
  * 
@@ -1015,7 +1015,7 @@ export function getTabForEntity(
   return findTabById(tabId, tree);
 }
 
-for (const contribution of packageContributions) for (const {entity, before, tab} of contribution.tabs ?? []) {
+for (const contribution of componentContributions) for (const {entity, before, tab} of contribution.tabs ?? []) {
   const tree = tabTreeRegistry[entity];
   const index = before ? tree.findIndex(t => t.id === before) : -1;
   tree.splice(index < 0 ? tree.length : index, 0, tab);

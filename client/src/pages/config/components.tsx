@@ -499,11 +499,10 @@ export default function ComponentsConfigPage() {
                       <TableCell className="font-medium">
                         {component.name}
                         {absent && <div className="mt-1 text-sm font-normal">
-                          <Badge variant="outline">Package not installed</Badge>
+                          <Badge variant="outline">Not installed</Badge>
                           <p className="mt-1 text-muted-foreground">
-                            {config?.packageId ? `Package: ${config.packageId}. ` : ""}
                             Settings and data retained. Saved switch: {config?.configuredEnabled ? "enabled" : "disabled"}.
-                            Reinstall the package and restart to use this component.
+                            Restore this component's source and restart to use it.
                           </p>
                         </div>}
                       </TableCell>

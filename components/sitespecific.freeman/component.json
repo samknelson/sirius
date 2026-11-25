@@ -1,0 +1,23 @@
+{
+  "definition": "shared/component.ts",
+  "client": "client/src/contributions.tsx",
+  "contributions": "shared/contributions.ts",
+  "coreMigrations": [
+    "scripts/migrate/core/1024_drop_freeman_crewleads.ts"
+  ],
+  "shared": [
+    "shared/freemanCrewleadsTransfer.ts"
+  ],
+  "server": [
+    "server/plugins/web-service/edls-sheet-export.ts"
+  ],
+  "schema": [
+    "shared/schema/sitespecific/freeman/schema.ts"
+  ],
+  "migrations": [
+    "scripts/migrate/components/sitespecific.freeman/001_create_crewleads.ts"
+  ],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "metadata": "server/metadata.ts"
+}

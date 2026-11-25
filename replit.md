@@ -106,12 +106,14 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Where things live
 
--   **Optional component packages**: `components/<package>/` mirrors the
-    host's shared/server/client/script boundaries. Run
-    `npm run packages:discover` after adding or removing a package when
+-   **Optional components**: each `components/<component-id>/` directory is
+    exactly one component (folder name = component ID) and mirrors the host's
+    shared/server/client/script boundaries; delete the directory to retire it.
+    Run `npm run components:discover` after adding or removing one when
     invoking TypeScript directly; normal npm dev/check/build and schema
-    tooling discover automatically. See `docs/component-packages.md` for
-    contribution contracts and retained-schema safety. Package-owned operator tools live inside their package.
+    tooling discover automatically. See `docs/optional-components.md` for the
+    manifest, dependency/import rules and retained-schema safety. Component
+    operator tools live inside their component directory.
 
 -   **Component alter hooks**: `shared/alter/` holds the typed replacement-value
     framework; `docs/alter-hooks.md` documents declaration, invocation,

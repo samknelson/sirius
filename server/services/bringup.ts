@@ -85,7 +85,7 @@ import {
 } from "./migration-runner";
 import { enforceStartupSchemaDrift, reportSchemaDriftOnly } from "./schema-drift-check";
 import { loadComponentCache } from "./component-cache";
-import { recordInstalledPackageOwnership } from "./component-package-ownership";
+import { recordInstalledComponentOwnership } from "./component-ownership";
 
 /**
  * Thrown to stop the boot after a report-only run. Not a failure: the
@@ -378,7 +378,7 @@ export async function runSchemaBringUp(): Promise<void> {
 
     await step("component-cache", "the component cache load", async () => {
       await loadComponentCache();
-      await recordInstalledPackageOwnership();
+      await recordInstalledComponentOwnership();
       logger.info("Component cache initialized", { source: "startup" });
     });
 

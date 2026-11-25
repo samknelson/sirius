@@ -1,4 +1,4 @@
-import { packageComponents } from "./generated/component-packages";
+import { optionalComponents } from "./generated/optional-components";
 
 export interface ComponentPermission {
   key: string;
@@ -82,7 +82,6 @@ export interface ComponentConfig {
   enabled: boolean;
   installed?: boolean;
   configuredEnabled?: boolean;
-  packageId?: string;
   /** Server-registered metadata; old consumers may ignore it. */
   definition?: ComponentDefinition;
 }
@@ -872,7 +871,7 @@ export const componentRegistry: ComponentDefinition[] = [
       { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
     ],
   },
-  ...packageComponents,
+  ...optionalComponents,
   {
     id: "sitespecific.t631.client",
     name: "Teamsters 631 Client",

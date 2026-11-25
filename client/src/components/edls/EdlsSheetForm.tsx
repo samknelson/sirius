@@ -1,4 +1,4 @@
-import { CrewExtensions } from "../../lib/package-contributions";
+import { CrewExtensions } from "../../lib/component-contributions";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";

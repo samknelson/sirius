@@ -1,4 +1,4 @@
-import { CrewExtensions } from "../../lib/package-contributions";
+import { CrewExtensions } from "../../lib/component-contributions";
 import { formatYmd } from "@shared/utils/date";
 import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

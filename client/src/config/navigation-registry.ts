@@ -1,4 +1,4 @@
-import { packageBrowserContributions } from "../generated/component-packages";
+import { componentBrowserContributions } from "../generated/component-contributions";
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, BookOpen, 
   Activity, Wallet, Settings, Shield, Key, KeyRound, FileText,
@@ -537,11 +537,11 @@ export function isPathInSection(activeItemPath: string | null, section: NavSecti
   return false;
 }
 
-for (const contribution of packageBrowserContributions) for (const {section, item} of contribution.navigation ?? []) {
+for (const contribution of componentBrowserContributions) for (const {section, item} of contribution.navigation ?? []) {
   const find = (sections: NavSection[]): NavSection | undefined => {
     for (const s of sections) { if (s.id === section) return s; const child = find(s.subsections ?? []); if (child) return child; }
   };
   const target = find(configSections);
-  if (!target) throw new Error(`Unknown package navigation section: ${section}`);
+  if (!target) throw new Error(`Unknown component navigation section: ${section}`);
   target.items.push(item);
 }

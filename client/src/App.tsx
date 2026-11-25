@@ -1,5 +1,5 @@
 import { Switch, Route, Redirect, useLocation } from "wouter";
-import { packageBrowserContributions } from "./generated/component-packages";
+import { componentBrowserContributions } from "./generated/component-contributions";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -571,7 +571,7 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
-      {packageBrowserContributions.flatMap(p => p.routes ?? []).map(({path, page: Page}) => <Route key={path} path={path}><AuthenticatedLayout><Page /></AuthenticatedLayout></Route>)}
+      {componentBrowserContributions.flatMap(p => p.routes ?? []).map(({path, page: Page}) => <Route key={path} path={path}><AuthenticatedLayout><Page /></AuthenticatedLayout></Route>)}
         {/* Public routes */}
         <Route path="/bootstrap" component={Bootstrap} />
         <Route path="/login" component={LoginPage} />

@@ -47,7 +47,7 @@ import {
   type ComponentTableState,
 } from "../../shared/components";
 import * as mainSchema from "../../shared/schema";
-import { packageSchemaLoaders } from "../generated/package-schemas";
+import { componentSchemaLoaders } from "../generated/component-schemas";
 import { generateCreateStatements } from "./component-schema-push";
 import { storage } from "../storage";
 import { runInTransaction } from "../storage/transaction-context";
@@ -98,7 +98,7 @@ async function loadComponentSchemaModule(
   schemaPath: string,
 ): Promise<Record<string, unknown>> {
   try {
-    if (packageSchemaLoaders[schemaPath]) return packageSchemaLoaders[schemaPath]();
+    if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
     const rel = schemaPath.replace(/^\.\//, "");
     const url = new URL(`../../${rel}`, import.meta.url);
     return (await import(url.href)) as Record<string, unknown>;

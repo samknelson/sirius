@@ -52,8 +52,8 @@ import type { Response } from "express";
  * The name is what an operator reads in the refusal, so it is the system's own
  * name.
  */
-export interface PackageExternalServices {}
-export type ExternalService = keyof PackageExternalServices
+export interface ComponentExternalServices {}
+export type ExternalService = keyof ComponentExternalServices
   | "Twilio"
   | "SendGrid"
   | "Lob"

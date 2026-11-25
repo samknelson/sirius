@@ -1,5 +1,5 @@
 import { contactEmailInput } from "@shared/utils/contact-email";
-import { packageStartups } from "./generated/component-packages";
+import { componentStartups } from "./generated/component-startups";
 import { respondContactEmailError } from "./services/contact-email-access";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
@@ -1699,7 +1699,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
   registerT631ArrivalRoutes(app);
 
-  for (const contribution of packageStartups) {
+  for (const contribution of componentStartups) {
     contribution.registerRoutes?.(app, requireAuth, requirePermission, requireAccess);
   }
 

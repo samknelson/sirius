@@ -25,9 +25,9 @@
  * (`npm test`).
  */
 import { spawnSync } from "node:child_process";
-import { generateComponentPackages } from "../component-packages";
+import { generateOptionalComponents } from "../optional-components";
 
-generateComponentPackages();
+generateOptionalComponents();
 
 interface Rule {
   /** Stable id used to select the rule on the command line. */
@@ -88,6 +88,11 @@ const RULES: Rule[] = [
     id: "carrying-branch-drift",
     script: "scripts/dev/check-carrying-branch-drift.ts",
     summary: "carrying branches hold no application work that is missing from main",
+  },
+  {
+    id: "component-imports",
+    script: "scripts/dev/check-component-imports.ts",
+    summary: "components import only from themselves, core, or declared dependencies",
   },
   {
     id: "maintenance-guards",

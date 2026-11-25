@@ -1,0 +1,23 @@
+{
+  "definition": "shared/component.ts",
+  "client": "client/src/contributions.tsx",
+  "contributions": "shared/contributions.ts",
+  "server": [
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts"
+  ],
+  "schema": [
+    "shared/schema/sitespecific/freeman/edls-migrate-schema.ts"
+  ],
+  "migrations": [
+    "scripts/migrate/components/sitespecific.freeman.edls_migrate/001_create_staging.ts"
+  ],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "maintenanceGuards": {
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts": {
+      "handlerContainers": ["operations", "remoteOperations"],
+      "handlerProperty": "run",
+      "vendorIdentifiers": ["fetch"]
+    }
+  }
+}

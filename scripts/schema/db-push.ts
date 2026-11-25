@@ -44,7 +44,7 @@ import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import * as fullSchema from "../../shared/schema";
 import { getSchemaManagingComponents } from "../../shared/components";
-import { getAbsentPackageTables } from "../../server/services/component-package-ownership";
+import { getAbsentComponentTables } from "../../server/services/component-ownership";
 import { getEnvironmentVariable, getRawProcessEnv } from "../../server/config/env-registry";
 
 const RUNTIME_SCHEMA_FILE = resolve(process.cwd(), ".drizzle-runtime-schema.ts");
@@ -346,7 +346,7 @@ async function main() {
   // own connection, so holding ours open is harmless).
   let exitCode = 0;
   try {
-    const retained = await getAbsentPackageTables();
+    const retained = await getAbsentComponentTables();
     const retainedLive = retained.size ? await (pool as QueryablePool).query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1)`,
@@ -354,8 +354,8 @@ async function main() {
     ) : { rows: [] };
     if (retainedLive.rows.length) {
       throw new Error(
-        `[db:push] Refused: absent component packages own retained tables (${retainedLive.rows.map(row => row.table_name).join(", ")}). ` +
-        "Reinstall their packages before using schema push. Authored migrations remain available.",
+        `[db:push] Refused: absent optional components own retained tables (${retainedLive.rows.map(row => row.table_name).join(", ")}). ` +
+        "Restore their component directories before using schema push. Authored migrations remain available.",
       );
     }
     const disabledTables = await getDisabledComponentTables(

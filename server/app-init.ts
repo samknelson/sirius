@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction, type Express } from "express";
-import { packageStartups } from "./generated/component-packages";
+import { componentStartups } from "./generated/component-startups";
 import type { Server } from "http";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -239,7 +239,7 @@ export async function bootstrapApp(
   });
 
   // Initialize the permission system
-  for (const contribution of packageStartups) await contribution.register?.();
+  for (const contribution of componentStartups) await contribution.register?.();
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
 
@@ -658,7 +658,7 @@ export async function bootstrapApp(
   const { initializeConfigurationCoherency } = await import("./services/configuration-cache-registry");
   await initializeConfigurationCoherency(roles.has("api-user"));
 
-  for (const contribution of packageStartups) await contribution.start?.({ roles });
+  for (const contribution of componentStartups) await contribution.start?.({ roles });
 
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

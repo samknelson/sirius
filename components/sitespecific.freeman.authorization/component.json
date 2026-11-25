@@ -1,0 +1,16 @@
+{
+  "definition": "shared/component.ts",
+  "client": "client/src/contributions.tsx",
+  "contributions": "shared/contributions.ts",
+  "server": [
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts"
+  ],
+  "startup": "server/startup.ts",
+  "maintenanceGuards": {
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts": {
+      "handlerContainers": ["operations"],
+      "handlerProperty": "run",
+      "vendorIdentifiers": ["fetch"]
+    }
+  }
+}

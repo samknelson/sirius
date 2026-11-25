@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentDefinition } from "../../shared/components";
-vi.mock("../../server/storage/system/component-package-ownership", () => ({
-  componentPackageOwnershipStorage: { read: () => mocks.ownership() },
+vi.mock("../../server/storage/system/component-ownership", () => ({
+  componentOwnershipStorage: { read: () => mocks.ownership() },
 }));
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), ownership: vi.fn(), outside: vi.fn((fn: () => unknown) => fn()) }));
@@ -59,18 +59,18 @@ describe("direct component storage snapshots", () => {
     await expect(getComponentConfigsFromStorage()).rejects.toThrow("Storage unavailable");
   });
 
-  it("reports saved enablement separately from an absent package's availability", async () => {
+  it("reports saved enablement separately from an absent component's availability", async () => {
     mocks.read.mockResolvedValue({ value: { "retained.example": true }, version: "42" });
     const definition = {
       id: "retained.example", name: "Retained example", description: "Example",
       enabledByDefault: false, schemaManifest: { schemaPath: "removed", tables: ["example_rows"] },
     };
     mocks.ownership.mockResolvedValue({
-      "retained.example": { packageId: "example-package", definition, tables: ["example_rows"] },
+      "retained.example": { definition, tables: ["example_rows"] },
     });
     expect((await getComponentConfigsFromStorage()).find(c => c.componentId === definition.id)).toEqual({
       componentId: definition.id, enabled: false, installed: false, configuredEnabled: true,
-      packageId: "example-package", definition,
+      definition,
     });
   });
 

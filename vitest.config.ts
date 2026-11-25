@@ -1,8 +1,8 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
-import { generateComponentPackages } from "./scripts/component-packages.ts";
+import { generateOptionalComponents } from "./scripts/optional-components.ts";
 
-generateComponentPackages();
+generateOptionalComponents();
 
 /**
  * The project's test runner.

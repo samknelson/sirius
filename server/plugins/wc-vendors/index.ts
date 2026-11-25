@@ -1,4 +1,4 @@
-import "../../generated/package-server-modules";
+import "../../generated/component-server-modules";
 import { z } from "zod";
 import {
   registerPluginKind,

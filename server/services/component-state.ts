@@ -1,8 +1,7 @@
 import { storage } from "../storage";
 import { readConfigurationSnapshot } from "../storage/configuration-revisions";
 import { getAllComponents, type ComponentConfig, type ComponentDefinition } from "../../shared/components";
-import { getAbsentPackageComponents } from "./component-package-ownership";
-import { componentPackageIds } from "@shared/generated/component-packages";
+import { getAbsentComponents } from "./component-ownership";
 
 export type ComponentEnabledMap = Record<string, boolean>;
 export const COMPONENTS_VARIABLE_NAME = "components";
@@ -46,26 +45,25 @@ export function resolveComponentEnabled(component: ComponentDefinition, state: C
 export async function getComponentConfigsFromStorage(): Promise<ComponentConfig[]> {
   const [{ state }, absentComponents] = await Promise.all([
     readComponentStateFromStorage(),
-    boundedComponentRead(readConfigurationSnapshot(() => getAbsentPackageComponents())),
+    boundedComponentRead(readConfigurationSnapshot(() => getAbsentComponents())),
   ]);
   const installed = getAllComponents().map(component => ({
     componentId: component.id,
     enabled: resolveComponentEnabled(component, state),
     configuredEnabled: resolveComponentEnabled(component, state),
     installed: true,
-    packageId: componentPackageIds[component.id],
     definition: component,
   }));
   const absent: ComponentConfig[] = absentComponents.map(([id, owner]) => ({
     componentId: id, enabled: false, configuredEnabled: Object.hasOwn(state, id) ? state[id] : owner.definition.enabledByDefault,
-    installed: false, packageId: owner.packageId, definition: owner.definition,
+    installed: false, definition: owner.definition,
   }));
   const known = new Set([...installed, ...absent].map(c => c.componentId));
   // Even settings saved before ownership recording was introduced remain
   // visible, but never turn an unknown component into an installed one.
   for (const id of Object.keys(state)) if (!known.has(id)) absent.push({
     componentId: id, enabled: false, configuredEnabled: state[id], installed: false,
-    definition: { id, name: id, description: "Retained settings; component package is not installed.", enabledByDefault: false },
+    definition: { id, name: id, description: "Retained settings; component source is not present.", enabledByDefault: false },
   });
   return [...installed, ...absent];
 }

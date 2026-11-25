@@ -2,9 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-import { generateComponentPackages } from "./scripts/component-packages.ts";
+import { generateOptionalComponents } from "./scripts/optional-components.ts";
 
-generateComponentPackages();
+generateOptionalComponents();
 
 const clerkProdKey = process.env.VITE_CLERK_PUBLISHABLE_KEY_PROD;
 

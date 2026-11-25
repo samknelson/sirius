@@ -24,9 +24,9 @@ import { execSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { rehearseProcessProvenanceMigrations } from "./migration-contracts/process-provenance";
-import { discoverComponentPackages, generateComponentPackages } from "./component-packages";
+import { discoverOptionalComponents, generateOptionalComponents } from "./optional-components";
 
-generateComponentPackages();
+generateOptionalComponents();
 
 const SCHEMA_PREFIX = /^(?:components\/[^/]+\/)?shared\/schema(\.ts|\/)/;
 const CORE_MIGRATION_PREFIX = /^(?:components\/[^/]+\/)?scripts\/migrate\/core\//;
@@ -113,7 +113,7 @@ function checkCoreVersionsUnique(): void {
   const dirs = ["scripts/migrate/core", "scripts/migrate/baseline"];
   const byVersion = new Map<number, string[]>();
   const unresolved: string[] = [];
-  const sources = discoverComponentPackages().flatMap(p => p.coreMigrations ?? []);
+  const sources = discoverOptionalComponents().flatMap(p => p.coreMigrations ?? []);
 
   for (const dir of dirs) {
     let entries: string[];

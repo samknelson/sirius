@@ -161,8 +161,8 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
 }
 
 async function loadSchemaModule(schemaPath: string): Promise<Record<string, unknown>> {
-  const { packageSchemaLoaders } = await import("../generated/package-schemas");
-  if (packageSchemaLoaders[schemaPath]) return packageSchemaLoaders[schemaPath]();
+  const { componentSchemaLoaders } = await import("../generated/component-schemas");
+  if (componentSchemaLoaders[schemaPath]) return componentSchemaLoaders[schemaPath]();
   const relativePath = schemaPath.replace(/^\.\//, "");
   const moduleUrl = new URL(`../../${relativePath}`, import.meta.url);
   return await import(moduleUrl.href);
@@ -528,7 +528,7 @@ function formatDefault(defaultValue: any, tableName: string, colKey: string, sql
     return renderSql(defaultValue, `default of ${tableName}.${colKey}`);
   }
   // Drizzle accepts JS values as JSON column defaults (including the core
-  // processes.data default). Fresh package-free databases must be bootstrappable
+  // processes.data default). Fresh databases without optional components must be bootstrappable
   // from the same declaration as upgraded databases.
   if (defaultValue !== null && (sqlType === "json" || sqlType === "jsonb")) {
     return `'${JSON.stringify(defaultValue).replace(/'/g, "''")}'::${sqlType}`;

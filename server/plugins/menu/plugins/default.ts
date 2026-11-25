@@ -1,4 +1,4 @@
-import { packageContributions } from "@shared/generated/package-contributions";
+import { componentContributions } from "@shared/generated/component-contributions";
 import { registerMenuPlugin } from "../registry";
 import type { MenuItemDef } from "../types";
 
@@ -590,7 +590,7 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
     const find = (nodes: MenuItemDef[], id: string): MenuItemDef | undefined => {
       for (const n of nodes) { if (n.id === id) return n; const child = find(n.children ?? [], id); if (child) return child; }
     };
-    for (const c of packageContributions) for (const {parent, before, node} of c.menu ?? []) {
+    for (const c of componentContributions) for (const {parent, before, node} of c.menu ?? []) {
       const target = find(tree, parent);
       if (!target) continue;
       const children = target.children ?? (target.children = []);

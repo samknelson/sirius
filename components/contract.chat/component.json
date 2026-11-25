@@ -1,0 +1,7 @@
+{
+  "definition": "shared/component.ts",
+  "shared": ["shared/types.ts"],
+  "server": [
+    "server/plugins/wc-vendors/plugins/contract-chat-dummy.ts"
+  ]
+}

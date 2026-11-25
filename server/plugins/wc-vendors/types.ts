@@ -1,4 +1,4 @@
-import { packageContributions } from "@shared/generated/package-contributions";
+import { componentContributions } from "@shared/generated/component-contributions";
 /**
  * Webclient-vendor plugin kind.
  *
@@ -180,7 +180,7 @@ export interface NormalizedWcConnectionTest {
  * absent from this catalog.
  */
 export const WC_VENDOR_OPERATION_CATALOG = {
-  ...Object.assign({} as Record<string, string>, ...packageContributions.map(p => p.operationAliases ?? {})),
+  ...Object.assign({} as Record<string, string>, ...componentContributions.map(p => p.operationAliases ?? {})),
   "test-connection": "service.test-connection",
   "test-email-connection": "service.test-connection",
   ping: "service.test-connection",

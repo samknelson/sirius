@@ -146,7 +146,7 @@ import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStora
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
-import { createPackageStorage, type PackageStorage } from "../generated/package-storage";
+import { createComponentStorage, type ComponentStorage } from "../generated/component-storage";
 import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "./sitespecific/t631/interviews";
 import { type DispatchJobEmployerContactsStorage, createDispatchJobEmployerContactsStorage, dispatchJobEmployerContactsLoggingConfig } from "./dispatch/job-employer-contacts";
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
@@ -219,7 +219,7 @@ import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentia
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentitiesLoggingConfig } from "./auth-identities";
 import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
-export interface IStorage extends PackageStorage {
+export interface IStorage extends ComponentStorage {
   processes: ProcessesStorage;
   variables: VariableStorage;
   users: UserStorage;
@@ -345,7 +345,7 @@ export interface IStorage extends PackageStorage {
   grievanceContracts: GrievanceContractStorage;
 }
 
-export interface DatabaseStorage extends PackageStorage {}
+export interface DatabaseStorage extends ComponentStorage {}
 export class DatabaseStorage implements IStorage {
   processes: ProcessesStorage;
   variables: VariableStorage;
@@ -472,7 +472,7 @@ export class DatabaseStorage implements IStorage {
   grievanceContracts: GrievanceContractStorage;
 
   constructor() {
-    Object.assign(this, createPackageStorage());
+    Object.assign(this, createComponentStorage());
     this.processes = createProcessesStorage();
     this.variables = withStorageLogging(
       createVariableStorage(),

@@ -1,0 +1,13 @@
+{
+  "definition": "shared/component.ts",
+  "server": [
+    "server/plugins/wc-vendors/plugins/contract-chat-foray.ts"
+  ],
+  "maintenanceGuards": {
+    "server/plugins/wc-vendors/plugins/contract-chat-foray.ts": {
+      "handlerContainers": ["operations"],
+      "handlerProperty": "run",
+      "vendorIdentifiers": ["fetch"]
+    }
+  }
+}
