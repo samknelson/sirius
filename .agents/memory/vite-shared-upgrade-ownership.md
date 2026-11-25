@@ -30,3 +30,9 @@ Vite's development logger must never terminate the application just because it r
 **Why:** After the Vite 8 upgrade, browser console errors were forwarded to the server logger. A pre-existing exit-on-error logger turned QuickSearch's missing accessible dialog title into a full preview shutdown.
 
 **How to apply:** Keep errors visible in logs and overlays without exiting from logging callbacks. Verify browser-console error forwarding does not stop the server when upgrading the development toolchain.
+
+Lazy-import failures can name a healthy page when its optimized dependencies are unavailable.
+
+**Why:** A running development server returned the dashboard module successfully while React dependency URLs returned 504; its on-disk dependency cache was absent.
+
+**How to apply:** Inspect failed dependency requests through the proxy before changing the named page. Do not remove Vite's dependency cache while the server is running.
