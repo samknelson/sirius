@@ -30,3 +30,8 @@ while mandatory consumers remain core.
 **How to apply:** Review dependent ownership separately. For record-go, reuse
 an existing entity/access declaration if possible; otherwise only a small
 additive typed mapping registration, never an access-granting alter hook.
+
+Owner approved (2026-11-25) extracting SFTP and Trust Provider EDI TOGETHER in
+one change (not a relocate-first staging). Scope, inventory and the record-go
+`recordGo` requirement on the existing metadata contribution live in
+`docs/sftp-edi-ownership-scope.md`. BAO EDI file-type plugins move with EDI.
