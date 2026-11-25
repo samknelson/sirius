@@ -21,6 +21,16 @@ vi.mock("../../server/plugins/system/cron", () => ({
   cronPluginRegistry: { has: () => true }, executeCronPlugin: vi.fn(),
 }));
 vi.mock("../../server/modules/components", () => ({ getEnabledComponentIds: vi.fn() }));
+// Scheduling authority is a database-backed lease elected asynchronously after
+// start(); stand in an always-granted lease so these tests cover scheduling.
+vi.mock("../../server/cron/execution-lock", () => ({
+  CronExecutionLock: {
+    acquireKey: vi.fn(async () => ({
+      assertOwned: () => {}, close: async () => {}, lost: new Promise<never>(() => {}),
+    })),
+  },
+  CronExecutionLost: class extends Error {},
+}));
 vi.mock("node-cron", () => ({ validate: (s: string) => !!s && s !== "not-a-cron", createTask: mocks.createTask }));
 
 beforeEach(() => {
@@ -80,7 +90,9 @@ it("never starts cron in a non-owning role and discards an obsolete schedule loa
   c.setOwnership(true);
   let finish!: (rows: unknown[]) => void;
   mocks.search.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
-  const started = c.start();
+  await c.start();
+  // Ownership is acquired in the background; the first load is now in flight.
+  await vi.waitFor(() => expect(mocks.search).toHaveBeenCalledOnce());
   c.invalidateSnapshot();
   const task = { start: vi.fn(), destroy: vi.fn() };
   mocks.createTask.mockReturnValue(task);
@@ -88,7 +100,7 @@ it("never starts cron in a non-owning role and discards an obsolete schedule loa
     config: { id: "new", pluginId: "new", enabled: true, data: {} }, subsidiary: { schedule: "* * * * *" },
   }]);
   finish([{ config: { id: "old", pluginId: "old" }, subsidiary: { schedule: "* * * * *" } }]);
-  await started;
+  await vi.waitFor(() => expect(c.isJobScheduled("new")).toBe(true));
   expect(c.isJobScheduled("old")).toBe(false);
   expect(c.isJobScheduled("new")).toBe(true);
   expect(task.start).toHaveBeenCalledOnce();
@@ -113,6 +125,7 @@ it("isolates a persisted invalid cron expression at startup and refreshes health
   mocks.search.mockResolvedValueOnce([job("invalid", "not-a-cron"), job("healthy", "* * * * *")]);
   await expect(c.start()).resolves.toBeUndefined();
   expect(c.isStarted()).toBe(true);
+  await vi.waitFor(() => expect(c.isJobScheduled("healthy")).toBe(true));
   expect(c.isJobScheduled("invalid")).toBe(false);
   expect(c.isJobScheduled("healthy")).toBe(true);
   expect(c.getScheduleSummary()).toContain("invalid: invalid cron expression");
