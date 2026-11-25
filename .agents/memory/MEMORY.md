@@ -20,6 +20,7 @@
 - [Charge plugin adjustment math (net-total reconcile)](charge-plugin-net-total-reconcile.md) — edit-driven charge deltas must reconcile against sum(base+adjustments), not the immutable base entry, or repeated edits overcharge.
 - [ECHP quote/billing parity](echp-quote-billing-parity.md) — ECHP eligibility quote and charge reconciliation must price from the same aggregated rule source or worker is quoted one price, billed another.
 - RJSF v6 wiring — [widget formContext](rjsf-v6-widget-formcontext.md) (read registry.formContext, no prop) + [field onChange](rjsf-custom-field-onchange.md) (`(value, [])`, id on `fieldPathId.$id`).
+- [RJSF v6 enum labels](rjsf-v6-enum-labels.md) — enumNames silently shows raw values; use titled single-value enum alternatives.
 - [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
 - [Plugin config validation runs on post-toRows data](plugin-config-validation-order.md) — validate `base.data` after `toRows`, not the raw body; RJSF strips fields not in the JSON Schema (e.g. trust-eligibility appliesTo).
 - [Migration runner has no transaction](migration-runner-no-transaction.md) — up() isn't wrapped; copy-then-strip backfills must self-wrap in db.transaction or lose rows on rerun.

@@ -7,6 +7,8 @@ import type {
   WorkerDispatchStatus,
 } from "@shared/schema";
 
+import type { CardcheckStatusChangePayload } from "@shared/cardcheck-notification";
+
 export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
 
 export class EventBusEmitDepthExceededError extends Error {
@@ -56,6 +58,7 @@ export class EventBusEmitDepthExceededError extends Error {
  * third spelling: new events use the convention above.
  */
 export enum EventType {
+  CARDCHECK_STATUS_CHANGE_AFTER = "cardcheck.status-change.after",
   ENTITY_NOTE_SAVE_AFTER = "entity.note.save.after",
   ENTITY_NOTE_DELETE_AFTER = "entity.note.delete.after",
   SESSION_SAVE_AFTER = "session.save.after",
@@ -482,6 +485,7 @@ export function getEventTypes(): EventName[] {
 }
 
 export interface EventPayloadMap extends ComponentEventPayloadMap {
+  [EventType.CARDCHECK_STATUS_CHANGE_AFTER]: CardcheckStatusChangePayload;
   [EventType.ENTITY_NOTE_SAVE_AFTER]: EntityNoteChangedPayload;
   [EventType.ENTITY_NOTE_DELETE_AFTER]: EntityNoteChangedPayload;
   [EventType.AUTH_SIGN_IN_AFTER]: SignInAfterPayload;

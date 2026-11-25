@@ -8,6 +8,7 @@ import {
 } from "../_core";
 import { eventNotifierRegistry } from "./registry";
 import { ALL_NOTIFICATION_MEDIA, type NotificationMedium } from "./types";
+import { configuredNotifierMedia } from "./config-media";
 
 export { eventNotifierRegistry, registerEventNotifier } from "./registry";
 export type * from "./types";
@@ -216,23 +217,13 @@ function registerEventNotifierKind(): void {
     toRows: (input) => {
       // Resolve the selected media from whichever source provided it: a
       // programmatic caller may send an array on `data.media`; the generic admin
-      // page sends a comma-joined string on the top-level `media` envelope field
-      // (RJSF strips it from `data` since it's not in the impl JSON Schema).
+      // page sends the current selection on the top-level `media` envelope.
+      // That selection wins over any old data.media retained by the form.
       const dataObj =
         input.data && typeof input.data === "object"
           ? (input.data as Record<string, unknown>)
           : {};
-      const dataMedia = dataObj.media;
-      const mediaArr = Array.isArray(dataMedia)
-        ? (dataMedia as string[])
-        : typeof input.media === "string" && input.media.length > 0
-          ? input.media
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter(Boolean)
-          : Array.isArray(input.media)
-            ? (input.media as string[])
-            : [];
+      const mediaArr = configuredNotifierMedia(input);
       const media = mediaArr.length > 0 ? mediaArr.join(",") : null;
       return {
         base: {
@@ -376,6 +367,7 @@ import "../../../components/worker.tos/server/plugins/event-notifier/plugins/tos
 import "./plugins/edls-sheet-status-notifier";
 import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
+import "./plugins/cardcheck-status-notifier";
 import "../../../components/system.session_history/server/plugins/event-notifier/plugins/new-ip-sign-in";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";

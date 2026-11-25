@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertCardcheckSchema } from "@shared/schema";
 import { requireComponent } from "./components";
-import { sendCardcheckRevocationNotification } from "../services/cardcheck-revocation-notifications";
 
 export function registerCardchecksRoutes(
   app: Express,
@@ -123,14 +122,6 @@ export function registerCardchecksRoutes(
         return;
       }
 
-      if (req.body.status === "revoked") {
-        const def = await storage.cardcheckDefinitions.getCardcheckDefinitionById(existing.cardcheckDefinitionId);
-        const defName = def?.name || "Unknown";
-        setImmediate(() => {
-          sendCardcheckRevocationNotification(existing.workerId, id, defName).catch(() => {});
-        });
-      }
-      
       res.json(updatedCardcheck);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update cardcheck" });
@@ -241,8 +232,6 @@ export function registerCardchecksRoutes(
       let skipped = 0;
       const errors: string[] = [];
 
-      const defCache = new Map<string, string>();
-
       for (const id of uniqueIds) {
         try {
           const existing = await storage.cardchecks.getCardcheckById(id);
@@ -257,15 +246,6 @@ export function registerCardchecksRoutes(
           await storage.cardchecks.updateCardcheck(id, { status: "revoked" });
           revoked++;
 
-          let defName = defCache.get(existing.cardcheckDefinitionId);
-          if (!defName) {
-            const def = await storage.cardcheckDefinitions.getCardcheckDefinitionById(existing.cardcheckDefinitionId);
-            defName = def?.name || "Unknown";
-            defCache.set(existing.cardcheckDefinitionId, defName);
-          }
-          setImmediate(() => {
-            sendCardcheckRevocationNotification(existing.workerId, id, defName!).catch(() => {});
-          });
         } catch (err: any) {
           errors.push(`Failed to revoke ${id}: ${err.message}`);
         }

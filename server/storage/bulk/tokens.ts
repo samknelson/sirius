@@ -16,6 +16,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 type Row = Record<string, unknown>;
 
 export interface BulkTokenCardcheckRow {
+  id: string;
   /**
    * The worker the card check belongs to. A card check has no page of
    * its own — the worker's cardchecks tab is where it is shown — so the
@@ -227,6 +228,7 @@ export function createBulkTokensStorage(): BulkTokensStorage {
       const client = getClient();
       const rows = await client
         .select({
+          id: cardchecks.id,
           workerId: cardchecks.workerId,
           type: cardcheckDefinitions.name,
           status: cardchecks.status,
@@ -243,6 +245,7 @@ export function createBulkTokensStorage(): BulkTokensStorage {
       const row = rows[0];
       if (!row) return undefined;
       return {
+        id: row.id,
         workerId: row.workerId,
         type: row.type ?? null,
         status: row.status ?? null,

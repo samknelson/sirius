@@ -1,4 +1,6 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit, runInTransaction, runOutsideTransaction } from './transaction-context';
+import { eventBus, EventType } from "../services/event-bus";
+import type { CardcheckStatusChangePayload } from "@shared/cardcheck-notification";
 import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, workerHours, optionsEmploymentStatus, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
 import { eq, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -602,20 +604,40 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined> {
-      const client = getClient();
-      const current = await storage.getCardcheckById(id);
-      if (!current) {
-        return undefined;
-      }
-      
-      await cardcheckValidate.validateOrThrow(data, current);
-      
-      const [updated] = await client
-        .update(cardchecks)
-        .set(data)
-        .where(eq(cardchecks.id, id))
-        .returning();
-      return updated || undefined;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Serialize the comparison and write, including concurrent requests
+        // aiming at the same status. Reuse an importer's outer transaction.
+        const [current] = await client.select().from(cardchecks)
+          .where(eq(cardchecks.id, id)).for("update");
+        if (!current) return undefined;
+        await cardcheckValidate.validateOrThrow(data, current);
+        const [updated] = await client.update(cardchecks).set(data)
+          .where(eq(cardchecks.id, id)).returning();
+        if (updated && current.status !== updated.status) {
+          const [definition] = await client.select({ name: cardcheckDefinitions.name })
+            .from(cardcheckDefinitions)
+            .where(eq(cardcheckDefinitions.id, updated.cardcheckDefinitionId));
+          const payload: CardcheckStatusChangePayload = Object.freeze({
+            cardcheckId: updated.id,
+            workerId: updated.workerId,
+            cardcheckDefinitionId: updated.cardcheckDefinitionId,
+            previousStatus: current.status,
+            newStatus: updated.status,
+            cardcheck: Object.freeze({
+              id: updated.id,
+              workerId: updated.workerId,
+              type: definition?.name ?? "Unknown",
+              status: updated.status,
+              signedDate: updated.signedDate?.toISOString() ?? null,
+            }),
+          });
+          onAfterCommit(() => runOutsideTransaction(() => {
+            void eventBus.emit(EventType.CARDCHECK_STATUS_CHANGE_AFTER, payload);
+          }));
+        }
+        return updated || undefined;
+      });
     },
 
     async deleteCardcheck(id: string): Promise<boolean> {

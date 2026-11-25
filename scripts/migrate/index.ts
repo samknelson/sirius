@@ -172,6 +172,7 @@ import "./core/1126_worker_id_type_unique";
 import "./core/1127_processes";
 import "./core/1128_semaphores";
 import "./core/1129_dashboard_refresh";
+import "./core/1130_cardcheck_status_notifier";
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
 import "./baseline/sirius-dev-20260704";

@@ -1,3 +1,17 @@
+import { configuredNotifierMedia } from "../../server/plugins/event-notifier/config-media";
+
+describe("configured notifier media", () => {
+  it.each(["inapp", ["inapp"]])("honors the edited envelope over stale data.media: %j", media => {
+    expect(configuredNotifierMedia({ media, data: { media: ["email", "inapp"] } })).toEqual(["inapp"]);
+  });
+  it.each(["", [], null])("allows clearing every channel: %j", media => {
+    expect(configuredNotifierMedia({ media, data: { media: ["email"] } })).toEqual([]);
+  });
+  it("retains the legacy fallback only when the caller omitted the envelope", () => {
+    expect(configuredNotifierMedia({ data: { media: ["email", "inapp"] } })).toEqual(["email", "inapp"]);
+    expect(configuredNotifierMedia({})).toEqual([]);
+  });
+});
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hideUnsupportedTemplateChannels,

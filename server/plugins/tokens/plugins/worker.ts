@@ -5,6 +5,7 @@ import {
   optionsWorkerWs,
 } from "@shared/schema";
 import { WORKER_EXTRA_FIELDS } from "../../../storage/bulk/tokens";
+import { CARDCHECK_TOKEN_FIELDS, cardcheckTokenRow } from "@shared/cardcheck-notification";
 import { registerTokenPlugin } from "../registry";
 import { memo, tokenEntityOf, type TokenEntity, type TokenEvalContext } from "../types";
 
@@ -317,8 +318,21 @@ registerTokenPlugin({
     // Assembled in code rather than read straight from a table: `type`
     // is the definition's name, and `worker_id` is the cardcheck column
     // the location below is built from.
-    entityFields: ["type", "status", "signed_date", "worker_id"],
+    entityFields: CARDCHECK_TOKEN_FIELDS,
     sampleSets: CARDCHECK_SAMPLE_SETS,
+    previewEntity: {
+      gate: { scope: "record", policy: "cardcheck.view" },
+      async load(storage, id) {
+        const cardcheck = await storage.cardchecks.getCardcheckById(id);
+        if (!cardcheck) return null;
+        const definition = await storage.cardcheckDefinitions.getCardcheckDefinitionById(cardcheck.cardcheckDefinitionId);
+        const row = cardcheckTokenRow({ ...cardcheck, type: definition?.name ?? "Unknown" });
+        return {
+          entity: { kind: "cardcheck", row },
+          label: `${row.type} — ${row.status}`,
+        };
+      },
+    },
     // No page of its own: the worker's cardchecks tab is where the
     // record is listed, reached through the row's worker id.
     entityLocation: {
@@ -335,17 +349,9 @@ registerTokenPlugin({
       return (await ctx.storage.bulkTokens.getLatestCardcheckForWorker(workerId)) ?? null;
     });
     if (!cc) return null;
-    const status = cc.status
-      ? cc.status.charAt(0).toUpperCase() + cc.status.slice(1).toLowerCase()
-      : null;
     const out: TokenEntity = {
       kind: "cardcheck",
-      row: {
-        workerId: cc.workerId,
-        type: cc.type,
-        status,
-        signedDate: cc.signedDate,
-      },
+      row: cardcheckTokenRow(cc),
     };
     return out;
   },
