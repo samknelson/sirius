@@ -5,7 +5,7 @@ import { storage } from "../../storage";
 import { enforceKindGating, enforcePluginGating } from "../../plugins/_core/gating";
 import { oneoffPluginRegistry } from "../../plugins/system/oneoff/registry";
 import { getEffectiveUser } from "../masquerade";
-import { OneoffRefusal, preflightOneoff, startOneoff, cancelOneoff, oneoffActiveRun } from "../../services/oneoff-runner";
+import { OneoffRefusal, preflightOneoff, startOneoff, cancelOneoff, oneoffActiveRun } from "../../plugins/system/oneoff/runner";
 import type { JobRun } from "@shared/schema";
 
 type Auth = (req: Request, res: Response, next: NextFunction) => void | Promise<unknown>;

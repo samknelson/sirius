@@ -38,7 +38,7 @@ vi.mock("../../server/plugins/system/oneoff/registry", () => ({
 vi.mock("../../server/modules/masquerade", () => ({
   getEffectiveUser: vi.fn(async () => ({ dbUser: { id: "admin-user" } })),
 }));
-vi.mock("../../server/services/oneoff-runner", () => ({
+vi.mock("../../server/plugins/system/oneoff/runner", () => ({
   OneoffRefusal: class OneoffRefusal extends Error {
     constructor(public statusCode: number, message: string) { super(message); }
   },

@@ -547,7 +547,7 @@ export async function bootstrapApp(
   // stale, heartbeat-less executions are marked interrupted; nothing resumes.
   const { initializeOneoffPluginSystem } = await import("./plugins/system/oneoff");
   initializeOneoffPluginSystem();
-  const { interruptStaleOneoffRuns } = await import("./services/oneoff-runner");
+  const { interruptStaleOneoffRuns } = await import("./plugins/system/oneoff/runner");
   await runOrDeferStartupOperation("oneoff-stale-run-reconciliation", async () => {
     await interruptStaleOneoffRuns();
   });

@@ -143,7 +143,7 @@ import {
   preflightOneoff,
   startOneoff,
   OneoffRefusal,
-} from "../../server/services/oneoff-runner";
+} from "../../server/plugins/system/oneoff/runner";
 import type { OneoffPlugin } from "../../server/plugins/system/oneoff/types";
 
 const config = { id: "config-oneoff-test", pluginId: "test-plugin", pluginKind: "oneoff", enabled: true } as any;

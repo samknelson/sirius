@@ -15,7 +15,8 @@
 export const STORAGE_ENCAPSULATION_BASELINE: Record<string, string> = {
   // Oneoff jobs framework: queries job_runs directly with db/getClient and
   // drizzle operators; belongs in a storage namespace for job runs.
-  'server/services/oneoff-runner.ts': 'oneoff runner queries job_runs via db/getClient + drizzle operators',
+  // Relocated with the runner; preserves the existing exception, not new queries.
+  'server/plugins/system/oneoff/runner.ts': 'oneoff runner queries job_runs via db/getClient + drizzle operators',
   'server/modules/system/oneoff.ts': 'oneoff module imports db directly',
   'server/plugins/system/oneoff/plugins/test.ts': 'test oneoff builds a sql`` query without the read-only opt-in',
 
@@ -30,7 +31,7 @@ export const STORAGE_ENCAPSULATION_BASELINE: Record<string, string> = {
   'server/routes.ts': 'routes.ts imports sql from drizzle-orm',
 
   // Boot / schema infrastructure that drives DDL or pool lifecycle.
-  'server/services/component-schema-push.ts': 'component schema push compiles DDL with PgDialect over the schema namespace',
+  'server/services/component/schema-push.ts': 'component schema push compiles DDL with PgDialect over the schema namespace',
   'server/services/maintenance-mode.ts': 'maintenance mode registers a pool checkout initializer on the db module',
   'server/services/restart-control.ts': 'restart control dynamically imports the pool to drain it',
 

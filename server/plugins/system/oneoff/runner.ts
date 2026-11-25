@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { jobRuns, type JobRun, type PluginConfig } from "@shared/schema";
-import { db } from "../storage/db";
-import { getClient, runInTransaction, runOutsideTransaction } from "../storage/transaction-context";
-import { requestContext } from "../middleware/request-context";
-import type { OneoffAction, OneoffPlugin, OneoffProgress } from "../plugins/system/oneoff/types";
+import { db } from "../../../storage/db";
+import { getClient, runInTransaction, runOutsideTransaction } from "../../../storage/transaction-context";
+import { requestContext } from "../../../middleware/request-context";
+import type { OneoffAction, OneoffPlugin, OneoffProgress } from "./types";
 
 const STALE_MS = 60_000;
 const controllers = new Map<string, AbortController>();
