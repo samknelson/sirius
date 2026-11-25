@@ -3,7 +3,6 @@ import { logger } from "../logger";
 
 import type {
   DispatchJob,
-  DispatchJobFore,
   EdlsSheet,
   Grievance,
   GrievanceSettlement,
@@ -69,14 +68,9 @@ export enum EventType {
   PAYMENT_SAVED = "payment.saved",
   WMB_SAVED = "wmb.saved",
   PARTICIPANT_SAVED = "participant.saved",
-  DISPATCH_DNC_SAVED = "dispatch.dnc.saved",
-  DISPATCH_HFE_SAVED = "dispatch.hfe.saved",
-  DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   DISPATCH_SAVED = "dispatch.saved",
   DISPATCH_JOB_SAVED = "dispatch.job.saved",
-  DISPATCH_FORE_SAVED = "dispatch.fore.saved",
-  DISPATCH_DEPARTMENT_SAVED = "dispatch.department.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_BAN_DENORM_FLIPPED = "worker.ban.denorm-flipped",
   WORKER_SKILL_SAVED = "worker.skill.saved",
@@ -212,25 +206,6 @@ export interface ParticipantSavedPayload {
   isSteward: boolean;
 }
 
-export interface DispatchDncSavedPayload {
-  dncId: string;
-  workerId: string;
-  employerId: string;
-  type: string;
-  isDeleted?: boolean;
-}
-
-export interface DispatchHfeSavedPayload {
-  hfeId: string;
-  workerId: string;
-  employerId: string;
-  isDeleted?: boolean;
-}
-
-export interface DispatchEbaSavedPayload {
-  workerId: string;
-}
-
 export interface DispatchStatusSavedPayload {
   statusId: string;
   workerId: string;
@@ -269,33 +244,6 @@ export interface DispatchSavedPayload {
  */
 export interface DispatchJobSavedPayload {
   jobId: string;
-}
-
-export interface DispatchDepartmentSavedPayload {
-  entryId: string;
-  workerId: string;
-  departmentId: string;
-  preference: string;
-  isDeleted?: boolean;
-}
-
-export interface DispatchForeSavedPayload {
-  foreId: string;
-  jobId: string;
-  workerId: string;
-  /** Whether the worker was added to or removed from the job's forepersons. */
-  action: "added" | "removed";
-  /**
-   * The membership row this event added or removed, and the job it is on,
-   * both as of the event. Whole rows rather than a couple of copied
-   * values: a consumer can then describe either record in full without a
-   * lookup that would race the next write — and a removal's membership row
-   * is already gone by the time anyone consumes this. The job is never
-   * missing: a membership only exists while its job does, and both are
-   * captured in the transaction that writes the membership.
-   */
-  fore: DispatchJobFore;
-  job: DispatchJob;
 }
 
 export interface WorkerBanSavedPayload {
@@ -641,14 +589,9 @@ export interface EventPayloadMap extends ComponentEventPayloadMap {
   [EventType.PAYMENT_SAVED]: PaymentSavedPayload;
   [EventType.WMB_SAVED]: WmbSavedPayload;
   [EventType.PARTICIPANT_SAVED]: ParticipantSavedPayload;
-  [EventType.DISPATCH_DNC_SAVED]: DispatchDncSavedPayload;
-  [EventType.DISPATCH_HFE_SAVED]: DispatchHfeSavedPayload;
-  [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
   [EventType.DISPATCH_JOB_SAVED]: DispatchJobSavedPayload;
-  [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
-  [EventType.DISPATCH_DEPARTMENT_SAVED]: DispatchDepartmentSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_BAN_DENORM_FLIPPED]: WorkerBanDenormFlippedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;

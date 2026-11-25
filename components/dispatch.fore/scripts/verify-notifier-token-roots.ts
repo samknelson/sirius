@@ -13,19 +13,22 @@
  *      the grammar's awkward shapes, and is idempotent,
  *   4. the boot migration rewrites a real config row and is a no-op on rerun.
  *
- * Run: npx tsx scripts/oneoffs/verify-notifier-token-roots.ts
+ * Run: npx tsx components/dispatch.fore/scripts/verify-notifier-token-roots.ts
  */
 import { eq } from "drizzle-orm";
-import { initializeEventNotifierPluginSystem } from "../../server/plugins/event-notifier";
-import { eventNotifierRegistry } from "../../server/plugins/event-notifier/registry";
-import { initializeTokenPluginSystem } from "../../server/plugins/tokens";
+import { initializeEventNotifierPluginSystem } from "../../../server/plugins/event-notifier";
+import { eventNotifierRegistry } from "../../../server/plugins/event-notifier/registry";
+import { initializeTokenPluginSystem } from "../../../server/plugins/tokens";
+import "../server/plugins/event-notifier/plugins/dispatch-fore-notifier";
+import "../server/tokens";
+import "../server/template-token-migrations";
 import {
   NOTIFIER_TEMPLATE_REWRITES,
   rewriteTemplateTokens,
-} from "../../server/plugins/event-notifier/template-token-migrations";
-import { storage } from "../../server/storage";
-import { loadComponentCache } from "../../server/services/component-cache";
-import { db } from "../../server/storage/db";
+} from "../../../server/plugins/event-notifier/template-token-migrations";
+import { storage } from "../../../server/storage";
+import { loadComponentCache } from "../../../server/services/component-cache";
+import { db } from "../../../server/storage/db";
 
 let failures = 0;
 function check(label: string, ok: boolean, detail?: string) {
@@ -38,10 +41,10 @@ async function main() {
   initializeEventNotifierPluginSystem();
   initializeTokenPluginSystem();
   const { missingIndexedFields } = await import(
-    "../../server/plugins/tokens/root-coverage"
+    "../../../server/plugins/tokens/root-coverage"
   );
   const { renderTokens, createTokenEvalContext } = await import(
-    "../../server/plugins/tokens"
+    "../../../server/plugins/tokens"
   );
 
   /** Build every root, assert coverage, render the shipped defaults. */
@@ -75,7 +78,7 @@ async function main() {
     });
 
     const templates = plugin.tokenTemplates.defaultTemplates();
-    const evalCtx = createTokenEvalContext(storage, null, { seeds } as never);
+    const evalCtx = createTokenEvalContext(storage, undefined, { seeds } as never);
     for (const [channel, fields] of Object.entries(templates)) {
       for (const [field, template] of Object.entries(
         fields as Record<string, string>,
@@ -100,17 +103,17 @@ async function main() {
   // Real rows, snapshotted onto the payloads the way the storage layer
   // emits them.
   const { workerDispatchStatus, dispatchJobs } = await import(
-    "../../shared/schema/dispatch/schema"
+    "../../../shared/schema/dispatch/schema"
   );
   const { dispatchJobFore } = await import(
-    "../../components/dispatch.fore/shared/schema/dispatch/fore-schema"
+    "../shared/schema/dispatch/fore-schema"
   );
   type DispatchJobFore = typeof dispatchJobFore.$inferSelect;
   const { grievanceSettlements } = await import(
-    "../../shared/schema/grievance/settlement-schema"
+    "../../../shared/schema/grievance/settlement-schema"
   );
-  const { edlsSheets } = await import("../../shared/schema/edls/schema");
-  const { grievances } = await import("../../shared/schema");
+  const { edlsSheets } = await import("../../../shared/schema/edls/schema");
+  const { grievances } = await import("../../../shared/schema");
 
   // --- dispatch status: the availability row the event carried ---
   const [wds] = await db.select().from(workerDispatchStatus).limit(1);
@@ -371,7 +374,7 @@ async function main() {
 
   // --- the boot migration against REAL config rows ---
   const { migrateNotifierTemplateTokens } = await import(
-    "../../server/plugins/event-notifier/template-token-migrations"
+    "../../../server/plugins/event-notifier/template-token-migrations"
   );
   for (const c of cases) {
     const [cfg] = await storage.pluginConfigs.getByKindAndPlugin(

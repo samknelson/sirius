@@ -1,4 +1,10 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/dispatch/dnc-schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/dispatch/dnc-schema.ts"],
+  "shared": ["shared/access-policies/worker/dispatch/dnc/view.ts", "shared/access-policies/worker/dispatch/dnc/edit.ts"],
+  "server": ["server/plugins/dispatch/eligibility/plugins/dnc.ts", "server/plugins/system/denorm/plugins/dispatch/dnc.ts"],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx"
 }

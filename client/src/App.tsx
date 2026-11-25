@@ -66,12 +66,7 @@ const WorkerDashboardPage = lazy(() => import("@/pages/worker-dashboard"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("../../components/worker.steward/client/src/pages/worker-steward"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
-const WorkerDispatchDoNotCall = lazy(() => import("../../components/dispatch.dnc/client/src/pages/workers/dispatch-do-not-call"));
-const WorkerDispatchDepartments = lazy(() => import("../../components/dispatch.department/client/src/pages/workers/dispatch-departments"));
-const WorkerDispatchHoldForEmployer = lazy(() => import("../../components/dispatch.hfe/client/src/pages/workers/dispatch-hold-for-employer"));
 const DispatchJobEmployerContactsPage = lazy(() => import("@/pages/dispatch/job-employer-contacts"));
-const WorkerDispatchEba = lazy(() => import("../../components/dispatch.eba/client/src/pages/workers/dispatch-eba"));
-const WorkerDispatchAsi = lazy(() => import("../../components/dispatch.asi/client/src/pages/workers/dispatch-asi"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
 const WorkerFiles = lazy(() => import("@/pages/workers/files"));
@@ -276,9 +271,7 @@ const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
 const DispatchJobTypeEligibilityPluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-eligibility-plugins"));
-const DispatchDncConfigPage = lazy(() => import("../../components/dispatch.dnc/client/src/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
-const DispatchEbaSettingsPage = lazy(() => import("../../components/dispatch.eba/client/src/pages/config/dispatch-eba-settings"));
 const DispatchSeniorityResetConfigPage = lazy(() => import("@/pages/config/dispatch-seniority-reset"));
 const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill"));
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
@@ -317,7 +310,6 @@ const DispatchJobDispatchesCbnPage = lazy(() => import("@/pages/dispatch/job-dis
 const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
 const DispatchJobEligibleWorkersCheckPage = lazy(() => import("@/pages/dispatch/job-eligible-check"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
-const DispatchJobForePage = lazy(() => import("../../components/dispatch.fore/client/src/pages/dispatch/job-fore"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
 const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
 const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
@@ -1131,47 +1123,6 @@ function Router() {
         <ProtectedRoute tabId="dispatch-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchStatus />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/dispatch/do-not-call">
-        <ProtectedRoute tabId="dispatch-dnc" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerDispatchDoNotCall />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/dispatch/departments">
-        <ProtectedRoute tabId="dispatch-departments" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerDispatchDepartments />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/dispatch/hold-for-employer">
-        <ProtectedRoute tabId="dispatch-hfe" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerDispatchHoldForEmployer />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/dispatch/eba">
-        <ProtectedRoute tabId="dispatch-eba" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerDispatchEba />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-
-      <Route path="/workers/:id/dispatch/asi">
-        <ProtectedRoute tabId="dispatch-asi" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerDispatchAsi />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2828,26 +2779,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dispatch/dnc">
-        <ProtectedRoute permission="admin" component="dispatch.dnc">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <DispatchDncConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/dispatch/eba">
-        <ProtectedRoute permission="admin" component="dispatch.eba">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <DispatchEbaSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/config/dispatch/seniority-reset">
         <ProtectedRoute permission="admin" component="dispatch">
           <AuthenticatedLayout>
@@ -3243,14 +3174,6 @@ function Router() {
             </AuthenticatedLayout>
           </ProtectedRoute>
         )}
-      </Route>
-
-      <Route path="/dispatch/job/:id/foreperson">
-        <ProtectedRoute tabId="foreperson" entityType="dispatch_job">
-          <AuthenticatedLayout>
-            <DispatchJobForePage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
       </Route>
 
       <Route path="/dispatch/job/:id/eligible-workers/check">

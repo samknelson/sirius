@@ -51,7 +51,6 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   contracts: context(coreSchema.contracts, "Contracts", "/contract/{id}"),
   dispatch_job_employer_contacts: context(coreSchema.dispatchJobEmployerContacts, "Dispatch Job Employer Contacts", null),
   dispatch_job_facility: context(coreSchema.dispatchJobFacility, "Dispatch Job Facilities", null),
-  dispatch_job_fore: context(coreSchema.dispatchJobFore, "Dispatch Job Foremen", null),
   dispatch_job_group: context(coreSchema.dispatchJobGroups, "Dispatch Job Groups", "/dispatch/job_group/{id}"),
   dispatch_jobs: context(coreSchema.dispatchJobs, "Dispatch Jobs", "/dispatch/job/{id}"),
   dispatches: context(coreSchema.dispatches, "Dispatches", "/dispatch/{id}"),

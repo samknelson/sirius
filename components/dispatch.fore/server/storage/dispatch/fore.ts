@@ -14,6 +14,7 @@ import {
 import { eq, and, notExists, asc, desc, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "../../../../../server/storage/middleware/logging";
 import { eventBus, EventType } from "../../../../../server/services/event-bus";
+import { DISPATCH_FORE_SAVED } from "../../events";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -123,7 +124,7 @@ function emitForeSaved(
   job: DispatchJob,
 ): void {
   onAfterCommit(() => {
-    eventBus.emit(EventType.DISPATCH_FORE_SAVED, {
+    eventBus.emit(DISPATCH_FORE_SAVED, {
       foreId: fore.id,
       jobId: fore.jobId,
       workerId: fore.workerId,

@@ -9,6 +9,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../../../../../server/storage/middleware/logging";
 import { eventBus, EventType } from "../../../../../server/services/event-bus";
+import { DISPATCH_DNC_SAVED } from "../../events";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -143,7 +144,7 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
         .returning();
       
       setImmediate(() => {
-        eventBus.emit(EventType.DISPATCH_DNC_SAVED, {
+        eventBus.emit(DISPATCH_DNC_SAVED, {
           dncId: result.id,
           workerId: result.workerId,
           employerId: result.employerId,
@@ -165,7 +166,7 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
       
       if (result) {
         setImmediate(() => {
-          eventBus.emit(EventType.DISPATCH_DNC_SAVED, {
+          eventBus.emit(DISPATCH_DNC_SAVED, {
             dncId: result.id,
             workerId: result.workerId,
             employerId: result.employerId,
@@ -186,7 +187,7 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
       
       if (deleted) {
         setImmediate(() => {
-          eventBus.emit(EventType.DISPATCH_DNC_SAVED, {
+          eventBus.emit(DISPATCH_DNC_SAVED, {
             dncId: deleted.id,
             workerId: deleted.workerId,
             employerId: deleted.employerId,

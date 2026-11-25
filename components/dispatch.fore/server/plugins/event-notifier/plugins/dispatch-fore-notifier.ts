@@ -1,7 +1,7 @@
 import {
   EventType,
-  type DispatchForeSavedPayload,
 } from "../../../../../../server/services/event-bus";
+import { DISPATCH_FORE_SAVED, type DispatchForeSavedPayload } from "../../../events";
 import { registerEventNotifier } from "../../../../../../server/plugins/event-notifier/registry";
 import { templatesSchemaBlock } from "../../../../../../server/plugins/event-notifier/template-schema";
 import {
@@ -77,7 +77,7 @@ export const dispatchForeNotifier: EventNotifierPlugin = {
   order: 100,
   requiredComponent: "dispatch.fore",
   notifySelf: true,
-  subscribedEvents: [EventType.DISPATCH_FORE_SAVED],
+  subscribedEvents: [DISPATCH_FORE_SAVED],
   supportedMedia: ["inapp", "email", "sms"],
   configSchema: {
     type: "object",

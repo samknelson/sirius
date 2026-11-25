@@ -8,7 +8,7 @@
  */
 import { getEntityNoteContext } from "../services/entity-notes/registry";
 import { getEntityFileContext } from "../services/entity-files/registry";
-import { jobTypeBullpenEnum } from "@shared/schema";
+import { validateContributedOptionsData } from "./options-contributions";
 import { storage } from "../storage";
 import type { OptionsTypeConfig } from "./options-registry";
 
@@ -47,37 +47,6 @@ function humanizeConstraintColumn(error: any): string | null {
   if (constraint.includes("sirius_id")) return "Sirius ID";
   if (constraint.includes("name")) return "name";
   if (constraint.includes("code")) return "code";
-  return null;
-}
-
-/**
- * Validate the bullpen fields inside a dispatch-job-type `data` payload
- * (dispatch.bullpen component). Returns an error message or null.
- * Enforced whenever bullpen fields are present so a direct API call cannot
- * persist an invalid combination regardless of what the UI shows.
- *
- * Note: this normalizes the payload in place, dropping a dangling
- * `bullpenEventTypeId` when bullpen is "none" or absent.
- */
-function validateDispatchJobTypeBullpen(data: unknown): string | null {
-  if (data === null || data === undefined || typeof data !== "object") return null;
-  const d = data as Record<string, unknown>;
-  const bullpen = d.bullpen;
-  if ("bullpen" in d) {
-    if (typeof bullpen !== "string" || !(jobTypeBullpenEnum as readonly string[]).includes(bullpen)) {
-      return `bullpen must be one of: ${jobTypeBullpenEnum.join(", ")}`;
-    }
-  }
-  if (bullpen === "host" || bullpen === "shared") {
-    const eventTypeId = d.bullpenEventTypeId;
-    if (typeof eventTypeId !== "string" || eventTypeId.trim() === "") {
-      return "An event type is required when Bullpen is set to host or shared";
-    }
-  } else {
-    // Keep persisted JSON consistent: no dangling event-type reference
-    // when bullpen is "none" or absent.
-    delete d.bullpenEventTypeId;
-  }
   return null;
 }
 
@@ -141,9 +110,8 @@ export async function validateOptionTypeSpecificData(
   type: string,
   data: unknown,
 ): Promise<string | null> {
-  if (type === "dispatch-job-type") {
-    return validateDispatchJobTypeBullpen(data);
-  }
+  const contributedError = await validateContributedOptionsData(type, data);
+  if (contributedError) return contributedError;
   if (type === "note-type") {
     return validateContextIds(data, (id) => Boolean(getEntityNoteContext(id)));
   }

@@ -9,6 +9,7 @@ import {
 import { eq, and, ne, asc } from "drizzle-orm";
 import { defineLoggingConfig } from "../../../../../server/storage/middleware/logging";
 import { eventBus, EventType } from "../../../../../server/services/event-bus";
+import { DISPATCH_DEPARTMENT_SAVED } from "../../events";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -64,7 +65,7 @@ async function getWorkerName(workerId: string | undefined): Promise<string> {
 
 function emitDepartmentSaved(entry: WorkerDispatchDepartment, isDeleted?: boolean): void {
   setImmediate(() => {
-    eventBus.emit(EventType.DISPATCH_DEPARTMENT_SAVED, {
+    eventBus.emit(DISPATCH_DEPARTMENT_SAVED, {
       entryId: entry.id,
       workerId: entry.workerId,
       departmentId: entry.departmentId,

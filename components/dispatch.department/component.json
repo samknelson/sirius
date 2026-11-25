@@ -1,4 +1,10 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/dispatch/department-schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/dispatch/department-schema.ts"],
+  "server": ["server/options.ts", "server/plugins/dispatch/eligibility/plugins/department.ts", "server/plugins/system/denorm/plugins/dispatch/department.ts"],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx",
+  "migrations": ["scripts/migrate/components/dispatch.department/001_create_department_tables.ts"]
 }

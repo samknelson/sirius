@@ -1,4 +1,5 @@
 import { registerDenormPlugin } from "../../../../../../../../server/plugins/system/denorm/registry";
+import { DISPATCH_HFE_SAVED } from "../../../../../events";
 import type { DenormPlugin } from "../../../../../../../../server/plugins/system/denorm/types";
 import { EventType } from "../../../../../../../../server/services/event-bus";
 import { createWorkerDispatchHfeStorage } from "../../../../../storage/dispatch/worker-hfe";
@@ -28,7 +29,7 @@ const dispatchHfeDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
   writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
-      event: EventType.DISPATCH_HFE_SAVED,
+      event: DISPATCH_HFE_SAVED,
       getEntityId: (payload) => (payload as { workerId: string }).workerId,
     },
   ],

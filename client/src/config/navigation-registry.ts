@@ -164,8 +164,6 @@ export const configSections: NavSection[] = [
     items: [
       bespokeOptionsNavItem({ path: "/config/dispatch-job-types", optionsType: "dispatch-job-type", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" }),
       { path: "/config/dispatch/backfill", label: "Eligibility Backfill", icon: RefreshCw, testId: "nav-config-dispatch-backfill", permission: "admin", requiresComponent: "dispatch" },
-      { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
-      { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
       { path: "/config/dispatch/seniority-reset", label: "Seniority Reset", icon: RefreshCw, testId: "nav-config-dispatch-seniority-reset", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/sitespecific/hta/home-employment-statuses", label: "Home Employment Statuses", icon: Building2, testId: "nav-config-hta-home-employment-statuses", permission: "staff", requiresComponent: "sitespecific.hta" },
     ],
@@ -553,11 +551,12 @@ for (const contribution of componentBrowserContributions) {
   configSections.push(...contribution.configSections ?? []);
 }
 
-for (const contribution of componentBrowserContributions) for (const {section, item} of contribution.navigation ?? []) {
+for (const contribution of componentBrowserContributions) for (const {section, before, item} of contribution.navigation ?? []) {
   const find = (sections: NavSection[]): NavSection | undefined => {
     for (const s of sections) { if (s.id === section) return s; const child = find(s.subsections ?? []); if (child) return child; }
   };
   const target = find(configSections);
   if (!target) throw new Error(`Unknown component navigation section: ${section}`);
-  target.items.push(item);
+  const index = before ? target.items.findIndex(existing => existing.path === before) : -1;
+  target.items.splice(index < 0 ? target.items.length : index, 0, item);
 }

@@ -1,6 +1,5 @@
 import { workers, employers, dispatchJobs } from "@shared/schema";
 import { workerDispatchStatus } from "../../../../shared/schema/dispatch/schema";
-import { dispatchJobFore } from "../../../../components/dispatch.fore/shared/schema/dispatch/fore-schema";
 import { WORKER_EXTRA_FIELDS } from "../../../storage/bulk/tokens";
 import { WORKER_DEFAULT_LEAF } from "./worker";
 import { registerTokenPlugin } from "../registry";
@@ -92,39 +91,6 @@ const DISPATCH_WORKER_STATUS_SAMPLE_SETS = [
   },
 ];
 
-// Job ids mirror the dispatch-job personas, so a foreperson preview and a
-// job preview tell the same story. The job's title and employer are read
-// through the job itself, not copied onto the membership.
-const DISPATCH_FORE_SAMPLE_SETS = [
-  {
-    id: "martian",
-    label: "Martian",
-    values: {
-      job_id: "SAMPLE-J001",
-      action: "added",
-      action_label: "Added",
-    },
-  },
-  {
-    id: "historical",
-    label: "Historical",
-    values: {
-      job_id: "SAMPLE-J002",
-      action: "added",
-      action_label: "Added",
-    },
-  },
-  {
-    id: "mythological",
-    label: "Mythological",
-    values: {
-      job_id: "SAMPLE-J003",
-      action: "removed",
-      action_label: "Removed",
-    },
-  },
-];
-
 /**
  * Token plugins for the dispatch entity kinds, used by the
  * token-templated dispatch notifiers:
@@ -132,12 +98,9 @@ const DISPATCH_FORE_SAMPLE_SETS = [
  *     also output this kind, but the descriptor keeps its field catalog
  *     independent of the component that declares a relation).
  *   - `dispatch_worker_status` — a worker's dispatch availability row.
- *   - `dispatch_fore` — a job-foreperson membership; the notifier
- *     merges the event's `action` (added/removed) onto the row.
  */
 export const DISPATCH_JOB_ENTITY_KIND = "dispatch_job";
 export const DISPATCH_WORKER_STATUS_ENTITY_KIND = "dispatch_worker_status";
-export const DISPATCH_FORE_ENTITY_KIND = "dispatch_fore";
 
 const COMPONENT = "dispatch";
 
@@ -182,49 +145,7 @@ registerTokenPlugin({
     },
   },
   async resolve(entity, _args, ctx) {
-    const e = tokenEntityOf(entity, DISPATCH_FORE_ENTITY_KIND);
-    const jobId = e?.row.jobId;
-    if (typeof jobId !== "string") return null;
-    const row = await memo(ctx, `dispatch-job-row:${jobId}`, async () => {
-      return (await ctx.storage.dispatchJobs.get(jobId)) ?? null;
-    });
-    if (!row) return null;
-    const out: TokenEntity = {
-      kind: DISPATCH_JOB_ENTITY_KIND,
-      row: row as unknown as Record<string, unknown>,
-      table: dispatchJobs,
-    };
-    return out;
-  },
-});
-
-/** {{event.dispatch_job.field(name="…")}} — the fore membership's job. */
-registerTokenPlugin({
-  metadata: {
-    id: "token.dispatch_fore.dispatch_job",
-    name: "Dispatch job",
-    description: "The dispatch job this foreperson record belongs to",
-    segmentName: "dispatch_job",
-    inputTypes: [DISPATCH_FORE_ENTITY_KIND],
-    outputType: DISPATCH_JOB_ENTITY_KIND,
-    entityTable: dispatchJobs,
-    hiddenFromPicker: true,
-    requiredComponent: "dispatch.fore",
-  },
-  async resolve(entity, _args, ctx) {
-    const e = tokenEntityOf(entity, DISPATCH_FORE_ENTITY_KIND);
-    const jobId = e?.row.jobId;
-    if (typeof jobId !== "string") return null;
-    const row = await memo(ctx, `dispatch-job-row:${jobId}`, async () => {
-      return (await ctx.storage.dispatchJobs.get(jobId)) ?? null;
-    });
-    if (!row) return null;
-    const out: TokenEntity = {
-      kind: DISPATCH_JOB_ENTITY_KIND,
-      row: row as unknown as Record<string, unknown>,
-      table: dispatchJobs,
-    };
-    return out;
+    return null;
   },
 });
 
@@ -324,104 +245,6 @@ registerTokenPlugin({
     if (!row) return null;
     const out: TokenEntity = { kind: "worker", row, table: workers };
     return out;
-  },
-});
-
-/** {{dispatch_fore.worker.…}} — the foreperson the membership is for. */
-registerTokenPlugin({
-  metadata: {
-    id: "token.dispatch_fore.worker",
-    name: "Worker",
-    description: "The worker named as foreperson",
-    segmentName: "worker",
-    inputTypes: [DISPATCH_FORE_ENTITY_KIND],
-    outputType: "worker",
-    entityTable: workers,
-    entityFields: WORKER_EXTRA_FIELDS,
-    defaultLeaf: WORKER_DEFAULT_LEAF,
-    hiddenFromPicker: true,
-    requiredComponent: "dispatch.fore",
-  },
-  async resolve(entity, _args, ctx) {
-    const e = tokenEntityOf(entity, DISPATCH_FORE_ENTITY_KIND);
-    const workerId = e?.row.workerId;
-    if (typeof workerId !== "string") return null;
-    const row = await memo(ctx, `worker-row-by-id:${workerId}`, async () => {
-      return (await ctx.storage.bulkTokens.getWorkerRowById(workerId)) ?? null;
-    });
-    if (!row) return null;
-    const out: TokenEntity = { kind: "worker", row, table: workers };
-    return out;
-  },
-});
-
-/**
- * Dispatch fore descriptor — a job-foreperson membership row. `action`
- * (added/removed) is a derived extra the notifier merges onto the row.
- */
-registerTokenPlugin({
-  metadata: {
-    id: "token.dispatch_fore",
-    name: "Dispatch foreperson",
-    description: "Descriptor for the dispatch foreperson membership entity kind",
-    segmentName: "__dispatch_fore",
-    inputTypes: [],
-    outputType: DISPATCH_FORE_ENTITY_KIND,
-    entityTable: dispatchJobFore,
-    // Derived extras, not columns: whoever builds a membership merges
-    // these on (the notifier, from the event). The job's title and the
-    // employer's name are NOT here — they belong to the job, and templates
-    // reach them through it.
-    entityFields: ["action", "action_label"],
-    // `{{fore}}` on its own means what happened to the membership —
-    // "Added"/"Removed" — the phrase that names the row (worker and job
-    // are their own records, reached through relations).
-    defaultLeaf: "action_label",
-    hiddenFromPicker: true,
-    requiredComponent: "dispatch.fore",
-    sampleSets: DISPATCH_FORE_SAMPLE_SETS,
-    // No page of its own: the job's foreperson tab lists the membership,
-    // reached through the row's job FK.
-    entityLocation: {
-      tabEntity: "dispatch_job",
-      idField: "jobId",
-      defaultTab: "foreperson",
-    },
-    // A membership row is read as a read of the WORKER named as
-    // foreperson (`worker.view` on the worker id, plus the fore
-    // component).
-    previewEntity: {
-      gate: { scope: "record", policy: "worker.view" },
-      async load(storage, id) {
-        const row = await storage.dispatchJobFore.get(id);
-        if (!row) return null;
-        const [workerName, job] = await Promise.all([
-          storage.workers.getWorkerDisplayName(row.workerId),
-          storage.dispatchJobs.get(row.jobId),
-        ]);
-        return {
-          entity: {
-            kind: DISPATCH_FORE_ENTITY_KIND,
-            row: {
-              ...(row as unknown as Record<string, unknown>),
-              // The membership exists, so the event it stands for is the
-              // one that added it — the same wording the picker has
-              // always shown for a record that is currently in place.
-              action: "added",
-              actionLabel: "Added",
-            },
-            table: dispatchJobFore,
-          },
-          label: [workerName, job?.title || "Untitled job"]
-            .filter(Boolean)
-            .join(" — "),
-          gateEntityId: row.workerId,
-        };
-      },
-    },
-  },
-  async resolve() {
-    return null;
   },
 });
 

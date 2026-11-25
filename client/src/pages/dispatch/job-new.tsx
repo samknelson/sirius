@@ -37,15 +37,11 @@ import {
 } from "@shared/schema";
 import { getTodayYmd } from "@shared/utils/date";
 import { renderIcon } from "@/components/ui/icon-picker";
+import { DispatchFormExtensions, useDispatchForm } from "@/lib/dispatch-contributions";
 
 interface ComponentConfig {
   componentId: string;
   enabled: boolean;
-}
-
-interface AvailableDepartment {
-  id: string;
-  name: string;
 }
 
 const formSchema = z.object({
@@ -67,7 +63,7 @@ export default function DispatchJobNewPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
+  const extensions = useDispatchForm();
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
 
   const { data: employers = [] } = useQuery<Employer[]>({
@@ -86,10 +82,6 @@ export default function DispatchJobNewPage() {
     (c) => c.componentId === "worker.skills" && c.enabled,
   );
 
-  const departmentComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.department" && c.enabled,
-  );
-
   const facilityComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.facility" && c.enabled,
   );
@@ -97,11 +89,6 @@ export default function DispatchJobNewPage() {
   const { data: facilities = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/options/facility"],
     enabled: facilityComponentEnabled,
-  });
-
-  const { data: availableDepartments = [] } = useQuery<AvailableDepartment[]>({
-    queryKey: ["/api/dispatch-departments/available"],
-    enabled: departmentComponentEnabled,
   });
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
@@ -147,26 +134,14 @@ export default function DispatchJobNewPage() {
         startTime: data.startTime?.trim() || null,
         endTime: data.endTime?.trim() || null,
         facilityId: selectedFacilityId || undefined,
-        data:
+        data: extensions.prepareData(
           selectedSkills.length > 0
             ? { requiredSkills: selectedSkills }
-            : undefined,
+            : undefined),
       });
     },
     onSuccess: async (newJob) => {
-      if (departmentComponentEnabled && selectedDepartmentId) {
-        try {
-          await apiRequest("PUT", `/api/dispatch-job-departments/job/${newJob.id}`, {
-            departmentId: selectedDepartmentId,
-          });
-        } catch (error) {
-          toast({
-            title: "Warning",
-            description: getApiErrorMessage(error, "The job was created but its department could not be saved."),
-            variant: "destructive",
-          });
-        }
-      }
+      await extensions.afterSave(newJob.id);
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs"] });
       toast({
         title: "Success",
@@ -299,27 +274,7 @@ export default function DispatchJobNewPage() {
                   )}
                 />
 
-                {departmentComponentEnabled && (
-                  <FormItem>
-                    <FormLabel>Department</FormLabel>
-                    <Select
-                      value={selectedDepartmentId || "__none__"}
-                      onValueChange={(v) => setSelectedDepartmentId(v === "__none__" ? "" : v)}
-                    >
-                      <SelectTrigger data-testid="select-department">
-                        <SelectValue placeholder="No department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">No department</SelectItem>
-                        {availableDepartments.map((department) => (
-                          <SelectItem key={department.id} value={department.id}>
-                            {department.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </FormItem>
-                )}
+                <DispatchFormExtensions slot="jobForm" register={extensions.register} />
 
                 {facilityComponentEnabled && (
                   <FormItem>

@@ -3,6 +3,7 @@ import type { InsertEdlsCrew } from "@shared/schema";
 import type { NavItem, NavSection } from "../config/navigation-registry";
 import { componentBrowserContributions } from "../generated/component-contributions";
 import { useAuth } from "../contexts/AuthContext";
+import type { DispatchUiContribution } from "./dispatch-contributions";
 
 export interface CrewExtensionProps {
   crew: { data?: unknown; id?: string };
@@ -10,11 +11,12 @@ export interface CrewExtensionProps {
   onChange?: (data: InsertEdlsCrew["data"]) => void;
 }
 export interface ComponentBrowserContributions {
+  dispatchUi?: DispatchUiContribution[];
   /** Headless observers owned by removable components (e.g. identity cleanup). */
   lifecycle?: ComponentType[];
   routes?: { path: string; page: ComponentType<any>; layout?: "bare" }[];
   configSections?: NavSection[];
-  navigation?: { section: string; item: NavItem }[];
+  navigation?: { section: string; before?: string; item: NavItem }[];
   crewUi?: { component: string; editor: ComponentType<CrewExtensionProps>; detail: ComponentType<CrewExtensionProps> }[];
 }
 export function CrewExtensions(props: CrewExtensionProps) {

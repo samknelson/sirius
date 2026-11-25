@@ -111,39 +111,11 @@ const REWRITES: TemplateTokenRewrite[] = [
       return [{ name: "dispatch_worker_status", args: root.args }, ...rest];
     },
   },
-  {
-    pluginId: "dispatch-fore-notifier",
-    rewriteChain(segments) {
-      const [root, next, ...rest] = segments;
-      if (root.name !== "dispatch_fore") return null;
-
-      // The job is now a root of its own, not a hop off the membership.
-      if (next?.name === "dispatch_job") {
-        return [{ name: "dispatch_job", args: next.args }, ...rest];
-      }
-      if (next?.name === "field") {
-        const field = next.args.name;
-        // Both were values of the JOB flattened onto the membership row.
-        if (field === "job_title") {
-          return [
-            { name: "dispatch_job", args: root.args },
-            withArg(next, "name", "title"),
-            ...rest,
-          ];
-        }
-        // The employer FK renders the employer's name on its own.
-        if (field === "employer_name") {
-          return [
-            { name: "dispatch_job", args: root.args },
-            withArg(next, "name", "employer_id"),
-            ...rest,
-          ];
-        }
-      }
-      return null;
-    },
-  },
 ];
+export function registerNotifierTemplateRewrite(rewrite: TemplateTokenRewrite): void {
+  if (REWRITES.some(existing => existing.pluginId === rewrite.pluginId)) throw new Error(`Duplicate notifier template rewrite: ${rewrite.pluginId}`);
+  REWRITES.push(rewrite);
+}
 
 /** Serialize a parsed chain back into a token expression. */
 function serializeChain(segments: TokenSegment[]): string {

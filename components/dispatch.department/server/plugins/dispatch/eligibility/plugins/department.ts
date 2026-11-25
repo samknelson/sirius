@@ -1,5 +1,12 @@
 import { registerDispatchEligPlugin } from "../../../../../../../server/plugins/dispatch/eligibility/registry";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../../../../../../../server/plugins/dispatch/eligibility/registry";
+import { createDispatchJobDepartmentStorage, type DispatchJobDepartmentWithName } from "../../../../storage/dispatch/job-departments";
+
+declare module "../../../../../../../server/plugins/dispatch/eligibility/registry" {
+  interface EligibilityPreparedContext {
+    departmentLink?: DispatchJobDepartmentWithName | null;
+  }
+}
 
 const DEPT_INCLUDE_CATEGORY = "dept_include";
 const DEPT_EXCLUDE_CATEGORY = "dept_exclude";
@@ -25,6 +32,9 @@ export const dispatchDepartmentPlugin: DispatchEligPlugin = {
   name: "Department Preferences",
   description: "Filters workers by their department include/exclude preferences against the job's department",
   requiredComponent: "dispatch.department",
+  async prepareContext(context) {
+    return { departmentLink: (await createDispatchJobDepartmentStorage().getByJob(context.jobId)) ?? null };
+  },
 
   getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition[] | null {
     const jobDepartment = context.departmentLink;

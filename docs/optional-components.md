@@ -10,6 +10,46 @@ Installation means the source is present at build time. It does **not** mean
 the component is enabled. Each component keeps its ID, persisted flag,
 dependencies and schema-migration counter.
 
+## Scoped dispatch extensions
+
+Dispatch children own their routes, tabs, settings, options fields, events,
+plugins and UI contributions. Removing their source removes those offers;
+it never deletes retained tables, saved component flags or extension data.
+
+The browser contribution's `dispatchUi` supports job form fields/settings,
+job-type settings, job summary/detail sections, worker dispatch panels and
+job-list columns. List columns supply one provider for the visible job IDs,
+so enriching a table or accepted-dispatch cards does not introduce a query
+per row. Optional navigation entries can name a `before` path to retain their
+position among core entries.
+
+Form contributions register validation, data preparation and optional
+post-save work with the host form. Preparation happens before the existing
+save request; post-save work is awaited by the existing mutation. An
+unmounted contribution does not transform the record, so editing unrelated
+fields while a component is disabled or absent preserves its saved values.
+UI mounting and visibility are not access grants: component-owned server
+routes retain their original permissions and record policies.
+ASI and DNC import their modular policies from their own server startups.
+Shared exports and declarative policy descriptions alone do not initialize
+the modular evaluator's runtime registry.
+
+Component-owned options contributions add fields to the existing options
+metadata and validators to the shared write rules used by normal edits and
+imports. Field names and contribution IDs must be unique. A field's existing
+component gate still controls its availability.
+
+An eligibility plugin may prepare narrowly typed job-scoped context.
+Preparation runs only for selected, enabled plugins, including listing
+exclusions, and is shared by listing, explanation and acceptance. Use the
+caller's ambient transaction; do not open an unrelated connection. Returned
+keys cannot replace core context or another plugin's prepared values.
+
+Component events retain their original wire names through typed event
+registration. Foreperson token producers and stored-template rewrites also
+register from the component, rather than leaving component-specific branches
+in generic token evaluation.
+
 ## The `component.json` manifest
 
 Module and script paths are relative to the component directory and must name existing files
@@ -27,7 +67,7 @@ inside that directory. Unknown fields are an error.
 | `storage` | Module exporting `createStorage`; its returned namespaces extend host storage |
 | `metadata` | Module exporting `metadataContexts` for record history |
 | `contributions` | Shared tabs, menus, operation aliases and deployment branches (`ComponentContributions`) |
-| `client` | Browser routes, config navigation, headless lifecycle observers and EDLS crew editor/detail UI (`ComponentBrowserContributions`) |
+| `client` | Browser routes, config navigation, lifecycle observers, EDLS crew UI and scoped dispatch UI contributions (`ComponentBrowserContributions`) |
 | `earlyDocument` | Self-contained classic JavaScript files inlined first in the document head, before resources |
 | `initializers` | Browser modules exporting `initialize()`, called before React mounts |
 | `documentPolicies` | Exact public document paths with `referrerPolicy: "no-referrer"` and `cacheControl: "private, no-store"`, enforced in development and static-only production services |

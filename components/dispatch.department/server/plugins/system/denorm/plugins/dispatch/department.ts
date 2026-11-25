@@ -1,4 +1,5 @@
 import { registerDenormPlugin } from "../../../../../../../../server/plugins/system/denorm/registry";
+import { DISPATCH_DEPARTMENT_SAVED } from "../../../../../events";
 import type { DenormPlugin } from "../../../../../../../../server/plugins/system/denorm/types";
 import { EventType } from "../../../../../../../../server/services/event-bus";
 import { createWorkerDispatchDepartmentStorage } from "../../../../../storage/dispatch/worker-departments";
@@ -30,7 +31,7 @@ const dispatchDepartmentDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = 
   writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
-      event: EventType.DISPATCH_DEPARTMENT_SAVED,
+      event: DISPATCH_DEPARTMENT_SAVED,
       getEntityId: (payload) => (payload as { workerId: string }).workerId,
     },
   ],

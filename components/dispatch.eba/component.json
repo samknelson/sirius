@@ -1,4 +1,8 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/dispatch/eba-schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/dispatch/eba-schema.ts"],
+  "server": ["server/plugins/dispatch/eligibility/plugins/eba.ts", "server/plugins/system/denorm/plugins/dispatch/eba.ts", "server/plugins/system/data-retention/plugins/expiredEba.ts", "server/plugins/worker-bans/plugins/eba.ts"],
+  "startup": "server/startup.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx"
 }

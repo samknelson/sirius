@@ -8,6 +8,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../../../../../server/storage/middleware/logging";
 import { eventBus, EventType } from "../../../../../server/services/event-bus";
+import { DISPATCH_EBA_SAVED } from "../../events";
 
 export const validate = createNoopValidator();
 
@@ -118,7 +119,7 @@ export function createWorkerDispatchEbaStorage(): WorkerDispatchEbaStorage {
         .from(workerDispatchEba)
         .where(eq(workerDispatchEba.workerId, workerId));
       
-      eventBus.emit(EventType.DISPATCH_EBA_SAVED, { workerId });
+      eventBus.emit(DISPATCH_EBA_SAVED, { workerId });
       
       return result;
     },

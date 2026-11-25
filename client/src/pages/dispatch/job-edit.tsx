@@ -32,11 +32,7 @@ import { Link } from "wouter";
 import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, type DispatchJobData, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { renderIcon } from "@/components/ui/icon-picker";
-
-interface AvailableDepartment {
-  id: string;
-  name: string;
-}
+import { DispatchFormExtensions, useDispatchForm } from "@/lib/dispatch-contributions";
 
 interface ComponentConfig {
   componentId: string;
@@ -63,8 +59,7 @@ function DispatchJobEditContent() {
   
   const jobData = job.data as DispatchJobData | null;
   const [selectedSkills, setSelectedSkills] = useState<string[]>(jobData?.requiredSkills || []);
-  // Absent flag = allow EBA workers (default behavior).
-  const [allowEbaWorkers, setAllowEbaWorkers] = useState<boolean>(jobData?.allowEbaWorkers !== false);
+  const extensions = useDispatchForm();
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
   const [facilityTouched, setFacilityTouched] = useState(false);
 
@@ -82,14 +77,6 @@ function DispatchJobEditContent() {
 
   const skillsComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "worker.skills" && c.enabled
-  );
-
-  const ebaComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.eba" && c.enabled
-  );
-
-  const departmentComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.department" && c.enabled
   );
 
   const facilityComponentEnabled = componentConfigs.some(
@@ -112,25 +99,6 @@ function DispatchJobEditContent() {
       setSelectedFacilityId(jobFacility?.facilityId ?? "");
     }
   }, [jobFacilityLoaded, jobFacility, facilityTouched]);
-
-  const { data: availableDepartments = [] } = useQuery<AvailableDepartment[]>({
-    queryKey: ["/api/dispatch-departments/available"],
-    enabled: departmentComponentEnabled,
-  });
-
-  const { data: jobDepartment, isSuccess: jobDepartmentLoaded } = useQuery<{ departmentId: string } | null>({
-    queryKey: ["/api/dispatch-job-departments/job", job.id],
-    enabled: departmentComponentEnabled,
-  });
-
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
-  const [departmentTouched, setDepartmentTouched] = useState(false);
-
-  useEffect(() => {
-    if (jobDepartmentLoaded && !departmentTouched) {
-      setSelectedDepartmentId(jobDepartment?.departmentId ?? "");
-    }
-  }, [jobDepartmentLoaded, jobDepartment, departmentTouched]);
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
     queryKey: ["/api/options/skill"],
@@ -161,7 +129,6 @@ function DispatchJobEditContent() {
   const jobTypeData = selectedJobType?.data as JobTypeData | undefined;
   const minWorkers = jobTypeData?.minWorkers;
   const maxWorkers = jobTypeData?.maxWorkers;
-  const showAllowEbaField = ebaComponentEnabled && jobTypeData?.primary === "both";
   const isFixedWorkerCount = minWorkers !== undefined && maxWorkers !== undefined && minWorkers === maxWorkers;
 
   useEffect(() => {
@@ -177,13 +144,6 @@ function DispatchJobEditContent() {
         ...(jobData ?? {}),
         requiredSkills: selectedSkills.length > 0 ? selectedSkills : [],
       };
-      if (showAllowEbaField) {
-        updatedJobData.allowEbaWorkers = allowEbaWorkers;
-      } else {
-        // Field not applicable (component off or job type not "both") —
-        // drop any stale value instead of carrying it forward.
-        delete updatedJobData.allowEbaWorkers;
-      }
       const payRateVal = data.payRate && data.payRate.trim() !== "" ? data.payRate.trim() : null;
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
@@ -196,24 +156,11 @@ function DispatchJobEditContent() {
         ...(facilityComponentEnabled && facilityTouched
           ? { facilityId: selectedFacilityId || null }
           : {}),
-        data: updatedJobData,
+        data: extensions.prepareData(updatedJobData),
       });
     },
     onSuccess: async () => {
-      if (departmentComponentEnabled && departmentTouched) {
-        try {
-          await apiRequest("PUT", `/api/dispatch-job-departments/job/${job.id}`, {
-            departmentId: selectedDepartmentId || null,
-          });
-          queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-departments/job", job.id] });
-        } catch (error) {
-          toast({
-            title: "Warning",
-            description: getApiErrorMessage(error, "The job was updated but its department could not be saved."),
-            variant: "destructive",
-          });
-        }
-      }
+      await extensions.afterSave(job.id);
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs", job.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs", job.id, "facility"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs"] });
@@ -362,30 +309,7 @@ function DispatchJobEditContent() {
                 )}
               />
 
-              {departmentComponentEnabled && (
-                <FormItem>
-                  <FormLabel>Department</FormLabel>
-                  <Select
-                    value={selectedDepartmentId || "__none__"}
-                    onValueChange={(v) => {
-                      setDepartmentTouched(true);
-                      setSelectedDepartmentId(v === "__none__" ? "" : v);
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-department">
-                      <SelectValue placeholder="No department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">No department</SelectItem>
-                      {availableDepartments.map((department) => (
-                        <SelectItem key={department.id} value={department.id}>
-                          {department.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormItem>
-              )}
+              <DispatchFormExtensions slot="jobForm" recordId={job.id} data={jobData} jobTypeData={jobTypeData} register={extensions.register} />
 
               {facilityComponentEnabled && (
                 <FormItem>
@@ -563,25 +487,7 @@ function DispatchJobEditContent() {
               />
             </div>
 
-            {showAllowEbaField && (
-              <div className="flex items-start gap-3 p-3 border rounded-md bg-muted/30">
-                <Checkbox
-                  id="allow-eba-workers"
-                  checked={allowEbaWorkers}
-                  onCheckedChange={(checked) => setAllowEbaWorkers(checked === true)}
-                  data-testid="checkbox-allow-eba"
-                />
-                <div className="space-y-1">
-                  <label htmlFor="allow-eba-workers" className="text-sm font-medium cursor-pointer">
-                    Allow EBA Workers
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    When unchecked, only workers with dispatch status Available are eligible —
-                    workers who are merely "Employed but Available" for the start date are excluded.
-                  </p>
-                </div>
-              </div>
-            )}
+            <DispatchFormExtensions slot="jobSettings" recordId={job.id} data={jobData} jobTypeData={jobTypeData} register={extensions.register} />
 
             {skillsComponentEnabled && skills.length > 0 && (
               <div className="space-y-3">

@@ -44,68 +44,11 @@ export {
 } from "./schema/dispatch/schema";
 
 export {
-  dispatchJobFore,
-  insertDispatchJobForeSchema,
-  type DispatchJobFore,
-  type InsertDispatchJobFore,
-} from "../components/dispatch.fore/shared/schema/dispatch/fore-schema";
-
-export {
   dispatchJobFacility,
   insertDispatchJobFacilitySchema,
   type DispatchJobFacility,
   type InsertDispatchJobFacility,
 } from "./schema/dispatch/facility-schema";
-
-export {
-  dispatchJobEvent,
-  insertDispatchJobEventSchema,
-  type DispatchJobEvent,
-  type InsertDispatchJobEvent,
-} from "../components/dispatch.bullpen/shared/schema/dispatch/bullpen-schema";
-
-export {
-  workerDispatchDepartment,
-  dispatchJobDepartment,
-  workerDispatchDepartmentPreferenceEnum,
-  insertWorkerDispatchDepartmentSchema,
-  insertDispatchJobDepartmentSchema,
-  type WorkerDispatchDepartment,
-  type InsertWorkerDispatchDepartment,
-  type DispatchJobDepartment,
-  type InsertDispatchJobDepartment,
-  type WorkerDispatchDepartmentPreference,
-} from "../components/dispatch.department/shared/schema/dispatch/department-schema";
-
-export {
-  workerDispatchDnc,
-  dispatchWorkerDncTypeEnum,
-  insertWorkerDispatchDncSchema,
-  type DispatchWorkerDncType,
-  type InsertWorkerDispatchDnc,
-  type WorkerDispatchDnc,
-} from "../components/dispatch.dnc/shared/schema/dispatch/dnc-schema";
-
-export {
-  workerDispatchHfe,
-  insertWorkerDispatchHfeSchema,
-  type InsertWorkerDispatchHfe,
-  type WorkerDispatchHfe,
-} from "../components/dispatch.hfe/shared/schema/dispatch/hfe-schema";
-
-export {
-  workerDispatchAsi,
-  insertWorkerDispatchAsiSchema,
-  type InsertWorkerDispatchAsi,
-  type WorkerDispatchAsi,
-} from "../components/dispatch.asi/shared/schema/dispatch/asi-schema";
-
-export {
-  workerDispatchEba,
-  insertWorkerDispatchEbaSchema,
-  type InsertWorkerDispatchEba,
-  type WorkerDispatchEba,
-} from "../components/dispatch.eba/shared/schema/dispatch/eba-schema";
 
 export {
   dispatchJobGroups,
@@ -130,8 +73,6 @@ export {
   type JobTypeData,
   jobTypePrimarySettingEnum,
   type JobTypePrimarySetting,
-  jobTypeBullpenEnum,
-  type JobTypeBullpenSetting,
   type DispatchJobData,
   type NotificationMedia,
   type PollPhaseStatus,

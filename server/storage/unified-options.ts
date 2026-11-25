@@ -1,4 +1,5 @@
 import { createNoopValidator } from './utils/validation';
+import { getContributedOptionsFields, declareCoreOptionsFields } from "../modules/options-contributions";
 import { getClient } from './transaction-context';
 import { eq, asc, getTableName, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
@@ -364,7 +365,6 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Department name", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
-      { name: "availableForDispatch", label: "Available for dispatch?", inputType: "checkbox", required: false, helperText: "Allow this department to be selected on dispatch jobs and worker department preferences", showInTable: true, columnHeader: "Available for Dispatch", dataField: true, requiredComponent: "dispatch.department" },
     ],
   },
   "employer-type": {
@@ -952,6 +952,21 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
   },
 };
 
+// Resolve on read: component modules are registered after this core module loads.
+for (const [type, metadata] of Object.entries(optionsMetadata)) {
+  const coreFields = metadata.fields;
+  declareCoreOptionsFields(type as OptionsTypeName, coreFields);
+  Object.defineProperty(metadata, "fields", {
+    enumerable: true,
+    get() {
+      const fields = [...coreFields, ...getContributedOptionsFields(type as OptionsTypeName)];
+      if (new Set(fields.map(field => field.name)).size !== fields.length) {
+        throw new Error(`Duplicate options field in ${type}`);
+      }
+      return fields;
+    },
+  });
+}
 export type OptionsMetadataMap = typeof optionsMetadata;
 
 export interface UnifiedOptionsStorage {

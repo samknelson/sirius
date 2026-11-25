@@ -139,9 +139,7 @@ import { type DispatchJobGroupStorage, createDispatchJobGroupStorage, dispatchJo
 import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } from "./facility/facilities";
 import { type GbhetPensionStorage, createGbhetPensionStorage } from "./sitespecific/gbhet/pension";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
-import { type DispatchJobForeStorage, createDispatchJobForeStorage, dispatchJobForeLoggingConfig } from "../../components/dispatch.fore/server/storage/dispatch/fore";
 import { type DispatchJobFacilityStorage, createDispatchJobFacilityStorage, dispatchJobFacilityLoggingConfig } from "./dispatch/facility";
-import { type DispatchJobEventStorage, createDispatchJobEventStorage } from "../../components/dispatch.bullpen/server/storage/dispatch/job-events";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "../../components/worker.steward/server/storage/worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
@@ -155,9 +153,6 @@ import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStora
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
-import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../../components/dispatch.dnc/server/storage/dispatch/worker-dnc";
-import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "../../components/dispatch.department/server/storage/dispatch/worker-departments";
-import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "../../components/dispatch.department/server/storage/dispatch/job-departments";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "../../components/worker.skills/server/storage/workers/skills";
 import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "../../components/worker.tos/server/storage/workers/tos";
 import { type WorkerAatStorage, createWorkerAatStorage, workerAatLoggingConfig } from "../../components/worker.aat/server/storage/workers/aat";
@@ -272,10 +267,8 @@ export interface IStorage extends ComponentStorage {
   dispatchJobs: DispatchJobStorage;
   dispatchJobGroups: DispatchJobGroupStorage;
   dispatches: DispatchStorage;
-  dispatchJobFore: DispatchJobForeStorage;
   dispatchJobFacility: DispatchJobFacilityStorage;
   dispatchJobEmployerContacts: DispatchJobEmployerContactsStorage;
-  dispatchJobEvents: DispatchJobEventStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
@@ -287,9 +280,6 @@ export interface IStorage extends ComponentStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
-  workerDispatchDnc: WorkerDispatchDncStorage;
-  workerDispatchDepartments: WorkerDispatchDepartmentStorage;
-  dispatchJobDepartments: DispatchJobDepartmentStorage;
   workerSkills: WorkerSkillStorage;
   workerTos: WorkerTosStorage;
   workerAat: WorkerAatStorage;
@@ -398,10 +388,8 @@ export class DatabaseStorage implements IStorage {
   dispatchJobs: DispatchJobStorage;
   dispatchJobGroups: DispatchJobGroupStorage;
   dispatches: DispatchStorage;
-  dispatchJobFore: DispatchJobForeStorage;
   dispatchJobFacility: DispatchJobFacilityStorage;
   dispatchJobEmployerContacts: DispatchJobEmployerContactsStorage;
-  dispatchJobEvents: DispatchJobEventStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
@@ -413,9 +401,6 @@ export class DatabaseStorage implements IStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
-  workerDispatchDnc: WorkerDispatchDncStorage;
-  workerDispatchDepartments: WorkerDispatchDepartmentStorage;
-  dispatchJobDepartments: DispatchJobDepartmentStorage;
   workerSkills: WorkerSkillStorage;
   workerTos: WorkerTosStorage;
   workerAat: WorkerAatStorage;
@@ -643,11 +628,8 @@ export class DatabaseStorage implements IStorage {
     this.dispatchJobs = withStorageLogging(createDispatchJobStorage(), dispatchJobLoggingConfig);
     this.dispatchJobGroups = withStorageLogging(createDispatchJobGroupStorage(), dispatchJobGroupLoggingConfig);
     this.dispatches = withStorageLogging(createDispatchStorage(), dispatchLoggingConfig);
-    this.dispatchJobFore = withStorageLogging(createDispatchJobForeStorage(), dispatchJobForeLoggingConfig);
     this.dispatchJobFacility = withStorageLogging(createDispatchJobFacilityStorage(), dispatchJobFacilityLoggingConfig);
     this.dispatchJobEmployerContacts = withStorageLogging(createDispatchJobEmployerContactsStorage(), dispatchJobEmployerContactsLoggingConfig);
-    // No logging for dispatchJobEvents - written only by the dispatch_job_event denorm plugin (internal sync churn).
-    this.dispatchJobEvents = createDispatchJobEventStorage();
     this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
     this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
@@ -665,9 +647,6 @@ export class DatabaseStorage implements IStorage {
     );
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.entityNotes = withStorageLogging(createEntityNotesStorage(), entityNotesLoggingConfig);
-    this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
-    this.workerDispatchDepartments = withStorageLogging(createWorkerDispatchDepartmentStorage(), workerDispatchDepartmentLoggingConfig);
-    this.dispatchJobDepartments = createDispatchJobDepartmentStorage();
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
     this.workerTos = withStorageLogging(createWorkerTosStorage(), workerTosLoggingConfig);
     this.workerAat = withStorageLogging(createWorkerAatStorage(), workerAatLoggingConfig);

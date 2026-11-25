@@ -1,4 +1,9 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/dispatch/asi-schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/dispatch/asi-schema.ts"],
+  "shared": ["shared/access-policies/worker/dispatch/asi.ts"],
+  "server": ["server/plugins/system/denorm/plugins/dispatch/asi-sign-in.ts"],
+  "startup": "server/startup.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx"
 }

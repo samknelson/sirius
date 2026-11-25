@@ -112,7 +112,6 @@ import "./plugins/workerEmployment";
 import "./plugins/grievanceName";
 import "./plugins/grievanceTimeline";
 import "../../../../components/worker.tos/server/plugins/system/denorm/plugins/tosAbsenceReminder";
-import "../../../../components/dispatch.bullpen/server/plugins/system/denorm/plugins/dispatch/jobEvent";
 import "./plugins/grievanceDeadlineReminder";
 import "./plugins/employerMonthly";
 // Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,
@@ -124,17 +123,8 @@ import "./plugins/trustWmbTerminate";
 import "./plugins/dispatch/accepted";
 // Auto Sign-In: sets workers back to Available when their accepted primary
 // dispatch ends (gated by the dispatch.asi component).
-import "../../../../components/dispatch.asi/server/plugins/system/denorm/plugins/dispatch/asi-sign-in";
-import "../../../../components/dispatch.ban/server/plugins/system/denorm/plugins/dispatch/ban";
-import "../../../../components/dispatch.ban/server/plugins/system/denorm/plugins/dispatch/banFacility";
-import "../../../../components/dispatch.ban/server/plugins/system/denorm/plugins/dispatch/banJobType";
-import "../../../../components/dispatch.department/server/plugins/system/denorm/plugins/dispatch/department";
-import "../../../../components/dispatch.dnc/server/plugins/system/denorm/plugins/dispatch/dnc";
-import "../../../../components/dispatch.eba/server/plugins/system/denorm/plugins/dispatch/eba";
-import "../../../../components/dispatch.hfe/server/plugins/system/denorm/plugins/dispatch/hfe";
 import "./plugins/dispatch/hta-home-employer";
 import "./plugins/dispatch/primary-unavailable";
-import "../../../../components/dispatch.singleshift/server/plugins/system/denorm/plugins/dispatch/singleshift";
 import "./plugins/dispatch/skill";
 import "./plugins/dispatch/status";
 import "./plugins/dispatch/ws";

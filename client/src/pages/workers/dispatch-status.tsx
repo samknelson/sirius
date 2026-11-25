@@ -18,12 +18,7 @@ import { useTerm } from "@/contexts/TerminologyContext";
 import { formatYmd } from "@shared/utils/date";
 import type { WorkerDispatchStatus } from "@shared/schema";
 import type { DispatchWithRelations } from "../../../../server/storage/dispatch/dispatches";
-import type { DispatchJobForeWithJob } from "../../../../components/dispatch.fore/server/storage/dispatch/fore";
-
-interface ComponentConfig {
-  componentId: string;
-  enabled: boolean;
-}
+import { WorkerDispatchExtensions, useDispatchUi, DispatchListProviders } from "@/lib/dispatch-contributions";
 
 function formatTime12h(time: string): string {
   const [hStr, mStr] = time.split(":");
@@ -35,13 +30,7 @@ function formatTime12h(time: string): string {
 }
 
 function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
-  const { data: componentConfigs = [] } = useQuery<{ componentId: string; enabled: boolean }[]>({
-    queryKey: ["/api/components/config"],
-  });
-
-  const departmentComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.department" && c.enabled,
-  );
+  const contributedColumns = useDispatchUi().flatMap(p => p.jobListColumn ? [p.jobListColumn] : []);
 
   const { data: dispatches, isLoading } = useQuery<DispatchWithRelations[]>({
     queryKey: ["/api/dispatches/worker", workerId],
@@ -58,18 +47,8 @@ function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
     .filter((d) => d.status === "accepted")
     .sort((a, b) => (a.isPrimary === b.isPrimary ? 0 : a.isPrimary ? -1 : 1));
 
-  const acceptedJobIdsKey = Array.from(new Set(accepted.map((d) => d.job?.id).filter(Boolean))).join(",");
-  const { data: jobDepartments = {} } = useQuery<Record<string, { departmentId: string; departmentName: string | null }>>({
-    queryKey: ["/api/dispatch-job-departments", { jobIds: acceptedJobIdsKey }],
-    queryFn: async () => {
-      const res = await fetch(`/api/dispatch-job-departments?jobIds=${encodeURIComponent(acceptedJobIdsKey)}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch job departments");
-      return res.json();
-    },
-    enabled: departmentComponentEnabled && acceptedJobIdsKey.length > 0,
-  });
-
   return (
+    <DispatchListProviders columns={contributedColumns} jobIds={accepted.flatMap(d => d.job?.id ? [d.job.id] : [])}>
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
@@ -145,15 +124,7 @@ function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
                       </span>
                     </div>
                   )}
-                  {departmentComponentEnabled && dispatch.job?.id && jobDepartments[dispatch.job.id]?.departmentName && (
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Department:</span>
-                      <span data-testid={`text-dispatch-department-${dispatch.id}`}>
-                        {jobDepartments[dispatch.job.id]?.departmentName}
-                      </span>
-                    </div>
-                  )}
+                  {dispatch.job?.id && contributedColumns.map(({id, cardField: Field}) => Field ? <Field key={id} jobId={dispatch.job!.id} recordId={dispatch.id} /> : null)}
                   {dispatch.job?.payRate != null && (
                     <div className="flex items-center gap-2">
                       <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -188,80 +159,7 @@ function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function ForepersonJobsSection({ workerId }: { workerId: string }) {
-  const { data: foreJobs, isLoading } = useQuery<DispatchJobForeWithJob[]>({
-    queryKey: ["/api/workers", workerId, "dispatch-fore"],
-    queryFn: async () => {
-      const response = await fetch(`/api/workers/${workerId}/dispatch-fore`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch foreperson jobs");
-      }
-      return response.json();
-    },
-  });
-
-  // Most workers are not forepersons: render nothing while loading and when
-  // there are no rows, so the card only appears when there is something to show.
-  if (isLoading || !foreJobs || foreJobs.length === 0) {
-    return null;
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <HardHat className="h-5 w-5" />
-          <CardTitle>Foreperson Jobs</CardTitle>
-        </div>
-        <CardDescription>
-          Jobs where this worker is designated as a Foreperson.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2" data-testid="list-foreperson-jobs">
-            {foreJobs.map((fore) => (
-              <div
-                key={fore.id}
-                className="border rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
-                data-testid={`card-foreperson-job-${fore.id}`}
-              >
-                <div className="space-y-1">
-                  <p className="font-medium" data-testid={`text-fore-job-title-${fore.id}`}>
-                    {fore.job?.title || "Unknown Job"}
-                  </p>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                    <span className="flex items-center gap-1.5">
-                      <Building2 className="h-3.5 w-3.5" />
-                      <span data-testid={`text-fore-employer-${fore.id}`}>
-                        {fore.job?.employer?.name || "Unknown Employer"}
-                      </span>
-                    </span>
-                    {fore.job?.startYmd && (
-                      <span className="flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5" />
-                        <span data-testid={`text-fore-job-start-${fore.id}`}>
-                          {formatYmd(fore.job.startYmd, "long")}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <Link
-                  href={`/dispatch/job/${fore.jobId}`}
-                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                  data-testid={`link-fore-job-${fore.id}`}
-                >
-                  View Job
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    </DispatchListProviders>
   );
 }
 
@@ -355,14 +253,6 @@ function DispatchStatusContent() {
     const isoString = new Date(editSeniorityDate).toISOString();
     seniorityMutation.mutate(isoString);
   };
-
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-  });
-
-  const foreComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.fore" && c.enabled
-  );
 
   if (isLoading) {
     return (
@@ -485,7 +375,7 @@ function DispatchStatusContent() {
 
     <AcceptedDispatchesSection workerId={worker.id} />
 
-    {foreComponentEnabled && <ForepersonJobsSection workerId={worker.id} />}
+    <WorkerDispatchExtensions workerId={worker.id} />
     </div>
   );
 }

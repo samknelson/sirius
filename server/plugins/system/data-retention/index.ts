@@ -87,8 +87,6 @@ export function initializeDataRetentionPluginSystem(): void {
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "../../../../components/dispatch.hfe/server/plugins/system/data-retention/plugins/expiredHfe";
-import "../../../../components/dispatch.eba/server/plugins/system/data-retention/plugins/expiredEba";
 import "./plugins/expiredFloodEvents";
 import "./plugins/oldCronLogs";
 import "./plugins/expiredReports";

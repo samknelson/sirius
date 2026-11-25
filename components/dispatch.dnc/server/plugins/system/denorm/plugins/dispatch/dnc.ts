@@ -1,4 +1,5 @@
 import { registerDenormPlugin } from "../../../../../../../../server/plugins/system/denorm/registry";
+import { DISPATCH_DNC_SAVED } from "../../../../../events";
 import type { DenormPlugin } from "../../../../../../../../server/plugins/system/denorm/types";
 import { EventType } from "../../../../../../../../server/services/event-bus";
 import { createWorkerDispatchDncStorage } from "../../../../../storage/dispatch/worker-dnc";
@@ -28,7 +29,7 @@ const dispatchDncDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
   writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
-      event: EventType.DISPATCH_DNC_SAVED,
+      event: DISPATCH_DNC_SAVED,
       getEntityId: (payload) => (payload as { workerId: string }).workerId,
     },
   ],

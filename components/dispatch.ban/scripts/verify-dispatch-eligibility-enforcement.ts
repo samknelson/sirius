@@ -8,29 +8,25 @@
  * same in the running app.
  *
  * Run:
- *   npx tsx scripts/oneoffs/verify-dispatch-eligibility-enforcement.ts
+ *   npx tsx components/dispatch.ban/scripts/verify-dispatch-eligibility-enforcement.ts
  */
 import express from "express";
 import { eq } from "drizzle-orm";
-import { storage } from "../../server/storage";
-import { db } from "../../server/storage/db";
+import { storage } from "../../../server/storage";
+import { db } from "../../../server/storage/db";
 import { optionsDispatchJobType } from "@shared/schema";
-import { loadComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
-import { initAccessControl } from "../../server/services/access-policy-evaluator";
-import { initializePermissions } from "../../shared/permissions";
-import "../../shared/access-policies/loader";
-import { registerDispatchesRoutes } from "../../server/modules/dispatch/dispatches";
-// Register the eligibility plugins (read side), the ban denorm plugin (write
-// side — maintains the `ban` facts), and the worker-ban behavior plugins the
-// denorm compute consults. Import the denorm plugin file directly, not the
-// denorm barrel (the barrel's registry init breaks under standalone tsx).
-import "../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban";
-import "../../components/dispatch.ban/server/plugins/dispatch/eligibility/plugins/ban-jobtype";
-import "../../components/dispatch.singleshift/server/plugins/dispatch/eligibility/plugins/singleshift";
-import "../../server/plugins/worker-bans/plugins/all-dispatch";
-import "../../server/plugins/worker-bans/plugins/dispatch-job-type";
-import "../../components/dispatch.ban/server/plugins/system/denorm/plugins/dispatch/ban";
-import { recomputeStaleDenorm } from "../../server/plugins/system/denorm/recompute";
+import { loadComponentCache, isComponentEnabledSync } from "../../../server/services/component-cache";
+import { initAccessControl } from "../../../server/services/access-policy-evaluator";
+import { initializePermissions } from "../../../shared/permissions";
+import "../../../shared/access-policies/loader";
+import { registerDispatchesRoutes } from "../../../server/modules/dispatch/dispatches";
+// Use the same discovered producers as the application; the verification
+// requires ban + single-shift to be installed and enabled, not a runtime
+// dependency between those independently removable components.
+import "../../../server/generated/component-server-modules";
+import "../../../server/plugins/worker-bans/plugins/all-dispatch";
+import "../../../server/plugins/worker-bans/plugins/dispatch-job-type";
+import { recomputeStaleDenorm } from "../../../server/plugins/system/denorm/recompute";
 
 async function main() {
   await loadComponentCache();
@@ -49,8 +45,8 @@ async function main() {
     async (componentId: string) => isComponentEnabledSync(componentId),
   );
 
-  if (!isComponentEnabledSync("dispatch") || !isComponentEnabledSync("dispatch.ban")) {
-    console.error("FAIL: dispatch / dispatch.ban components not enabled in this DB; cannot verify");
+  if (!isComponentEnabledSync("dispatch") || !isComponentEnabledSync("dispatch.ban") || !isComponentEnabledSync("dispatch.singleshift")) {
+    console.error("FAIL: dispatch / dispatch.ban / dispatch.singleshift must be installed and enabled to run this verification");
     process.exit(1);
   }
 

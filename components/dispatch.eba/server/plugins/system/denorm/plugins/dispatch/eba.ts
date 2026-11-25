@@ -1,4 +1,5 @@
 import { registerDenormPlugin } from "../../../../../../../../server/plugins/system/denorm/registry";
+import { DISPATCH_EBA_SAVED } from "../../../../../events";
 import type { DenormPlugin } from "../../../../../../../../server/plugins/system/denorm/types";
 import { EventType } from "../../../../../../../../server/services/event-bus";
 import { createWorkerDispatchEbaStorage } from "../../../../../storage/dispatch/worker-eba";
@@ -28,7 +29,7 @@ const dispatchEbaDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
   writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
-      event: EventType.DISPATCH_EBA_SAVED,
+      event: DISPATCH_EBA_SAVED,
       getEntityId: (payload) => (payload as { workerId: string }).workerId,
     },
   ],

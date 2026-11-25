@@ -1,3 +1,11 @@
 {
-  "coreRegistered": true
+  "definition": "shared/component.ts",
+  "server": [
+    "server/plugins/dispatch/eligibility/plugins/ban.ts",
+    "server/plugins/dispatch/eligibility/plugins/ban-facility.ts",
+    "server/plugins/dispatch/eligibility/plugins/ban-jobtype.ts",
+    "server/plugins/system/denorm/plugins/dispatch/ban.ts",
+    "server/plugins/system/denorm/plugins/dispatch/banFacility.ts",
+    "server/plugins/system/denorm/plugins/dispatch/banJobType.ts"
+  ]
 }

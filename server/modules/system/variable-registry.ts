@@ -4,9 +4,7 @@ import type { InsertVariable } from "@shared/schema";
 import { TERMINOLOGY_VARIABLE_NAME, terminologySchema, TERM_REGISTRY } from "@shared/terminology";
 import { buildContext, checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../components";
-import { dispatchEbaSettingsSchema } from "../../../components/dispatch.eba/server/modules/dispatch/eba-config";
 import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-reset-config";
-import { dispatchDncNotificationConfigSchema } from "../../../components/dispatch.dnc/server/modules/dispatch/dnc-config";
 import { workerBanNotificationConfigSchema } from "../worker-ban-config";
 import { entityFilesConfigSchema } from "../../services/entity-files/config";
 import { entityNotesConfigSchema } from "../../services/entity-notes/config";
@@ -101,20 +99,11 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
 
   // Dispatch-owned settings (component-gated in both directions)
-  dispatch_eba_settings: {
-    readTier: "authenticated",
-    component: "dispatch",
-    schema: dispatchEbaSettingsSchema,
-  },
   dispatch_seniority_reset_settings: {
     component: "dispatch",
     schema: dispatchSeniorityResetSettingsSchema.transform((v) => ({
       triggerStatuses: Array.from(new Set(v.triggerStatuses)),
     })),
-  },
-  dispatch_dnc_notifications: {
-    component: "dispatch",
-    schema: dispatchDncNotificationConfigSchema,
   },
 
   // Worker ban notification settings (admin read/write)

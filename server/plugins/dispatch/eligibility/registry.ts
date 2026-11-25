@@ -4,7 +4,6 @@ import type { BasePluginMetadata } from "../../_core";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig } from "@shared/schema";
 import type { DispatchJobWithRelations } from "../../../storage/dispatch/jobs";
 import type { DispatchJobFacilityWithFacility } from "../../../storage/dispatch/facility";
-import type { DispatchJobDepartmentWithName } from "../../../../components/dispatch.department/server/storage/dispatch/job-departments";
 import type { EmployerCompany } from "@shared/schema/employer/company-schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 
@@ -30,7 +29,10 @@ export interface EligibilityCondition {
   failureMessage?: string;
 }
 
-export interface EligibilityQueryContext {
+/** Components augment this interface with their own prepared query inputs. */
+export interface EligibilityPreparedContext {}
+
+export interface EligibilityQueryContext extends EligibilityPreparedContext {
   jobId: string;
   employerId: string;
   jobTypeId: string | null;
@@ -42,11 +44,6 @@ export interface EligibilityQueryContext {
    * absent or not prefetched.
    */
   facilityLink: DispatchJobFacilityWithFacility | null;
-  /**
-   * The job's department link, prefetched by the wrapper when the department
-   * plugin is enabled; null when the job has no department or not prefetched.
-   */
-  departmentLink: DispatchJobDepartmentWithName | null;
   /**
    * Lazy, memoized loader for the job employer's company relation. Fetched at
    * most once per context regardless of how many plugins call it.
@@ -65,6 +62,8 @@ export interface EligibilityQueryContext {
  */
 export interface DispatchEligPlugin extends BasePluginMetadata {
   configSchema?: JsonSchema;
+  /** Called once per selected, enabled plugin using the caller's transaction context. */
+  prepareContext?(context: EligibilityQueryContext): Promise<EligibilityPreparedContext>;
   getEligibilityCondition(
     context: EligibilityQueryContext,
     config: EligibilityPluginConfig["config"],

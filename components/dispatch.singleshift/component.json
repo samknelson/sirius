@@ -1,3 +1,4 @@
 {
-  "coreRegistered": true
+  "definition": "shared/component.ts",
+  "server": ["server/plugins/dispatch/eligibility/plugins/singleshift.ts", "server/plugins/system/denorm/plugins/dispatch/singleshift.ts"]
 }

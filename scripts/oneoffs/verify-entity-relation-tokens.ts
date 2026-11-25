@@ -52,7 +52,6 @@ async function main() {
     ["contact", "worker", "token.worker.contact"],
     ["bargaining_unit", "worker", "token.worker.bargaining_unit"],
     ["worker", "dispatch_worker_status", "token.dispatch_worker_status.worker"],
-    ["dispatch_job", "dispatch_fore", "token.dispatch_fore.dispatch_job"],
   ] as const) {
     const dupes = tokenPluginRegistry
       .list()
@@ -68,7 +67,7 @@ async function main() {
   }
 
   console.log("\n--- validation ---");
-  const roots = ["dispatch_fore", "dispatch_job", "event"];
+  const roots = ["dispatch_job", "event"];
   for (const expr of [
     "dispatch_job.employer",
     'dispatch_job.employer.field(name="sirius_id")',

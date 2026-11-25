@@ -9,6 +9,7 @@ import {
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../../../../../server/storage/middleware/logging";
 import { eventBus, EventType } from "../../../../../server/services/event-bus";
+import { DISPATCH_HFE_SAVED } from "../../events";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -156,7 +157,7 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
         .returning();
       
       setImmediate(() => {
-        eventBus.emit(EventType.DISPATCH_HFE_SAVED, {
+        eventBus.emit(DISPATCH_HFE_SAVED, {
           hfeId: result.id,
           workerId: result.workerId,
           employerId: result.employerId,
@@ -177,7 +178,7 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
       
       if (result) {
         setImmediate(() => {
-          eventBus.emit(EventType.DISPATCH_HFE_SAVED, {
+          eventBus.emit(DISPATCH_HFE_SAVED, {
             hfeId: result.id,
             workerId: result.workerId,
             employerId: result.employerId,
@@ -197,7 +198,7 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
       
       if (deleted) {
         setImmediate(() => {
-          eventBus.emit(EventType.DISPATCH_HFE_SAVED, {
+          eventBus.emit(DISPATCH_HFE_SAVED, {
             hfeId: deleted.id,
             workerId: deleted.workerId,
             employerId: deleted.employerId,

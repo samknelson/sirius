@@ -1,4 +1,11 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/dispatch/fore-schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/dispatch/fore-schema.ts"],
+  "server": ["server/tokens.ts", "server/plugins/event-notifier/plugins/dispatch-fore-notifier.ts"],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "metadata": "server/metadata.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx",
+  "migrations": ["scripts/migrate/components/dispatch.fore/001_create_dispatch_job_fore.ts"]
 }

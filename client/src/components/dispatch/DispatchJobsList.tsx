@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useDispatchUi, DispatchListProviders } from "@/lib/dispatch-contributions";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,24 +113,7 @@ export function DispatchJobsList({
 
   const jobs = result?.data || [];
 
-  const { data: componentConfigs = [] } = useQuery<{ componentId: string; enabled: boolean }[]>({
-    queryKey: ["/api/components/config"],
-  });
-
-  const departmentComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.department" && c.enabled,
-  );
-
-  const jobIdsKey = jobs.map((j) => j.id).join(",");
-  const { data: jobDepartments = {} } = useQuery<Record<string, { departmentId: string; departmentName: string | null }>>({
-    queryKey: ["/api/dispatch-job-departments", { jobIds: jobIdsKey }],
-    queryFn: async () => {
-      const res = await fetch(`/api/dispatch-job-departments?jobIds=${encodeURIComponent(jobIdsKey)}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch job departments");
-      return res.json();
-    },
-    enabled: departmentComponentEnabled && jobIdsKey.length > 0,
-  });
+  const contributedColumns = useDispatchUi().flatMap(p => p.jobListColumn ? [p.jobListColumn] : []);
   const total = result?.total || 0;
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
@@ -279,13 +263,14 @@ export function DispatchJobsList({
       ) : jobs.length > 0 ? (
         <>
           <div className="rounded-md border">
+            <DispatchListProviders columns={contributedColumns} jobIds={jobs.map(job => job.id)}>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
                   {showEmployerColumn && <TableHead>Employer</TableHead>}
                   <TableHead>Type</TableHead>
-                  {departmentComponentEnabled && <TableHead>Department</TableHead>}
+                  {contributedColumns.map(column => <TableHead key={column.id}>{column.title}</TableHead>)}
                   <TableHead>Status</TableHead>
                   <TableHead>Running</TableHead>
                   <TableHead>Workers</TableHead>
@@ -322,11 +307,7 @@ export function DispatchJobsList({
                           </div>
                         ) : "—"}
                       </TableCell>
-                      {departmentComponentEnabled && (
-                        <TableCell data-testid={`text-department-${job.id}`}>
-                          {jobDepartments[job.id]?.departmentName || <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                      )}
+                      {contributedColumns.map(({ id, cell: Cell }) => <TableCell key={id}><Cell jobId={job.id} /></TableCell>)}
                       <TableCell data-testid={`text-status-${job.id}`}>
                         <Badge 
                           variant="secondary"
@@ -374,6 +355,7 @@ export function DispatchJobsList({
                 })}
               </TableBody>
             </Table>
+            </DispatchListProviders>
           </div>
 
           {totalPages > 1 && (

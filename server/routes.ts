@@ -8,7 +8,7 @@ import multer from "multer";
 import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
-import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
@@ -105,13 +105,7 @@ import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
 import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerContractRoutes } from "./modules/contract/contract";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
-import { registerDispatchForeRoutes } from "../components/dispatch.fore/server/modules/dispatch/fore";
-import { registerWorkerDispatchDepartmentRoutes } from "../components/dispatch.department/server/modules/dispatch/worker-departments";
 import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
-import { registerWorkerDispatchDncRoutes } from "../components/dispatch.dnc/server/modules/dispatch/worker-dnc";
-import { registerWorkerDispatchHfeRoutes } from "../components/dispatch.hfe/server/modules/dispatch/worker-hfe";
-import { registerWorkerDispatchEbaRoutes } from "../components/dispatch.eba/server/modules/dispatch/worker-eba";
-import { registerWorkerDispatchAsiRoutes } from "../components/dispatch.asi/server/modules/dispatch/worker-asi";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerEntityNoteContexts } from "./modules/entity-notes-contexts";
 import { registerEntityNotesRoutes } from "./modules/entity-notes";
@@ -1626,23 +1620,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
-  registerDispatchForeRoutes(app);
-  registerWorkerDispatchDepartmentRoutes(app);
 
   // Register worker dispatch status routes (handles all access control internally)
   registerWorkerDispatchStatusRoutes(app, requireAuth, requireAccess);
 
   // Register worker dispatch DNC routes (handles all access control internally)
-  registerWorkerDispatchDncRoutes(app, requireAuth, requireAccess);
 
   // Register worker dispatch HFE routes (handles all access control internally)
-  registerWorkerDispatchHfeRoutes(app, requireAuth, requireAccess);
 
   // Register worker dispatch EBA routes (handles all access control internally)
-  registerWorkerDispatchEbaRoutes(app, requireAuth, requireAccess);
 
   // Register worker dispatch ASI routes (handles all access control internally)
-  registerWorkerDispatchAsiRoutes(app, requireAuth, requireAccess);
 
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);

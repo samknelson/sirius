@@ -11,7 +11,6 @@ import {
 } from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchJobStorage, type DispatchJobWithRelations } from "./jobs";
 import { createDispatchJobFacilityStorage } from "./facility";
-import { createDispatchJobDepartmentStorage } from "../../../components/dispatch.department/server/storage/dispatch/job-departments";
 import { createEmployerCompanyStorage } from "../employers/companies";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
 import { createPluginConfigStorage } from "../system/plugin-configs";
@@ -123,8 +122,7 @@ async function loadEnabledPluginConfigs(jobTypeId: string | null): Promise<Eligi
 
 /**
  * Build the enriched EligibilityQueryContext from the already-loaded job.
- * Prefetches job-scoped data the enabled plugins need (facility link,
- * department link) so plugins don't issue their own storage queries, and
+ * Prefetches job-scoped data the enabled plugins need and
  * exposes a memoized lazy loader for the employer-company relation.
  */
 async function buildEligibilityContext(
@@ -133,7 +131,7 @@ async function buildEligibilityContext(
 ): Promise<EligibilityQueryContext> {
   const enabledIds = new Set(enabledPluginConfigs.map((c) => c.pluginId));
 
-  const [facilityLink, departmentLink] = await Promise.all([
+  const [facilityLink] = await Promise.all([
     // Mirrors the facility-ban plugin's previous gate: only meaningful when
     // the dispatch.facility component is on (the link table is component-owned).
     enabledIds.has("dispatch_ban_facility")
@@ -141,20 +139,16 @@ async function buildEligibilityContext(
           on ? createDispatchJobFacilityStorage().getByJob(job.id) : undefined,
         )
       : Promise.resolve(undefined),
-    enabledIds.has("dispatch_department")
-      ? createDispatchJobDepartmentStorage().getByJob(job.id)
-      : Promise.resolve(undefined),
   ]);
 
   let employerCompanyPromise: ReturnType<ReturnType<typeof createEmployerCompanyStorage>["getByEmployerId"]> | null = null;
 
-  return {
+  const context: EligibilityQueryContext = {
     jobId: job.id,
     employerId: job.employerId,
     jobTypeId: job.jobTypeId,
     job,
     facilityLink: facilityLink ?? null,
-    departmentLink: departmentLink ?? null,
     getEmployerCompany() {
       if (!employerCompanyPromise) {
         employerCompanyPromise = createEmployerCompanyStorage().getByEmployerId(job.employerId);
@@ -162,6 +156,19 @@ async function buildEligibilityContext(
       return employerCompanyPromise;
     },
   };
+  for (const pluginId of enabledIds) {
+    const plugin = dispatchEligPluginRegistry.getPlugin(pluginId);
+    if (!plugin?.prepareContext) continue;
+    if (plugin.requiredComponent && !(await isComponentEnabled(plugin.requiredComponent))) continue;
+    const prepared = await plugin.prepareContext(context);
+    for (const key of Object.keys(prepared)) {
+      if (Object.prototype.hasOwnProperty.call(context, key)) {
+        throw new Error(`Eligibility context field "${key}" was contributed more than once`);
+      }
+    }
+    Object.assign(context, prepared);
+  }
+  return context;
 }
 
 type DynamicQuery = ReturnType<ReturnType<typeof db.select>["from"]>["$dynamic"] extends (...args: any) => infer R ? R : never;
@@ -186,11 +193,10 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
   }
 
   const enabledPluginConfigs = await loadEnabledPluginConfigs(job.jobTypeId);
-  const context = await buildEligibilityContext(job, enabledPluginConfigs);
+  const excludedPluginIds = new Set(filters?.excludePluginIds ?? []);
+  const context = await buildEligibilityContext(job, enabledPluginConfigs.filter(c => !excludedPluginIds.has(c.pluginId)));
 
   const appliedConditions: Array<{ pluginId: string; condition: EligibilityCondition }> = [];
-
-  const excludedPluginIds = new Set(filters?.excludePluginIds ?? []);
 
   for (const pluginConfig of enabledPluginConfigs) {
     if (excludedPluginIds.has(pluginConfig.pluginId)) continue;

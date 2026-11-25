@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import type { OptionsSkill, JobTypeData, DispatchJobData } from "@shared/schema";
-import type { DispatchJobForeWithWorker } from "../../../../components/dispatch.fore/server/storage/dispatch/fore";
+import { DispatchJobDetailsExtensions } from "@/lib/dispatch-contributions";
 
 interface DispatchStatusCounts {
   pending: number;
@@ -76,18 +76,6 @@ function DispatchJobDetailsContent() {
 
   const requiredSkills = jobData?.requiredSkills || [];
 
-  const ebaComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.eba" && c.enabled
-  );
-
-  const foreComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.fore" && c.enabled
-  );
-
-  const departmentComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "dispatch.department" && c.enabled
-  );
-
   const facilityComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.facility" && c.enabled
   );
@@ -97,19 +85,7 @@ function DispatchJobDetailsContent() {
     enabled: facilityComponentEnabled,
   });
 
-  const { data: jobDepartment } = useQuery<{ departmentId: string; department?: { id: string; name: string } | null } | null>({
-    queryKey: ["/api/dispatch-job-departments/job", job.id],
-    enabled: departmentComponentEnabled,
-  });
-
-  const { data: forepersons = [] } = useQuery<DispatchJobForeWithWorker[]>({
-    queryKey: ["/api/dispatch-jobs", job.id, "fore"],
-    enabled: foreComponentEnabled,
-  });
   const jobTypeData = job.jobType?.data as JobTypeData | null | undefined;
-  const showAllowEba = ebaComponentEnabled && jobTypeData?.primary === "both";
-  // Absent flag = allow (default behavior).
-  const allowEbaWorkers = jobData?.allowEbaWorkers !== false;
 
   const JobTypeIcon = job.jobType?.data && typeof job.jobType.data === 'object' && 'icon' in job.jobType.data
     ? iconMap[job.jobType.data.icon as string] || Briefcase
@@ -157,14 +133,7 @@ function DispatchJobDetailsContent() {
               <span className="text-foreground">{job.jobType?.name || "No type"}</span>
             </div>
           </div>
-          {departmentComponentEnabled && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Department</h3>
-              <p className="text-foreground" data-testid="text-department">
-                {jobDepartment?.department?.name || "No department"}
-              </p>
-            </div>
-          )}
+          <DispatchJobDetailsExtensions slot="jobSummary" job={job} jobTypeData={jobTypeData ?? undefined} />
           {facilityComponentEnabled && (
             <div>
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Facility</h3>
@@ -203,24 +172,6 @@ function DispatchJobDetailsContent() {
               <div className="flex items-center gap-2" data-testid="text-endtime">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <p className="text-foreground">{formatTime12h(job.endTime)}</p>
-              </div>
-            </div>
-          )}
-          {showAllowEba && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Allow EBA Workers</h3>
-              <div data-testid="text-allow-eba">
-                {allowEbaWorkers ? (
-                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                    <CheckCircle className="h-4 w-4" />
-                    <span>Yes</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <XCircle className="h-4 w-4" />
-                    <span>No</span>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -308,30 +259,7 @@ function DispatchJobDetailsContent() {
             </div>
           </div>
         )}
-        {foreComponentEnabled && (
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">Forepersons</h3>
-            {forepersons.length === 0 ? (
-              <p className="text-muted-foreground text-sm" data-testid="text-no-forepersons">
-                No Forepersons designated for this job.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2" data-testid="forepersons-list">
-                {forepersons.map((fore) => (
-                  <Badge
-                    key={fore.id}
-                    variant="secondary"
-                    className="gap-1"
-                    data-testid={`badge-foreperson-${fore.id}`}
-                  >
-                    <HardHat className="h-3 w-3" />
-                    {fore.worker?.contact?.displayName || "Unknown Worker"}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <DispatchJobDetailsExtensions job={job} jobTypeData={jobTypeData ?? undefined} />
         {skillsComponentEnabled && requiredSkills.length > 0 && (
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Required Skills</h3>

@@ -381,7 +381,6 @@ import "./plugins/edls-sheet-status-notifier";
 import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
 import "../../../components/system.session_history/server/plugins/event-notifier/plugins/new-ip-sign-in";
-import "../../../components/dispatch.fore/server/plugins/event-notifier/plugins/dispatch-fore-notifier";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";
 import "./plugins/ws-usage-plugin-alert";

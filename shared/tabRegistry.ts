@@ -235,11 +235,6 @@ export const workerTabTree: HierarchicalTab[] = [
     children: [
       { id: 'dispatch-status', label: 'Status', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-list', label: 'List', hrefTemplate: '/workers/{id}/dispatch/list', policyId: 'worker.view', component: 'dispatch' },
-      { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
-      { id: 'dispatch-departments', label: 'Departments', hrefTemplate: '/workers/{id}/dispatch/departments', policyId: 'worker.view', component: 'dispatch.department' },
-      { id: 'dispatch-hfe', label: 'Employer Priority', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
-      { id: 'dispatch-eba', label: 'Availability Dates', hrefTemplate: '/workers/{id}/dispatch/eba', policyId: 'worker.mine', component: 'dispatch.eba' },
-      { id: 'dispatch-asi', label: 'Auto Sign-In', hrefTemplate: '/workers/{id}/dispatch/asi', policyId: 'worker.dispatch.asi', component: 'dispatch.asi' },
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
@@ -425,7 +420,6 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
       { id: 'eligible-workers-check', label: 'Check', hrefTemplate: '/dispatch/job/{id}/eligible-workers/check', permission: 'staff', component: 'dispatch' },
     ]
   },
-  { id: 'foreperson', label: 'Foreperson', hrefTemplate: '/dispatch/job/{id}/foreperson', permission: 'staff', component: 'dispatch.fore' },
   // Staff AND employer users linked to the job's employer (policy, not a
   // staff permission — the policy delegates to employer.mine).
   { id: 'dispatch-job-employer-contacts', label: 'Employer Contacts', hrefTemplate: '/dispatch/job/{id}/employer_contacts', policyId: 'dispatch.job.employer.contacts', component: 'dispatch' },
@@ -1008,9 +1002,14 @@ function findContributedTab(tree: HierarchicalTab[], id: string): HierarchicalTa
     if (nested) return nested;
   }
 }
-for (const contribution of componentContributions) for (const {entity, parent, before, tab} of contribution.tabs ?? []) {
+const pendingTabs = componentContributions.flatMap(contribution => contribution.tabs ?? []);
+while (pendingTabs.length) {
+  const next = pendingTabs.findIndex(({entity, parent, before}) =>
+    (!parent || !!findContributedTab(tabTreeRegistry[entity], parent)) &&
+    (!before || !pendingTabs.some(other => other.entity === entity && other.tab.id === before)));
+  if (next < 0) throw new Error("Component tabs have an unknown parent or cyclic ordering");
+  const {entity, parent, before, tab} = pendingTabs.splice(next, 1)[0];
   const parentTab = parent ? findContributedTab(tabTreeRegistry[entity], parent) : undefined;
-  if (parent && !parentTab) throw new Error(`Unknown component tab parent: ${entity}/${parent}`);
   const tree = parentTab ? (parentTab.children ??= []) : tabTreeRegistry[entity];
   const index = before ? tree.findIndex(t => t.id === before) : -1;
   tree.splice(index < 0 ? tree.length : index, 0, tab);

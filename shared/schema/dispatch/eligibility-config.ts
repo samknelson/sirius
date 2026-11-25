@@ -34,22 +34,9 @@ export type NotificationMedia = 'email' | 'sms' | 'in-app';
 export const jobTypePrimarySettingEnum = ["primary", "both", "secondary"] as const;
 export type JobTypePrimarySetting = typeof jobTypePrimarySettingEnum[number];
 
-/**
- * Bullpen setting for a job type (dispatch.bullpen component).
- * - "none": no bullpen behavior (default when absent)
- * - "host": this job type hosts a bullpen
- * - "shared": this job type participates in a shared bullpen
- * When "host" or "shared", `bullpenEventTypeId` (an options_event_type id)
- * is required.
- */
-export const jobTypeBullpenEnum = ["none", "host", "shared"] as const;
-export type JobTypeBullpenSetting = typeof jobTypeBullpenEnum[number];
-
 export interface JobTypeData {
   icon?: string;
   primary?: JobTypePrimarySetting;
-  bullpen?: JobTypeBullpenSetting;
-  bullpenEventTypeId?: string;
   eligibility?: EligibilityPluginConfig[];
   minWorkers?: number;
   maxWorkers?: number;
@@ -77,10 +64,6 @@ export interface PollResult {
 /**
  * Typed shape of the `dispatch_jobs.data` jsonb blob.
  * - `requiredSkills`: option ids from `options_skill` (worker.skills component).
- * - `allowEbaWorkers`: per-job override for the EBA eligibility plugin. Absent
- *   or `true` = allow EBA workers (current behavior); `false` = require
- *   dispatch status Available only. Only meaningful when the `dispatch.eba`
- *   component is enabled and the job type's primary setting is "both".
  */
 export interface DispatchJobData {
   offerRatio?: number;
@@ -88,11 +71,4 @@ export interface DispatchJobData {
   lastPollResult?: PollResult;
   /** Option ids from `options_skill` (worker.skills component). */
   requiredSkills?: string[];
-  /**
-   * Per-job override for the EBA eligibility plugin. Absent or `true` = allow
-   * EBA workers (default behavior); `false` = require dispatch status
-   * Available only. Only meaningful when the `dispatch.eba` component is
-   * enabled and the job type's primary setting is "both".
-   */
-  allowEbaWorkers?: boolean;
 }
