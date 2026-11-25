@@ -133,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = useCallback(async () => {
+    window.dispatchEvent(new Event("auth:session-ended"));
     if (_clerkSignOut) {
       await _clerkSignOut({ redirectUrl: '/api/logout' });
     } else {

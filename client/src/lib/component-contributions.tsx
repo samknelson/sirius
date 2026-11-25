@@ -10,6 +10,8 @@ export interface CrewExtensionProps {
   onChange?: (data: InsertEdlsCrew["data"]) => void;
 }
 export interface ComponentBrowserContributions {
+  /** Headless observers owned by removable components (e.g. identity cleanup). */
+  lifecycle?: ComponentType[];
   routes?: { path: string; page: ComponentType<any> }[];
   configSections?: NavSection[];
   navigation?: { section: string; item: NavItem }[];

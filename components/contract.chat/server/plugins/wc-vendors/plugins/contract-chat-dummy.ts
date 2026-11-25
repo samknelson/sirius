@@ -25,7 +25,7 @@ function scenario(ctx: WcVendorContext): typeof scenarios[number] {
 function simulateFailure(ctx: WcVendorContext): void {
   const value = scenario(ctx);
   if (value === "budget_exceeded" || value === "rate_limited" || value === "service_error") {
-    throw new WcVendorError(value === "service_error" ? 503 : 429, `SYNTHETIC simulation: ${value}`);
+    throw Object.assign(new WcVendorError(value === "service_error" ? 503 : 429, `SYNTHETIC simulation: ${value}`), { code: value });
   }
 }
 

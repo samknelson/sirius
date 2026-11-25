@@ -2,7 +2,7 @@ import { z } from "zod";
 import { registerWcVendorPlugin } from "../../../../../../server/plugins/wc-vendors/registry";
 import type { WcVendorContext } from "../../../../../../server/plugins/wc-vendors/types";
 import { redactCredentialText, redactCredentialValue } from "../../../../../../server/plugins/wc-vendors/plugins/credential-redaction";
-import { isWcEndpointPolicyError, isWcRateLimitError } from "../../../../../../server/services/webclient/refusals";
+import { isWcEndpointPolicyError, isWcRateLimitError, WcTransportTimeoutError } from "../../../../../../server/services/webclient/refusals";
 import { isMaintenanceModeError } from "../../../../../../server/services/maintenance-flag";
 import { feedbackArgs, manualSchemas, parseArgs, routeArgs, searchArgs, validateAsk } from "../../../../../contract.chat/server/contract";
 import { forayBaseUrl, forayDefaultUrl } from "../../../foray-url";
@@ -28,6 +28,7 @@ async function request(ctx: WcVendorContext, path: string, body?: unknown, timeo
     });
   } catch (error) {
     if (isWcEndpointPolicyError(error) || isWcRateLimitError(error) || isMaintenanceModeError(error)) throw error;
+    if (error instanceof WcTransportTimeoutError) throw new ContractChatProviderError(504, "Foray timed out.", "timeout");
     // Never relay an SDK/transport error containing request headers or content.
     throw new ContractChatProviderError(502, "Could not reach Foray (connection failed or timed out).", "transport_error");
   }

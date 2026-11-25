@@ -33,6 +33,7 @@ import type {
 } from "./client";
 import type { WcAnswer, WcRequestMode, WcResult } from "./types";
 import { isPluginComponentEnabledAsync } from "../../plugins/_core/gating";
+import { wcConfigurationRevision } from "./configuration-revision";
 
 /**
  * The vendor half of the web client framework.
@@ -117,6 +118,7 @@ export class WcVendorAmbiguousDefaultError extends WcVendorResolutionError {
  * way to make the call is to ask the framework to make it.
  */
 export interface WcVendorDescription {
+  configurationRevision: string;
   configId: string;
   configName: string | null;
   pluginId: string;
@@ -360,6 +362,7 @@ export async function describeWcVendor(
   const { config, plugin } = await resolveTarget(target, operation!);
   return {
     configId: config.id,
+    configurationRevision: wcConfigurationRevision(config),
     configName: config.name ?? null,
     pluginId: plugin.id,
     pluginName: plugin.name,
@@ -500,6 +503,10 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
   }
 
   const resolved = await resolveTarget(vendor, name);
+  if (options.expectedConfigurationRevision !== undefined &&
+      options.expectedConfigurationRevision !== wcConfigurationRevision(resolved.config)) {
+    throw new WcVendorRequestError(409, "Vendor configuration changed. Reload before submitting.");
+  }
   const declaration = requireOperation(resolved.plugin, name);
 
   const handler = getWcVendorHandler(resolved.plugin.id, name);

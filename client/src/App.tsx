@@ -4368,6 +4368,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
+          {componentBrowserContributions.flatMap(p => p.lifecycle ?? []).map((Observer, index) => <Observer key={index} />)}
           <TerminologyProvider>
             <PageTitleProvider>
               <Toaster />

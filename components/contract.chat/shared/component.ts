@@ -7,4 +7,5 @@ export const component: ComponentDefinition = {
   enabledByDefault: false,
   category: "contract",
   dependsOnComponents: ["contract"],
+  permissions: [{ key: "contract.chat", description: "Ask questions about all contracts in the configured Contract Chat provider catalog" }],
 };

@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { request as httpsRequest } from "node:https";
 import { hostMatches, type VendorDestinationPolicy } from "./endpoint-policy";
-import { WcEndpointPolicyError } from "./refusals";
+import { WcEndpointPolicyError, WcTransportTimeoutError } from "./refusals";
 
 export interface WcVendorHttpRequestInit extends RequestInit {
   /** Overall deadline including response body. Defaults to 30s; max 180s.
@@ -146,6 +146,7 @@ export function createVendorHttp(
   return {
     throwIfRefused() { if (refusal) throw refusal; },
     async fetch(input, init = {}) {
+      let deadline: AbortSignal | undefined;
       try {
         const policy = destinationPolicy();
         const url = validateVendorUrl(pluginId, input, policy);
@@ -166,7 +167,7 @@ export function createVendorHttp(
         if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180_000) {
           throw new Error("Vendor timeout must be between 1 and 180000 milliseconds");
         }
-        const deadline = AbortSignal.timeout(timeoutMs);
+        deadline = AbortSignal.timeout(timeoutMs);
         const signal = init.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
         return await new Promise<Response>(function executeVendorHttps(resolve, reject) {
           const req = httpsRequest(url, {
@@ -210,6 +211,7 @@ export function createVendorHttp(
         });
       } catch (error) {
         if (error instanceof WcEndpointPolicyError) return remember(error);
+        if (deadline?.aborted) throw new WcTransportTimeoutError();
         // Do not relay native transport errors that may include request data.
         throw new Error(`Vendor '${pluginId}' HTTPS request failed`);
       }

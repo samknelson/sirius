@@ -17,6 +17,12 @@
  */
 import { WcVendorError } from "../../plugins/wc-vendors/errors";
 
+/** Safe transport diagnostic; contains no destination, headers or body. */
+export class WcTransportTimeoutError extends Error {
+  readonly code = "WC_TIMEOUT";
+  constructor() { super("Vendor request timed out."); this.name = "WcTransportTimeoutError"; }
+}
+
 /** A local security refusal; never cache it as an answer or failure hold. */
 export class WcEndpointPolicyError extends WcVendorError {
   readonly code = "WC_ENDPOINT_POLICY_REFUSED";

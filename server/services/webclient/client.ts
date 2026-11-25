@@ -84,6 +84,8 @@ export interface WcVendorRequestOptions<N extends WcVendorOperationName> {
   operation: N;
   args: WcVendorOperationArgs<N>;
   mode?: WcRequestMode;
+  /** Refuse if the connection changed since the caller obtained its context. */
+  expectedConfigurationRevision?: string;
 }
 
 /**

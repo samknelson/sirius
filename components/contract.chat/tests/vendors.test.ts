@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({
   http: vi.fn(), stats: vi.fn(), flood: vi.fn(), cache: vi.fn(),
 }));
 vi.mock("../../../server/storage", () => ({
-  storage: { pluginConfigs: {
+  storage: { variables: { getByName: async () => ({ value: { providerConfigId: "chat-config" } }) }, pluginConfigs: {
     get: async (id: string) => state.configs.find((c) => c.id === id),
     getByKind: async () => state.configs,
     getByKindAndPlugin: async (_kind: string, id: string) => state.configs.filter((c) => c.pluginId === id),
@@ -65,6 +65,7 @@ import "../server/plugins/wc-vendors/plugins/contract-chat-dummy";
 import { wcRequest } from "../../../server/services/webclient";
 import { getWcVendorPlugin } from "../../../server/plugins/wc-vendors/registry";
 import { setMaintenanceActive } from "../../../server/services/maintenance-flag";
+import { ask as askFromExperience, catalog, resolveProvider } from "../server/service";
 
 const ask: ContractChatArgs = {
   contractId: "remote-contract", role: "member",
@@ -91,6 +92,29 @@ beforeEach(() => {
 afterEach(() => setMaintenanceActive(false));
 
 describe("Contract Chat dummy through the configuration/operation boundary", () => {
+  it("serves the experience through the real dummy boundary without storing conversations", async () => {
+    const actor = { userId: "effective-user", sessionId: "login-session", role: "member" as const };
+    const provider = await resolveProvider(actor);
+    expect((await catalog(provider))[0].id).toBe("synthetic-contract");
+    const result = await askFromExperience(actor, {
+      context: provider.context, contractId: "synthetic-contract",
+      messages: [{ role: "user", content: "TRANSCRIPT-PRIVACY-CANARY" }],
+    });
+    expect(result).toMatchObject({ status: "ok", citations: [{ page: 3 }] });
+    expect(state.http).not.toHaveBeenCalled();
+    expect(state.cache).not.toHaveBeenCalled();
+    expect(state.stats).not.toHaveBeenCalled();
+  });
+  it("refuses a changed configuration revision before running its handler", async () => {
+    const result = wcRequest({
+      vendor: target, operation: "contract.chat.ask",
+      args: { ...ask, contractId: "synthetic-contract" },
+      expectedConfigurationRevision: "obsolete-revision",
+    });
+    await expect(result).rejects.toMatchObject({ status: 409 });
+    expect(state.http).not.toHaveBeenCalled();
+    expect(state.cache).not.toHaveBeenCalled();
+  });
   it("declares the contract chat operations with correct gates, credentials, safety and manual forms", () => {
     const plugin = getWcVendorPlugin("contract-chat-dummy")!;
     expect(Object.keys(plugin.operations).sort()).toEqual([

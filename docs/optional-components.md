@@ -27,7 +27,7 @@ inside that directory. Unknown fields are an error.
 | `storage` | Module exporting `createStorage`; its returned namespaces extend host storage |
 | `metadata` | Module exporting `metadataContexts` for record history |
 | `contributions` | Shared tabs, menus, operation aliases and deployment branches (`ComponentContributions`) |
-| `client` | Browser routes, config navigation and EDLS crew editor/detail UI (`ComponentBrowserContributions`) |
+| `client` | Browser routes, config navigation, headless lifecycle observers and EDLS crew editor/detail UI (`ComponentBrowserContributions`) |
 | `maintenanceGuards` | Vendor handler declarations audited by the maintenance-guards lint rule |
 
 Mirror the host's `shared/`, `server/`, `client/`, and `scripts/` boundaries.
@@ -138,6 +138,14 @@ Contributions are additive declarations, not alter hooks. Server startup and
 registration own identity strategies, inbound authentication providers and
 vendor contract augmentation (including `ComponentExternalServices` names for
 maintenance refusals).
+
+Browser contributions may declare headless `lifecycle` observers, mounted inside
+the host authentication provider even while their route is closed. Keep feature
+cleanup in those component-owned observers, not in the host. The generic
+`auth:session-ended` browser event is emitted before a logout redirect; observers
+must distinguish initial authentication loading from an actual identity change.
+For example, Contract Chat uses this boundary to discard temporary browser
+history without adding transcript data to server sessions.
 
 Authentication selection is persisted in ws_clients.data.authenticationProvider as
 {provider, configId}, or null for an explicit client-secret selection. Missing or

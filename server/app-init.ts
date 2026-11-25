@@ -71,6 +71,7 @@ import {
 import { runOrDeferStartupOperation } from "./services/startup-deferrals";
 import { registerPluginCatalogs } from "./plugins/_core/catalogs";
 import { captureCallbackBody, refuseCallbackParseError } from "./services/comm/callback-handlers/verification";
+import { captureHttpPrivacy, isHttpBodyPrivate } from "./services/http-response-privacy";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -112,6 +113,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
   }
 
   app.use(observeSamlCallback);
+  app.use(captureHttpPrivacy);
   app.use(createBrowserRequestProtection(getMountedSamlCallbackPath));
   app.use(express.json({ limit: '50mb', verify: captureCallbackBody }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
@@ -124,7 +126,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
 
     const originalResJson = res.json;
     res.json = function (bodyJson, ...args) {
-      capturedJsonResponse = bodyJson;
+      if (!isHttpBodyPrivate(res)) capturedJsonResponse = bodyJson;
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
 
@@ -151,7 +153,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
           /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
         // Oneoff preflight responses carry a single-use confirmation credential.
         // Neither that credential nor plugin-produced run data belongs in logs.
-        if (capturedJsonResponse && !isWcManualRun && !path.startsWith("/api/oneoff/") &&
+        if (capturedJsonResponse && !isHttpBodyPrivate(res) && !isWcManualRun && !path.startsWith("/api/oneoff/") &&
             !path.startsWith("/api/sitespecific/t631/client/sync-workers")) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
@@ -663,14 +665,16 @@ export async function bootstrapApp(
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const message = isHttpBodyPrivate(res)
+      ? "Request could not be completed"
+      : err.message || "Internal Server Error";
 
     // Log the error with Winston
     logger.error(`Error: ${message}`, {
       source: "express",
       statusCode: status,
-      error: err.stack || err.toString(),
-      url: redactSensitiveUrlQuery(_req.url),
+      ...(!isHttpBodyPrivate(res) ? { error: err.stack || err.toString() } : {}),
+      url: isHttpBodyPrivate(res) ? _req.path : redactSensitiveUrlQuery(_req.url),
       method: _req.method,
       headersSent: res.headersSent,
     });

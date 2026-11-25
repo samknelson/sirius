@@ -77,7 +77,7 @@ describe("webclient HTTP socket handoff", () => {
     const long = http.fetch("https://api.example.com/chat", { timeoutMs: 180_000 });
     const ordinary = http.fetch("https://api.example.com/catalog");
     // Attach rejection observation before advancing the clock.
-    const ordinaryCheck = expect(ordinary).rejects.toThrow("HTTPS request failed");
+    const ordinaryCheck = expect(ordinary).rejects.toMatchObject({ code: "WC_TIMEOUT" });
     await vi.advanceTimersByTimeAsync(30_001);
     await ordinaryCheck;
     expect(fixture.request.mock.calls[0][1].signal.aborted).toBe(false);
@@ -109,7 +109,7 @@ describe("webclient HTTP socket handoff", () => {
     controller.abort();
     await cancelledCheck;
     const bounded = http.fetch("https://api.example.com/chat", { timeoutMs: 180_000 });
-    const boundedCheck = expect(bounded).rejects.toThrow("HTTPS request failed");
+    const boundedCheck = expect(bounded).rejects.toMatchObject({ code: "WC_TIMEOUT" });
     await vi.advanceTimersByTimeAsync(180_001);
     await boundedCheck;
   });
