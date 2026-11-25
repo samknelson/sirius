@@ -23,7 +23,7 @@ registerCronJobRoutes({
   get: (path: string, ...handlers: Function[]) => routes.set(path, handlers.at(-1)!),
   post: () => {},
 } as any, (() => {}) as any, (() => {}) as any);
-async function request(path: string, query = {}, params = { name: "t631", runId: "run" }) {
+async function request(path: string, query = {}, params = { name: "example-job", runId: "run" }) {
   const res = { statusCode: 200, body: null as any, status(code: number) { this.statusCode = code; return this; }, json(body: any) { this.body = body; return this; } };
   await routes.get(path)!({ query, params }, res);
   return res;
@@ -34,7 +34,7 @@ describe("bounded cron history", () => {
   it("loads a bounded second page without output and reports more rows", async () => {
     mocks.list.mockResolvedValue(Array.from({ length: 26 }, (_, id) => ({ id })));
     const res = await request("/api/cron-jobs/:name/runs", { page: "2" });
-    expect(mocks.list).toHaveBeenCalledWith({ pluginKind: "cron", pluginId: "t631", offset: 25, limit: 26, summaryOnly: true });
+    expect(mocks.list).toHaveBeenCalledWith({ pluginKind: "cron", pluginId: "example-job", offset: 25, limit: 26, summaryOnly: true });
     expect(res.body.runs).toHaveLength(25);
     expect(res.body.hasMore).toBe(true);
   });
@@ -51,7 +51,7 @@ describe("bounded cron history", () => {
     expect((await request("/api/cron-jobs/:name/runs/:runId")).statusCode).toBe(404);
   });
   it("loads full output for the selected matching run", async () => {
-    const run = { pluginKind: "cron", pluginId: "t631", output: "full details" };
+    const run = { pluginKind: "cron", pluginId: "example-job", output: "full details" };
     mocks.getById.mockResolvedValue(run);
     expect((await request("/api/cron-jobs/:name/runs/:runId")).body).toEqual(run);
   });

@@ -26,7 +26,7 @@ const {
   logWarn: vi.fn(),
 }));
 
-vi.mock("../../server/storage", () => ({
+vi.mock("../../../../server/storage", () => ({
   storage: {
     workerIds: {
       getTypeIdBySiriusId: vi.fn(async () => scenario.typeId),
@@ -45,7 +45,7 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-vi.mock("../../server/modules/components", () => ({
+vi.mock("../../../../server/modules/components", () => ({
   isComponentEnabled: vi.fn(async (id: string) =>
     id === "edls" ? componentState.edls : componentState.aat),
   requireComponent: () =>
@@ -61,26 +61,26 @@ vi.mock("../../server/modules/components", () => ({
     },
 }));
 
-vi.mock("../../server/services/webclient", () => ({ wcRequest }));
-vi.mock("../../server/flood/service", () => ({ checkFlood, recordFloodEvent }));
-vi.mock("../../server/logger", () => ({
+vi.mock("../../../../server/services/webclient", () => ({ wcRequest }));
+vi.mock("../../../../server/flood/service", () => ({ checkFlood, recordFloodEvent }));
+vi.mock("../../../../server/logger", () => ({
   logger: { error: logError, warn: logWarn },
 }));
 
-import { storage } from "../../server/storage";
-import { scheduleDestination } from "../../components/sitespecific.t631.client/client/src/lib/t631-arrival-request";
-import { registerT631ArrivalRoutes } from "../../components/sitespecific.t631.client/server/modules/sitespecific/t631/arrive";
-import { redactSensitiveUrlQuery } from "../../server/utils/redact-url-query";
+import { storage } from "../../../../server/storage";
+import { scheduleDestination } from "../../client/src/lib/t631-arrival-request";
+import { registerT631ArrivalRoutes } from "../../server/modules/sitespecific/t631/arrive";
+import { redactSensitiveUrlQuery } from "../../../../server/utils/redact-url-query";
 import {
   WcVendorNoAssignedOperationError,
   WcVendorRequestError,
-} from "../../server/services/webclient/wc-vendor-context";
+} from "../../../../server/services/webclient/wc-vendor-context";
 import {
   T631_ARRIVAL_IP_FLOOD_EVENT,
   T631_ARRIVAL_WORKER_FLOOD_EVENT,
-} from "../../server/flood/constants";
-import "../../components/sitespecific.t631.client/server/plugins/system/flood/plugins/t631-arrival";
-import { floodPluginRegistry } from "../../server/plugins/system/flood/registry";
+} from "../../server/flood";
+import "../../server/plugins/system/flood/plugins/t631-arrival";
+import { floodPluginRegistry } from "../../../../server/plugins/system/flood/registry";
 
 type Middleware = (
   req: any,

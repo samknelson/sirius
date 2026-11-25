@@ -123,7 +123,10 @@ function WorkerInterviewsContent() {
       <InterviewStatusModal
         interview={selected}
         onClose={() => setSelected(null)}
-        onSaved={() => queryClient.invalidateQueries({ queryKey })}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey });
+          queryClient.invalidateQueries({ queryKey: ["/api/access/tabs"] });
+        }}
       />
     </>
   );

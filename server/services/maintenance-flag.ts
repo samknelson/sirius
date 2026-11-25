@@ -61,7 +61,6 @@ export type ExternalService = keyof ComponentExternalServices
   | "Census"
   | "OpenStates"
   | "Stripe"
-  | "T631"
   | "BTU"
   | "Foray Contract Chat"
   | "Web service test";

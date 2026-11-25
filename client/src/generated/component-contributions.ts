@@ -4,4 +4,6 @@ import { contributions as contribution0 } from "./../../../components/contract.c
 import { contributions as contribution1 } from "./../../../components/sitespecific.freeman/client/src/contributions";
 import { contributions as contribution2 } from "./../../../components/sitespecific.freeman.authorization/client/src/contributions";
 import { contributions as contribution3 } from "./../../../components/sitespecific.freeman.edls_migrate/client/src/contributions";
-export const componentBrowserContributions: ComponentBrowserContributions[] = [contribution0, contribution1, contribution2, contribution3];
+import { contributions as contribution4 } from "./../../../components/sitespecific.t631.client/client/src/contributions";
+import { contributions as contribution5 } from "./../../../components/sitespecific.t631.interviews/client/src/contributions";
+export const componentBrowserContributions: ComponentBrowserContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5];

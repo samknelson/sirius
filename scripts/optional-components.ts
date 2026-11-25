@@ -26,6 +26,11 @@ export interface OptionalComponentManifest {
   storage?: string;
   metadata?: string;
   client?: string;
+  /** Synchronous, self-contained classic scripts placed before document resources. */
+  earlyDocument?: string[];
+  /** Modules exporting initialize(), called before the browser mounts React. */
+  initializers?: string[];
+  documentPolicies?: { path: string; referrerPolicy: "no-referrer"; cacheControl: "private, no-store" }[];
   contributions?: string;
   coreMigrations?: string[];
   maintenanceGuards?: Record<string, {
@@ -38,7 +43,7 @@ export interface OptionalComponentManifest {
 const MANIFEST = "component.json";
 const MANIFEST_FIELDS = new Set<string>([
   "coreRegistered", "definition", "shared", "server", "schema", "migrations", "startup", "storage",
-  "metadata", "client", "contributions", "coreMigrations", "maintenanceGuards",
+  "metadata", "client", "contributions", "coreMigrations", "maintenanceGuards", "earlyDocument", "initializers", "documentPolicies",
 ]);
 
 export interface DiscoveredComponent {
@@ -60,6 +65,9 @@ export interface DiscoveredComponent {
   storage?: string;
   metadata?: string;
   client?: string;
+  earlyDocument: string[];
+  initializers: string[];
+  documentPolicies: NonNullable<OptionalComponentManifest["documentPolicies"]>;
   contributions?: string;
   coreMigrations: string[];
   maintenanceGuards: NonNullable<OptionalComponentManifest["maintenanceGuards"]>;
@@ -208,6 +216,9 @@ export function discoverComponentDirectories(root = resolve(import.meta.dirname,
           dependsOn: core.get(entry.name)!,
           shared: [],
           server: [],
+          earlyDocument: [],
+          initializers: [],
+          documentPolicies: [],
           schema: (manifest.schema ?? []).map(modulePath),
           migrations: [],
           coreMigrations: [],
@@ -234,6 +245,15 @@ export function discoverComponentDirectories(root = resolve(import.meta.dirname,
         storage: manifest.storage ? modulePath(manifest.storage) : undefined,
         metadata: manifest.metadata ? modulePath(manifest.metadata) : undefined,
         client: manifest.client ? modulePath(manifest.client) : undefined,
+        earlyDocument: (manifest.earlyDocument ?? []).map(modulePath),
+        initializers: (manifest.initializers ?? []).map(modulePath),
+        documentPolicies: (manifest.documentPolicies ?? []).map(policy => {
+          if (!/^\/[^?#]*$/.test(policy.path) || policy.referrerPolicy !== "no-referrer" ||
+              policy.cacheControl !== "private, no-store") {
+            throw new Error(`${where}/${MANIFEST}: invalid document privacy policy`);
+          }
+          return policy;
+        }),
         contributions: manifest.contributions ? modulePath(manifest.contributions) : undefined,
         coreMigrations: (manifest.coreMigrations ?? []).map(modulePath),
         maintenanceGuards: Object.fromEntries(Object.entries(manifest.maintenanceGuards ?? {}).map(([path, guard]) => [modulePath(path), guard])),
@@ -377,6 +397,9 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
   ]);
   const modulesFile = "server/generated/component-server-modules.ts";
   emit(modulesFile, components.flatMap(c => c.server.map(path => `import ${spec(modulesFile, path)};`)).concat("export {};"));
+  emit("server/generated/component-document-policies.ts", [
+    `export const componentDocumentPolicies: readonly { path: string; referrerPolicy: string; cacheControl: string }[] = ${JSON.stringify(components.flatMap(c => c.documentPolicies))};`,
+  ]);
   const serverFile = "server/generated/component-startups.ts";
   const startups = components.filter(c => c.startup);
   emit(serverFile, [
@@ -404,6 +427,12 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
     'import type { ComponentBrowserContributions } from "../lib/component-contributions";',
     ...clients.map((c, i) => `import { contributions as contribution${i} } from ${spec(browserFile, c.client!)};`),
     `export const componentBrowserContributions: ComponentBrowserContributions[] = [${clients.map((_, i) => `contribution${i}`).join(", ")}];`,
+  ]);
+  const initializerFile = "client/src/generated/component-initializers.ts";
+  const initializers = components.flatMap(c => c.initializers);
+  emit(initializerFile, [
+    ...initializers.map((path, i) => `import { initialize as initialize${i} } from ${spec(initializerFile, path)};`),
+    `export function initializeComponents(): void { ${initializers.map((_, i) => `initialize${i}();`).join(" ")} }`,
   ]);
   const migrationFile = "scripts/migrate/generated-components.ts";
   emit(migrationFile, components.flatMap(c => [...c.coreMigrations, ...c.migrations].map(path => `import ${spec(migrationFile, path)};`)).concat("export {};"));

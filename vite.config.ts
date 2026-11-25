@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { generateOptionalComponents } from "./scripts/optional-components.ts";
+import { componentBrowserBootstrap } from "./scripts/component-browser-bootstrap";
 
 generateOptionalComponents();
 
@@ -10,6 +11,7 @@ const clerkProdKey = process.env.VITE_CLERK_PUBLISHABLE_KEY_PROD;
 
 export default defineConfig({
   plugins: [
+    componentBrowserBootstrap(),
     react(),
     runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== "production" &&

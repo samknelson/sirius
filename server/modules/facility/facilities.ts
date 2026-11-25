@@ -8,7 +8,7 @@ import { contactEmailInput } from "@shared/utils/contact-email";
 import { assertContactEmailChange, respondContactEmailError } from "../../services/contact-email-access";
 
 // Note: `siriusId` and `data` are sync-only fields, populated programmatically
-// by backend processes (e.g. T631 sync). They are intentionally NOT part of
+// by backend synchronization processes. They are intentionally NOT part of
 // user-editable create/update payloads.
 const createFacilitySchema = z
   .object({

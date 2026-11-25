@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Choosing a connection for a caller that never chose one.
  *
- * Callers like the T631 scheduled syncs name a vendor and an action and nothing
+ * Callers such as scheduled syncs name a vendor and an action and nothing
  * else, so something has to decide which of that vendor's connections they
  * meant. Picking the first of several by some ordering is the dangerous answer:
- * the T631 worker sync deactivates every worker absent from the response it was
+ * a worker sync may deactivate every worker absent from the response it was
  * handed, so two connections each answering for the other's members would take
  * turns deactivating them, and nothing would look broken. Refusing an ambiguous
  * default is therefore load-bearing, not tidiness, which is why it is pinned.
@@ -75,9 +75,9 @@ function config(id: string, enabled: boolean) {
   return {
     id,
     pluginKind: "wc-vendors",
-    pluginId: "sitespecific-t631",
+    pluginId: "example-worker-service",
     enabled,
-    data: { secretName: "T631_CREDENTIAL" },
+    data: { secretName: "EXAMPLE_CREDENTIAL" },
   };
 }
 
@@ -99,8 +99,8 @@ beforeEach(() => {
   componentEnabled.mockReset();
   componentEnabled.mockResolvedValue(true);
   getPlugin.mockReturnValue({
-    id: "sitespecific-t631",
-    name: "Teamsters 631",
+    id: "example-worker-service",
+    name: "Example worker service",
     credential: { secretName: "required" },
     operations: {},
   });
@@ -134,27 +134,27 @@ describe("the default connection for a vendor", () => {
   it("is the one enabled connection", async () => {
     getEnvironmentVariable.mockReturnValue("configured-credential");
     listing([config("a", true), config("b", false)]);
-    const resolved = await describeDefault("sitespecific-t631");
+    const resolved = await describeDefault("example-worker-service");
     expect(resolved.configId).toBe("a");
   });
 
   it("does not exist when none is enabled, and says so", async () => {
     listing([config("a", false)]);
-    await expect(describeDefault("sitespecific-t631")).rejects.toBeInstanceOf(
+    await expect(describeDefault("example-worker-service")).rejects.toBeInstanceOf(
       WcVendorNoDefaultError,
     );
   });
 
   it("does not exist when there are no connections at all", async () => {
     listing([]);
-    await expect(describeDefault("sitespecific-t631")).rejects.toBeInstanceOf(
+    await expect(describeDefault("example-worker-service")).rejects.toBeInstanceOf(
       WcVendorNoDefaultError,
     );
   });
 
   it("is refused rather than guessed when several are enabled", async () => {
     listing([config("a", true), config("b", true)]);
-    const error = await describeDefault("sitespecific-t631").catch((e: any) => e);
+    const error = await describeDefault("example-worker-service").catch((e: any) => e);
     expect(error).toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(error.configIds).toEqual(["a", "b"]);
     expect(error.status).toBe(409);
@@ -162,9 +162,9 @@ describe("the default connection for a vendor", () => {
 
   it("distinguishes the two refusals, because they need different fixes", async () => {
     listing([]);
-    const none = await describeDefault("sitespecific-t631").catch((e: any) => e);
+    const none = await describeDefault("example-worker-service").catch((e: any) => e);
     listing([config("a", true), config("b", true)]);
-    const many = await describeDefault("sitespecific-t631").catch((e: any) => e);
+    const many = await describeDefault("example-worker-service").catch((e: any) => e);
 
     expect(none).not.toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(none.status).toBe(503);
@@ -190,14 +190,14 @@ describe("vendor credential declarations", () => {
     );
 
     expect(error.status).toBe(503);
-    expect(error.message).toContain("T631_CREDENTIAL");
+    expect(error.message).toContain("EXAMPLE_CREDENTIAL");
   });
 
   it("resolves an optional credential as empty when it is not set", async () => {
     const cfg = config("optional", true);
     getConfig.mockResolvedValue(cfg);
     getPlugin.mockReturnValue({
-      id: "sitespecific-t631",
+      id: "example-worker-service",
       name: "Optional vendor",
       credential: { secretName: "optional" },
       operations: {},
@@ -210,9 +210,9 @@ describe("vendor credential declarations", () => {
     // and read — an unset optional credential is an empty one, not a refusal.
     expect(described.configId).toBe(cfg.id);
     expect(registerEnvironmentVariable).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "T631_CREDENTIAL", secret: true }),
+      expect.objectContaining({ name: "EXAMPLE_CREDENTIAL", secret: true }),
     );
-    expect(getEnvironmentVariable).toHaveBeenCalledWith("T631_CREDENTIAL");
+    expect(getEnvironmentVariable).toHaveBeenCalledWith("EXAMPLE_CREDENTIAL");
   });
 
   it("does not resolve or register a secret for a credential-free vendor", async () => {

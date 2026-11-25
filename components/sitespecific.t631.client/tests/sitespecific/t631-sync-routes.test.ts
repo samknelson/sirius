@@ -4,15 +4,15 @@ import type { Server } from "node:http";
 import { readFileSync } from "node:fs";
 
 const fixture = vi.hoisted(() => ({ request: vi.fn(), disabled: "" }));
-vi.mock("../../server/modules/components", () => ({
+vi.mock("../../../../server/modules/components", () => ({
   requireComponent: (id: string) => (_req: any, res: any, next: any) =>
     fixture.disabled === id ? res.status(403).end() : next(),
 }));
-vi.mock("../../server/services/webclient", () => ({ wcRequest: fixture.request }));
-vi.mock("../../components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631", () => ({
+vi.mock("../../../../server/services/webclient", () => ({ wcRequest: fixture.request }));
+vi.mock("../../server/plugins/wc-vendors/plugins/sitespecific-t631", () => ({
   T631_ACTIONS: ["sitespecific.t631.worker.list"], T631_PLUGIN_ID: "sitespecific-t631",
 }));
-import { registerT631ClientFetchRoutes } from "../../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch";
+import { registerT631ClientFetchRoutes } from "../../server/modules/sitespecific/t631/client/fetch";
 
 let server: Server, base: string;
 beforeAll(async () => {

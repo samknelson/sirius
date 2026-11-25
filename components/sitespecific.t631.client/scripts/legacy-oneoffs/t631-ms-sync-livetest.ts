@@ -1,5 +1,7 @@
 import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
-import { syncWorkerEins } from "../../../../server/modules/sitespecific/t631/client/sync-workers";
+import { syncWorkerEins } from "../../../../server/services/worker-sync";
+import "../../../../server/generated/component-startups";
+import { loadComponentCache } from "../../../../server/services/component-cache";
 import { storage } from "../../../../server/storage";
 
 const APP_MS = "60e8bf6f-3dc3-4dc8-bce6-06f20bcb440a"; // Apprentice (APP)
@@ -13,6 +15,7 @@ function summarize(label: string, r: Awaited<ReturnType<typeof syncWorkerEins>>)
 }
 
 async function main() {
+  await loadComponentCache();
   const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
   if (!fetchResult.success) throw new Error(`fetch failed: ${fetchResult.error}`);
   const data = fetchResult.data as { data: { workers: Record<string, any> | any[] } };

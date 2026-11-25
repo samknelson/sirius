@@ -246,23 +246,16 @@ async function main() {
   console.log("\n--- every shipped default validates against its own roots ---");
   // A default template that fails validation rejects the save of EVERY
   // config for that notifier, so each edited default is checked against
-  // the roots its own notifier declares — including the per-config
-  // variants, whose link target changes with the recipient kind.
+  // the roots its own notifier declares. Components check their own
+  // configuration-dependent variants alongside their notifier tests.
   const { eventNotifierRegistry } = await import(
     "../../server/plugins/event-notifier/registry"
   );
-  const variantsByPlugin: Record<string, unknown[]> = {
-    sitespecific_t631_interview: [
-      { recipientKind: "worker" },
-      { recipientKind: "employer" },
-      { recipientKind: "staff" },
-    ],
-  };
   for (const plugin of eventNotifierRegistry.list()) {
     const tokens = plugin.tokenTemplates;
     if (!tokens) continue;
     const rootNames = tokens.roots.map((r) => r.name);
-    for (const configData of variantsByPlugin[plugin.id] ?? [undefined]) {
+    for (const configData of [undefined]) {
       const templates = tokens.defaultTemplates(configData);
       for (const [channel, fields] of Object.entries(templates)) {
         for (const [field, template] of Object.entries(

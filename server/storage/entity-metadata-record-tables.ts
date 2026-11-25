@@ -2,7 +2,6 @@ import { getTableName } from "drizzle-orm";
 import { componentMetadataContexts } from "../generated/component-metadata";
 import { PgTable, type TableConfig } from "drizzle-orm/pg-core";
 import * as coreSchema from "@shared/schema";
-import * as t631InterviewSchema from "../../components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema";
 import {
   getLoggedTableNames,
   getModulesNamingTablesAtRuntime,
@@ -92,7 +91,6 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   sitespecific_btu_csg: context(coreSchema.sitespecificBtuCsg, "BTU Class Size Grievances", "/sitespecific/btu/csg/{id}"),
   sitespecific_btu_employer_map: context(coreSchema.sitespecificBtuEmployerMap, "BTU Employer Map", null),
   sitespecific_btu_political_officials: context(coreSchema.sitespecificBtuPoliticalOfficials, "BTU Political Officials", null),
-  sitespecific_t631_job_interviews: context(t631InterviewSchema.sitespecificT631JobInterviews, "T631 Job Interviews", null),
   trust_benefit_eligibility_exemptions: context(coreSchema.trustBenefitEligibilityExemptions, "Benefit Eligibility Exemptions", null),
   trust_benefits: context(coreSchema.trustBenefits, "Trust Benefits", "/trust-benefits/{id}"),
   trust_provider_contacts: context(coreSchema.trustProviderContacts, "Trust Provider Contacts", "/trust-provider-contacts/{id}"),

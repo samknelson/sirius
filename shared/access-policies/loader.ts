@@ -72,6 +72,5 @@ import './bulk/edit';
 import './facility/view';
 import './facility/edit';
 
-import '../../components/sitespecific.t631.interviews/shared/access-policies/sitespecific/t631/job-interviews';
 
 export { getAllPolicies, getPolicy, hasPolicy } from './index';

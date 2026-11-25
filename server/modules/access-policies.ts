@@ -16,6 +16,8 @@ import { storage } from '../storage';
 import { isEntityContextAvailable } from './entity-contexts';
 import { logger } from '../logger';
 import { edlsSheetStatusEnum } from '@shared/schema';
+import { alterHooks } from '@shared/alter';
+import { tabVisibilityHook } from '@shared/tab-visibility';
 
 /**
  * Check if a tab's component requirement is met
@@ -348,9 +350,20 @@ export function registerAccessPolicyRoutes(app: Express) {
           }
         }
 
+        let visible = granted;
+        if (granted) {
+          try {
+            visible = await alterHooks.run(tabVisibilityHook, true, {
+              entityType, entityId: resolvedEntityId, tabId: tab.id,
+            });
+          } catch {
+            visible = false;
+          }
+        }
         results.push({
           tabId: tab.id,
           granted,
+          visible,
           reason,
         });
       }

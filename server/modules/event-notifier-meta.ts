@@ -65,7 +65,7 @@ export function registerEventNotifierMetaRoutes(
    *
    * Both answers below vary with the config being edited — the defaults
    * because a notifier's fallback text can depend on its other settings
-   * (the T631 link target varies with recipientKind), the seeds because
+   * (a notifier's link target can vary with recipientKind), the seeds because
    * which recent events count as this notifier's depends on the same
    * settings — so the editor passes it as ?config=<json>. Malformed
    * JSON is read as "no config stated" rather than refused: the editor

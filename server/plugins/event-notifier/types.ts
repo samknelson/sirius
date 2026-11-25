@@ -1,6 +1,6 @@
 import type { Comm } from "@shared/schema";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
-import type { EventType } from "../../services/event-bus";
+import type { EventName } from "../../services/event-bus";
 import type { BasePluginMetadata } from "../_core";
 import type { TokenEntity } from "../tokens/types";
 
@@ -84,7 +84,7 @@ export interface NotifierMessageContent {
 export interface EventNotifierEventContext {
   /** Studio event replay is read-only, including recipient credential resolution. */
   preview?: boolean;
-  event: EventType;
+  event: EventName;
   payload: unknown;
   /** `plugin_configs.id` of the configuration being dispatched for. */
   configId?: string;
@@ -267,7 +267,7 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   tokenTemplates?: NotifierTokenTemplates;
 
   /** Event-bus events this notifier subscribes to. */
-  subscribedEvents: EventType[];
+  subscribedEvents: EventName[];
   /** The media this notifier is capable of producing a message for. */
   supportedMedia: NotificationMedium[];
   /** Stable occurrence key, including for token-template composition. */

@@ -1,7 +1,4 @@
-import {
-  EventType,
-  type SitespecificT631InterviewSavedPayload,
-} from "../../../../../../server/services/event-bus";
+import { T631_INTERVIEW_SAVED, type SitespecificT631InterviewSavedPayload } from "../../../events";
 import { registerEventNotifier } from "../../../../../../server/plugins/event-notifier/registry";
 import { resolveStaffRecipients } from "../../../../../../server/plugins/event-notifier/dispatcher";
 import {
@@ -143,7 +140,7 @@ export const sitespecificT631InterviewNotifier: EventNotifierPlugin = {
     "Notifies the worker, the job's employer contacts, or selected staff when a job interview transitions into a chosen status.",
   order: 100,
   requiredComponent: "sitespecific.t631.interviews",
-  subscribedEvents: [EventType.SITESPECIFIC_T631_INTERVIEW_SAVED],
+  subscribedEvents: [T631_INTERVIEW_SAVED],
   supportedMedia: ["email", "sms", "inapp"],
   configSchema: {
     type: "object",

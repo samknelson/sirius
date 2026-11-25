@@ -665,18 +665,6 @@ describe("the wc-vendor plugin contract", () => {
       cacheMode: "uncached",
     });
 
-    const t631 = getWcVendorOperationManifest(plugin("sitespecific-t631"));
-    expect(t631).toContainEqual({
-      id: "sitespecific.t631.service.ping",
-      description: "ping the T631 service",
-      needsWritableDatabase: false,
-      externalSideEffect: true,
-      cacheMode: "uncached",
-      manualRun: {
-        argsSchema: { type: "object", properties: {}, additionalProperties: false },
-        effect: "read",
-      },
-    });
   });
 
   it("publishes only the reviewed simple read operations for manual execution", () => {
@@ -777,13 +765,6 @@ describe("the wc-vendor plugin contract", () => {
       secretName: "required",
       setupGuidance:
         "The named secret must contain one Stripe secret API key, for example sk_test_<your-key> or sk_live_<your-key>.",
-    });
-    expect(plugin("sitespecific-t631").credential).toEqual({
-      secretName: "required",
-      setupGuidance:
-        "Enter the environment-secret name here, not a token or JSON value. The value stored in that secret must be a JSON object containing both T631 tokens:",
-      setupExample:
-        '{"accessToken":"<access-token>","employerToken":"<employer-token>"}',
     });
     expect(plugin("dummy").credential).toEqual({ secretName: "none" });
   });

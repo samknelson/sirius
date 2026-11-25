@@ -128,9 +128,9 @@ const DISPATCH_FORE_SAMPLE_SETS = [
 /**
  * Token plugins for the dispatch entity kinds, used by the
  * token-templated dispatch notifiers:
- *   - `dispatch_job` — a dispatch job row (descriptor; the T631
- *     interview relation already outputs this kind, but the descriptor
- *     keeps the kind's field catalog independent of the T631 component).
+ *   - `dispatch_job` — a dispatch job row (descriptor; relation plugins may
+ *     also output this kind, but the descriptor keeps its field catalog
+ *     independent of the component that declares a relation).
  *   - `dispatch_worker_status` — a worker's dispatch availability row.
  *   - `dispatch_fore` — a job-foreperson membership; the notifier
  *     merges the event's `action` (added/removed) onto the row.

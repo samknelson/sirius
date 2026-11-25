@@ -14,7 +14,7 @@ export const EVENT_ROOT_NAME = "event";
  *
  * The records an event is ABOUT are seeded as roots of their own, named
  * for what they are (`{{dispatch.field(name="status")}}`,
- * `{{sitespecific_t631_interview.worker…}}`) — see
+ * `{{dispatch_worker_status.worker…}}`) — see
  * `server/plugins/tokens/context-roots.ts`. There is deliberately no
  * `event.<record>` spelling: one root, one record.
  *

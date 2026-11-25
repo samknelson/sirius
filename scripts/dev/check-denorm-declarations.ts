@@ -67,7 +67,6 @@ const FACTORY_NAMESPACES: Record<string, string> = {
   createWorkerDispatchEbaStorage: "workerDispatchEba",
   createWorkerDispatchHfeStorage: "workerDispatchHfe",
   createWorkerDispatchStatusStorage: "workerDispatchStatus",
-  createT631InterviewsStorage: "t631Interviews",
 };
 
 /** Reverse map used by the sole-writer sweep (namespace → factory names). */

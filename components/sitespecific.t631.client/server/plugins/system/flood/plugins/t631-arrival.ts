@@ -1,5 +1,5 @@
 import { registerFloodPlugin } from "../../../../../../../server/plugins/system/flood/registry";
-import { T631_ARRIVAL_IP_FLOOD_EVENT, T631_ARRIVAL_WORKER_FLOOD_EVENT } from "../../../../../../../server/flood/constants";
+import { T631_ARRIVAL_IP_FLOOD_EVENT, T631_ARRIVAL_WORKER_FLOOD_EVENT } from "../../../../flood";
 
 registerFloodPlugin({
   id: T631_ARRIVAL_WORKER_FLOOD_EVENT, name: "T631 arrival failures per worker", singleton: true,

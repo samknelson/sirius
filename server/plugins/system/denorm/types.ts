@@ -1,6 +1,6 @@
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { BasePluginMetadata } from "../../_core";
-import type { EventType } from "../../../services/event-bus";
+import type { EventName } from "../../../services/event-bus";
 import type { PluginConfig } from "@shared/schema";
 
 /**
@@ -44,7 +44,7 @@ export interface DenormWriteDeclaration {
  */
 export interface DenormEventHandler<TPayload = unknown> {
   /** The event-bus event this handler subscribes to. */
-  event: EventType;
+  event: EventName;
   /** Pull the affected entity's id out of the event payload. */
   getEntityId: (payload: unknown) => string;
   /**

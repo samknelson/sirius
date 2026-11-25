@@ -1,11 +1,10 @@
 {
   "include": ["client/src/**/*", "shared/**/*", "server/**/*", "tests/**/*", "components/**/*"],
-  // These historical oneoffs were outside the typecheck before their pure
-  // relocation. Preserve that scope rather than fixing old API usages here.
+  // Historical scripts explicitly relocated into legacy-oneoffs retain their
+  // original checking scope; maintained component scripts remain checked.
   "exclude": [
     "node_modules", "build", "dist",
-    "components/sitespecific.t631.client/scripts/oneoffs/**/*",
-    "components/sitespecific.t631.interviews/scripts/oneoffs/**/*"
+    "components/*/scripts/legacy-oneoffs/**/*"
   ],
   "compilerOptions": {
     "incremental": true,

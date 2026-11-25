@@ -167,7 +167,6 @@ import "./components/grievance.contract/001_create_grievance_contract_sections";
 import "./components/grievance.contract/002_create_grievance_contracts";
 import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
 import "../../components/dispatch.fore/scripts/migrate/components/dispatch.fore/001_create_dispatch_job_fore";
-import "../../components/sitespecific.t631.interviews/scripts/migrate/components/sitespecific.t631.interviews/001_create_job_interviews";
 import "../../components/dispatch.bullpen/scripts/migrate/components/dispatch.bullpen/001_create_dispatch_job_event";
 import "../../components/dispatch.department/scripts/migrate/components/dispatch.department/001_create_department_tables";
 import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";

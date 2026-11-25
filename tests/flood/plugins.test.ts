@@ -52,7 +52,7 @@ describe("singleton flood plugins", () => {
     expect(floodPluginRegistry.listIds().sort()).toEqual([
       "bookmark", "edls-schedule-answer", "local-login", "local-password-change",
       "notification-email", "notification-inapp", "notification-postal", "notification-sms",
-      "quicksearch", "t631-arrival-ip", "t631-arrival-worker",
+      "quicksearch",
       "webclient-vendor-operation",
     ]);
     for (const plugin of floodPluginRegistry.list()) {
@@ -69,7 +69,6 @@ describe("singleton flood plugins", () => {
     expect(kind.requiredPolicy).toBe("admin");
     expect(kind.requiredComponent).toBeUndefined();
     expect(floodPluginRegistry.get("edls-schedule-answer")!.requiredComponent).toBe("edls");
-    expect(floodPluginRegistry.get("t631-arrival-worker")!.requiredComponent).toBe("sitespecific.t631.client");
     expect(floodPluginRegistry.get("local-login")!.requiredComponent).toBeUndefined();
     expect((await kind.validateConfig!({} as never, { threshold: 0, windowSeconds: 1 })).valid).toBe(false);
     expect((await kind.validateConfig!({} as never, { threshold: 1.5, windowSeconds: 1 })).valid).toBe(false);
@@ -97,7 +96,7 @@ describe("singleton flood plugins", () => {
   it("bypasses component-off plugins before reading config or validating context", async () => {
     mocks.component.mockResolvedValue(false);
     mocks.search.mockRejectedValue(new Error("Must not read configs"));
-    for (const id of ["edls-schedule-answer", "t631-arrival-ip", "t631-arrival-worker"]) {
+    for (const id of ["edls-schedule-answer"]) {
       expect(await checkFlood(id, {})).toEqual({ allowed: true, skipped: true, reason: "component-disabled" });
       await recordFloodEvent(id, {});
       await enforceFloodLimit(id, {});

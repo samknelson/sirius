@@ -137,9 +137,6 @@ import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/ba
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
-import { registerT631ClientFetchRoutes } from "../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch";
-import { registerT631ArrivalRoutes } from "../components/sitespecific.t631.client/server/modules/sitespecific/t631/arrive";
-import { registerT631InterviewsRoutes } from "../components/sitespecific.t631.interviews/server/modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsAssignmentExplorerRoutes } from "./modules/edls/assignment-explorer";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
@@ -1695,15 +1692,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
 
-  // Register T631 Client routes
-  registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
-  registerT631ArrivalRoutes(app);
-
   for (const contribution of componentStartups) {
     contribution.registerRoutes?.(app, requireAuth, requirePermission, requireAccess);
   }
 
-  registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);

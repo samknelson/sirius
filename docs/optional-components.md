@@ -12,7 +12,7 @@ dependencies and schema-migration counter.
 
 ## The `component.json` manifest
 
-All paths are relative to the component directory and must name existing files
+Module and script paths are relative to the component directory and must name existing files
 inside that directory. Unknown fields are an error.
 
 | Field | Contract |
@@ -28,6 +28,9 @@ inside that directory. Unknown fields are an error.
 | `metadata` | Module exporting `metadataContexts` for record history |
 | `contributions` | Shared tabs, menus, operation aliases and deployment branches (`ComponentContributions`) |
 | `client` | Browser routes, config navigation, headless lifecycle observers and EDLS crew editor/detail UI (`ComponentBrowserContributions`) |
+| `earlyDocument` | Self-contained classic JavaScript files inlined first in the document head, before resources |
+| `initializers` | Browser modules exporting `initialize()`, called before React mounts |
+| `documentPolicies` | Exact public document paths with `referrerPolicy: "no-referrer"` and `cacheControl: "private, no-store"`, enforced in development and static-only production services |
 | `maintenanceGuards` | Vendor handler declarations audited by the maintenance-guards lint rule |
 
 Mirror the host's `shared/`, `server/`, `client/`, and `scripts/` boundaries.
@@ -138,6 +141,31 @@ Contributions are additive declarations, not alter hooks. Server startup and
 registration own identity strategies, inbound authentication providers and
 vendor contract augmentation (including `ComponentExternalServices` names for
 maintenance refusals).
+
+Component events augment `ComponentEventPayloadMap` and declare their persisted
+string with `registerComponentEvent`. Core consumers use the typed `EventName`
+union and `getEventTypes()` rather than adding optional events to the core enum.
+Variable declarations use `registerVariableEntry` during `startup.register`;
+duplicate/reserved names are refused and the normal access/schema boundary
+remains authoritative.
+
+Shared tab contributions may name a `parent` tab and a `before` sibling. The
+`tabs.visibility` alter runs only after authorization, and can hide irrelevant
+tabs. Its result is returned separately from `granted`; direct-route permission
+checks do not become visibility checks.
+
+Routes default to the authenticated layout. A component using `layout: "bare"`
+owns its complete wrapper, including authentication, authorization and any
+conditional chrome. Keep guards/layout imports behind a lazy route boundary
+because navigation imports browser contributions during initialization.
+
+Security-sensitive URL cleanup is not a lifecycle observer: `earlyDocument`
+captures and sanitizes synchronously, and `initializers` consumes credentials
+before React. First-in-head JavaScript alone does **not** prevent the speculative
+preloader from using the original document URL as a referrer. Such documents
+must also declare `documentPolicies`; those serialize into a dependency-free
+server module so static-only services set headers before HTML parsing begins.
+Do not put credentials in generated declarations.
 
 Browser contributions may declare headless `lifecycle` observers, mounted inside
 the host authentication provider even while their route is closed. Keep feature

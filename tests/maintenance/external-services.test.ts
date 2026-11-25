@@ -41,10 +41,8 @@ import { isMaintenanceActive as isMaintenanceActiveFromWriteLock } from "../../s
 import type { PostalAddress } from "../../server/services/comm/providers/postal";
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
-import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
 import { wcRequest } from "../../server/services/webclient";
 import { postalRequest } from "../../server/services/comm/postal-vendor";
-import { T631_PLUGIN_ID } from "../../components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
 } from "../../server/plugins/wc-vendors/plugins/btu-cardcheck";
@@ -71,29 +69,6 @@ const POSTAL_ADDRESS: PostalAddress = {
 };
 
 const MAINTENANCE_PHONE = "+16175559998";
-
-/**
- * The T631 ping as a caller makes it: named vendor, named operation, through
- * the one door.
- *
- * There is no fabricated context any more — a registered plugin carries no
- * runnable handler, so this goes through the framework, which is the point.
- * The refusal is asserted as soon as the service is known, before any
- * connection is read, so this stands up on a database with no T631 connection
- * configured: with the flag on it must refuse, and with the flag off it must
- * get far enough to complain about the missing connection instead.
- */
-async function t631Ping(): Promise<unknown> {
-  const plugin = getWcVendorPlugin(T631_PLUGIN_ID);
-  if (!plugin?.operations["sitespecific.t631.service.ping"]) {
-    throw new Error("T631 ping operation is not registered");
-  }
-  return wcRequest({
-    vendor: { pluginId: T631_PLUGIN_ID },
-    operation: "sitespecific.t631.service.ping",
-    args: undefined as never,
-  });
-}
 
 /**
  * Every vendor operation the guard covers, as a callable. Sends AND reads:
@@ -174,7 +149,6 @@ function operations() {
     // reads on a diagnostics page. A refusal must NOT be converted into one of
     // those — it would report the remote system as unwell when nobody asked it
     // anything — so each is asserted the same way as a vendor call.
-    ["T631", "ping", () => t631Ping()],
     [
       "BTU",
       "login",

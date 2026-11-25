@@ -319,7 +319,7 @@ export interface TokenPluginMetadata extends BasePluginMetadata {
   /**
    * Root segments only: this root exists ONLY in renders whose surface
    * declares it by name — the records a notifier seeds
-   * (`{{dispatch.…}}`, `{{sitespecific_t631_interview.…}}`) and the
+   * (`{{dispatch_job.…}}`, `{{dispatch_worker_status.…}}`) and the
    * `event` envelope. Context roots are left out of the default segment
    * graph and catalog (bulk messaging has no notifier records, so
    * `{{dispatch.…}}` is an unknown token there); a surface that knows

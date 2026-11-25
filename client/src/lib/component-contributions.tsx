@@ -12,7 +12,7 @@ export interface CrewExtensionProps {
 export interface ComponentBrowserContributions {
   /** Headless observers owned by removable components (e.g. identity cleanup). */
   lifecycle?: ComponentType[];
-  routes?: { path: string; page: ComponentType<any> }[];
+  routes?: { path: string; page: ComponentType<any>; layout?: "bare" }[];
   configSections?: NavSection[];
   navigation?: { section: string; item: NavItem }[];
   crewUi?: { component: string; editor: ComponentType<CrewExtensionProps>; detail: ComponentType<CrewExtensionProps> }[];

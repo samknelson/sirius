@@ -4,8 +4,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../index';
  * Edit-level access to a dispatch job's employer contact associations.
  *
  * Staff always; employer users when they are linked to the job's employer
- * (delegates to employer.mine, same pattern as the T631 job-interviews
- * policy). The entity id is the DISPATCH JOB id.
+ * (delegates to employer.mine). The entity id is the DISPATCH JOB id.
  */
 const policy = definePolicy({
   id: 'dispatch.job.employer.contacts',
@@ -14,8 +13,7 @@ const policy = definePolicy({
   entityType: 'dispatch',
   component: 'dispatch',
   // Relationship-dependent grant (job→employer + caller→employer links can
-  // change at any time); never serve a cached decision, same as the t631
-  // job-interviews policy.
+  // change at any time); never serve a cached relationship decision.
   skipCache: true,
 
   describeRequirements: () => [

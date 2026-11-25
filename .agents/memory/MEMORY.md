@@ -166,3 +166,4 @@
 - [Bounded SQL enrichment](bounded-sql-enrichment.md) — selecting a few IDs in WHERE does not bound descriptive joins; fence the selected rows and compare actual plans, including empty schedules.
 - [Removable package safety](component-package-extraction-boundary.md) — absent source must not weaken retained auth or guess worker identities; migration-data correction stays separate.
 - [One component per directory](one-component-per-directory.md) — no "package" concept; folder = component ID; core components relocate stepwise via `coreRegistered` dirs.
+- [Early credential cleanup](early-document-referrer-policy.md) — first-in-head scripts do not stop speculative referrer leaks; sensitive documents need an HTTP policy, including static-only services.

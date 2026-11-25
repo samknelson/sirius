@@ -1,5 +1,5 @@
 import type { Comm } from "@shared/schema";
-import { eventBus, EventType } from "../../services/event-bus";
+import { eventBus, EventType, type EventName } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { isPluginComponentEnabledSync } from "../_core";
 import { eventNotifierRegistry } from "./registry";
@@ -613,7 +613,7 @@ function parseMedia(value: unknown): NotificationMedium[] {
  * memory per emit — by which plugin subscribes to this event, and by the admin's
  * media selection — rather than querying the DB on every emit.
  */
-function makeHandler(event: EventType) {
+function makeHandler(event: EventName) {
   return async (payload: unknown): Promise<void> => {
     if (areNotificationsSuppressed()) {
       logger.debug("Notifications suppressed for scope; skipping dispatch", {
@@ -673,7 +673,7 @@ let initialized = false;
 export function initializeEventNotifierDispatcher(): void {
   if (initialized) return;
 
-  const events = new Set<EventType>();
+  const events = new Set<EventName>();
   for (const id of eventNotifierRegistry.listIds()) {
     const plugin = eventNotifierRegistry.get(id);
     plugin?.subscribedEvents.forEach((e) => events.add(e));

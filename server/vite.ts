@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
+import { componentDocumentPolicy } from "./services/component-document-policy";
 import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
 import { classifySystemServicePath } from "@shared/system-service-roles";
 
@@ -32,6 +33,7 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  app.use(componentDocumentPolicy);
   installUnmatchedApiHandler(app);
 
   // vite and its config are imported lazily so that this module can be loaded
@@ -102,6 +104,7 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
+  app.use(componentDocumentPolicy);
   const distPath = path.resolve(import.meta.dirname, "public");
 
   if (!fs.existsSync(distPath)) {

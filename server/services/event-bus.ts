@@ -76,7 +76,6 @@ export enum EventType {
   DISPATCH_SAVED = "dispatch.saved",
   DISPATCH_JOB_SAVED = "dispatch.job.saved",
   DISPATCH_FORE_SAVED = "dispatch.fore.saved",
-  SITESPECIFIC_T631_INTERVIEW_SAVED = "sitespecific.t631.interview.saved",
   DISPATCH_DEPARTMENT_SAVED = "dispatch.department.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_BAN_DENORM_FLIPPED = "worker.ban.denorm-flipped",
@@ -278,22 +277,6 @@ export interface DispatchDepartmentSavedPayload {
   departmentId: string;
   preference: string;
   isDeleted?: boolean;
-}
-
-export interface SitespecificT631InterviewSavedPayload {
-  interviewId: string;
-  workerId: string;
-  jobId: string;
-  /** The interview's status after the save (or at deletion). */
-  status: string;
-  /**
-   * Status before the save: null on create (no prior row), the previous
-   * value on update/delete. Notifiers compare against `status` to detect
-   * real transitions. `undefined` only on legacy emits that predate the field.
-   */
-  previousStatus: string | null;
-  /** True when the save is a deletion (notifiers generally skip these). */
-  isDeleted: boolean;
 }
 
 export interface DispatchForeSavedPayload {
@@ -632,7 +615,22 @@ export interface LogPayload {
   ipAddress: string | null;
 }
 
-export interface EventPayloadMap {
+/** Optional components augment payloads without widening event names to string. */
+export interface ComponentEventPayloadMap {}
+export type EventName = EventType | keyof ComponentEventPayloadMap;
+const componentEvents = new Set<keyof ComponentEventPayloadMap>();
+export function registerComponentEvent<T extends keyof ComponentEventPayloadMap>(name: T): T {
+  if (!name || componentEvents.has(name) || (Object.values(EventType) as string[]).includes(name)) {
+    throw new Error(`Duplicate or invalid component event: ${name}`);
+  }
+  componentEvents.add(name);
+  return name;
+}
+export function getEventTypes(): EventName[] {
+  return [...Object.values(EventType), ...componentEvents];
+}
+
+export interface EventPayloadMap extends ComponentEventPayloadMap {
   [EventType.ENTITY_NOTE_SAVE_AFTER]: EntityNoteChangedPayload;
   [EventType.ENTITY_NOTE_DELETE_AFTER]: EntityNoteChangedPayload;
   [EventType.AUTH_SIGN_IN_AFTER]: SignInAfterPayload;
@@ -650,7 +648,6 @@ export interface EventPayloadMap {
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
   [EventType.DISPATCH_JOB_SAVED]: DispatchJobSavedPayload;
   [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
-  [EventType.SITESPECIFIC_T631_INTERVIEW_SAVED]: SitespecificT631InterviewSavedPayload;
   [EventType.DISPATCH_DEPARTMENT_SAVED]: DispatchDepartmentSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_BAN_DENORM_FLIPPED]: WorkerBanDenormFlippedPayload;
@@ -685,9 +682,9 @@ export interface EventPayloadMap {
   [EventType.LOG]: LogPayload;
 }
 
-export type EventHandler<T extends EventType> = (payload: EventPayloadMap[T]) => Promise<void>;
+export type EventHandler<T extends EventName> = (payload: EventPayloadMap[T]) => Promise<void>;
 
-export interface OnOptions<T extends EventType> {
+export interface OnOptions<T extends EventName> {
   name: string;
   description: string;
   event: T;
@@ -715,7 +712,7 @@ export interface EmitFailure {
 
 export interface RecentEmitEntry {
   emittedAt: Date;
-  eventType: EventType;
+  eventType: EventName;
   payload: unknown;
   payloadTruncated: boolean;
   handlerCount: number;
@@ -755,16 +752,16 @@ function capturePayload(payload: unknown): { value: unknown; truncated: boolean 
 
 interface EmitDepthStore {
   depth: number;
-  rootEventType: EventType;
+  rootEventType: EventName;
 }
 
 class EventBus {
-  private handlers = new Map<EventType, RegisteredHandler[]>();
+  private handlers = new Map<EventName, RegisteredHandler[]>();
   private handlerIdCounter = 0;
-  private recentEmits = new Map<EventType, RecentEmitEntry[]>();
+  private recentEmits = new Map<EventName, RecentEmitEntry[]>();
   private emitDepthAls = new AsyncLocalStorage<EmitDepthStore>();
 
-  on<T extends EventType>(opts: OnOptions<T>): string {
+  on<T extends EventName>(opts: OnOptions<T>): string {
     const { name, description, event, handler } = opts;
     if (!name || !description) {
       throw new Error(`eventBus.on requires name and description (event=${event})`);
@@ -810,7 +807,7 @@ class EventBus {
    * which must only mark a scheduled event `sent` when every handler ran
    * cleanly) should use {@link emitWithFailures} instead.
    */
-  async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
+  async emit<T extends EventName>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
     await this.dispatch(eventType, payload);
   }
 
@@ -821,14 +818,14 @@ class EventBus {
    * emit storm — a thrown depth error is NOT a handler failure and is surfaced
    * to the caller directly.
    */
-  async emitWithFailures<T extends EventType>(
+  async emitWithFailures<T extends EventName>(
     eventType: T,
     payload: EventPayloadMap[T],
   ): Promise<EmitFailure[]> {
     return this.dispatch(eventType, payload);
   }
 
-  private async dispatch<T extends EventType>(
+  private async dispatch<T extends EventName>(
     eventType: T,
     payload: EventPayloadMap[T],
   ): Promise<EmitFailure[]> {
@@ -909,7 +906,7 @@ class EventBus {
     });
   }
 
-  private recordEmit<T extends EventType>(
+  private recordEmit<T extends EventName>(
     eventType: T,
     payload: EventPayloadMap[T],
     handlers: RegisteredHandler[],
@@ -962,7 +959,7 @@ class EventBus {
     }
   }
 
-  getHandlerCount(eventType?: EventType): number {
+  getHandlerCount(eventType?: EventName): number {
     if (eventType) {
       return this.handlers.get(eventType)?.length || 0;
     }
@@ -976,14 +973,14 @@ class EventBus {
 
   getRegistry(): Record<string, HandlerInfo[]> {
     const out: Record<string, HandlerInfo[]> = {};
-    for (const eventType of Object.values(EventType)) {
+    for (const eventType of getEventTypes()) {
       const handlers = this.handlers.get(eventType) || [];
       out[eventType] = handlers.map(h => ({ id: h.id, name: h.name, description: h.description }));
     }
     return out;
   }
 
-  getRecentEmits(eventType?: EventType, limit?: number): RecentEmitEntry[] {
+  getRecentEmits(eventType?: EventName, limit?: number): RecentEmitEntry[] {
     const collect: RecentEmitEntry[] = [];
     if (eventType) {
       collect.push(...(this.recentEmits.get(eventType) || []));

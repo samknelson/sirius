@@ -4,10 +4,11 @@ import { logger, storageLogger } from "../../../../../server/logger";
 import { getOptionsType } from "../../../../../server/modules/options-registry";
 import { onAfterCommit, runInTransaction, runOutsideTransaction } from "../../../../../server/storage/transaction-context";
 import { getRequestContext, requestContext } from "../../../../../server/middleware/request-context";
-import { t631IdentityValues } from "@shared/t631-identity";
+import { t631IdentityValues } from "../../../shared/t631-identity";
 import { getTodayYmd } from "@shared/utils/date";
 import { isMaintenanceModeError } from "../../../../../server/services/maintenance-flag";
-import { SyncInterrupted, SyncRunRefusal, type SyncUnit } from "../../../../../server/modules/sitespecific/t631/client/sync-contract";
+import { SyncInterrupted, SyncRunRefusal, type SyncUnit, type WorkerEinSyncResult } from "../../../../../server/services/worker-sync-types";
+export type { WorkerEinSyncResult } from "../../../../../server/services/worker-sync-types";
 
 interface T631WorkerRow {
   worker_id?: unknown;
@@ -22,33 +23,8 @@ const MS_TO_SYNC_VARIABLE = "sitespecific.t631.ms_to_sync";
 
 const smsOptinStorage = createCommSmsOptinStorage();
 
-export { normalizePhoneDigits, parseRemoteWorkerName } from "../../../../../server/modules/sitespecific/t631/client/worker-values";
-import { normalizePhoneDigits, parseRemoteWorkerName } from "../../../../../server/modules/sitespecific/t631/client/worker-values";
-
-interface T631WorkerListResponse {
-  success: boolean;
-  data?: { workers?: unknown };
-  [key: string]: unknown;
-}
-
-export interface WorkerEinSyncResult {
-  rowCounts: { received: number; changed: number; unchanged: number };
-  created: number;
-  updated: number;
-  deleted: number;
-  unchanged: number;
-  skipped: number;
-  errors: number;
-  workersCreated: number;
-  phonesCreated: number;
-  phonesDeleted: number;
-  phonesUnchanged: number;
-  optins: number;
-  statusesSet: number;
-  edlsActivated: number;
-  edlsDeactivated: number;
-  details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
-}
+export { normalizePhoneDigits, parseRemoteWorkerName } from "../sitespecific/t631/client/worker-values";
+import { normalizePhoneDigits, parseRemoteWorkerName } from "../sitespecific/t631/client/worker-values";
 
 interface SyncedMsOption {
   id: string;
@@ -368,7 +344,7 @@ async function mirrorWorkerPhone(opts: {
 const unguardedUnit: SyncUnit = (work) => work();
 
 export async function syncWorkerEins(
-  responseData: T631WorkerListResponse,
+  input: unknown,
   dryRun: boolean,
   runUnit: SyncUnit = unguardedUnit,
 ): Promise<WorkerEinSyncResult> {
@@ -379,15 +355,14 @@ export async function syncWorkerEins(
     statusesSet: 0, edlsActivated: 0, edlsDeactivated: 0, details: [],
   };
 
-  if (!responseData.success || !responseData.data) {
+  if (!input || typeof input !== "object" || !("success" in input) || !input.success ||
+      !("data" in input) || !input.data || typeof input.data !== "object") {
     logger.warn("T631 worker list returned unsuccessful or empty data", {
       service: "t631-sync-workers",
-      success: responseData.success,
     });
     return result;
   }
-
-  const rawWorkers = responseData.data.workers;
+  const rawWorkers = "workers" in input.data ? input.data.workers : undefined;
   let rows: T631WorkerRow[];
   if (Array.isArray(rawWorkers)) {
     rows = rawWorkers as T631WorkerRow[];
@@ -504,7 +479,7 @@ export async function syncWorkerEins(
 
       let t631Row;
       try {
-        t631Row = await storage.workerIds.resolveT631Identity(t631TypeId, remoteWorkerId, einTypeId, rawEin, dryRun);
+        t631Row = await storage.freemanWorkerIdentities.resolveT631Identity(t631TypeId, remoteWorkerId, einTypeId, rawEin, dryRun);
         if (t631Row && plannedLinks.has(t631Row.workerId) &&
             !t631IdentityValues(remoteWorkerId).includes(plannedLinks.get(t631Row.workerId)!)) {
           throw new Error("t631_conflict: EIN-matched worker already has a proposed T631 ID");
@@ -615,7 +590,7 @@ export async function syncWorkerEins(
       // A preview-only link has no persisted source ID yet. Its EIN already
       // matched exactly; do not weaken reconciliation's source-identity guard.
       const repaired = dryRun && t631Row.linked ? { deleted: 0, created: 0 } :
-        await storage.workerIds.reconcileWorkerId(
+        await storage.freemanWorkerIdentities.reconcileWorkerId(
           localWorkerId, einTypeId, ein, dryRun, { typeId: t631TypeId, value: t631Row.value },
         );
       result.deleted += repaired.deleted;

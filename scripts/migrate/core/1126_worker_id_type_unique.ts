@@ -7,8 +7,8 @@ type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export async function migrateWorkerIdTypes(tx: Transaction): Promise<void> {
   // Explicitly approved destructive cleanup across ALL types. The user rejected
   // a refusal/manual-cleanup prerequisite and requested arbitrary deduplication.
-  // The survivor is not necessarily current. T631 can correct a retained EIN
-  // only if its source worker_id still matches the retained local t631 ID;
+  // The survivor is not necessarily current. A sync can correct a retained ID
+  // only if its source identity still matches the retained local source ID;
   // deleting that source identity can require a later operator correction.
   // Do not guess cross-worker identity or consult remote services during boot.
   await tx.execute(sql`LOCK TABLE worker_ids IN ACCESS EXCLUSIVE MODE`);

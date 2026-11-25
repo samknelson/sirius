@@ -1,8 +1,17 @@
-import { t631Fetch } from "../../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch";
-import { syncWorkerEins } from "../../server/modules/sitespecific/t631/client/sync-workers";
+import { wcRequest } from "../../../../server/services/webclient";
+import { syncWorkerEins } from "../../../../server/services/worker-sync";
+import "../../../../server/generated/component-startups";
+import { loadComponentCache } from "../../../../server/services/component-cache";
 
 async function main() {
-  const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
+  await loadComponentCache();
+  const answer = await wcRequest({
+    vendor: { pluginId: "sitespecific-t631" },
+    operation: "sitespecific.t631.worker.list",
+    args: undefined,
+  });
+  if (answer.outcome !== "success") throw new Error(answer.error ?? "Worker list unavailable");
+  const fetchResult = answer.value;
   if (!fetchResult.success) throw new Error(`fetch failed: ${fetchResult.error}`);
   const res = await syncWorkerEins(fetchResult.data as any, true);
   console.log(JSON.stringify({ workersCreated: res.workersCreated, created: res.created, updated: res.updated, unchanged: res.unchanged, skipped: res.skipped, errors: res.errors }, null, 2));

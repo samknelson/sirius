@@ -1,7 +1,6 @@
 import { registerDenormPlugin } from "../../../../../../../../server/plugins/system/denorm/registry";
 import type { DenormPlugin } from "../../../../../../../../server/plugins/system/denorm/types";
-import { EventType } from "../../../../../../../../server/services/event-bus";
-import { createT631InterviewsStorage } from "../../../../../storage/sitespecific/t631/interviews";
+import { T631_INTERVIEW_SAVED } from "../../../../../events";
 import {
   type DispatchEligDenormPayload,
   dispatchEligBackfill,
@@ -30,14 +29,14 @@ const t631InterviewDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
   writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
-      event: EventType.SITESPECIFIC_T631_INTERVIEW_SAVED,
+      event: T631_INTERVIEW_SAVED,
       getEntityId: (payload) => (payload as { workerId: string }).workerId,
     },
   ],
 
   async compute(workerId: string): Promise<DispatchEligDenormPayload> {
-    const interviewsStorage = createT631InterviewsStorage();
-    const interviews = await interviewsStorage.getByWorker(workerId);
+    const { storage } = await import("../../../../../../../../server/storage/database");
+    const interviews = await storage.t631Interviews.getByWorker(workerId);
 
     return {
       entries: interviews

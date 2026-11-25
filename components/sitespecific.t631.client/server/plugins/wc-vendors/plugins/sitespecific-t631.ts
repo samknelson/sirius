@@ -180,6 +180,9 @@ type T631OperationContract = {
 declare module "../../../../../../server/plugins/wc-vendors/types" {
   interface WcVendorOperations extends T631OperationContract {}
 }
+declare module "../../../../../../server/services/maintenance-flag" {
+  interface ComponentExternalServices { T631: true }
+}
 
 export type T631Action = T631NoArgsAction;
 export const T631_ACTIONS: [

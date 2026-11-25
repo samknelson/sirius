@@ -227,7 +227,7 @@ async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendo
  * several by some ordering: a caller reaching this function is one that has
  * never chosen a connection, and quietly handing it whichever row sorts first
  * is how a site with two connections ends up syncing both into the same place.
- * The T631 worker sync makes that concrete — it deactivates every worker absent
+ * A worker sync makes that concrete — it can deactivate every worker absent
  * from the response it was given, so two connections taking turns would each
  * deactivate the other's workers. Refusing an ambiguous default is what stops
  * that, which is why more-than-one is an error here and not a preference.

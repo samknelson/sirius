@@ -5,7 +5,7 @@ import { SemaphoreLost } from "../../../../server/storage/system/semaphores";
 import { assertExternalServiceAllowed, isMaintenanceModeError } from "../../../../server/services/maintenance-flag";
 import { isComponentEnabled } from "../../../../server/modules/components";
 import { isT631ConfigurationError, t631Fetch } from "../modules/sitespecific/t631/client/fetch";
-import { SyncInterrupted, SyncRunRefusal, syncWorkerEins, type SyncUnit } from "../../../../server/modules/sitespecific/t631/client/sync-workers";
+import { SyncInterrupted, SyncRunRefusal, syncWorkerEins, type SyncUnit } from "../../../../server/services/worker-sync";
 import { logger } from "../../../../server/logger";
 
 // Business limits, not coordination's five-second deadline or maintenance override.

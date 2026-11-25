@@ -8,7 +8,8 @@ import {
   type InsertSitespecificT631JobInterview,
 } from "../../../../shared/schema/sitespecific/t631/interviews-schema";
 import { defineLoggingConfig } from "../../../../../../server/storage/middleware/logging";
-import { eventBus, EventType } from "../../../../../../server/services/event-bus";
+import { eventBus } from "../../../../../../server/services/event-bus";
+import { T631_INTERVIEW_SAVED } from "../../../events";
 import { storageLogger } from "../../../../../../server/logger";
 
 export type { SitespecificT631JobInterview, InsertSitespecificT631JobInterview };
@@ -47,7 +48,7 @@ function emitInterviewSaved(
 ): void {
   onAfterCommit(() => {
     eventBus
-      .emit(EventType.SITESPECIFIC_T631_INTERVIEW_SAVED, {
+      .emit(T631_INTERVIEW_SAVED, {
         interviewId: interview.id,
         workerId: interview.workerId,
         jobId: interview.jobId,

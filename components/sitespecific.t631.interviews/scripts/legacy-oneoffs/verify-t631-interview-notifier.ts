@@ -16,9 +16,8 @@ import { sql } from "drizzle-orm";
 import { storage } from "../../../../server/storage";
 import {
   eventBus,
-  EventType,
-  type SitespecificT631InterviewSavedPayload,
 } from "../../../../server/services/event-bus";
+import { T631_INTERVIEW_SAVED, type SitespecificT631InterviewSavedPayload } from "../../server/events";
 import { sitespecificT631InterviewNotifier } from "../../server/plugins/event-notifier/plugins/sitespecific-t631-interview";
 import { initializeEventNotifierPluginSystem } from "../../../../server/plugins/event-notifier";
 import { getPluginKind } from "../../../../server/plugins/_core";
@@ -38,7 +37,7 @@ function check(name: string, ok: boolean, extra?: unknown): void {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function ctxOf(payload: Partial<SitespecificT631InterviewSavedPayload>) {
-  return { event: EventType.SITESPECIFIC_T631_INTERVIEW_SAVED, payload };
+  return { event: T631_INTERVIEW_SAVED, payload };
 }
 
 async function main(): Promise<void> {
@@ -142,7 +141,7 @@ async function main(): Promise<void> {
   // Capture emitted events for the fixture worker.
   const events: SitespecificT631InterviewSavedPayload[] = [];
   eventBus.on({
-    event: EventType.SITESPECIFIC_T631_INTERVIEW_SAVED,
+    event: T631_INTERVIEW_SAVED,
     handler: async (p) => {
       if (p.workerId === workerId) events.push(p);
     },

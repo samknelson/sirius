@@ -4,4 +4,16 @@ import "./../../components/contract.chat.foray/server/plugins/wc-vendors/plugins
 import "./../../components/sitespecific.freeman/server/plugins/web-service/edls-sheet-export";
 import "./../../components/sitespecific.freeman.authorization/server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization";
 import "./../../components/sitespecific.freeman.edls_migrate/server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
+import "./../../components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631";
+import "./../../components/sitespecific.t631.client/server/plugins/system/status/plugins/sitespecific-t631-client";
+import "./../../components/sitespecific.t631.client/server/plugins/system/flood/plugins/t631-arrival";
+import "./../../components/sitespecific.t631.client/server/plugins/system/cron/plugins/t631DispatchJobGroupFetch";
+import "./../../components/sitespecific.t631.client/server/plugins/system/cron/plugins/t631FacilityFetch";
+import "./../../components/sitespecific.t631.client/server/plugins/system/cron/plugins/t631TosFetch";
+import "./../../components/sitespecific.t631.client/server/plugins/system/cron/plugins/t631WorkerFetch";
+import "./../../components/sitespecific.t631.interviews/server/events";
+import "./../../components/sitespecific.t631.interviews/server/plugins/tokens/plugins/sitespecific-t631-interview";
+import "./../../components/sitespecific.t631.interviews/server/plugins/dispatch/eligibility/plugins/sitespecific-t631-interview";
+import "./../../components/sitespecific.t631.interviews/server/plugins/event-notifier/plugins/sitespecific-t631-interview";
+import "./../../components/sitespecific.t631.interviews/server/plugins/system/denorm/plugins/dispatch/sitespecific-t631-interview";
 export {};

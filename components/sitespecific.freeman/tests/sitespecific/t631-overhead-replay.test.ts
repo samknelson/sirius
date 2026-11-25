@@ -24,6 +24,7 @@ vi.mock("../../../../server/storage", () => ({
   createCommSmsOptinStorage: () => ({}),
   storage: {
     get workerIds() { return ids; },
+    get freemanWorkerIdentities() { return identities; },
     variables: { getByName: async () => null },
     workers: {
       getWorker: async (id: string) => {
@@ -51,8 +52,10 @@ import { db, pool } from "../../../../server/storage/db";
 import { getClient, runInTransaction } from "../../../../server/storage/transaction-context";
 import { workers, workerIds } from "@shared/schema";
 import { createWorkerIdStorage } from "../../../../server/storage/workers/ids";
+import { createFreemanWorkerIdentityStorage } from "../../server/storage/worker-identities";
 import { syncWorkerEins } from "../../server/modules/t631/sync-workers";
 const ids = createWorkerIdStorage();
+const identities = createFreemanWorkerIdentityStorage(() => ids);
 // Kept small for normal regression runs; measurements in docs used 200.
 const count = 4;
 beforeAll(async () => {

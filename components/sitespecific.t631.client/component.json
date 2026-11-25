@@ -1,3 +1,29 @@
 {
-  "coreRegistered": true
+  "definition": "shared/component.ts",
+  "server": [
+    "server/plugins/wc-vendors/plugins/sitespecific-t631.ts",
+    "server/plugins/system/status/plugins/sitespecific-t631-client.ts",
+    "server/plugins/system/flood/plugins/t631-arrival.ts",
+    "server/plugins/system/cron/plugins/t631DispatchJobGroupFetch.ts",
+    "server/plugins/system/cron/plugins/t631FacilityFetch.ts",
+    "server/plugins/system/cron/plugins/t631TosFetch.ts",
+    "server/plugins/system/cron/plugins/t631WorkerFetch.ts"
+  ],
+  "startup": "server/startup.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx",
+  "earlyDocument": ["client/early-document.js"],
+  "initializers": ["client/src/initialize.ts"],
+  "documentPolicies": [{
+    "path": "/sitespecific/t631/arrive",
+    "referrerPolicy": "no-referrer",
+    "cacheControl": "private, no-store"
+  }],
+  "maintenanceGuards": {
+    "server/plugins/wc-vendors/plugins/sitespecific-t631.ts": {
+      "handlerContainers": ["operations", "t631RemoteOperations"],
+      "handlerProperty": "run",
+      "vendorIdentifiers": ["fetch"]
+    }
+  }
 }

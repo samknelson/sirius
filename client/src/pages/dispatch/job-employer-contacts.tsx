@@ -198,7 +198,7 @@ function EmployerContactsContent({ jobId }: { jobId: string }) {
  * Staff render inside the standard job layout (tabs, header). Employer users
  * can't fetch the staff-only job endpoint the layout uses, so they get a
  * standalone header from the associations payload instead (same pattern as
- * the T631 job interviews page).
+ * other employer-accessible job pages).
  */
 export default function DispatchJobEmployerContactsPage() {
   const { id } = useParams<{ id: string }>();

@@ -108,7 +108,7 @@ export function useTabAccess({
     
     const filterAndResolve = (tabs: HierarchicalTab[]): ResolvedTab[] => {
       return tabs
-        .filter(tab => accessMap.get(tab.id) === true)
+        .filter(tab => accessMap.get(tab.id) === true && data.tabs.find(result => result.tabId === tab.id)?.visible !== false)
         .map(tab => {
           const filteredChildren = tab.children 
             ? filterAndResolve(tab.children)

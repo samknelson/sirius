@@ -50,4 +50,3 @@ import "./plugins/core-migrations";
 import "./plugins/database-disk";
 import "./plugins/filesystems";
 import "./plugins/wc-usage";
-import "../../../../components/sitespecific.t631.client/server/plugins/system/status/plugins/sitespecific-t631-client";

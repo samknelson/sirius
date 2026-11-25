@@ -10,9 +10,7 @@ import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import Header from "@/components/layout/Header";
-import { HelpDisplay } from "@/components/HelpDisplay";
-import Footer from "@/components/layout/Footer";
+import AuthenticatedLayout from "@/components/layouts/AuthenticatedLayout";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiRequest } from "@/lib/queryClient";
@@ -43,7 +41,6 @@ const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
-const T631ArrivalPage = lazy(() => import("../../components/sitespecific.t631.client/client/src/pages/sitespecific/t631-arrive"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
@@ -70,9 +67,6 @@ const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"
 const WorkerDispatchDoNotCall = lazy(() => import("../../components/dispatch.dnc/client/src/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchDepartments = lazy(() => import("../../components/dispatch.department/client/src/pages/workers/dispatch-departments"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("../../components/dispatch.hfe/client/src/pages/workers/dispatch-hold-for-employer"));
-const WorkerDispatchT631Interviews = lazy(() => import("../../components/sitespecific.t631.interviews/client/src/pages/workers/dispatch-t631-interviews"));
-const DispatchJobT631InterviewsPage = lazy(() => import("../../components/sitespecific.t631.interviews/client/src/pages/dispatch/job-t631-interviews"));
-const DispatchJobT631InterviewOffersPage = lazy(() => import("../../components/sitespecific.t631.interviews/client/src/pages/dispatch/job-t631-interview-offers"));
 const DispatchJobEmployerContactsPage = lazy(() => import("@/pages/dispatch/job-employer-contacts"));
 const WorkerDispatchEba = lazy(() => import("../../components/dispatch.eba/client/src/pages/workers/dispatch-eba"));
 const WorkerDispatchAsi = lazy(() => import("../../components/dispatch.asi/client/src/pages/workers/dispatch-asi"));
@@ -288,7 +282,6 @@ const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
-const T631MemberStatusSyncPage = lazy(() => import("../../components/sitespecific.t631.client/client/src/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
 const WsStatsPage = lazy(() => import("@/pages/admin/ws-stats"));
@@ -469,17 +462,6 @@ function PageLoader() {
   );
 }
 
-function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      <Header />
-      <HelpDisplay />
-      <main id="site-content" className="flex-1">{children}</main>
-      <Footer />
-    </div>
-  );
-}
-
 /**
  * The public EDLS worker schedule is the one route both audiences share: an
  * anonymous visitor holding the link gets bare content (no header, menu or
@@ -504,24 +486,6 @@ function EdlsScheduleRoute() {
   }
 
   return <EdlsSchedulePage />;
-}
-
-function T631ArrivalRoute() {
-  const { isAuthenticated, authReady } = useAuth();
-
-  if (!authReady) {
-    return <PageLoader />;
-  }
-
-  if (isAuthenticated) {
-    return (
-      <AuthenticatedLayout>
-        <T631ArrivalPage />
-      </AuthenticatedLayout>
-    );
-  }
-
-  return <T631ArrivalPage />;
 }
 
 function Router() {
@@ -571,7 +535,7 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
-      {componentBrowserContributions.flatMap(p => p.routes ?? []).map(({path, page: Page}) => <Route key={path} path={path}><AuthenticatedLayout><Page /></AuthenticatedLayout></Route>)}
+      {componentBrowserContributions.flatMap(p => p.routes ?? []).map(({path, page: Page, layout}) => <Route key={path} path={path}>{layout === "bare" ? <Page /> : <AuthenticatedLayout><Page /></AuthenticatedLayout>}</Route>)}
         {/* Public routes */}
         <Route path="/bootstrap" component={Bootstrap} />
         <Route path="/login" component={LoginPage} />
@@ -581,7 +545,6 @@ function Router() {
         <Route path="/auth-error" component={AuthErrorPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
         <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
-        <Route path="/sitespecific/t631/arrive" component={T631ArrivalRoute} />
 
       {/* Protected routes */}
       <Route path="/go/:id">
@@ -1202,13 +1165,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/dispatch/sitespecific_t631_interviews">
-        <ProtectedRoute tabId="dispatch-t631-interviews" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerDispatchT631Interviews />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/workers/:id/dispatch/asi">
         <ProtectedRoute tabId="dispatch-asi" entityType="worker">
@@ -2950,15 +2906,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/edls/t631-ms">
-        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <T631MemberStatusSyncPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
 
       <Route path="/config/trust/sitespecific/bao/thresholds">
@@ -3280,35 +3227,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
-      <Route path="/dispatch/job/:id/sitespecific_t631_interviews">
-        {(params) => (
-          <ProtectedRoute
-            tabId="sitespecific-t631-interviews"
-            entityType="dispatch_job"
-            entityId={params.id}
-          >
-            <AuthenticatedLayout>
-              <DispatchJobT631InterviewsPage />
-            </AuthenticatedLayout>
-          </ProtectedRoute>
-        )}
-      </Route>
-
-      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
-      <Route path="/dispatch/job/:id/sitespecific_t631_interviews/offers">
-        {(params) => (
-          <ProtectedRoute
-            tabId="sitespecific-t631-interviews-offers"
-            entityType="dispatch_job"
-            entityId={params.id}
-          >
-            <AuthenticatedLayout>
-              <DispatchJobT631InterviewOffersPage />
-            </AuthenticatedLayout>
-          </ProtectedRoute>
-        )}
-      </Route>
 
       {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
       <Route path="/dispatch/job/:id/employer_contacts">

@@ -147,7 +147,6 @@ import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
 import { createComponentStorage, type ComponentStorage } from "../generated/component-storage";
-import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "../../components/sitespecific.t631.interviews/server/storage/sitespecific/t631/interviews";
 import { type DispatchJobEmployerContactsStorage, createDispatchJobEmployerContactsStorage, dispatchJobEmployerContactsLoggingConfig } from "./dispatch/job-employer-contacts";
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
 import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/btu/regions";
@@ -286,7 +285,6 @@ export interface IStorage extends ComponentStorage {
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
-  t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -413,7 +411,6 @@ export class DatabaseStorage implements IStorage {
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
-  t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -665,10 +662,6 @@ export class DatabaseStorage implements IStorage {
     this.baoBeneficiaries = withStorageLogging(
       createBaoBeneficiariesStorage(this.workers),
       baoBeneficiariesLoggingConfig,
-    );
-    this.t631Interviews = withStorageLogging(
-      createT631InterviewsStorage(),
-      t631InterviewsLoggingConfig,
     );
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.entityNotes = withStorageLogging(createEntityNotesStorage(), entityNotesLoggingConfig);

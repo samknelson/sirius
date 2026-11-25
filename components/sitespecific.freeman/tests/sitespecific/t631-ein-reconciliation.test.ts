@@ -55,6 +55,8 @@ vi.mock("../../../../server/storage", () => ({
         state.ids.find(row => row.typeId === type && row.value === value),
       getByTypeAndValues: async (type: string, values: string[]) =>
         state.ids.filter(row => row.typeId === type && values.includes(row.value)),
+    },
+    freemanWorkerIdentities: {
       resolveT631Identity: (...args: Parameters<typeof target.resolveT631Identity>) => target.resolveT631Identity(...args),
       reconcileWorkerId: state.reconcile,
     },
@@ -68,10 +70,12 @@ vi.mock("../../../../server/modules/options-registry", () => ({ getOptionsType: 
 }) }));
 
 import { createWorkerIdStorage } from "../../../../server/storage/workers/ids";
+import { createFreemanWorkerIdentityStorage } from "../../server/storage/worker-identities";
 import { syncWorkerEins } from "../../server/modules/t631/sync-workers";
 
 const row = (id: string, value: string, typeId = "freeman_ein", workerId = "w") => ({ id, value, typeId, workerId });
-const target = createWorkerIdStorage();
+const ids = createWorkerIdStorage();
+const target = Object.assign(ids, createFreemanWorkerIdentityStorage(() => ids));
 target.getWorkerIdsByWorkerId = async id => state.ids.filter(row => row.workerId === id);
 target.getWorkerIdByTypeAndValue = async (type, value) => state.ids.find(row => row.typeId === type && row.value === value);
 target.getByTypeAndValues = async (type, values) => state.ids.filter(row => row.typeId === type && values.includes(row.value));

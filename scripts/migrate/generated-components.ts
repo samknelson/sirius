@@ -2,4 +2,5 @@
 import "./../../components/sitespecific.freeman/scripts/migrate/core/1024_drop_freeman_crewleads";
 import "./../../components/sitespecific.freeman/scripts/migrate/components/sitespecific.freeman/001_create_crewleads";
 import "./../../components/sitespecific.freeman.edls_migrate/scripts/migrate/components/sitespecific.freeman.edls_migrate/001_create_staging";
+import "./../../components/sitespecific.t631.interviews/scripts/migrate/components/sitespecific.t631.interviews/001_create_job_interviews";
 export {};

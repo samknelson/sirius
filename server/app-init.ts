@@ -1,5 +1,8 @@
 import express, { type Request, Response, NextFunction, type Express } from "express";
 import { componentStartups } from "./generated/component-startups";
+// Core hook declarations must precede closure even when no optional component
+// imports them. The route module invoking this hook loads later in boot.
+import "@shared/tab-visibility";
 import type { Server } from "http";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -153,8 +156,7 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
           /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
         // Oneoff preflight responses carry a single-use confirmation credential.
         // Neither that credential nor plugin-produced run data belongs in logs.
-        if (capturedJsonResponse && !isHttpBodyPrivate(res) && !isWcManualRun && !path.startsWith("/api/oneoff/") &&
-            !path.startsWith("/api/sitespecific/t631/client/sync-workers")) {
+        if (capturedJsonResponse && !isHttpBodyPrivate(res) && !isWcManualRun && !path.startsWith("/api/oneoff/")) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {

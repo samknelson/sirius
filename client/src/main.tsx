@@ -5,12 +5,12 @@ import "./index.css";
 import { ClerkProvider, useClerk } from "@clerk/react";
 import { registerClerkSignOut } from "@/contexts/AuthContext";
 import { installTimeZoneRedirection } from "@/lib/display-timezone";
-import { initializeT631ArrivalRequest } from "../../components/sitespecific.t631.client/client/src/lib/t631-arrival-request";
+import { initializeComponents } from "./generated/component-initializers";
 
 // Before anything renders, so no date is ever formatted by an unredirected
 // path. A no-op for everyone whose display zone is their own browser's.
 installTimeZoneRedirection();
-initializeT631ArrivalRequest();
+initializeComponents();
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 

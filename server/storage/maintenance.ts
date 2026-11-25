@@ -19,7 +19,7 @@
  *   - the system_mode variable write in the by-name PUT route
  *     (server/modules/system/variables.ts), so an admin can exit
  *     maintenance mode.
- *   - T631 run lifecycle metadata uses semaphore coordination's bounded raw
+ *   - Job run lifecycle metadata uses semaphore coordination's bounded raw
  *     transaction; never worker writes.
  *
  * Do NOT wrap other write paths with this helper — failing writes during

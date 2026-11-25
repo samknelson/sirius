@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { workerIds } from "@shared/schema";
 import { getClient, runInTransaction } from "../transaction-context";
 
-// Deliberately limited to one live T631 worker unit. A run-wide cache would
+// Deliberately limited to one live worker mutation unit. A run-wide cache would
 // hide other writers. The table lock blocks ALL ID writers (including SQL).
 const scope = new AsyncLocalStorage<{
   client: ReturnType<typeof getClient>;

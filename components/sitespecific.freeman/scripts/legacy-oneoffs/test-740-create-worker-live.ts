@@ -1,7 +1,11 @@
-import { syncWorkerEins, parseRemoteWorkerName } from "../../server/modules/sitespecific/t631/client/sync-workers";
-import { storage } from "../../server/storage";
+import { parseRemoteWorkerName } from "../../server/modules/t631/sync-workers";
+import { syncWorkerEins } from "../../../../server/services/worker-sync";
+import "../../../../server/generated/component-startups";
+import { loadComponentCache } from "../../../../server/services/component-cache";
+import { storage } from "../../../../server/storage";
 
 async function main() {
+  await loadComponentCache();
   console.log("parse tests:",
     parseRemoteWorkerName("Aery, Lina"),
     parseRemoteWorkerName("Fleming Ii, Victor"),

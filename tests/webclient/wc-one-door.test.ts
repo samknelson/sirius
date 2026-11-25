@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * throwing it at the caller.
  *
  * A test vendor rather than a real one on purpose. Asserting "exactly one
- * count" against Stripe or T631 would be asserting it against whatever those
+ * count" against real vendor plugins would be asserting it against whatever those
  * plugins happen to do today; the property belongs to the framework, and the
  * plugin here exists only to be the far end of it.
  */
@@ -171,8 +171,8 @@ describe("the one entry point, for a vendor operation", () => {
     // and does not come back as a result.
     const error = await wcRequest({
       vendor: { configId: "cfg-a" },
-      operation: "sitespecific.t631.service.ping",
-      args: undefined,
+      operation: "communications.sms.send",
+      args: { to: "+15555550100", body: "test" },
     }).then(
       () => undefined,
       (e: any) => e,

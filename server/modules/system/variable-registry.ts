@@ -117,14 +117,6 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
     schema: dispatchDncNotificationConfigSchema,
   },
 
-  // Teamsters 631: member-status option IDs to sync (admin read/write,
-  // gated by the sitespecific.t631.client component). Stored by option ID
-  // so renaming a status does not lose the selection.
-  "sitespecific.t631.ms_to_sync": {
-    component: "sitespecific.t631.client",
-    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
-  },
-
   // Worker ban notification settings (admin read/write)
   worker_ban_notifications: { schema: workerBanNotificationConfigSchema },
 
@@ -233,6 +225,14 @@ function buildEnvOverrideEntry(rowName: string): VariableRegistryEntry {
       await refreshEnvOverrides();
     },
   };
+}
+
+/** Component declarations use the same validation/access boundary as core. */
+export function registerVariableEntry(name: string, entry: VariableRegistryEntry): void {
+  if (!name || Object.hasOwn(VARIABLE_REGISTRY, name) || name.startsWith(ENV_OVERRIDE_ROW_PREFIX)) {
+    throw new Error(`Duplicate or reserved variable entry: ${name}`);
+  }
+  VARIABLE_REGISTRY[name] = Object.freeze({ ...entry });
 }
 
 function resolveEntry(name: string): VariableRegistryEntry | undefined {

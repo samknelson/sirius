@@ -20,7 +20,7 @@
  * Categories:
  *  - "core":     application-level configuration (DATABASE_URL, AUTH_*, ...)
  *  - "platform": injected by the hosting platform (REPLIT_*, REPL_*, ...)
- *  - any component id (e.g. "sitespecific.t631.client"): variables owned by a
+ *  - any component id: variables owned by a
  *    component, registered by that component's module at load time.
  */
 

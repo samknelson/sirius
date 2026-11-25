@@ -94,7 +94,7 @@ function isOptionsTable(tableName: string): boolean {
  * How well a plugin speaks for the kind it produces, lowest first.
  *
  * A kind is declared across several plugins, and they do not agree:
- * `{{sitespecific_t631_interview.worker}}` calls the worker kind
+ * An optional component's worker relation may call the worker kind
  * "Interview worker" and gates it behind the interviews component,
  * because that is what a worker is FROM AN INTERVIEW. Read as a
  * statement about the kind itself it is simply wrong, and a generated

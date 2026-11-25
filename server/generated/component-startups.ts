@@ -5,4 +5,6 @@ import * as startup0 from "./../../components/contract.chat/server/startup";
 import * as startup1 from "./../../components/sitespecific.freeman/server/startup";
 import * as startup2 from "./../../components/sitespecific.freeman.authorization/server/startup";
 import * as startup3 from "./../../components/sitespecific.freeman.edls_migrate/server/startup";
-export const componentStartups: ComponentStartup[] = [startup0, startup1, startup2, startup3];
+import * as startup4 from "./../../components/sitespecific.t631.client/server/startup";
+import * as startup5 from "./../../components/sitespecific.t631.interviews/server/startup";
+export const componentStartups: ComponentStartup[] = [startup0, startup1, startup2, startup3, startup4, startup5];

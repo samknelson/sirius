@@ -145,6 +145,7 @@ export interface TabAccessCheckRequest {
 export interface TabAccessResult {
   tabId: string;
   granted: boolean;
+  visible?: boolean;
   reason?: string;
 }
 
@@ -239,7 +240,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'dispatch-hfe', label: 'Employer Priority', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
       { id: 'dispatch-eba', label: 'Availability Dates', hrefTemplate: '/workers/{id}/dispatch/eba', policyId: 'worker.mine', component: 'dispatch.eba' },
       { id: 'dispatch-asi', label: 'Auto Sign-In', hrefTemplate: '/workers/{id}/dispatch/asi', policyId: 'worker.dispatch.asi', component: 'dispatch.asi' },
-      { id: 'dispatch-t631-interviews', label: 'Interviews', hrefTemplate: '/workers/{id}/dispatch/sitespecific_t631_interviews', policyId: 'worker.view', component: 'sitespecific.t631.interviews' },
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
@@ -426,20 +426,6 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'foreperson', label: 'Foreperson', hrefTemplate: '/dispatch/job/{id}/foreperson', permission: 'staff', component: 'dispatch.fore' },
-  {
-    id: 'sitespecific-t631-interviews',
-    label: 'Interviews',
-    hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews',
-    policyId: 'sitespecific.t631.job.interviews',
-    component: 'sitespecific.t631.interviews',
-    children: [
-      // List = the pre-existing interviews page; same relevance policy as the parent.
-      { id: 'sitespecific-t631-interviews-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews', policyId: 'sitespecific.t631.job.interviews', component: 'sitespecific.t631.interviews' },
-      // Offers is staff-only (the parent policy also grants linked employers,
-      // so the child must gate on permission, not the policy).
-      { id: 'sitespecific-t631-interviews-offers', label: 'Offers', hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews/offers', permission: 'staff', component: 'sitespecific.t631.interviews' },
-    ]
-  },
   // Staff AND employer users linked to the job's employer (policy, not a
   // staff permission — the policy delegates to employer.mine).
   { id: 'dispatch-job-employer-contacts', label: 'Employer Contacts', hrefTemplate: '/dispatch/job/{id}/employer_contacts', policyId: 'dispatch.job.employer.contacts', component: 'dispatch' },
@@ -1015,8 +1001,17 @@ export function getTabForEntity(
   return findTabById(tabId, tree);
 }
 
-for (const contribution of componentContributions) for (const {entity, before, tab} of contribution.tabs ?? []) {
-  const tree = tabTreeRegistry[entity];
+function findContributedTab(tree: HierarchicalTab[], id: string): HierarchicalTab | undefined {
+  for (const tab of tree) {
+    if (tab.id === id) return tab;
+    const nested = tab.children && findContributedTab(tab.children, id);
+    if (nested) return nested;
+  }
+}
+for (const contribution of componentContributions) for (const {entity, parent, before, tab} of contribution.tabs ?? []) {
+  const parentTab = parent ? findContributedTab(tabTreeRegistry[entity], parent) : undefined;
+  if (parent && !parentTab) throw new Error(`Unknown component tab parent: ${entity}/${parent}`);
+  const tree = parentTab ? (parentTab.children ??= []) : tabTreeRegistry[entity];
   const index = before ? tree.findIndex(t => t.id === before) : -1;
   tree.splice(index < 0 ? tree.length : index, 0, tab);
 }

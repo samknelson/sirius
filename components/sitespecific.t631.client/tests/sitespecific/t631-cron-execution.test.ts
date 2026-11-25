@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import type { CronPlugin } from "../../server/plugins/system/cron/types";
+import type { CronPlugin } from "../../../../server/plugins/system/cron/types";
 
 // Real lease, scheduler, plugin and business transactions. Isolated schema,
 // fake vendor/reconciliation: never changes application workers or semaphores.
@@ -9,9 +9,9 @@ const fixture = vi.hoisted(() => ({
   schema: `test_t631_cron_${process.pid}`, fetch: vi.fn(), sync: vi.fn(),
   enabled: true, plugin: undefined as CronPlugin | undefined,
 }));
-vi.mock("../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
-vi.mock("../../server/storage/db", async importOriginal => {
-  const actual = await importOriginal<typeof import("../../server/storage/db")>();
+vi.mock("../../../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+vi.mock("../../../../server/storage/db", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../../server/storage/db")>();
   const { Pool } = await import("pg");
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const pool = new Pool({ ...actual.pool.options, options: `-c search_path=${fixture.schema}` });
@@ -28,27 +28,27 @@ vi.mock("@shared/schema", async () => {
     completedAt: timestamp("completed_at"), startedAt: timestamp("started_at").defaultNow(),
   }) };
 });
-vi.mock("../../server/modules/components", () => ({
+vi.mock("../../../../server/modules/components", () => ({
   isComponentEnabled: async () => fixture.enabled,
   getEnabledComponentIds: async () => fixture.enabled ? ["edls", "sitespecific.t631.client"] : [],
 }));
-vi.mock("../../components/sitespecific.t631.client/server/modules/sitespecific/t631/client/fetch", () => ({
+vi.mock("../../server/modules/sitespecific/t631/client/fetch", () => ({
   t631Fetch: fixture.fetch, isT631ConfigurationError: (e: any) => e?.name === "ConfigError",
 }));
-vi.mock("../../server/modules/sitespecific/t631/client/sync-workers", () => ({
+vi.mock("../../../../server/services/worker-sync", () => ({
   syncWorkerEins: fixture.sync, SyncInterrupted: class extends Error {}, SyncRunRefusal: class extends Error {},
 }));
-vi.mock("../../server/plugins/system/cron/registry", () => ({
+vi.mock("../../../../server/plugins/system/cron/registry", () => ({
   registerCronPlugin: (plugin: CronPlugin) => { fixture.plugin = plugin; },
 }));
-vi.mock("../../server/plugins/system/cron", () => ({
+vi.mock("../../../../server/plugins/system/cron", () => ({
   cronPluginRegistry: { has: () => true, get: () => fixture.plugin },
   executeCronPlugin: async (_name: string, context: Parameters<CronPlugin["execute"]>[0], assertOwned: () => void) => {
     assertOwned(); const result = await fixture.plugin!.execute(context); assertOwned(); return result;
   },
 }));
-vi.mock("../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: (fn: () => unknown) => fn() }));
-vi.mock("../../server/storage", () => ({ storage: {
+vi.mock("../../../../server/storage/configuration-revisions", () => ({ readConfigurationSnapshot: (fn: () => unknown) => fn() }));
+vi.mock("../../../../server/storage", () => ({ storage: {
   pluginConfigs: { getWithSubsidiary: async (id: string) => ({
     config: { id, pluginKind: "cron", pluginId: "sitespecific-t631-worker-fetch", enabled: true, data: {} },
     subsidiary: { schedule: "0 9 * * *" },
@@ -68,14 +68,14 @@ vi.mock("../../server/storage", () => ({ storage: {
   },
 } }));
 
-import { db, pool } from "../../server/storage/db";
-import { getClient, onAfterCommit, runInTransaction } from "../../server/storage/transaction-context";
-import { requestContext } from "../../server/middleware/request-context";
-import { setMaintenanceActive } from "../../server/services/maintenance-flag";
-import { semaphoreStorage } from "../../server/storage/system/semaphores";
-import { CronScheduler } from "../../server/cron/scheduler";
+import { db, pool } from "../../../../server/storage/db";
+import { getClient, onAfterCommit, runInTransaction } from "../../../../server/storage/transaction-context";
+import { requestContext } from "../../../../server/middleware/request-context";
+import { setMaintenanceActive } from "../../../../server/services/maintenance-flag";
+import { semaphoreStorage } from "../../../../server/storage/system/semaphores";
+import { CronScheduler } from "../../../../server/cron/scheduler";
 import { jobRuns } from "@shared/schema";
-import "../../components/sitespecific.t631.client/server/plugins/system/cron/plugins/t631WorkerFetch";
+import "../../server/plugins/system/cron/plugins/t631WorkerFetch";
 
 const KEY = "cron:execution:sitespecific-t631-worker-fetch";
 const result = {

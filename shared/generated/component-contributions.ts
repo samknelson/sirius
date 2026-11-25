@@ -3,4 +3,6 @@ import type { ComponentContributions } from "../component-contributions";
 import { contributions as contribution0 } from "./../../components/sitespecific.freeman/shared/contributions";
 import { contributions as contribution1 } from "./../../components/sitespecific.freeman.authorization/shared/contributions";
 import { contributions as contribution2 } from "./../../components/sitespecific.freeman.edls_migrate/shared/contributions";
-export const componentContributions: ComponentContributions[] = [contribution0, contribution1, contribution2];
+import { contributions as contribution3 } from "./../../components/sitespecific.t631.client/shared/contributions";
+import { contributions as contribution4 } from "./../../components/sitespecific.t631.interviews/shared/contributions";
+export const componentContributions: ComponentContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4];

@@ -1,3 +1,4 @@
+/** Vendor-neutral execution contracts shared by callers and identity providers. */
 export class SyncInterrupted extends Error {}
 export class SyncRunRefusal extends Error {}
 export type SyncUnit = (work: () => Promise<void>) => Promise<void>;
@@ -8,9 +9,4 @@ export interface WorkerEinSyncResult {
   workersCreated: number; phonesCreated: number; phonesDeleted: number; phonesUnchanged: number;
   optins: number; statusesSet: number; edlsActivated: number; edlsDeactivated: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
-}
-export interface T631WorkerListResponse {
-  success: boolean;
-  data?: { workers?: unknown };
-  [key: string]: unknown;
 }

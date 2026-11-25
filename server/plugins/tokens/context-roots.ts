@@ -12,7 +12,7 @@ import type { TokenEntityType } from "./types";
  * notifier: "the dispatch status row this event is about", "the
  * interview", "the settlement") seeds those records as roots of their
  * own — `{{dispatch.field(name="status")}}`,
- * `{{sitespecific_t631_interview.worker.contact.field(name="display_name")}}`.
+ * `{{dispatch_worker_status.worker.contact.field(name="display_name")}}`.
  *
  * The root is a plain token plugin like any other, registered here so
  * the declaration stays a one-liner at the surface's side. Two things

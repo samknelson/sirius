@@ -1,10 +1,13 @@
 import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
-import { syncWorkerEins } from "../../../../server/modules/sitespecific/t631/client/sync-workers";
+import { syncWorkerEins } from "../../../../server/services/worker-sync";
+import "../../../../server/generated/component-startups";
+import { loadComponentCache } from "../../../../server/services/component-cache";
 import { storage, createCommSmsOptinStorage } from "../../../../server/storage";
 
 const TARGET_REMOTE_ID = "OA989593";
 
 async function main() {
+  await loadComponentCache();
   const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
   if (!fetchResult.success) {
     console.error("T631 fetch failed:", fetchResult.error);

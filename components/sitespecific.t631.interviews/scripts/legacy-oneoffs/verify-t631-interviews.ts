@@ -13,7 +13,8 @@
 import { storage } from "../../../../server/storage";
 import { db } from "../../../../server/db";
 import { sql } from "drizzle-orm";
-import { eventBus, EventType, type SitespecificT631InterviewSavedPayload } from "../../../../server/services/event-bus";
+import { eventBus } from "../../../../server/services/event-bus";
+import { T631_INTERVIEW_SAVED, type SitespecificT631InterviewSavedPayload } from "../../server/events";
 import "../../server/plugins/system/denorm/plugins/dispatch/sitespecific-t631-interview";
 import { getDenormPlugin } from "../../../../server/plugins/system/denorm/registry";
 import { applyComputed } from "../../../../server/plugins/system/denorm/apply";
@@ -56,7 +57,7 @@ async function main() {
 
   const events: SitespecificT631InterviewSavedPayload[] = [];
   eventBus.on({
-    event: EventType.SITESPECIFIC_T631_INTERVIEW_SAVED,
+    event: T631_INTERVIEW_SAVED,
     handler: async (p) => { if (p.workerId === workerId) events.push(p); },
     name: "verify-t631-interviews",
     description: "verify script listener",
