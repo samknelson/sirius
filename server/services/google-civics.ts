@@ -66,7 +66,7 @@ async function geocodeAddress(address: string): Promise<GeocodingResult> {
   const result = data.results?.[0];
   const location = result?.geometry?.location;
 
-  if (!location?.lat || !location?.lng) {
+  if (location?.lat == null || location?.lng == null) {
     throw new CivicApiError("Could not determine coordinates for the specified address.", 400);
   }
 
