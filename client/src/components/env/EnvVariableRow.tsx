@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InfoHelp } from "@/components/ui/info-help";
 import { useToast } from "@/hooks/use-toast";
 import type { EnvVarInfo } from "./use-env-variables";
 
@@ -172,10 +173,22 @@ export function EnvVariableRow({
 
   return (
     <div className="py-3" data-testid={`env-row-${variable.name}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1 basis-48">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-sm font-medium">{variable.name}</span>
+            <div className="flex min-w-0 max-w-full items-center gap-1">
+              <span className="min-w-0 break-all font-mono text-sm font-medium">
+                {variable.name}
+              </span>
+              <InfoHelp
+                text={variable.description}
+                title={variable.name}
+                className="h-8 w-8"
+                data-testid={`env-info-${variable.name}`}
+                tooltipTestId={`env-info-tooltip-${variable.name}`}
+                dialogTestId={`env-info-dialog-${variable.name}`}
+              />
+            </div>
             {variable.required && <Badge variant="outline">required</Badge>}
             {variable.secret && <Badge variant="outline">secret</Badge>}
             {envLocked && (
@@ -217,7 +230,6 @@ export function EnvVariableRow({
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{variable.description}</p>
           {!variable.secret && variable.isSet && variable.value !== null && (
             <div className="flex items-start gap-1 mt-1">
               <p className="font-mono text-xs break-all text-muted-foreground">

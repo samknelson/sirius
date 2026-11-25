@@ -60,6 +60,17 @@ application handler working correctly.
 element again, and separate export checks from an import-dialog closing flow.
 Distinguish automation timing failures from application failures in the report.
 
+Set mobile/touch emulation before seeding editor drafts, and scroll a target
+into view before sending raw touchscreen coordinates.
+
+**Why:** Puppeteer can reload the document when `hasTouch` or `isMobile`
+changes, resetting component state. Unlike an element click, a raw
+`touchscreen.tap(x, y)` does not scroll an offscreen target into view.
+
+**How to apply:** Verify draft retention within one emulation mode; start a
+separate touch flow after changing modes. Wait for dialog opening animations
+to settle before testing Escape or capturing a screenshot.
+
 A blank static capture can omit an uncaught page-level exception even when its browser console contains only hot-reload connection errors.
 
 **Why:** The static screenshot console stream did not include a module-initialization ReferenceError that prevented React from mounting. Direct browser inspection exposed it.
