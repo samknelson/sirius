@@ -6,10 +6,10 @@ import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { InfoHelp } from "@/components/ui/info-help";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -189,12 +189,17 @@ export default function SystemStatusPage() {
           data-testid={`card-system-status-${entry.id}`}
         >
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
                 <PriorityIcon priority={entry.worstPriority} />
                 <CardTitle className="text-base">{entry.name}</CardTitle>
+                <InfoHelp
+                  text={entry.description}
+                  title={entry.name}
+                  data-testid={`button-info-${entry.id}`}
+                />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
                 {entry.canRescan && (
                   <span
                     className="text-xs text-muted-foreground"
@@ -232,7 +237,6 @@ export default function SystemStatusPage() {
                 )}
               </div>
             </div>
-            <CardDescription>{entry.description}</CardDescription>
           </CardHeader>
           <CardContent>
             <StatusMessageList
