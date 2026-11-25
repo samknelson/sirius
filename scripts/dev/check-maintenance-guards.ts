@@ -79,7 +79,7 @@ const OUTBOUND_MODULES = [
   "server/services/files/providers/s3.ts",
   "server/services/files/providers/replit.ts",
   "server/services/files/providers/local.ts",
-  "server/services/file-transfer-client.ts",
+  "components/system.sftp.client/server/services/file-transfer-client.ts",
   "server/auth/providers/replit.ts",
   "server/storage/db.ts",
 ];
@@ -844,7 +844,7 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
     replitCallbackHandler:
       "Inbound Replit callback that initializes the configured authentication strategy.",
   },
-  "server/services/file-transfer-client.ts": {
+  "components/system.sftp.client/server/services/file-transfer-client.ts": {
     withSftpClient:
       "Intentional SFTP transport for the configured file-transfer destination; this is " +
       "file-transfer infrastructure, not a wc-vendor operation.",

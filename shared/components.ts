@@ -940,7 +940,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/system/session-history-schema.ts",
+      schemaPath: "./components/system.session_history/shared/schema/system/session-history-schema.ts",
       tables: ["session_history"]
     }
   },
@@ -953,7 +953,7 @@ export const componentRegistry: ComponentDefinition[] = [
     managesSchema: true,
     schemaManifest: {
       version: 1,
-      schemaPath: "./shared/schema/system/sftp-client-schema.ts",
+      schemaPath: "./components/system.sftp.client/shared/schema/system/sftp-client-schema.ts",
       tables: ["sftp_client_destinations"]
     }
   }

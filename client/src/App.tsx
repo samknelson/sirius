@@ -233,7 +233,7 @@ const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-dele
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
 const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
-const UserSessionHistory = lazy(() => import("@/pages/admin/user-session-history"));
+const UserSessionHistory = lazy(() => import("../../components/system.session_history/client/src/pages/admin/user-session-history"));
 
 const UserDashboardPage = lazy(() => import("@/pages/admin/user-dashboard"));
 const UserEmail = lazy(() => import("@/pages/admin/user-email"));
@@ -294,7 +294,7 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
-const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
+const SftpClientsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
 const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-calendars/detail"));
@@ -302,11 +302,11 @@ const BusinessCalendarClosedDaysPage = lazy(() => import("@/pages/config/busines
 const BusinessCalendarVacationsPage = lazy(() => import("@/pages/config/business-calendars/vacations"));
 const BusinessCalendarOpenDaysPage = lazy(() => import("@/pages/config/business-calendars/open-days"));
 const BusinessCalendarTestPage = lazy(() => import("@/pages/config/business-calendars/test"));
-const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
-const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
-const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
-const SftpClientLogsPage = lazy(() => import("@/pages/config/sftp/client-logs"));
-const SftpClientEditPage = lazy(() => import("@/pages/config/sftp/client-edit"));
+const SftpClientDetailsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-details"));
+const SftpClientConnectionPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-connection"));
+const SftpClientTestPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-test"));
+const SftpClientLogsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-logs"));
+const SftpClientEditPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const WorkersTosConfigPage = lazy(() => import("../../components/worker.tos/client/src/pages/config/config-workers-tos"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));

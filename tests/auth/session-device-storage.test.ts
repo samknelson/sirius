@@ -23,8 +23,8 @@ vi.mock("../../server/services/event-bus", () => ({
 }));
 vi.mock("../../server/logger", () => ({ logger: { error: vi.fn() } }));
 import { createSessionStorage } from "../../server/storage/system/sessions";
-import { createSessionHistoryStorage } from "../../server/storage/system/session-history";
-import { insertSessionHistorySchema, type InsertSessionHistory } from "../../shared/schema/system/session-history-schema";
+import { createSessionHistoryStorage } from "../../components/system.session_history/server/storage/system/session-history";
+import { insertSessionHistorySchema, type InsertSessionHistory } from "../../components/system.session_history/shared/schema/system/session-history-schema";
 import { onSessionAuthorityEnded } from "../../server/auth/socket-authority";
 
 beforeEach(() => {

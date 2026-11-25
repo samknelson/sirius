@@ -13,7 +13,7 @@ import { buildTimeZoneContext, getTimeZonePolicy } from "./system/timezone";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 import { requireComponent } from "./components";
-import { sessionHistoryPagingSchema } from "@shared/session-history";
+import { sessionHistoryPagingSchema } from "../../components/system.session_history/shared/session-history";
 import { isUserEmailConflict } from "@shared/utils/user-email";
 
 // Type for middleware functions that we'll accept from the main routes

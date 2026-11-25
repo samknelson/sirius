@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { drizzle } from "drizzle-orm/pg-proxy";
-import { sessionHistoryPagingSchema } from "@shared/session-history";
+import { sessionHistoryPagingSchema } from "../../components/system.session_history/shared/session-history";
 import { getTabAccessRequirements, userTabTree } from "@shared/tabRegistry";
 
 const context = vi.hoisted(() => ({ client: undefined as unknown }));
 vi.mock("../../server/storage/transaction-context", () => ({ getClient: () => context.client }));
-import { createSessionHistoryStorage } from "../../server/storage/system/session-history";
+import { createSessionHistoryStorage } from "../../components/system.session_history/server/storage/system/session-history";
 
 describe("safe user session history pages", () => {
   beforeEach(() => { context.client = undefined; });

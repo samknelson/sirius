@@ -23,7 +23,7 @@ vi.mock("../../server/storage/comm", () => ({
 }));
 
 import { EventType } from "../../server/services/event-bus";
-import { newIpSignInNotifier as plugin } from "../../server/plugins/event-notifier/plugins/new-ip-sign-in";
+import { newIpSignInNotifier as plugin } from "../../components/system.session_history/server/plugins/event-notifier/plugins/new-ip-sign-in";
 import { resolveTemplates, composeFromTemplates } from "../../server/plugins/event-notifier/token-templates";
 import { notifierTokenRootNames } from "../../server/plugins/event-notifier/token-roots";
 

@@ -1,0 +1,4 @@
+{
+  "coreRegistered": true,
+  "schema": ["shared/schema/system/session-history-schema.ts"]
+}

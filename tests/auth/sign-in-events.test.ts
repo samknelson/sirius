@@ -6,7 +6,7 @@ const fakes = vi.hoisted(() => ({
   error: vi.fn(),
   context: { deviceId: "f865a51a-3656-4e89-bded-dd9e9da3b4c2" } as { deviceId?: string },
 }));
-vi.mock("../../server/services/session-history", () => ({ recordSuccessfulSignIn: fakes.record }));
+vi.mock("../../components/system.session_history/server/services/session-history", () => ({ recordSuccessfulSignIn: fakes.record }));
 vi.mock("../../server/middleware/request-context", () => ({
   getRequestContext: () => ({ ipAddress: "::ffff:192.0.2.10", userId: "not-the-session-owner", userAgent: "Browser/1 (supplied)", ...fakes.context }),
 }));

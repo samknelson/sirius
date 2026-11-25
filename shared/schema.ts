@@ -1326,14 +1326,14 @@ export {
   type SftpConnectionData,
   type FtpConnectionData,
   PROTOCOL_DEFAULTS,
-} from "./schema/system/sftp-client-schema";
+} from "../components/system.sftp.client/shared/schema/system/sftp-client-schema";
 
 export {
   sessionHistory,
   insertSessionHistorySchema,
   type SessionHistory,
   type InsertSessionHistory,
-} from "./schema/system/session-history-schema";
+} from "../components/system.session_history/shared/schema/system/session-history-schema";
 
 export {
   pluginConfigsTrustProviderEdi,

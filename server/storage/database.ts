@@ -114,7 +114,7 @@ import { type WorkerBadgesDenormStorage, createWorkerBadgesDenormStorage } from 
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
-import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
+import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "../../components/system.sftp.client/server/storage/sftp-client-destinations";
 import { type BusinessCalendarStorage, createBusinessCalendarStorage } from "./business-calendars";
 import { type HelpStorage, createHelpStorage } from "./helps";
 import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk/messages";
@@ -130,7 +130,7 @@ import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, card
 import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig, setCardcheckStorageDeps } from "./cardchecks";
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./system/sessions";
-import { type SessionHistoryStorage, createSessionHistoryStorage } from "./system/session-history";
+import { type SessionHistoryStorage, createSessionHistoryStorage } from "../../components/system.session_history/server/storage/system/session-history";
 import { type ProcessesStorage, createProcessesStorage } from "./system/processes";
 import { type FloodStorage, createFloodStorage } from "./system/flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";

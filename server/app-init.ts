@@ -11,7 +11,7 @@ import { logger } from "./logger";
 import { initAccessControl, registerEntityLoader, clearAccessCache } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { initializeSessionHistoryListener } from "./services/session-history";
+import { initializeSessionHistoryListener } from "../components/system.session_history/server/services/session-history";
 import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { installCronShutdownHooks } from "./cron/shutdown";

@@ -93,4 +93,4 @@ import "./plugins/expiredFloodEvents";
 import "./plugins/oldCronLogs";
 import "./plugins/expiredReports";
 import "./plugins/edlsSheetSnapshots";
-import "./plugins/sessionHistory";
+import "../../../../components/system.session_history/server/plugins/system/data-retention/plugins/sessionHistory";

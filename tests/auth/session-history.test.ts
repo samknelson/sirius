@@ -17,7 +17,7 @@ vi.mock("../../server/services/event-bus", () => ({
   eventBus: { on: fakes.on, emit: fakes.emit },
 }));
 
-import { createSessionHistoryHandler, initializeSessionHistoryListener, recordSuccessfulSignIn } from "../../server/services/session-history";
+import { createSessionHistoryHandler, initializeSessionHistoryListener, recordSuccessfulSignIn } from "../../components/system.session_history/server/services/session-history";
 import { normalizeSessionIp } from "../../server/auth/session-ip";
 import { captureRequestIpContext, getRequestContext, requestContext } from "../../server/middleware/request-context";
 

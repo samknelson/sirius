@@ -283,7 +283,7 @@ const deliverStep: WizardStepHandler = {
     );
     if (!destination) throw new Error("SFTP destination not found");
     const { connectionDataSchema } = await import(
-      "@shared/schema/system/sftp-client-schema"
+      "../../../../components/system.sftp.client/shared/schema/system/sftp-client-schema"
     );
     const parsed = connectionDataSchema.safeParse(destination.data ?? {});
     if (!parsed.success) {
@@ -291,7 +291,7 @@ const deliverStep: WizardStepHandler = {
     }
     const conn = parsed.data;
     const filename = plugin.buildFilename(ediCtx);
-    const { testUpload } = await import("../../../services/file-transfer-client");
+    const { testUpload } = await import("../../../../components/system.sftp.client/server/services/file-transfer-client");
     const result = await testUpload(
       conn,
       conn.homeDir || "/",

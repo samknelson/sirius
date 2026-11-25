@@ -37,7 +37,7 @@ export const observeSuccessfulSignIns: RequestHandler = (req, _res, next) => {
         // never wait for notification delivery and never fail a valid login.
         void (async () => {
           try {
-            const { recordSuccessfulSignIn } = await import("../services/session-history");
+            const { recordSuccessfulSignIn } = await import("../../components/system.session_history/server/services/session-history");
             await recordSuccessfulSignIn({
               sid: req.sessionID, userId: userId!, ip, userAgent, deviceId,
               occurrenceId: randomUUID(), occurredAt: new Date().toISOString(),

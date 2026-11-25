@@ -80,7 +80,7 @@ import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
-import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
+import { registerSftpClientDestinationRoutes } from "../components/system.sftp.client/server/modules/sftp-client-destinations";
 import { registerBusinessCalendarRoutes } from "./modules/business-calendars";
 import { registerHelpRoutes } from "./modules/helps";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";

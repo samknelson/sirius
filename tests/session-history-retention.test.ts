@@ -31,7 +31,7 @@ vi.mock("../server/logger", () => ({ logger: { error: fakes.error } }));
 import {
   sessionHistoryRetentionPlugin as plugin,
   SESSION_HISTORY_CLEANUP_LIMIT,
-} from "../server/plugins/system/data-retention/plugins/sessionHistory";
+} from "../components/system.session_history/server/plugins/system/data-retention/plugins/sessionHistory";
 import { runDataRetention } from "../server/plugins/system/data-retention/sweep";
 import { validateAgainstSchema } from "../server/lib/json-schema-validator";
 

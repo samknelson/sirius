@@ -1,7 +1,7 @@
 import { foreignKey, pgTable, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { sftpClientDestinations } from "../system/sftp-client-schema";
+import { sftpClientDestinations } from "../../../components/system.sftp.client/shared/schema/system/sftp-client-schema";
 import { pluginConfigs, trustProviders } from "../../schema";
 
 // Trust provider EDI subsidiary — relational dimensions for configs of the
