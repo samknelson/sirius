@@ -1,8 +1,16 @@
 {
   "id": "freeman",
+  "client": "client/src/contributions.tsx",
+  "contributions": "shared/contributions.ts",
+  "coreMigrations": [
+    "scripts/migrate/core/1024_drop_freeman_crewleads.ts"
+  ],
   "definitions": "shared/components.ts",
-  "shared": ["shared/freemanCrewleadsTransfer.ts"],
+  "shared": [
+    "shared/freemanCrewleadsTransfer.ts"
+  ],
   "server": [
+    "server/plugins/web-service/edls-sheet-export.ts",
     "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts",
     "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts"
   ],
@@ -23,5 +31,26 @@
   ],
   "startup": "server/startup.ts",
   "storage": "server/storage.ts",
-  "metadata": "server/metadata.ts"
+  "metadata": "server/metadata.ts",
+  "maintenanceGuards": {
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts": {
+      "handlerContainers": [
+        "operations",
+        "remoteOperations"
+      ],
+      "handlerProperty": "run",
+      "vendorIdentifiers": [
+        "fetch"
+      ]
+    },
+    "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts": {
+      "handlerContainers": [
+        "operations"
+      ],
+      "handlerProperty": "run",
+      "vendorIdentifiers": [
+        "fetch"
+      ]
+    }
+  }
 }

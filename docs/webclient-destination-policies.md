@@ -11,8 +11,8 @@ These vendors require allowlists by default:
 
 | Stable plugin ID | Default allowed hosts |
 | --- | --- |
-| `sitespecific-freeman-authorization` | `["*.freeman.com"]` |
-| `sitespecific-freeman-edls-migrate` | `["*.freeman.com"]` |
+| `sitespecific-example-authorization` | `["*.example.com"]` |
+| `sitespecific-example-edls-migrate` | `["*.example.com"]` |
 | `sitespecific-t631` | `["*.teamsters631.com"]` |
 
 Set **WEBCLIENT_VENDOR_ALLOWED_HOSTS** to a JSON object to replace selected
@@ -20,12 +20,12 @@ vendors' defaults or constrain any other vendor. Example raw value:
 
 ```json
 {
-  "sitespecific-freeman-authorization": {
-    "allowedHosts": ["*.freeman.com"],
+  "sitespecific-example-authorization": {
+    "allowedHosts": ["*.example.com"],
     "allowPrivateAddresses": true
   },
-  "sitespecific-freeman-edls-migrate": {
-    "allowedHosts": ["legacy.freeman.com"]
+  "sitespecific-example-edls-migrate": {
+    "allowedHosts": ["legacy.example.com"]
   },
   "sitespecific-t631": {
     "allowedHosts": ["*.teamsters631.com"]
@@ -54,9 +54,9 @@ Use the actual service hostnames for your deployment.
 
 Patterns are exact hostnames or a single leading `*.`:
 
-- `freeman.com` permits **only** that hostname.
-- `*.freeman.com` permits `auth.freeman.com` and `a.b.freeman.com`, but not
-  `freeman.com`, `evilfreeman.com`, or `freeman.com.attacker.example`.
+- `example.com` permits **only** that hostname.
+- `*.example.com` permits `auth.example.com` and `a.b.example.com`, but not
+  `example.com`, `evilexample.com`, or `example.com.attacker.example`.
 - List both patterns if the bare domain and subdomains are needed.
 - Hostnames are case-insensitive, normalized to ASCII and tolerate a trailing
   DNS dot. Do not supply URLs, paths, ports, userinfo, arbitrary globs, or regexes.
@@ -115,7 +115,7 @@ matching. It trusts the allowed hostnames to identify internal services; a
 compromised hostname/DNS entry can reach other ordinary private services.
 Requests have a maximum 30-second timeout and a 32 MiB response-body limit.
 
-Guarded vendors: Freeman authorization, Freeman EDLS migration, Teamsters631,
+Guarded vendors: Example authorization, Example EDLS migration, Teamsters631,
 Google geocoding, Census geocoding, OpenStates, Lob, SendGrid, Stripe, and Twilio.
 Stripe uses its SDK's custom fetch transport; Twilio uses a webclient HTTP
 adapter; SendGrid uses the same mail API through the guarded capability.
@@ -131,7 +131,7 @@ the same fail-closed rule when they have an active policy.
 
 Policy refusal is a local error, never a successful vendor answer or cache
 failure hold. A legacy plugin catching a request error cannot turn that refusal
-into a successful cached result. Public Freeman bearer authentication stays
+into a successful cached result. Public Example bearer authentication stays
 closed and returns a generic configuration-unavailable message rather than
 falling back to another authentication method.
 
@@ -161,8 +161,8 @@ failed`, with a recognized DNS error code where available; native error text
 is never relayed. No URL paths, query strings, credentials or response bodies
 are included. This uses the socket's actual lookup, not a preflight lookup.
 
-The affected deployment reported private answers for `dev.api.freeman.com`.
-The wildcard `*.freeman.com` already matches this nested subdomain; the refusal
+The affected deployment reported private answers for `dev.api.example.com`.
+The wildcard `*.example.com` already matches this nested subdomain; the refusal
 was the public-only address check, not hostname matching. If the deployment
 intends that internal destination, use the explicit private opt-in shown above.
 A workspace lookup is not production evidence.
@@ -175,7 +175,7 @@ or a local laptop). It makes no API request and needs no vendor credentials:
 node --input-type=module <<'JS'
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-const host = "dev.api.freeman.com";
+const host = "dev.api.example.com";
 const timeout = setTimeout(() => {
   console.log(JSON.stringify({ host, error: "DNS lookup timed out" }));
   process.exit(1);

@@ -1,3 +1,4 @@
+import { packageBrowserContributions } from "../generated/component-packages";
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, BookOpen, 
   Activity, Wallet, Settings, Shield, Key, KeyRound, FileText,
@@ -206,7 +207,6 @@ export const configSections: NavSection[] = [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       bespokeOptionsNavItem({ path: "/config/edls/tasks", optionsType: "edls-task", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" }),
       { path: "/config/edls/t631-ms", label: "Teamsters 631 MS", icon: List, testId: "nav-config-edls-t631-ms", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
-      { path: "/admin/sitespecific/freeman/edls/migrate", label: "Freeman Migration", icon: Server, testId: "nav-config-edls-freeman-migrate", permission: "admin", requiresComponents: ["edls", "sitespecific.freeman.edls_migrate"] },
     ],
   },
   {
@@ -535,4 +535,13 @@ export function isPathInSection(activeItemPath: string | null, section: NavSecti
   }
 
   return false;
+}
+
+for (const contribution of packageBrowserContributions) for (const {section, item} of contribution.navigation ?? []) {
+  const find = (sections: NavSection[]): NavSection | undefined => {
+    for (const s of sections) { if (s.id === section) return s; const child = find(s.subsections ?? []); if (child) return child; }
+  };
+  const target = find(configSections);
+  if (!target) throw new Error(`Unknown package navigation section: ${section}`);
+  target.items.push(item);
 }

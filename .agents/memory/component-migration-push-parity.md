@@ -31,6 +31,13 @@ Schema upgrades need lifecycle coverage, not just a successful boot with the
 component already enabled. Verify fresh enablement and re-enabling retained old
 tables, both with and without saved schema-state metadata.
 
+Prepare isolated enabled-state fixtures through the component enable lifecycle,
+including prerequisites, rather than writing only the enabled flags.
+
+**Why:** A flag does not create prerequisite tables. Some components have no
+pending authored migration to trigger startup initialization, so direct flag
+changes can produce an invalid fixture rather than test a supported enable flow.
+
 **Why:** Disabled components retain their tables by default and skip startup
 migrations. An upgrade can therefore pass enabled-instance checks yet prevent
 re-enablement when schema verification sees the old table before its migration.

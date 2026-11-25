@@ -17,10 +17,10 @@ vi.mock("@shared/schema", async () => {
     optionsWorkerIdType: s.table("types", { id: text("id"), siriusId: text("sirius_id") }),
   };
 });
-vi.mock("../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() }, storageLogger: { info: vi.fn() } }));
-vi.mock("../../server/services/comm/validators/phone", () => ({ schedulePhoneRevalidation: vi.fn() }));
-vi.mock("../../server/modules/options-registry", () => ({ getOptionsType: () => ({ getAll: async () => [] }) }));
-vi.mock("../../server/storage", () => ({
+vi.mock("../../../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() }, storageLogger: { info: vi.fn() } }));
+vi.mock("../../../../server/services/comm/validators/phone", () => ({ schedulePhoneRevalidation: vi.fn() }));
+vi.mock("../../../../server/modules/options-registry", () => ({ getOptionsType: () => ({ getAll: async () => [] }) }));
+vi.mock("../../../../server/storage", () => ({
   createCommSmsOptinStorage: () => ({}),
   storage: {
     get workerIds() { return ids; },
@@ -39,7 +39,7 @@ vi.mock("../../server/storage", () => ({
     } } },
   },
 }));
-vi.mock("../../server/storage/database", () => ({ storage: { workerIds: {
+vi.mock("../../../../server/storage/database", () => ({ storage: { workerIds: {
   createWorkerId: async (row: any) => {
     return ids.createWorkerId(row);
   },
@@ -47,11 +47,11 @@ vi.mock("../../server/storage/database", () => ({ storage: { workerIds: {
     return ids.deleteWorkerId(id);
   },
 } } }));
-import { db, pool } from "../../server/storage/db";
-import { getClient, runInTransaction } from "../../server/storage/transaction-context";
+import { db, pool } from "../../../../server/storage/db";
+import { getClient, runInTransaction } from "../../../../server/storage/transaction-context";
 import { workers, workerIds } from "@shared/schema";
-import { createWorkerIdStorage } from "../../server/storage/workers/ids";
-import { syncWorkerEins } from "../../server/modules/sitespecific/t631/client/sync-workers";
+import { createWorkerIdStorage } from "../../../../server/storage/workers/ids";
+import { syncWorkerEins } from "../../server/modules/t631/sync-workers";
 const ids = createWorkerIdStorage();
 // Kept small for normal regression runs; measurements in docs used 200.
 const count = 4;

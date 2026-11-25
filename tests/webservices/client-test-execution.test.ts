@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../../server/services/component-cache", () => ({ isComponentEnabledSync: () => false }));
 
 const { executeWsTestHttp, getClient, validateSecret, getByClientKey, recordUsage } = vi.hoisted(() => ({
   executeWsTestHttp: vi.fn(),
@@ -15,10 +16,7 @@ vi.mock("../../server/config/env-registry", () => ({
 vi.mock("../../server/storage/transaction-context", () => ({
   runInTransaction: (fn: () => unknown) => fn(),
 }));
-vi.mock("../../server/middleware/webservice-auth", () => ({
-  requiresFreemanBearerAuthorization: (client: { data?: { freemanBearerAuthorizationConfigId?: string } }) =>
-    Boolean(client.data?.freemanBearerAuthorizationConfigId),
-}));
+
 vi.mock("../../server/storage/system/entity-metadata", () => ({
   entityMetadataStorage: { get: vi.fn(), getMany: vi.fn() },
 }));
@@ -117,7 +115,7 @@ describe("admin web service test execution", () => {
   it("sends a bearer request without a local client-ID credential lookup", async () => {
     getClient.mockResolvedValue({
       id: "client-1", status: "active",
-      data: { freemanBearerAuthorizationConfigId: "auth-config" },
+      data: { authenticationProvider: {provider: "test-bearer", configId: "auth-config"} },
     });
     getByClientKey.mockResolvedValue(null);
     const { data } = await execute({ bearerToken: "entered-token" });

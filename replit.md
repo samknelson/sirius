@@ -11,7 +11,7 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     The existing `stable-25_05` channel is unchanged.
     Reload the environment after changes; `node -v` and
     `npm -v` must report those versions before installing with `npm ci`.
-    Docker pins both Bookworm stages to the same Node patch; Freeman CI
+    Docker pins both Bookworm stages to the same Node patch; Package CI
     pins are maintained separately on their owning branches, using local
     Git worktrees without switching this workspace away from `main`.
     Source changes
@@ -111,8 +111,7 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     `npm run packages:discover` after adding or removing a package when
     invoking TypeScript directly; normal npm dev/check/build and schema
     tooling discover automatically. See `docs/component-packages.md` for
-    contribution contracts and retained-schema safety. Freeman's owned
-    operator script now lives under its package's `scripts/tools/`.
+    contribution contracts and retained-schema safety. Package-owned operator tools live inside their package.
 
 -   **Component alter hooks**: `shared/alter/` holds the typed replacement-value
     framework; `docs/alter-hooks.md` documents declaration, invocation,
@@ -181,8 +180,7 @@ only debugging surface on external deployments — persist the full raw error
 and request payload so problems can be diagnosed without server-log access.
 
 Check the checked-out branch BEFORE editing any file. Application code is
-written on `main` only. If the workspace is on `freeman-dev` (or any other
-deployment branch) and the work touches anything outside `.github/` and
+written on `main` only. If the workspace is on a deployment branch and the work touches anything outside `.github/` and
 `deploy/`, stop and say so instead of committing to the wrong branch — code
 landing on a deployment branch is what causes the recurring merge conflicts.
 
@@ -192,12 +190,11 @@ landing on a deployment branch is what causes the recurring merge conflicts.
     never contain `.github/` or `deploy/` — both are gitignored on main and
     were stripped from its history (the Replit Git token lacks the
     `workflow` scope, and the deploy env files must not reach origin).
--   **`freeman-dev` and `freeman-uat` → `freeman` remote only, never
-    origin.** Each carries `.github/` (CI workflows) and `deploy/` on top of
+-   **Package deployment branches → their own remotes only, never origin.** Each carries `.github/` (CI workflows) and `deploy/` on top of
     main, and nothing else of its own. To update either: merge `main` into
-    it, then push it to the `freeman` remote.
--   **Merges only ever run `main` → `freeman-*`, never the reverse.** Both
-    Freeman branches carry commits that add the CI files and commits that
+    it, then push it to its deployment remote.
+-   **Merges only ever run `main` → deployment branches, never the reverse.** Both
+    package deployment branches carry commits that add the CI files and commits that
     delete them. Merging either branch into `main` pulls that add/delete
     history into `main`'s ancestry, which can move the merge base for the
     *other* branch onto a commit where the CI files exist. When it does,
@@ -206,19 +203,19 @@ landing on a deployment branch is what causes the recurring merge conflicts.
     modify/delete conflict for edited ones. Whether it bites in any given
     case depends on the resulting graph, so treat it as a hazard to stay
     away from rather than a rule to reason around: the CI files have
-    already been destroyed on `freeman-uat` twice. If real code is
-    stranded on a Freeman branch, cherry-pick it onto `main` instead of
+    already been destroyed on a deployment branch twice. If real code is
+    stranded on a package deployment branch, cherry-pick it onto `main` instead of
     merging the branch.
--   **Never point a task agent at a Freeman branch.** Application work is
+-   **Never point a task agent at a package deployment branch.** Application work is
     done on `main` only. A task agent branches from a tree that has no CI
     files, and the "commit prior to merge" snapshot it writes records them
-    as deleted — which is exactly how `freeman-uat` lost them.
--   Edits to `.github/` or `deploy/` are committed on a Freeman branch only,
+    as deleted — which is exactly how a deployment branch lost them.
+-   Edits to `.github/` or `deploy/` are committed on a package deployment branch only,
     using `git add -f` (the paths are gitignored). The on-disk copies in the
     main working tree are untracked-and-ignored — do not `git add` them.
--   **If the CI files vanish from a Freeman branch again**, restore them
+-   **If the CI files vanish from a package deployment branch again**, restore them
     from a known-good source *for that environment* — the branch's own last
-    good commit or a backup ref, and the other Freeman branch only while the
+    good commit or a backup ref, and the other package deployment branch only while the
     two are known to be identical:
 
         git checkout <known-good-ref> -- .github deploy && git commit
@@ -231,12 +228,12 @@ landing on a deployment branch is what causes the recurring merge conflicts.
 -   The `main-branch-files` architecture-lint rule enforces the first bullet:
     on `main` it fails when any `.github/` or `deploy/` file is tracked
     (`git ls-tree`, not `git status`) and tells you to run
-    `git rm -r --cached .github deploy`. On a Freeman branch it fails when
+    `git rm -r --cached .github deploy`. On a package deployment branch it fails when
     those directories have gone missing instead.
 -   The `carrying-branch-drift` architecture-lint rule catches the opposite
-    accident: a finished feature merged onto a Freeman branch because that
+    accident: a finished feature merged onto a package deployment branch because that
     was the branch checked out when the work completed, leaving it
-    unreachable from `main`. It runs only on a Freeman branch and fails when
+    unreachable from `main`. It runs only on a package deployment branch and fails when
     that branch changed anything outside `.github/` and `deploy/` that still
     differs from `main`, naming the paths and the `git checkout <branch> --
     <paths>` repair. A branch merely *behind* `main` passes.
@@ -392,7 +389,7 @@ The rest of `scripts/` is split by who runs it and when:
     `lint.ts` or a case under `tests/` — never a new script here with
     its own workflow or registered validation.
 -   `scripts/tools/` — repeatable operational tools and data audits a
-    human runs deliberately, never automatically: the Freeman
+    human runs deliberately, never automatically: the package deployment
     auto-approve poller, the structure-change git review tool, and the
     signed-document sanitize audit. Run via
     `npx tsx scripts/tools/<name>.ts`.

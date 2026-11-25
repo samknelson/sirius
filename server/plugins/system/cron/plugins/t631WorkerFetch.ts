@@ -6,7 +6,7 @@ registerCronPlugin({
   metadata: {
     id: 'sitespecific-t631-worker-fetch',
     name: 'T631 Worker EIN Fetch',
-    description: 'Fetches the worker list from the T631 server and syncs each worker\'s EIN into the freeman_ein worker ID type',
+    description: 'Fetches the worker list from the T631 server and syncs workers through the installed identity provider',
     requiredComponent: 'sitespecific.t631.client',
     singleton: true,
   },

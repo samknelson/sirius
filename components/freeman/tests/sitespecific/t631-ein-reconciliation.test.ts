@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({
   deactivate: vi.fn(),
   candidates: vi.fn(),
 }));
-vi.mock("../../server/storage/transaction-context", () => ({
+vi.mock("../../../../server/storage/transaction-context", () => ({
   getClient: () => ({
     execute: async () => ({}),
     select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ id: "w" }]), { for: async () => [{ id: "w" }] }) }) }),
@@ -22,8 +22,8 @@ vi.mock("../../server/storage/transaction-context", () => ({
     try { return await fn(); } catch (error) { state.ids = before; throw error; }
   },
 }));
-vi.mock("../../server/storage/middleware/logging", () => ({}));
-vi.mock("../../server/storage/database", () => ({
+vi.mock("../../../../server/storage/middleware/logging", () => ({}));
+vi.mock("../../../../server/storage/database", () => ({
   storage: { workerIds: {
     deleteWorkerId: async (id: string) => {
       state.deleted.push(id);
@@ -36,7 +36,7 @@ vi.mock("../../server/storage/database", () => ({
     },
   } },
 }));
-vi.mock("../../server/storage", () => ({
+vi.mock("../../../../server/storage", () => ({
   createCommSmsOptinStorage: () => ({}),
   storage: {
     variables: { getByName: async () => state.syncStatus ? { value: ["ms"] } : null },
@@ -61,14 +61,14 @@ vi.mock("../../server/storage", () => ({
     workers: { getWorkerContactId: async () => undefined },
   },
 }));
-vi.mock("../../server/services/comm/validators/phone", () => ({ schedulePhoneRevalidation: vi.fn() }));
-vi.mock("../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() }, storageLogger: { info: vi.fn() } }));
-vi.mock("../../server/modules/options-registry", () => ({ getOptionsType: () => ({
+vi.mock("../../../../server/services/comm/validators/phone", () => ({ schedulePhoneRevalidation: vi.fn() }));
+vi.mock("../../../../server/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() }, storageLogger: { info: vi.fn() } }));
+vi.mock("../../../../server/modules/options-registry", () => ({ getOptionsType: () => ({
   getAll: async () => state.syncStatus ? [{ id: "ms", industryId: "industry", siriusId: "APP", name: "Apprentice" }] : [],
 }) }));
 
-import { createWorkerIdStorage } from "../../server/storage/workers/ids";
-import { syncWorkerEins } from "../../server/modules/sitespecific/t631/client/sync-workers";
+import { createWorkerIdStorage } from "../../../../server/storage/workers/ids";
+import { syncWorkerEins } from "../../server/modules/t631/sync-workers";
 
 const row = (id: string, value: string, typeId = "freeman_ein", workerId = "w") => ({ id, value, typeId, workerId });
 const target = createWorkerIdStorage();

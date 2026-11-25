@@ -31,11 +31,11 @@ import {
 import type { EdlsSheetStatus } from "@shared/schema/edls/schema";
 import { and, asc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { getClient } from "../transaction-context";
-import { storage } from "../index";
-import { createUnifiedOptionsStorage } from "../unified-options";
-import { isComponentEnabledSync } from "../../services/component-cache";
-import { logger } from "../../logger";
+import { getClient } from "../../../../../server/storage/transaction-context";
+import { storage } from "../../../../../server/storage";
+import { createUnifiedOptionsStorage } from "../../../../../server/storage/unified-options";
+import { isComponentEnabledSync } from "../../../../../server/services/component-cache";
+import { logger } from "../../../../../server/logger";
 
 const SERVICE_NAME = "edls-passport-export";
 

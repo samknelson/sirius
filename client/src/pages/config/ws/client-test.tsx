@@ -1,3 +1,4 @@
+import { hasProviderAuthentication } from "@shared/webservice-authentication";
 import { useState, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
@@ -94,14 +95,8 @@ export function generateCurlCommand(options: {
   return parts.join(" \\\n  ");
 }
 
-export function shouldShowFreemanBearerInput(
-  clientData: Record<string, unknown> | null | undefined,
-  hasFreemanTabAccess: boolean,
-): boolean {
-  const configId = clientData?.freemanBearerAuthorizationConfigId;
-  return hasFreemanTabAccess
-    && typeof configId === "string"
-    && configId.trim().length > 0;
+export function shouldShowProviderBearerInput(clientData: Record<string, unknown> | null | undefined): boolean {
+  return hasProviderAuthentication(clientData);
 }
 
 interface TestResponse {
@@ -133,10 +128,7 @@ function TestContent() {
   const [requestBody, setRequestBody] = useState("");
   const [testResult, setTestResult] = useState<TestResponse | null>(null);
   const { client, hasTabAccess } = useWsClientLayout();
-  const needsFreemanBearer = shouldShowFreemanBearerInput(
-    client.data,
-    hasTabAccess("freeman-bearer-authorization"),
-  );
+  const needsProviderBearer = shouldShowProviderBearerInput(client.data);
 
   // The operation list is driven by what this client is ACTUALLY granted, not
   // by everything that exists: an operation the test screen offers but the
@@ -173,7 +165,7 @@ function TestContent() {
       return apiRequest("POST", `/api/admin/ws-clients/${params.id}/test`, {
         clientKey,
         clientSecret,
-        ...(needsFreemanBearer ? { bearerToken } : {}),
+        ...(needsProviderBearer ? { bearerToken } : {}),
         method,
         configRef: selectedConfig ? wsServiceAddress(selectedConfig) : configId,
         operation,
@@ -209,7 +201,7 @@ function TestContent() {
   };
 
   const canExecute = clientKey.trim()
-    && (needsFreemanBearer ? bearerToken.trim() : clientSecret.trim())
+    && (needsProviderBearer ? bearerToken.trim() : clientSecret.trim())
     && configId
     && operation;
   const [copied, setCopied] = useState(false);
@@ -236,9 +228,9 @@ function TestContent() {
       requestBody,
       clientKey,
       clientSecret,
-      bearerToken: needsFreemanBearer ? bearerToken.trim() : undefined,
+      bearerToken: needsProviderBearer ? bearerToken.trim() : undefined,
     });
-  }, [origin, requestUrl, method, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
+  }, [origin, requestUrl, method, requestBody, clientKey, clientSecret, needsProviderBearer, bearerToken]);
 
   const handleCopyCurl = async () => {
     try {
@@ -264,8 +256,8 @@ function TestContent() {
               Credentials
             </CardTitle>
             <CardDescription>
-              {needsFreemanBearer
-                ? "Enter the client ID and Freeman bearer token."
+              {needsProviderBearer
+                ? "Enter the client ID and provider bearer token."
                 : "Enter your client credentials. The secret is only shown once when created."}
             </CardDescription>
           </CardHeader>
@@ -280,7 +272,7 @@ function TestContent() {
                 data-testid="input-client-key"
               />
             </div>
-            {!needsFreemanBearer && <div className="space-y-2">
+            {!needsProviderBearer && <div className="space-y-2">
               <Label htmlFor="client-secret">Client Secret</Label>
               <Input
                 id="client-secret"
@@ -291,9 +283,9 @@ function TestContent() {
                 data-testid="input-client-secret"
               />
             </div>}
-            {needsFreemanBearer && (
+            {needsProviderBearer && (
               <div className="space-y-2">
-                <Label htmlFor="bearer-token">Freeman Bearer Token</Label>
+                <Label htmlFor="bearer-token">Provider Bearer Token</Label>
                 <Input
                   id="bearer-token"
                   type="password"

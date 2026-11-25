@@ -22,14 +22,14 @@
  */
 import { execSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { rehearseProcessProvenanceMigrations } from "./migration-contracts/process-provenance";
-import { generateComponentPackages } from "./component-packages";
+import { discoverComponentPackages, generateComponentPackages } from "./component-packages";
 
 generateComponentPackages();
 
 const SCHEMA_PREFIX = /^(?:components\/[^/]+\/)?shared\/schema(\.ts|\/)/;
-const CORE_MIGRATION_PREFIX = /^scripts\/migrate\/core\//;
+const CORE_MIGRATION_PREFIX = /^(?:components\/[^/]+\/)?scripts\/migrate\/core\//;
 const COMPONENT_MIGRATION_PREFIX = /^(?:components\/[^/]+\/)?scripts\/migrate\/components\//;
 const BASELINE_PREFIX = /^scripts\/migrate\/baseline\//;
 const SKIP_MARKER = "[skip-migration-check]";
@@ -113,6 +113,7 @@ function checkCoreVersionsUnique(): void {
   const dirs = ["scripts/migrate/core", "scripts/migrate/baseline"];
   const byVersion = new Map<number, string[]>();
   const unresolved: string[] = [];
+  const sources = discoverComponentPackages().flatMap(p => p.coreMigrations ?? []);
 
   for (const dir of dirs) {
     let entries: string[];
@@ -121,16 +122,17 @@ function checkCoreVersionsUnique(): void {
     } catch {
       continue;
     }
-    for (const file of entries) {
-      const version = migrationVersionOf(readFileSync(join(dir, file), "utf8"));
-      if (version === null) {
-        unresolved.push(`${dir}/${file}`);
-        continue;
-      }
-      const list = byVersion.get(version) ?? [];
-      list.push(file);
-      byVersion.set(version, list);
+    sources.push(...entries.map(file => join(dir, file)));
+  }
+  for (const file of sources) {
+    const version = migrationVersionOf(readFileSync(file, "utf8"));
+    if (version === null) {
+      unresolved.push(file);
+      continue;
     }
+    const list = byVersion.get(version) ?? [];
+    list.push(file);
+    byVersion.set(version, list);
   }
 
   if (unresolved.length > 0) {
@@ -152,7 +154,7 @@ function checkCoreVersionsUnique(): void {
   for (const [version, files] of byVersion) {
     if (files.length < 2) continue;
     const allowed = GRANDFATHERED_DUPLICATE_VERSIONS[version];
-    if (allowed && files.every((f) => allowed.includes(f))) continue;
+    if (allowed && files.every((f) => /^scripts\/migrate\/(?:core|baseline)\//.test(f) && allowed.includes(basename(f)))) continue;
     collisions.push(`  version ${version}: ${files.sort().join(", ")}`);
   }
 

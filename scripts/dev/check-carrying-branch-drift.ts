@@ -1,12 +1,12 @@
 #!/usr/bin/env npx tsx
 /**
- * Author-time enforcement that a Freeman deployment branch carries nothing
+ * Author-time enforcement that a package-owned deployment branch carries nothing
  * but its own deployment config — that no finished feature is sitting on it,
  * unreachable from `main`.
  *
  * The sibling rule (`check-main-branch-files.ts`) watches the files that go
  * missing. This one watches the opposite failure, which is worse: an entire
- * feature merged onto `freeman-dev` because that was the branch checked out
+ * feature merged onto a deployment branch because that was the branch checked out
  * when the work finished. Nothing surfaces it — the task reads complete, the
  * merge commit exists, and the code is simply absent from `main` and from
  * everything built from it. The last one was found weeks later, by accident.

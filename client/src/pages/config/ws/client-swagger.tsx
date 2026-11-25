@@ -62,8 +62,8 @@ function flatten(doc: OpenApiDocument | undefined): FlatOperation[] {
   return rows;
 }
 
-function requiresFreemanBearer(document: OpenApiDocument): boolean {
-  return document.security?.some((requirement) => "freemanBearerAuth" in requirement) ?? false;
+function requiresProviderBearer(document: OpenApiDocument): boolean {
+  return document.security?.some((requirement) => "providerBearerAuth" in requirement) ?? false;
 }
 
 function SwaggerContent() {
@@ -120,7 +120,7 @@ function SwaggerContent() {
   }
 
   const server = document.servers?.[0];
-  const usesFreemanBearer = requiresFreemanBearer(document);
+  const usesProviderBearer = requiresProviderBearer(document);
 
   return (
     <Card data-testid="card-swagger">
@@ -149,11 +149,11 @@ function SwaggerContent() {
           </p>
           <p>
             <span className="font-medium text-foreground">Authentication:</span>{" "}
-            {usesFreemanBearer ? (
+            {usesProviderBearer ? (
               <>
                 X-WS-Client-ID and Authorization: Bearer headers are required. X-WS-Client-Secret
                 is not required or checked.{" "}
-                HTTP Basic cannot be used because the Authorization header carries the Freeman
+                HTTP Basic cannot be used because the Authorization header carries the provider
                 bearer token. The document never contains a credential.
               </>
             ) : (

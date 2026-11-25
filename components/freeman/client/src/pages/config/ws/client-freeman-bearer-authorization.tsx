@@ -36,7 +36,7 @@ function FreemanBearerAuthorizationContent() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const savedId =
-    typeof client.data?.[DATA_KEY] === "string" ? client.data[DATA_KEY] : undefined;
+    typeof (client.data?.authenticationProvider as any)?.configId === "string" ? (client.data.authenticationProvider as any).configId : (typeof client.data?.[DATA_KEY] === "string" ? client.data[DATA_KEY] : undefined);
   const [selectedId, setSelectedId] = useState(savedId ?? NONE);
   const [saved, setSaved] = useState(false);
 
@@ -62,6 +62,8 @@ function FreemanBearerAuthorizationContent() {
       } else {
         data[DATA_KEY] = selectedId;
       }
+      delete data[DATA_KEY];
+      data.authenticationProvider = selectedId === NONE ? null : {provider: "freeman-bearer", configId: selectedId};
       return apiRequest("PATCH", `/api/admin/ws-clients/${id}`, { data });
     },
     onSuccess: () => {

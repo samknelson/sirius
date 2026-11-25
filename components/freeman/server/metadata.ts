@@ -3,6 +3,7 @@ import type { MetadataRecordContext } from "../../../server/storage/entity-metad
 
 export const metadataContexts: Record<string, MetadataRecordContext> = {
   sitespecific_freeman_crewleads: {
+    component: "sitespecific.freeman",
     table: sitespecificFreemanCrewleads,
     label: "Freeman Crew Leads",
     hrefTemplate: null,

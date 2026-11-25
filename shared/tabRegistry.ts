@@ -1,3 +1,4 @@
+import { packageContributions } from "./generated/package-contributions";
 /**
  * Shared Tab Registry
  * 
@@ -251,7 +252,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'edls-assignments', label: 'Assignments', hrefTemplate: '/workers/{id}/edls/assignments', policyId: 'edls.coordinator', component: 'edls' },
     ]
   },
-  { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   {
     id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
@@ -697,13 +697,6 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'settings', label: 'Settings', hrefTemplate: '/admin/ws/clients/{id}', permission: 'admin' },
   { id: 'credentials', label: 'Credentials', hrefTemplate: '/admin/ws/clients/{id}/credentials', permission: 'admin' },
   { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/admin/ws/clients/{id}/ip-rules', permission: 'admin' },
-  {
-    id: 'freeman-bearer-authorization',
-    label: 'Freeman Bearer Authorization',
-    hrefTemplate: '/admin/ws/clients/{id}/freeman-bearer-authorization',
-    permission: 'admin',
-    component: 'sitespecific.freeman.authorization',
-  },
   { id: 'test', label: 'Test', hrefTemplate: '/admin/ws/clients/{id}/test', permission: 'admin' },
   { id: 'swagger', label: 'Swagger', hrefTemplate: '/admin/ws/clients/{id}/swagger', permission: 'admin' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/admin/ws/clients/{id}/logs', permission: 'admin' },
@@ -1020,4 +1013,10 @@ export function getTabForEntity(
   const tree = tabTreeRegistry[entityType];
   if (!tree) return undefined;
   return findTabById(tabId, tree);
+}
+
+for (const contribution of packageContributions) for (const {entity, before, tab} of contribution.tabs ?? []) {
+  const tree = tabTreeRegistry[entity];
+  const index = before ? tree.findIndex(t => t.id === before) : -1;
+  tree.splice(index < 0 ? tree.length : index, 0, tab);
 }

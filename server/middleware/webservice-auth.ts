@@ -3,12 +3,7 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { storage } from '../storage';
 import { logger, logWsRequest } from '../logger';
 import type { WsClient, WsClientCredential } from '@shared/schema';
-import { wcRequest } from '../services/webclient/client';
-import type { WcVendorOperations } from "../plugins/wc-vendors/types";
-type BearerAuthorizationResult = WcVendorOperations["sitespecific.freeman.authorization.bearer"]["result"];
-
-const FREEMAN_AUTHORIZATION_CONFIG_KEY = 'freemanBearerAuthorizationConfigId';
-const FREEMAN_AUTHORIZATION_OPERATION = 'sitespecific.freeman.authorization.bearer' as const;
+import { authenticationSelection, authenticateWithProvider } from '../modules/webservices/authentication-providers';
 
 /**
  * Per-request identity of a web service call. The client/credential half is
@@ -52,7 +47,7 @@ export function getClientIp(req: Request): string {
   return req.socket.remoteAddress || 'unknown';
 }
 
-interface AuthResult {
+export interface AuthResult {
   success: boolean;
   error?: string;
   errorCode?: string;
@@ -96,7 +91,7 @@ async function authenticateIdentifiedRequest(
     return { success: false, error: 'Client not found', errorCode: 'CLIENT_NOT_FOUND', credential };
   }
 
-  if (requiresFreemanBearerAuthorization(client)) {
+  if (Boolean(authenticationSelection(client))) {
     return authenticateSelectedClient(req, client, credential);
   }
   if (!clientSecret) {
@@ -109,116 +104,6 @@ async function authenticateIdentifiedRequest(
     };
   }
   return authenticateWithCredentials(clientId, clientSecret, req);
-}
-
-export function freemanAuthorizationConfigId(client: WsClient): string | undefined {
-  const value = client.data?.[FREEMAN_AUTHORIZATION_CONFIG_KEY];
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-export function requiresFreemanBearerAuthorization(client: WsClient): boolean {
-  // The saved client setting is the authentication contract. Component
-  // availability may decide whether the configured vendor call can run, but
-  // must never downgrade this client to secret or Basic authentication.
-  return Boolean(freemanAuthorizationConfigId(client));
-}
-
-function bearerToken(req: Request): string | undefined {
-  const header = req.headers.authorization;
-  const match = typeof header === 'string' ? /^Bearer\s+(\S+)\s*$/i.exec(header) : null;
-  return match?.[1];
-}
-
-function freemanFailure(
-  client: WsClient,
-  credential: WsClientCredential,
-  error: string,
-  errorCode: string,
-): AuthResult {
-  return { success: false, error, errorCode, client, credential };
-}
-
-async function authenticateFreemanBearer(
-  req: Request,
-  client: WsClient,
-  credential: WsClientCredential,
-  configId: string,
-): Promise<AuthResult | undefined> {
-  const token = bearerToken(req);
-  if (!token) {
-    return freemanFailure(
-      client,
-      credential,
-      'A valid Authorization: Bearer header is required.',
-      'FREEMAN_BEARER_REQUIRED',
-    );
-  }
-
-  let response;
-  try {
-    response = await wcRequest({
-      vendor: { configId },
-      operation: FREEMAN_AUTHORIZATION_OPERATION,
-      args: { bearerCredential: token },
-    });
-  } catch {
-    // Addressing, component, maintenance, and configuration refusals happen
-    // before a vendor request and throw from the framework. Keep their details
-    // out of this public authentication response: they may name private site
-    // configuration, and the actionable fact for this caller is the stage.
-    return freemanFailure(
-      client,
-      credential,
-      'The configured Freeman bearer authorization connection could not be used.',
-      'FREEMAN_AUTH_CONFIGURATION_UNAVAILABLE',
-    );
-  }
-
-  const result = response.value as BearerAuthorizationResult | undefined;
-  if (!result) {
-    return freemanFailure(
-      client,
-      credential,
-      'The Freeman bearer authorization service did not return an answer.',
-      'FREEMAN_AUTH_NO_ANSWER',
-    );
-  }
-  if (result.outcome === 'network_error') {
-    return freemanFailure(
-      client,
-      credential,
-      'The Freeman bearer authorization service could not be reached.',
-      'FREEMAN_AUTH_NETWORK_ERROR',
-    );
-  }
-  if (result.outcome === 'malformed_response') {
-    return freemanFailure(
-      client,
-      credential,
-      'The Freeman bearer authorization service returned invalid JSON.',
-      'FREEMAN_AUTH_INVALID_JSON',
-    );
-  }
-  if (result.status !== 200) {
-    return freemanFailure(
-      client,
-      credential,
-      result.status === undefined
-        ? 'The Freeman bearer authorization service returned no HTTP status.'
-        : `The Freeman bearer authorization service returned HTTP ${result.status}; expected HTTP 200.`,
-      'FREEMAN_AUTH_HTTP_STATUS',
-    );
-  }
-  if (!result.success || result.outcome !== 'success') {
-    return freemanFailure(
-      client,
-      credential,
-      'The Freeman bearer authorization service refused the request.',
-      'FREEMAN_AUTH_REFUSED',
-    );
-  }
-
-  return undefined;
 }
 
 async function authenticateWithCredentials(
@@ -259,22 +144,9 @@ async function authenticateSelectedClient(
     }
   }
 
-  /*
-   * SITE-SPECIFIC EXCEPTION: for a Freeman-configured client, the issued client
-   * id selects the client but is not itself authenticated. The vendor-backed
-   * bearer is the sole credential check; X-WS-Client-Secret is intentionally
-   * ignored. A valid bearer can therefore select any Freeman-enabled client
-   * whose id it knows. That accepted limitation remains until bearer metadata
-   * or IP rules can bind the caller more narrowly.
-   */
-  const freemanConfigId = freemanAuthorizationConfigId(client);
-  if (freemanConfigId && requiresFreemanBearerAuthorization(client)) {
-    const failure = await authenticateFreemanBearer(
-      req,
-      client,
-      credential,
-      freemanConfigId,
-    );
+  const selection = authenticationSelection(client);
+  if (selection) {
+    const failure = await authenticateWithProvider(req, client, credential, selection);
     if (failure) return failure;
   }
 

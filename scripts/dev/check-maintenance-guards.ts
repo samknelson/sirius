@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+import { discoverComponentPackages } from "../component-packages";
 /**
  * Check Outbound Calls Go Through The Web Client Framework
  *
@@ -166,7 +167,7 @@ const VENDOR_MARKERS: { pattern: RegExp; what: string }[] = [
 /**
  * Files that name a vendor without making a vendor call, with the reason.
  */
-const VENDOR_MARKER_EXEMPT: Record<string, string> = {
+export const VENDOR_MARKER_EXEMPT: Record<string, string> = {
   "server/services/comm/callback-handlers/twilio.ts":
     "Imports the Twilio SDK only for twilio.validateRequest(), an offline signature " +
     "check over an INBOUND webhook. It sends nothing and reaches no network.",
@@ -899,7 +900,7 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
  * calls, or at module top level runs with no framework around it at all, and
  * is reported here.
  */
-const HANDLERS_ON_FRAMEWORK: Record<
+export const HANDLERS_ON_FRAMEWORK: Record<
   string,
   {
     /**
@@ -915,6 +916,7 @@ const HANDLERS_ON_FRAMEWORK: Record<
     vendorIdentifiers: string[];
   }
 > = {
+  ...Object.fromEntries(discoverComponentPackages().flatMap(p => Object.entries(p.maintenanceGuards ?? {}))),
   "server/plugins/wc-vendors/plugins/stripe.ts": {
     handlerContainers: ["operations"],
     handlerProperty: "run",
@@ -928,11 +930,7 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
-  "components/freeman/server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts": {
-    handlerContainers: ["operations", "remoteOperations"],
-    handlerProperty: "run",
-    vendorIdentifiers: ["fetch"],
-  },
+
   "server/plugins/wc-vendors/plugins/postal.ts": {
     handlerContainers: ["operations"],
     handlerProperty: "run",
@@ -968,16 +966,12 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
-  "components/freeman/server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts": {
-    handlerContainers: ["operations"],
-    handlerProperty: "run",
-    vendorIdentifiers: ["fetch"],
-  },
   "components/contract-chat/server/plugins/wc-vendors/plugins/contract-chat-foray.ts": {
     handlerContainers: ["operations"],
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },
+
 };
 
 const WC_VENDOR_PLUGIN_PREFIX = "server/plugins/wc-vendors/plugins/";

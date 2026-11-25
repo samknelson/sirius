@@ -1,6 +1,7 @@
 import { eventBus, EventType } from "../../../../../../../server/services/event-bus";
 import { logger } from "../../../../../../../server/logger";
 import { recoverFreemanMigrate } from "./import";
+import { isComponentEnabled } from "../../../../../../../server/modules/components";
 
 let initialized = false;
 
@@ -10,6 +11,9 @@ export async function initializeFreemanMigrateRecovery(): Promise<void> {
   initialized = true;
   const check = async () => {
     try {
+      for (const component of ["edls", "sitespecific.freeman", "sitespecific.freeman.edls_migrate"]) {
+        if (!(await isComponentEnabled(component))) return;
+      }
       await recoverFreemanMigrate();
     } catch {
       // A temporarily unavailable DB must not block startup. Durable intent

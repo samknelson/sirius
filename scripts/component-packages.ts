@@ -13,6 +13,14 @@ export interface ComponentPackageManifest {
   startup?: string;
   storage?: string;
   metadata?: string;
+  client?: string;
+  contributions?: string;
+  coreMigrations?: string[];
+  maintenanceGuards?: Record<string, {
+    handlerContainers: string[];
+    handlerProperty: string;
+    vendorIdentifiers: string[];
+  }>;
 }
 
 /** Build-time discovery only. Runtime bundles contain literal imports, never filesystem scans. */
@@ -51,6 +59,10 @@ export function discoverComponentPackages(root = resolve(import.meta.dirname, ".
         startup: manifest.startup ? modulePath(manifest.startup) : undefined,
         storage: manifest.storage ? modulePath(manifest.storage) : undefined,
         metadata: manifest.metadata ? modulePath(manifest.metadata) : undefined,
+        client: manifest.client ? modulePath(manifest.client) : undefined,
+        contributions: manifest.contributions ? modulePath(manifest.contributions) : undefined,
+        coreMigrations: (manifest.coreMigrations ?? []).map(modulePath),
+        maintenanceGuards: Object.fromEntries(Object.entries(manifest.maintenanceGuards ?? {}).map(([path, guard]) => [modulePath(path), guard])),
       };
     });
 }
@@ -81,6 +93,13 @@ export function generateComponentPackages(root = resolve(import.meta.dirname, ".
   ]);
   const sharedModulesFile = "shared/generated/package-modules.ts";
   emit(sharedModulesFile, packages.flatMap(p => p.shared.map(path => `export * from ${spec(sharedModulesFile, path)};`)).concat("export {};"));
+  const contributionsFile = "shared/generated/package-contributions.ts";
+  const contributors = packages.filter(p => p.contributions);
+  emit(contributionsFile, [
+    'import type { PackageContributions } from "../package-contributions";',
+    ...contributors.map((p, i) => `import { contributions as contribution${i} } from ${spec(contributionsFile, p.contributions!)};`),
+    `export const packageContributions: PackageContributions[] = [${contributors.map((_, i) => `contribution${i}`).join(",")}];`,
+  ]);
   const schemaFile = "shared/generated/package-schema.ts";
   emit(schemaFile, packages.flatMap(p => p.schema.map(path => `export * from ${spec(schemaFile, path)};`)).concat("export {};"));
   const schemasFile = "server/generated/package-schemas.ts";
@@ -115,12 +134,15 @@ export function generateComponentPackages(root = resolve(import.meta.dirname, ".
   const browserFile = "client/src/generated/component-packages.ts";
   emit(browserFile, [
     'import { lazy, type ComponentType, type LazyExoticComponent } from "react";',
+    'import type { PackageBrowserContributions } from "../lib/package-contributions";',
+    ...packages.filter(p => p.client).map((p, i) => `import { contributions as contribution${i} } from ${spec(browserFile, p.client!)};`),
+    `export const packageBrowserContributions: PackageBrowserContributions[] = [${packages.filter(p => p.client).map((_, i) => `contribution${i}`).join(",")}];`,
     "export const packagePages: Record<string, LazyExoticComponent<ComponentType<any>> | undefined> = {",
     ...packages.flatMap(p => Object.entries(p.browser).map(([key, path]) => `${JSON.stringify(key)}: lazy(() => import(${spec(browserFile, path)})),`)),
     "};",
   ]);
   const migrationFile = "scripts/migrate/generated-packages.ts";
-  emit(migrationFile, packages.flatMap(p => p.migrations.map(path => `import ${spec(migrationFile, path)};`)).concat("export {};"));
+  emit(migrationFile, packages.flatMap(p => [...p.coreMigrations, ...p.migrations].map(path => `import ${spec(migrationFile, path)};`)).concat("export {};"));
   return packages;
 }
 

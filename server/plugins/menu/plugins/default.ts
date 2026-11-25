@@ -1,3 +1,4 @@
+import { packageContributions } from "@shared/generated/package-contributions";
 import { registerMenuPlugin } from "../registry";
 import type { MenuItemDef } from "../types";
 
@@ -10,7 +11,7 @@ import type { MenuItemDef } from "../types";
  * Exported so other menu plugins (e.g. `edls`) can reuse pieces of this
  * tree by calling the builder and reshaping the result.
  */
-export function buildDefaultMenuTree(): MenuItemDef[] {
+function buildCoreDefaultMenuTree(): MenuItemDef[] {
   return [
     {
       id: "home",
@@ -494,14 +495,6 @@ export function buildEdlsMenuItems(): MenuItemDef[] {
       testId: "menu-edls-tos",
       gate: { allOf: [{ component: "worker.tos" }, { policy: "edls.any" }] },
     },
-    {
-      id: "edls-freeman-crewleads",
-      label: "Crew Leads",
-      icon: "UserCog",
-      href: "/edls/freeman/crewleads",
-      testId: "menu-edls-freeman-crewleads",
-      gate: { allOf: [{ component: "sitespecific.freeman" }, { policy: "edls.any" }] },
-    },
   ];
 }
 
@@ -591,3 +584,18 @@ registerMenuPlugin({
   },
   buildTree: buildDefaultMenuTree,
 });
+
+export function buildDefaultMenuTree(): MenuItemDef[] {
+    const tree = buildCoreDefaultMenuTree();
+    const find = (nodes: MenuItemDef[], id: string): MenuItemDef | undefined => {
+      for (const n of nodes) { if (n.id === id) return n; const child = find(n.children ?? [], id); if (child) return child; }
+    };
+    for (const c of packageContributions) for (const {parent, before, node} of c.menu ?? []) {
+      const target = find(tree, parent);
+      if (!target) continue;
+      const children = target.children ?? (target.children = []);
+      const index = before ? children.findIndex(n => n.id === before) : -1;
+      children.splice(index < 0 ? children.length : index, 0, node);
+    }
+    return tree;
+}

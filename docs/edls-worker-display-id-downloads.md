@@ -23,11 +23,9 @@ introduced.
   from granted web-service plugin operations, not browser route discovery.
   This sheet route is not a web-service operation and is not published by
   that document builder.
-- The external EDLS contract is the separate Sheet Export v1 service
-  (`server/plugins/web-service/plugins/edls-sheet-export.ts`),
-  `POST /api/ws/<configuration>/v1_sheet_export`. It exports assignments
-  through its own handler and mapper; it does not call the retired route.
-  Its versioned operation, schemas, addressing, and grants are unchanged.
+- Installed packages may supply external sheet-export services. Those exports
+  use their own declared handlers and mappers, not the retired browser route.
+  Their callable operations are documented by the client-specific OpenAPI builder.
 - No repository-documented deprecation period, supported external contract,
   or compatibility alias was found for the retired browser route.
 

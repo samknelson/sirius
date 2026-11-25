@@ -1,6 +1,5 @@
 import { Switch, Route, Redirect, useLocation } from "wouter";
-import { packagePages } from "./generated/component-packages";
-import MissingPackagePage from "./components/MissingPackagePage";
+import { packageBrowserContributions } from "./generated/component-packages";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -86,7 +85,6 @@ const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes")
 const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
-const WorkerSecondShift = packagePages["freeman.worker-second-shift"] ?? MissingPackagePage;
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
 const WorkerBadges = lazy(() => import("@/pages/workers/badges"));
@@ -290,7 +288,6 @@ const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
-const FreemanEdlsMigratePage = packagePages["freeman.edls-migrate"] ?? MissingPackagePage;
 const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
@@ -302,7 +299,6 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
-const WsClientFreemanBearerAuthorizationPage = packagePages["freeman.bearer-authorization"] ?? MissingPackagePage;
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
@@ -440,8 +436,6 @@ const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
 const EdlsSheetSnapshotsPage = lazy(() => import("@/pages/edls/sheet-snapshots"));
-const FreemanCrewleadsPage = packagePages["freeman.crewleads"] ?? MissingPackagePage;
-const FreemanChangelogPage = packagePages["freeman.changelog"] ?? MissingPackagePage;
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
 const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
 const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
@@ -577,6 +571,7 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
+      {packageBrowserContributions.flatMap(p => p.routes ?? []).map(({path, page: Page}) => <Route key={path} path={path}><AuthenticatedLayout><Page /></AuthenticatedLayout></Route>)}
         {/* Public routes */}
         <Route path="/bootstrap" component={Bootstrap} />
         <Route path="/login" component={LoginPage} />
@@ -1014,13 +1009,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/sitespecific-freeman-2shift">
-        <ProtectedRoute tabId="sitespecific-freeman-2shift" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerSecondShift />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/workers/:id/sitespecific/bao/beneficiaries">
         <ProtectedRoute tabId="sitespecific-bao-beneficiaries" entityType="worker">
@@ -2972,15 +2960,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/admin/sitespecific/freeman/edls/migrate">
-        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman", "sitespecific.freeman.edls_migrate"]}>
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <FreemanEdlsMigratePage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/config/trust/sitespecific/bao/thresholds">
         <ProtectedRoute permission="admin" component="sitespecific.bao">
@@ -3054,13 +3033,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/admin/ws/clients/:id/freeman-bearer-authorization">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <WsClientFreemanBearerAuthorizationPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/admin/ws/clients/:id/credentials">
         <ProtectedRoute permission="admin">
@@ -3578,21 +3550,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/edls/freeman/crewleads">
-        <ProtectedRoute policy="edls.any" component="sitespecific.freeman">
-          <AuthenticatedLayout>
-            <FreemanCrewleadsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
-      <Route path="/static/sitespecific/freeman/changelog">
-        <ProtectedRoute>
-          <AuthenticatedLayout>
-            <FreemanChangelogPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/config/site">
         <ProtectedRoute permission="admin">

@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { edlsSheetStatusEnum } from "@shared/schema/edls/schema";
-import { storage } from "../../../storage";
-import { buildPassportExportEnvelope } from "../../../modules/webservices/edls-passport-export-mapper";
-import { registerWebServicePlugin } from "../registry";
-import type { WebServiceOperationContext } from "../types";
+import { getEdlsPassportExportPage } from "../../storage/edls/passport-export";
+import { buildPassportExportEnvelope } from "../../modules/webservices/edls-passport-export-mapper";
+import { registerWebServicePlugin } from "../../../../../server/plugins/web-service/registry";
+import type { WebServiceOperationContext } from "../../../../../server/plugins/web-service/types";
 
 /**
  * Page size used when the filter does not name one, matching the legacy
@@ -117,7 +117,7 @@ async function runPassportExport({ req, res }: WebServiceOperationContext): Prom
   const limit = Math.min(requestedLimit, MAX_EXPORT_LIMIT);
 
   try {
-    const result = await storage.edlsSheets.getPassportExportPage({ changedSince, page, limit, status: filter.status });
+    const result = await getEdlsPassportExportPage({ changedSince, page, limit, status: filter.status });
     res.json(buildPassportExportEnvelope(result, { page, limit }));
   } catch {
     res.status(500).json({
@@ -137,7 +137,8 @@ registerWebServicePlugin({
   name: "Sheet Export v1",
   description:
     "Legacy EDLS passport export: paginated sheet assignments in the Freeman v1 envelope.",
-  requiredComponent: "edls",
+   requiredComponent: "sitespecific.freeman",
+   requiredComponents: ["edls"],
   order: 10,
   operations: [
     {

@@ -1,11 +1,12 @@
 #!/usr/bin/env npx tsx
+import { packageContributions } from "../../shared/generated/package-contributions";
 /**
- * Author-time enforcement that the Freeman-only deployment config sits on
+ * Author-time enforcement that the package-owned-only deployment config sits on
  * exactly the branches it belongs to — absent from `main`, present on every
  * carrying branch.
  *
  * `.github/` (CI workflows) and `deploy/` (per-environment config) belong on
- * the `freeman-dev` / `freeman-uat` branches, which push to the `freeman`
+ * the package deployment branches, which push to the package deployment
  * remote. `main` pushes to `origin`, where both are unwelcome: the Replit Git
  * token lacks the GitHub `workflow` OAuth scope, so a `main` push carrying
  * `.github/` is rejected outright, and the deploy env files must not reach
@@ -47,7 +48,7 @@ const PROTECTED_BRANCH = "main";
  * same question of the same branches — one list, or adding a deployment
  * branch guards it against half the failures.
  */
-export const CARRYING_BRANCHES = ["freeman-dev", "freeman-uat"];
+export const CARRYING_BRANCHES = packageContributions.flatMap(p => p.carryingBranches ?? []);
 
 /**
  * Directories that must never be tracked on the protected branch — and, seen
@@ -244,7 +245,7 @@ function main(): void {
       `[check-main-branch-files] FAILED — ${tracked.length} deployment-config file(s) ` +
         `are tracked on ${PROTECTED_BRANCH}.`,
       "",
-      `${FORBIDDEN_PATHS.map((p) => `${p}/`).join(" and ")} belong on the Freeman ` +
+      `${FORBIDDEN_PATHS.map((p) => `${p}/`).join(" and ")} belong on the package-owned ` +
         `deployment branches only. On`,
       `${PROTECTED_BRANCH} they break the push to origin: the Replit Git token has no`,
       "GitHub `workflow` OAuth scope, so a push carrying .github/ is rejected outright,",
@@ -262,7 +263,7 @@ function main(): void {
       `  ${FIX_COMMAND}`,
       "",
       "Then commit the removal. Do not delete the working-tree copies, and do not",
-      "commit the files here — edits to them are made on a Freeman branch.",
+      "commit the files here — edits to them are made on a package-owned branch.",
       "",
     ].join("\n"),
   );

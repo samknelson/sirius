@@ -1,3 +1,4 @@
+import { authenticationSelection, authenticationSelectionAvailable } from "./authentication-providers";
 import { storage } from "../../storage";
 import { isPluginComponentEnabledAsync } from "../../plugins/_core";
 import { webServiceRegistry } from "../../plugins/web-service";
@@ -39,7 +40,7 @@ const SECURITY_SCHEMES = {
     type: "apiKey",
     in: "header",
     name: "X-WS-Client-ID",
-    description: "Client ID. Sent with the client secret, or with a Freeman bearer for a Freeman-authorized client.",
+    description: "Client ID. Sent with the client secret or a provider credential.",
   },
   wsClientSecret: {
     type: "apiKey",
@@ -53,10 +54,10 @@ const SECURITY_SCHEMES = {
     description:
       "HTTP Basic authentication, using the client ID as the username and the client secret as the password.",
   },
-  freemanBearerAuth: {
+  providerBearerAuth: {
     type: "http",
     scheme: "bearer",
-    description: "Freeman bearer token. Sent together with X-WS-Client-ID; no client secret is checked.",
+    description: "Provider bearer token. Sent together with X-WS-Client-ID; no client secret is checked.",
   },
 } as const;
 
@@ -69,13 +70,6 @@ const SECURITY_REQUIREMENTS: Record<string, string[]>[] = [
   { wsClientId: [], wsClientSecret: [] },
   { wsBasicAuth: [] },
 ];
-
-const FREEMAN_AUTHORIZATION_CONFIG_KEY = "freemanBearerAuthorizationConfigId";
-
-function usesFreemanBearerAuthorization(client: WsClient): boolean {
-  const value = client.data?.[FREEMAN_AUTHORIZATION_CONFIG_KEY];
-  return typeof value === "string" && value.trim().length > 0;
-}
 
 /** Human label for a configuration, falling back to its address. */
 function labelOf(config: PluginConfig, address: ServiceAddress): string {
@@ -166,8 +160,10 @@ function frameworkResponses(): Record<string, unknown> {
  * from the one the integrator fetches.
  */
 export async function buildClientOpenApiDocument(client: WsClient): Promise<OpenApiDocument> {
-  const services = await callableServices(client.id);
-  const requiresFreemanBearer = usesFreemanBearerAuthorization(client);
+  const selection = authenticationSelection(client);
+  const available = !selection || await authenticationSelectionAvailable(selection);
+  const services = available ? await callableServices(client.id) : [];
+  const requiresProviderBearer = Boolean(selection);
 
   const paths: Record<string, Record<string, unknown>> = {};
   let anyDatabaseIdAddress = false;
@@ -222,9 +218,10 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
   const baseUrl = getPublicBaseUrl();
   const descriptionParts = [
     `Web services available to the client "${client.name}".`,
-    requiresFreemanBearer
+    requiresProviderBearer
       ? "Every operation requires X-WS-Client-ID and Authorization: Bearer <token>. X-WS-Client-Secret is not required or checked. HTTP Basic authentication cannot be used because Authorization carries the Bearer token. The document never contains a credential."
       : "Every operation is authenticated with this client's own ID and secret; the document never contains them.",
+    ...(!available ? ["The selected authentication provider is unavailable; this client cannot call any service."] : []),
     "A service granted to another client, or switched off, does not appear here.",
   ];
   if (anyDatabaseIdAddress) {
@@ -256,10 +253,10 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
           },
     ],
     components: {
-      securitySchemes: requiresFreemanBearer
+      securitySchemes: requiresProviderBearer
         ? {
             wsClientId: SECURITY_SCHEMES.wsClientId,
-            freemanBearerAuth: SECURITY_SCHEMES.freemanBearerAuth,
+            providerBearerAuth: SECURITY_SCHEMES.providerBearerAuth,
           }
         : {
             wsClientId: SECURITY_SCHEMES.wsClientId,
@@ -267,8 +264,8 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
             wsBasicAuth: SECURITY_SCHEMES.wsBasicAuth,
           },
     },
-    security: requiresFreemanBearer
-      ? [{ wsClientId: [], freemanBearerAuth: [] }]
+    security: requiresProviderBearer
+      ? [{ wsClientId: [], providerBearerAuth: [] }]
       : SECURITY_REQUIREMENTS,
     paths,
   };

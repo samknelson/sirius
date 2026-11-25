@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import http from "node:http";
 
 import express from "express";
-import { createBrowserRequestProtection } from "../../server/middleware/browser-request-protection";
+import { createBrowserRequestProtection } from "../../../../server/middleware/browser-request-protection";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getByClientKey = vi.fn();
@@ -12,7 +12,7 @@ const getClient = vi.fn();
 const isIpAllowed = vi.fn();
 const wcRequest = vi.fn();
 
-vi.mock("../../server/storage", () => ({
+vi.mock("../../../../server/storage", () => ({
   storage: {
     wsClientCredentials: { getByClientKey, validateSecret, recordUsage },
     wsClients: { get: getClient },
@@ -20,17 +20,19 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-vi.mock("../../server/logger", () => ({
+vi.mock("../../../../server/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn() },
   logWsRequest: vi.fn(),
 }));
 
-vi.mock("../../server/services/webclient/client", () => ({
+vi.mock("../../../../server/services/webclient/client", () => ({
   wcRequest,
 }));
 
+vi.mock("../../../../server/services/component-cache", () => ({ isComponentEnabledSync: () => true }));
+await import("../../server/bearer-auth");
 const { createWebServiceAuthMiddleware } = await import(
-  "../../server/middleware/webservice-auth"
+  "../../../../server/middleware/webservice-auth"
 );
 
 const CREDENTIAL = {

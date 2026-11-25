@@ -99,7 +99,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       if (!value.trim()) throw new Error("Cannot reconcile a blank worker ID.");
       return runInTransaction(async () => {
         const client = getClient();
-        // Same lock order as the Freeman importer; blocks even direct SQL writers.
+        // Same lock order as the identity importer; blocks even direct SQL writers.
         if (!dryRun) await lockWorkerIdentities();
         const workerQuery = client.select({ id: workers.id }).from(workers)
           .where(eq(workers.id, workerId));

@@ -81,17 +81,24 @@ run only pending migrations and then validate against the installed schema;
 disabled components validate when re-enabled. Completed migrations do not
 replay.
 
-## Freeman extraction boundary
+## Integration contributions
 
-The Freeman package owns its three component definitions, crew-lead/staging
-schemas and migrations, routes, vendor adapters, owned storage, browser pages
-and components, transfer helper and operator script. IDs, schema versions,
-settings and migration versions are unchanged. Core migration
-`1024_drop_freeman_crewleads` remains untouched in core: it historically runs
-on every deployment independently of component enablement.
+Packages may declare shared tabs, menus, operation aliases and deployment branches in a
+contributions module. A client module declares routes, config navigation and EDLS crew
+editor/detail components. These additive contributions are not alter hooks. Server
+startup and registration contributions own identity strategies, inbound authentication
+providers and vendor contract augmentation. Maintenance guard declarations live in
+the package manifest. Historical global migrations may be contributed through
+coreMigrations without changing their version or scope. Removal never deletes retained data.
 
-Mixed host integrations (EDLS crew-lead pickers/export, authentication,
-navigation/tab declarations and legacy operation aliases) remain integration
-seams for the separate full-extraction work. They do not statically import
-optional package implementations. This work does not correct Freeman migration
-artifact data.
+Authentication selection is persisted in ws_clients.data.authenticationProvider as
+{provider, configId}, or null for an explicit client-secret selection. Missing or
+disabled providers refuse authentication. Unclaimed legacy authentication selections (the namespaced AuthorizationConfigId
+suffix) are refused rather than silently treated as client-secret authentication; installed
+providers can recognize their legacy selection without changing it. Unrelated extension data is not an authentication selection. Administrators
+can explicitly select the desired authentication method.
+
+T631 synchronization requires an installed, enabled identity strategy and refuses
+before any writes or deactivation otherwise. Reinstalling restores that strategy
+without changing worker identifiers. Package-owned documentation and operator tools
+remain inside the owning package.

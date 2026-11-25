@@ -24,15 +24,17 @@ async function isComponentEnabled(componentId: string): Promise<boolean> {
  * before warm-up (extra-safe path).
  */
 export function isPluginComponentEnabledSync(meta: BasePluginMetadata): boolean {
-  if (!meta.requiredComponent) return true;
-  return isComponentEnabledSync(meta.requiredComponent);
+  return [...(meta.requiredComponent ? [meta.requiredComponent] : []), ...(meta.requiredComponents ?? [])]
+    .every(isComponentEnabledSync);
 }
 
 export async function isPluginComponentEnabledAsync(
   meta: BasePluginMetadata,
 ): Promise<boolean> {
-  if (!meta.requiredComponent) return true;
-  return isComponentEnabled(meta.requiredComponent);
+  for (const id of [...(meta.requiredComponent ? [meta.requiredComponent] : []), ...(meta.requiredComponents ?? [])]) {
+    if (!(await isComponentEnabled(id))) return false;
+  }
+  return true;
 }
 
 /**
@@ -62,13 +64,13 @@ export async function enforcePluginGating(
   meta: BasePluginMetadata,
   req: Request,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-  if (meta.requiredComponent) {
-    const enabled = await isComponentEnabled(meta.requiredComponent);
+  for (const component of [...(meta.requiredComponent ? [meta.requiredComponent] : []), ...(meta.requiredComponents ?? [])]) {
+    const enabled = await isComponentEnabled(component);
     if (!enabled) {
       return {
         ok: false,
         status: 403,
-        message: `Component '${meta.requiredComponent}' not enabled`,
+        message: `Component '${component}' not enabled`,
       };
     }
   }

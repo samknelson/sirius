@@ -7,6 +7,15 @@ export const components: ComponentDefinition[] = [
     description: "Custom functionality for Freeman",
     enabledByDefault: false,
     category: "site-specific",
+    pluginConfigs: [
+      {
+        pluginKind: "web-service",
+        pluginId: "edls-sheet-export-v1",
+        siriusId: "auto.edls.sheet-export-v1",
+        name: "EDLS Sheet Export v1",
+        data: { alias: "edls-sheet-export-v1" },
+      },
+    ],
     managesSchema: true,
     schemaManifest: {
       version: 1,

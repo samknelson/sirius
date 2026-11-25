@@ -8,6 +8,7 @@ import {
   getModulesNamingTablesAtRuntime,
 } from "./middleware/logging";
 import { isMetadataTableEligible } from "./system/entity-metadata-policy";
+import { metadataComponentEnabled } from "./entity-metadata-component-gate";
 
 /**
  * The metadata context registry is keyed by the stable value stored in
@@ -16,6 +17,7 @@ import { isMetadataTableEligible } from "./system/entity-metadata-policy";
  * context id may differ from its table name in the future.
  */
 export interface MetadataRecordContext {
+  component?: string;
   table: PgTable<TableConfig>;
   label: string;
   hrefTemplate: string | null;
@@ -131,7 +133,8 @@ function contextInfo(contextId: string, declaration: MetadataRecordContext): Met
 /** Resolve a stored context id to its declared physical table. */
 export function getMetadataRecordContext(contextId: string): MetadataRecordContextInfo | undefined {
   const declaration = entityMetadataContexts[contextId];
-  if (!declaration || !isMetadataTableEligible(getTableName(declaration.table))) return undefined;
+  if (!declaration || (declaration.component && !metadataComponentEnabled(declaration.component)) ||
+      !isMetadataTableEligible(getTableName(declaration.table))) return undefined;
   return contextInfo(contextId, declaration);
 }
 
@@ -139,7 +142,8 @@ export function getMetadataRecordContext(contextId: string): MetadataRecordConte
 export function getMetadataContextForTable(tableName: string): MetadataRecordContextInfo | undefined {
   if (!isMetadataTableEligible(tableName)) return undefined;
   const matches = Object.entries(entityMetadataContexts)
-    .filter(([, declaration]) => getTableName(declaration.table) === tableName)
+    .filter(([, declaration]) => getTableName(declaration.table) === tableName &&
+      (!declaration.component || metadataComponentEnabled(declaration.component)))
     .map(([contextId, declaration]) => contextInfo(contextId, declaration));
   return matches.length === 1 ? matches[0] : undefined;
 }
@@ -185,7 +189,8 @@ export function assertEntityMetadataRecordTablesComplete(): void {
   }
 
   const undeclared = getLoggedTableNames().filter(
-    (name) => isMetadataTableEligible(name) && !getMetadataContextForTable(name),
+    (name) => isMetadataTableEligible(name) &&
+      !Object.values(entityMetadataContexts).some(c => getTableName(c.table) === name),
   );
   if (undeclared.length > 0) {
     problems.push(`named by a storage logging config but not declared: ${undeclared.join(", ")}`);

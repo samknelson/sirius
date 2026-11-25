@@ -33,6 +33,7 @@ import { registerAlterCatalog } from "@shared/alter/catalog";
 import { getComponentById } from "@shared/components";
 import { registerEdlsCommViewAlter } from "./services/edls/comm-view-alter";
 import { wireCommViewAccess } from "./services/comm/view-access";
+import { setMetadataComponentGate } from "./storage/entity-metadata-component-gate";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -250,6 +251,7 @@ export async function bootstrapApp(
     isEnabled: isComponentEnabledSync,
     getRevision: getComponentCacheRevision,
   });
+  setMetadataComponentGate(isComponentEnabledSync);
   logger.info("Catalog component source wired", { source: "startup" });
 
   // Initialize access control system with unified policy evaluator

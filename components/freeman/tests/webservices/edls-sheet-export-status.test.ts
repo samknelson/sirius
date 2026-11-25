@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import type { WebServiceOperationContext } from "../../server/plugins/web-service/types";
+import type { WebServiceOperationContext } from "../../../../server/plugins/web-service/types";
 import type { EdlsPassportSheet } from "../../server/storage/edls/passport-export";
 import { buildPassportExportEnvelope } from "../../server/modules/webservices/edls-passport-export-mapper";
 
@@ -7,13 +7,11 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   getPage: vi.fn(),
 }));
-vi.mock("../../server/storage", () => ({
-  storage: { edlsSheets: { getPassportExportPage: mocks.getPage } },
-}));
-vi.mock("../../server/plugins/web-service/registry", () => ({
+vi.mock("../../server/storage/edls/passport-export", () => ({ getEdlsPassportExportPage: mocks.getPage }));
+vi.mock("../../../../server/plugins/web-service/registry", () => ({
   registerWebServicePlugin: mocks.register,
 }));
-await import("../../server/plugins/web-service/plugins/edls-sheet-export");
+await import("../../server/plugins/web-service/edls-sheet-export");
 const handler = mocks.register.mock.calls[0][0].operations[0].handler;
 
 beforeEach(() => {

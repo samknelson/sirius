@@ -1,5 +1,5 @@
 import type { WsClient } from "@shared/schema";
-import { requiresFreemanBearerAuthorization } from "../../middleware/webservice-auth";
+import { authenticationSelection } from "./authentication-providers";
 
 /**
  * Build only the credentials sent by the admin test route. Keeping this small
@@ -17,7 +17,7 @@ export function buildTestRequestHeaders(
     "X-WS-Client-ID": clientKey,
   };
   if (["POST", "PUT", "PATCH"].includes(method)) headers["Content-Type"] = "application/json";
-  if (requiresFreemanBearerAuthorization(client)) {
+  if (authenticationSelection(client)) {
     if (bearerToken?.trim()) headers.Authorization = `Bearer ${bearerToken.trim()}`;
   } else {
     headers["X-WS-Client-Secret"] = clientSecret;

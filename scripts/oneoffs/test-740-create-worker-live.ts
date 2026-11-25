@@ -24,7 +24,7 @@ async function main() {
 
   // Verify + clean up
   const t631TypeId = await storage.workerIds.getTypeIdBySiriusId("t631");
-  const einTypeId = await storage.workerIds.getTypeIdBySiriusId("freeman_ein");
+  const einTypeId = await storage.workerIds.getTypeIdBySiriusId("example_ein");
   const t631Row = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId!, "TEST-740-XYZ");
   if (!t631Row) throw new Error("t631 id row not created");
   const workerId = t631Row.workerId;

@@ -17,7 +17,7 @@ an account. Provider subjects remain separate identifiers, not email aliases.
 | Clerk worker registration | `server/auth/providers/clerk.ts`: existing worker-verification flow, shared lookup/create/update; racing email creation returns 409. |
 | Worker, employer and trust-provider contact promotion | `server/modules/workers/users.ts`, `server/modules/employers/contacts.ts`, `server/modules/trust/provider/contacts.ts`: shared lookup/create/update, explicit 409 on email conflicts. Bulk employer promotion reports an explicit conflict for the affected item. |
 | Employer-onboarding wizard | `server/plugins/wizards/plugins/employer-onboarding.ts`: shared lookup/create, existing per-item error reporting; no role assignment after a failed creation. |
-| Freeman EDLS import | `server/modules/sitespecific/freeman/edls-migrate/import.ts`: shared lookup refuses ambiguity, raw inserts are subject to the same database index. Existing importer conflict recovery only resolves a supervisor reference, not an authentication identity. |
+| Example EDLS import | `server/modules/sitespecific/example/edls-migrate/import.ts`: shared lookup refuses ambiguity, raw inserts are subject to the same database index. Existing importer conflict recovery only resolves a supervisor reference, not an authentication identity. |
 | Legacy upsert / direct storage callers | `server/storage/users.ts`: create, upsert and update normalize email, with database uniqueness as the concurrency authority. Upsert conflicts only on user ID, never email. |
 | Contact synchronization | `server/services/user-contact-sync.ts`: trims emails, skips blank values and uses the contact store's case-insensitive identity lookup. It does not merge user accounts or assign roles. |
 

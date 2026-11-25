@@ -24,6 +24,8 @@ export interface WsClientStorage {
   get(id: string): Promise<WsClient | undefined>;
   create(client: InsertWsClient): Promise<WsClient>;
   update(id: string, client: Partial<InsertWsClient>): Promise<WsClient | undefined>;
+  /** Atomic legacy-selection upgrade; never overwrites a concurrent administrator edit. */
+  updateAuthenticationSelection(id: string, previousData: Record<string, unknown>, selection: Record<string, unknown>): Promise<void>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -84,6 +86,11 @@ export interface WsClientIpRuleStorage {
 
 export function createWsClientStorage(): WsClientStorage {
   return {
+    async updateAuthenticationSelection(id, previousData, selection): Promise<void> {
+      await getClient().update(wsClients).set({
+        data: { ...previousData, authenticationProvider: selection },
+      }).where(and(eq(wsClients.id, id), eq(wsClients.data, previousData)));
+    },
     async getAll(): Promise<WsClient[]> {
       const client = getClient();
       return await client

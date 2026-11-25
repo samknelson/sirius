@@ -3,7 +3,6 @@ import type { MenuItemDef } from "../types";
 import {
   buildConfigMenuItem,
   buildDefaultMenuTree,
-  buildEdlsMenuItems,
   buildUsersMenuItem,
 } from "./default";
 
@@ -33,7 +32,7 @@ function buildEdlsMenuTree(): MenuItemDef[] {
 
   // Promote the EDLS links to top level, still gated on the edls component
   // plus each link's own policy gate.
-  for (const edlsItem of buildEdlsMenuItems()) {
+  for (const edlsItem of pick("edls")?.children ?? []) {
     items.push({
       ...edlsItem,
       testId: `nav-${edlsItem.id}`,

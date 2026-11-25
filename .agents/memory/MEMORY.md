@@ -164,4 +164,4 @@
 - [Dashboard refresh ownership](dashboard-refresh-ownership.md) — shared per-instance opt-in; observe existing requests, retain content only for transient errors, and latch access refusals.
 - [CSV newline quoting](csv-newline-quoting.md) — CRLF exports need explicit quoting for lone CR/LF inside fields; the installed csv-stringify does not infer it.
 - [Bounded SQL enrichment](bounded-sql-enrichment.md) — selecting a few IDs in WHERE does not bound descriptive joins; fence the selected rows and compare actual plans, including empty schedules.
-- [Component package extraction boundary](component-package-extraction-boundary.md) — installation and owned-source relocation precede full mixed-host extraction; migration data correction stays separate.
+- [Removable package safety](component-package-extraction-boundary.md) — absent source must not weaken retained auth or guess worker identities; migration-data correction stays separate.

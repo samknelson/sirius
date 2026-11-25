@@ -15,6 +15,7 @@ export const webServiceRegistry = new PluginRegistry<
     name: p.name,
     description: p.description ?? "",
     requiredComponent: p.requiredComponent,
+    requiredComponents: p.requiredComponents,
     requiredPolicy: p.requiredPolicy,
     hidden: p.hidden,
     needsReadOnlyDb: p.needsReadOnlyDb,
@@ -29,6 +30,7 @@ export const webServiceRegistry = new PluginRegistry<
     description: p.description,
     order: p.order ?? 100,
     requiredComponent: p.requiredComponent,
+    requiredComponents: p.requiredComponents,
     configSchema: p.configSchema,
     uiSchema: p.uiSchema,
     operations: p.operations.map((op) => ({

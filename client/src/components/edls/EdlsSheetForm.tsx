@@ -1,3 +1,4 @@
+import { CrewExtensions } from "../../lib/package-contributions";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
 import type { EdlsSheet, EdlsCrew, InsertEdlsCrew } from "@shared/schema";
-// Host integration seam: the picker needs only this portable option shape.
-type FreemanCrewlead = { id: string; name: string };
 
 interface SupervisorOption {
   id: string;
@@ -119,14 +117,6 @@ export function EdlsSheetForm({
   submitLabel = "Save",
 }: EdlsSheetFormProps) {
   const sheetId = initialData?.sheet?.id;
-  const { hasComponent } = useAuth();
-  const freemanEnabled = hasComponent("sitespecific.freeman");
-
-  const { data: freemanCrewLeads = [] } = useQuery<FreemanCrewlead[]>({
-    queryKey: ["/api/sitespecific/freeman/crewleads"],
-    enabled: freemanEnabled,
-  });
-
   const { data: supervisorContext, isLoading: supervisorContextLoading } = useQuery<SupervisorContext>({
     queryKey: ["/api/edls/supervisor-context", sheetId],
     queryFn: async () => {
@@ -809,62 +799,11 @@ export function EdlsSheetForm({
                           </Select>
                         </div>
                       </div>
-                      {freemanEnabled && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Crew Lead</Label>
-                            <Select
-                              value={
-                                (crew.data as Record<string, unknown> | null | undefined)
-                                  ?.freemanCrewLeadId as string | undefined ?? "__none__"
-                              }
-                              onValueChange={(value) => {
-                                const newCrews = [...formData.crews];
-                                const existingData =
-                                  (newCrews[index].data as Record<string, unknown> | null | undefined) ?? {};
-                                const nextData = { ...existingData };
-                                if (value === "__none__") {
-                                  delete nextData.freemanCrewLeadId;
-                                } else {
-                                  nextData.freemanCrewLeadId = value;
-                                }
-                                newCrews[index] = {
-                                  ...newCrews[index],
-                                  data: Object.keys(nextData).length > 0 ? nextData : null,
-                                };
-                                setFormData({ ...formData, crews: newCrews });
-                              }}
-                            >
-                              <SelectTrigger data-testid={`select-crew-lead-${index}`}>
-                                <SelectValue placeholder="None" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">— None —</SelectItem>
-                                {(() => {
-                                  const currentId = (
-                                    crew.data as Record<string, unknown> | null | undefined
-                                  )?.freemanCrewLeadId as string | undefined;
-                                  const known = freemanCrewLeads.some((cl) => cl.id === currentId);
-                                  return (
-                                    <>
-                                      {currentId && !known && (
-                                        <SelectItem value={currentId}>
-                                          Unknown ({currentId})
-                                        </SelectItem>
-                                      )}
-                                      {freemanCrewLeads.map((cl) => (
-                                        <SelectItem key={cl.id} value={cl.id}>
-                                          {cl.name}
-                                        </SelectItem>
-                                      ))}
-                                    </>
-                                  );
-                                })()}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      )}
+                      <CrewExtensions crew={crew} index={index} onChange={data => {
+                        const crews = [...formData.crews];
+                        crews[index] = { ...crews[index], data };
+                        setFormData({ ...formData, crews });
+                      }} />
                     </div>
                     <div className="flex flex-col gap-1 mt-5">
                       <Button

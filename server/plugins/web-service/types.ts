@@ -80,6 +80,7 @@ export interface WebServiceManifestEntry {
   description: string;
   order: number;
   requiredComponent?: string;
+  requiredComponents?: readonly string[];
   /** Set by `decorateEntries` from the plugin's config rows. */
   enabled?: boolean;
   configSchema?: Record<string, unknown>;

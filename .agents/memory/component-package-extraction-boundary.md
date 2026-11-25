@@ -1,18 +1,10 @@
 ---
-name: Component package extraction boundary
-description: Why Freeman package installation and complete host integration extraction were deliberately separated.
+name: Removable package safety boundaries
+description: Optional source removal must preserve retained auth and identity safety; migration-data correction stays separate.
 ---
 
-Treat package installation/enablement and complete Freeman integration removal
-as separate stages. Do not interpret remaining mixed host integrations as a
-request to remove or redesign them during framework maintenance.
+Treat an absent package as distinct from a disabled component. Retained authentication selections must not become permission to use a weaker authentication method. T631 synchronization must refuse as a whole without the installed, enabled identity authority; it must not guess worker identity or perform only the non-identity writes.
 
-**Why:** The owner explicitly requested generic filesystem package discovery
-and relocation of wholly Freeman-owned source first, with complete extraction
-of cross-cutting Freeman behavior planned separately. Freeman migration-artifact
-data correction is also separate work, not part of package extraction.
+**Why:** The owner requires removable source builds against databases that still contain previous component tables and settings, without changing intended authentication or worker identity reconciliation. Refusing is safer than silently changing either authority.
 
-**How to apply:** Preserve stable component IDs, independent switches and
-migration identities while changing packaging. Use the documented extraction
-boundary in `docs/component-packages.md` when deciding whether a mixed host
-integration belongs in a later extraction.
+**How to apply:** Preserve stable component IDs, independent switches and historical migration identities while changing packaging. Package-owned behavior belongs behind generic host contracts, not disguised host literals. Freeman migration-artifact data correction remains separate from extraction; source removal is never authorization to delete retained data.

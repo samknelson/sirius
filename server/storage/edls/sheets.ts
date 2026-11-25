@@ -30,11 +30,6 @@ import { isComponentEnabledSync } from "../../services/component-cache";
 import { getRequestContext } from "../../middleware/request-context";
 import { entityMetadataStorage } from "../system/entity-metadata";
 import type { SnapshotNode } from "@shared/snapshots";
-import {
-  getEdlsPassportExportPage,
-  type EdlsPassportExportQuery,
-  type EdlsPassportExportPage,
-} from "./passport-export";
 import { getEdlsSheetsPageOrder } from "./sheets-page-order";
 import { importedFieldsDiffer } from "./import-comparison";
 
@@ -197,12 +192,7 @@ export interface EdlsSheetsStorage {
    * does not exist. See `shared/snapshots.ts` for the bundle contract.
    */
   export(id: string): Promise<SnapshotNode | undefined>;
-  /**
-   * Freeman passport export: one page of "Scheduled" (`lock`) sheets with
-   * their crews and assignments, plus the total for paging. See
-   * `./passport-export.ts` for the shape and the absent-tolerance rules.
-   */
-  getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage>;
+
 }
 
 /**
@@ -407,9 +397,6 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return sheet || undefined;
     },
 
-    async getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage> {
-      return getEdlsPassportExportPage(query);
-    },
 
     async export(id: string): Promise<SnapshotNode | undefined> {
       const sheet = await this.getWithRelations(id);

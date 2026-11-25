@@ -1,3 +1,4 @@
+import { packageContributions } from "@shared/generated/package-contributions";
 /**
  * Webclient-vendor plugin kind.
  *
@@ -179,6 +180,7 @@ export interface NormalizedWcConnectionTest {
  * absent from this catalog.
  */
 export const WC_VENDOR_OPERATION_CATALOG = {
+  ...Object.assign({} as Record<string, string>, ...packageContributions.map(p => p.operationAliases ?? {})),
   "test-connection": "service.test-connection",
   "test-email-connection": "service.test-connection",
   ping: "service.test-connection",
@@ -211,9 +213,6 @@ export const WC_VENDOR_OPERATION_CATALOG = {
   "district-lookup": "civic.district.lookup",
   login: "sitespecific.btu.cardcheck.login",
   "fetch-cardcheck": "sitespecific.btu.cardcheck.fetch",
-  "authorize-bearer": "sitespecific.freeman.authorization.bearer",
-  "sitespecific.freeman.edls_migrate": "sitespecific.freeman.edls.migrate",
-  sirius_freeman_rawdata: "sitespecific.freeman.edls.migrate",
   sirius_service_ping: "sitespecific.t631.service.ping",
   sirius_edls_server_worker_list: "sitespecific.t631.worker.list",
   sirius_dispatch_group_search: "sitespecific.t631.dispatch-group.search",
@@ -287,18 +286,6 @@ export interface PaymentTypeOption {
  * told so.
  */
 export interface WcVendorOperations {
-  // Retained host authentication seam until the separate full Freeman
-  // extraction. Knowing the request contract does not install its provider.
-  "sitespecific.freeman.authorization.bearer": {
-    args: { bearerCredential: string };
-    result: {
-      success: boolean;
-      outcome: "success" | "network_error" | "http_error" | "malformed_response" | "unexpected_ping_status";
-      status?: number;
-      response?: unknown;
-      error?: string;
-    };
-  };
   "service.test-connection": { args: void; result: GatewayConnectionTest };
   "payments.customer.create": { args: CreateCustomerInput; result: GatewayCustomerResult };
   "payments.customer.retrieve": { args: { customerRef: string }; result: { exists: boolean } };

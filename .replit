@@ -77,27 +77,6 @@ args = "npx tsx scripts/check-migrations.ts --base=origin/main"
 [workflows.workflow.metadata]
 isValidation = true
 
-[[workflows.workflow]]
-name = "Freeman Dev"
-mode = "sequential"
-author = 45808420
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "git checkout freeman-dev"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "git merge -m \"Merge from main\" main"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "git push freeman freeman-dev"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "git checkout main"
-
 [userenv]
 
 [userenv.development]

@@ -19,7 +19,6 @@ vi.mock("stripe", () => ({
 import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
 import "../../server/plugins/wc-vendors/plugins/email";
 import "../../server/plugins/wc-vendors/plugins/stripe";
-import "../../server/generated/package-server-modules";
 
 function context(
   pluginId: string,
@@ -61,40 +60,8 @@ describe("manual read provider safety", () => {
     ).resolves.toMatchObject({ status: "misconfigured" });
   });
 
-  it("classifies a missing Freeman URL as misconfigured", async () => {
-    await expect(
-      handler("sitespecific-freeman-authorization", "service.test-connection")(
-        context("sitespecific-freeman-authorization", "unused", {}),
-        undefined as never,
-      ),
-    ).resolves.toMatchObject({ status: "misconfigured" });
-  });
 
-  it("pings Freeman with GET and without sending the configured bearer token", async () => {
-    const fetchMock = vi.fn(async () => new Response("", { status: 401 }));
-    vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      handler("sitespecific-freeman-authorization", "service.test-connection")(
-        context(
-          "sitespecific-freeman-authorization",
-          "freeman-secret-canary",
-          { authorizationUrl: "https://freeman.test/authorize" },
-        ),
-        {} as never,
-      ),
-    ).resolves.toMatchObject({ status: "connected" });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://freeman.test/authorize",
-      expect.objectContaining({
-        method: "GET",
-        headers: undefined,
-      }),
-    );
-    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain(
-      "freeman-secret-canary",
-    );
-  });
 
   it("retrieves Stripe method details without invoking mutation methods", async () => {
     stripeRetrieve.mockResolvedValue({

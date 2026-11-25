@@ -59,3 +59,9 @@ application handler working correctly.
 **How to apply:** Wait for the prior dialog to finish closing, query the current
 element again, and separate export checks from an import-dialog closing flow.
 Distinguish automation timing failures from application failures in the report.
+
+A blank static capture can omit an uncaught page-level exception even when its browser console contains only hot-reload connection errors.
+
+**Why:** The static screenshot console stream did not include a module-initialization ReferenceError that prevented React from mounting. Direct browser inspection exposed it.
+
+**How to apply:** When a ready server returns a blank page, inspect Runtime.exceptionThrown and the root element through the browser protocol before treating loopback hot-reload errors as the cause. Verify against the actual preview proxy as well.

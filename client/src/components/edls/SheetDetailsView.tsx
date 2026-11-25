@@ -1,3 +1,4 @@
+import { CrewExtensions } from "../../lib/package-contributions";
 import { formatYmd } from "@shared/utils/date";
 import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { AssignmentCommStatusIcon } from "@/components/edls/AssignmentCommStatusIcon";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
-type FreemanCrewlead = { id: string; name: string };
 
 export interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;
@@ -131,19 +130,6 @@ export function SheetDetailsView({
 }: SheetDetailsViewProps) {
   const sheetData = (sheet.data as Record<string, any>) || {};
   const hasTrashLock = !!sheetData.trashLock;
-  const { hasComponent } = useAuth();
-  const freemanEnabled = hasComponent("sitespecific.freeman");
-
-  const { data: freemanCrewLeads = [] } = useQuery<FreemanCrewlead[]>({
-    queryKey: ["/api/sitespecific/freeman/crewleads"],
-    enabled: freemanEnabled,
-  });
-
-  const freemanCrewLeadMap = useMemo(
-    () => new Map(freemanCrewLeads.map((cl) => [cl.id, cl])),
-    [freemanCrewLeads],
-  );
-
   const { data: classifications = [] } = useQuery<{ id: string; name: string; code: string | null; sequence: number }[]>({
     queryKey: ["/api/options/classification"],
   });
@@ -339,21 +325,7 @@ export function SheetDetailsView({
                           Task: <strong>{crew.task.name}</strong>
                         </div>
                       )}
-                      {freemanEnabled && (() => {
-                        const leadId = (crew.data as Record<string, unknown> | null | undefined)
-                          ?.freemanCrewLeadId as string | undefined;
-                        if (!leadId) return null;
-                        const lead = freemanCrewLeadMap.get(leadId);
-                        return (
-                          <div
-                            className="flex items-center gap-1"
-                            data-testid={`crew-lead-${crew.id}`}
-                          >
-                            <UserCheck className="h-4 w-4" />
-                            Crew Lead: <strong>{lead ? lead.name : "Unknown"}</strong>
-                          </div>
-                        );
-                      })()}
+                      <CrewExtensions crew={crew} index={0} />
                     </div>
                     {crew.workerCount > 0 && (() => {
                       const leftCount = Math.ceil(crew.workerCount / 2);

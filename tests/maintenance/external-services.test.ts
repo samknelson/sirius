@@ -45,7 +45,6 @@ import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
 import { wcRequest } from "../../server/services/webclient";
 import { postalRequest } from "../../server/services/comm/postal-vendor";
 import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
-const FREEMAN_EDLS_MIGRATE_PLUGIN_ID = "sitespecific-freeman-edls-migrate";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
 } from "../../server/plugins/wc-vendors/plugins/btu-cardcheck";
@@ -176,16 +175,6 @@ function operations() {
     // those — it would report the remote system as unwell when nobody asked it
     // anything — so each is asserted the same way as a vendor call.
     ["T631", "ping", () => t631Ping()],
-    [
-      "Freeman EDLS",
-      "ping",
-      () =>
-        wcRequest({
-          vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
-          operation: "service.test-connection",
-          args: undefined,
-        }),
-    ],
     [
       "BTU",
       "login",

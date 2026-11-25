@@ -753,25 +753,6 @@ describe("the wc-vendor plugin contract", () => {
       "payments.payment-method.details",
       stringArgs("methodRef", "Payment method reference"),
     );
-    expectManualRead(
-      "sitespecific-freeman-authorization",
-      "service.test-connection",
-      emptyArgs,
-    );
-    expect(getWcVendorOperationManifest(
-      plugin("sitespecific-freeman-authorization"),
-    )).toContainEqual(expect.objectContaining({
-      id: "sitespecific.freeman.authorization.bearer",
-      manualRun: {
-        argsSchema: stringArgs("bearerCredential", "Bearer credential"),
-        uiSchema: {
-          bearerCredential: {
-            "ui:widget": "password",
-          },
-        },
-        effect: "read",
-      },
-    }));
     expect(getWcRequest("Twilio", "communications.phone.validate")).toMatchObject({
       cached: true,
       needsWritableDatabase: true,
@@ -1086,7 +1067,7 @@ describe("the wc-vendor plugin contract", () => {
   it("reuses one cached answer after switching provider and configuration", async () => {
     const requestType = "tests.provider-switch";
     const { registerWcRequest } = await import("../../server/services/webclient/registry");
-    for (const service of ["OpenStates", "Freeman Authorization"] as const) {
+    for (const service of ["OpenStates", "Google"] as const) {
       registerWcRequest({
         service,
         requestType,
@@ -1129,7 +1110,7 @@ describe("the wc-vendor plugin contract", () => {
     const secondFetch = vi.fn();
 
     await expect(wcRequest({
-      service: "Freeman Authorization",
+      service: "Google",
       configurationId: "second-config",
       requestType,
       args: { subject: "10 main st" },

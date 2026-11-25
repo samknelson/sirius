@@ -41,8 +41,8 @@ export const edlsSheets = pgTable("edls_sheets", {
   /**
    * CHANGE WATERMARK, not provenance — business data that happens to be a
    * timestamp, and a KEEP entry in `docs/provenance-columns.md` for that
-   * reason. Behaviour reads it: the sheet list and the Freeman passport export
-   * filter "changed since" on it, the passport export pages in its order, and
+   * reason. Behaviour reads it: the sheet list and the package sheet export
+   * filter "changed since" on it, external exports page in its order, and
    * the EDLS worker SMS notifier uses each save's stamp as that save's
    * identity when it looks back through the sheet's snapshots.
    *
