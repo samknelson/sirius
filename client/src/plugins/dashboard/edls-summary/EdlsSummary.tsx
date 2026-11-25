@@ -21,7 +21,7 @@ import {
 import { Link } from "wouter";
 import type { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
-import { getTodayYmd, addDaysYmd, formatYmd } from "@shared/utils/date";
+import { getTodayYmd, addDaysYmd } from "@shared/utils/date";
 import { assignmentExplorerUrl, type AssignmentStatusCounts } from "@shared/edls-assignment-explorer";
 
 interface EdlsSummaryData {
@@ -88,15 +88,14 @@ export function EdlsSummary(_props: DashboardPluginProps) {
   const variance = demandTotal - grandTotal;
 
   return (
-    <>
-    <Card data-testid="card-edls-summary">
+    <Card className="min-w-0" data-testid="card-edls-summary">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <CardTitle className="flex items-center gap-2" data-testid="title-edls-summary">
             <CalendarDays className="h-5 w-5" />
             EDLS Daily Summary
           </CardTitle>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Button
               variant="outline"
               size="icon"
@@ -107,13 +106,13 @@ export function EdlsSummary(_props: DashboardPluginProps) {
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
-              <EditableDate
-                value={selectedDate}
-                onChange={setSelectedDate}
-                compact
-                testId="input-edls-date"
-                label="Select summary date"
-              />
+            <EditableDate
+              value={selectedDate}
+              onChange={setSelectedDate}
+              compact
+              testId="input-edls-date"
+              label="Select summary date"
+            />
             <Button
               variant="outline"
               size="icon"
@@ -138,7 +137,9 @@ export function EdlsSummary(_props: DashboardPluginProps) {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0 space-y-6">
+        <section className="min-w-0" aria-label="Sheets">
+          <h2 className="mb-3 text-base font-semibold" data-testid="title-edls-sheets">Sheets</h2>
         {isLoading ? (
           <div className="flex items-center justify-center py-8" data-testid="loading-edls-summary">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -297,33 +298,22 @@ export function EdlsSummary(_props: DashboardPluginProps) {
             </table>
           </div>
         )}
-      </CardContent>
-    </Card>
-    <Card className="mt-4" data-testid="card-edls-assignment-status">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base" data-testid="title-edls-assignment-status">Assignment status</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Current status for assignments on {formatYmd(selectedDate, "weekday-short")} — not a historical snapshot.</p>
+        </section>
+        <section className="min-w-0 border-t pt-6" aria-label="Assignments" data-testid="card-edls-assignment-status">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold" data-testid="title-edls-assignment-status">Assignments</h2>
+            {data?.assignmentStatus && (
+              <Link href={assignmentExplorerUrl(selectedDate)} className="inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted">
+                <span className="text-muted-foreground">All assignments</span>
+                <span className="tabular-nums">{data.assignmentStatus.total}</span>
+              </Link>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-          {data?.assignmentStatus && (
-            <Link href={assignmentExplorerUrl(selectedDate)} className="inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted">
-              <span className="text-muted-foreground">All assignments</span>
-              <span className="tabular-nums">{data.assignmentStatus.total}</span>
-            </Link>
-          )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {!data?.assignmentStatus ? (
-          isLoading ? <div className="grid gap-4 md:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
-            : isError && !data ? <p className="text-sm text-destructive">Assignment status counts are unavailable.</p>
-            : <p className="text-sm text-muted-foreground">No assignment status counts returned for this date.</p>
-        ) : (
-          <>
-            <p className="mb-4 text-xs text-muted-foreground">Includes assignments across all sheet statuses except Trash, including Reserved. Each group is an independent view; counts are not mutually exclusive across groups.</p>
+          {!data?.assignmentStatus ? (
+            isLoading ? <div className="grid gap-4 md:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
+              : isError && !data ? <p className="text-sm text-destructive">Assignment status counts are unavailable.</p>
+              : <p className="text-sm text-muted-foreground">No assignment status counts returned for this date.</p>
+          ) : (
             <div className="grid gap-3 md:grid-cols-3">
               <AssignmentCountGroup title="Accepted?" rows={[
                 ["Yes", data.assignmentStatus.accepted.yes, { accepted: "yes" }],
@@ -341,11 +331,10 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                 ["No", data.assignmentStatus.population.no, { population: "no" }],
               ]} date={selectedDate} />
             </div>
-          </>
-        )}
+          )}
+        </section>
       </CardContent>
     </Card>
-    </>
   );
 }
 
