@@ -16,6 +16,7 @@
  *   npx tsx scripts/oneoffs/verify-concurrent-bringup.ts --pending  # one pending migration
  *   npx tsx scripts/oneoffs/verify-concurrent-bringup.ts --timeout  # holder never lets go
  *   npx tsx scripts/oneoffs/verify-concurrent-bringup.ts --stall    # migration outlives its deadline
+ * Add `--parent-timeout-ms=N` to change the parent's 120s child deadline.
  *
  * `--pending` registers a synthetic core migration one version above the
  * highest registered one, whose `up()` inserts a marker variable named after
@@ -48,6 +49,7 @@ const RESULT_TAG = "BRINGUP_PROOF_RESULT ";
 const PROBE_PREFIX = "concurrent_bringup_probe_";
 const MIGRATIONS_VARIABLE = "migrations_version";
 const STATE_VARIABLE = "bringup_state";
+const CHILD_CLEANUP_TIMEOUT_MS = 10_000;
 
 const childRole = process.argv.find((a) => a.startsWith("--child="))?.slice("--child=".length);
 const withPending = process.argv.includes("--pending");
@@ -56,6 +58,14 @@ const stallScenario = process.argv.includes("--stall");
 const stallMs = Number(
   process.argv.find((a) => a.startsWith("--stall-ms="))?.slice("--stall-ms=".length) ?? 30_000,
 );
+const parentTimeoutMs = Number(
+  process.argv.find((a) => a.startsWith("--parent-timeout-ms="))?.slice("--parent-timeout-ms=".length) ??
+    120_000,
+);
+
+if (!Number.isSafeInteger(parentTimeoutMs) || parentTimeoutMs <= 0 || parentTimeoutMs > 2_147_483_647) {
+  throw new Error("--parent-timeout-ms must be a positive integer no greater than 2147483647");
+}
 
 /** Everything the parent needs to judge one child's run. */
 interface ChildResult {
@@ -69,6 +79,57 @@ interface ChildResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Unlike a bare race with sleep(), this leaves no live timer behind. */
+async function withDeadline<T>(work: Promise<T>, ms: number, description: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${description} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Register each group immediately, including when spawning a later child fails. */
+async function withChildren<T>(
+  run: (scope: {
+    spawn: (...args: Parameters<typeof spawnChild>) => ReturnType<typeof spawnChild>;
+    wait: <R>(work: Promise<R>, description: string) => Promise<R>;
+  }) => Promise<T>,
+): Promise<T> {
+  const children: ReturnType<typeof spawnChild>[] = [];
+  const deadline = performance.now() + parentTimeoutMs;
+  try {
+    return await run({
+      spawn: (...args) => {
+        const child = spawnChild(...args);
+        children.push(child);
+        return child;
+      },
+      wait: (work, description) =>
+        withDeadline(work, Math.max(1, Math.ceil(deadline - performance.now())), description),
+    });
+  } finally {
+    // Signal EVERY group before awaiting any of them. Even a closed shim can
+    // have surviving descendants; always address the group, not just the shim.
+    const cleanup = await Promise.allSettled(
+      children.map(async (child) => {
+        try {
+          child.kill();
+        } finally {
+          await withDeadline(child.closed, CHILD_CLEANUP_TIMEOUT_MS, "child process-group cleanup");
+        }
+      }),
+    );
+    const errors = cleanup.filter((r) => r.status === "rejected").map((r) => r.reason);
+    if (errors.length) throw new AggregateError(errors, "could not close all child process groups");
+  }
 }
 
 async function runChild(role: string): Promise<void> {
@@ -157,8 +218,15 @@ function spawnChild(
   let announce: (r: ChildResult | null) => void = () => {};
   const reported = new Promise<ChildResult | null>((resolve) => (announce = resolve));
   const parse = (): ChildResult | null => {
-    const line = out.split("\n").find((l) => l.startsWith(RESULT_TAG));
-    return line ? (JSON.parse(line.slice(RESULT_TAG.length)) as ChildResult) : null;
+    // Pipes can split a JSON result anywhere. Only parse a complete line, and
+    // never throw out of an EventEmitter callback (that bypasses finally).
+    const line = out.split("\n").slice(0, -1).find((l) => l.startsWith(RESULT_TAG));
+    if (!line) return null;
+    try {
+      return JSON.parse(line.slice(RESULT_TAG.length)) as ChildResult;
+    } catch {
+      return null; // The missing-result check reports the captured output.
+    }
   };
   const capture = (buf: Buffer) => {
     out += buf.toString();
@@ -167,6 +235,10 @@ function spawnChild(
   };
   child.stdout.on("data", capture);
   child.stderr.on("data", capture);
+  child.on("error", (error) => {
+    out += `\nchild ${role} could not run: ${error.message}\n`;
+    announce(null);
+  });
   const closed = new Promise<number | null>((resolve) => {
     child.on("close", (code) => {
       announce(parse());
@@ -204,25 +276,30 @@ async function runTimeoutScenario(): Promise<void> {
   if (!holder) throw new Error("could not take the bring-up lock to hold it");
   console.log("[parent] holding the bring-up lock; booting one child with a 2s deadline");
 
-  const child = spawnChild(spawn, "T", [], { BRINGUP_LOCK_TIMEOUT_MS: "2000" });
-  const result = await child.result;
-  console.log(`[parent] child exited with code ${await child.closed}`);
-  await holder.release();
-
   const failures: string[] = [];
-  if (!result) failures.push("the child produced no result — did it exit at all?");
-  else {
-    console.log(
-      `[parent] child: ok=${result.ok} concurrency=${result.concurrency} ` +
-        `blockedOn=${result.blockedOn} error=${result.error}`,
-    );
-    if (result.ok) failures.push("the child must FAIL when it cannot get the lock");
-    if (result.concurrency !== "lock-timeout") {
-      failures.push(`expected concurrency=lock-timeout, got ${result.concurrency}`);
-    }
-    if (result.blockedOn !== "bringup-lock") {
-      failures.push(`expected blockedOn=bringup-lock, got ${result.blockedOn}`);
-    }
+  try {
+    await withChildren(async (scope) => {
+      const child = scope.spawn(spawn, "T", [], { BRINGUP_LOCK_TIMEOUT_MS: "2000" });
+      const result = await scope.wait(child.result, "lock-timeout child result and exit");
+      console.log(`[parent] child exited with code ${await child.closed}`);
+
+      if (!result) failures.push("the child produced no result — did it exit at all?");
+      else {
+        console.log(
+          `[parent] child: ok=${result.ok} concurrency=${result.concurrency} ` +
+            `blockedOn=${result.blockedOn} error=${result.error}`,
+        );
+        if (result.ok) failures.push("the child must FAIL when it cannot get the lock");
+        if (result.concurrency !== "lock-timeout") {
+          failures.push(`expected concurrency=lock-timeout, got ${result.concurrency}`);
+        }
+        if (result.blockedOn !== "bringup-lock") {
+          failures.push(`expected blockedOn=bringup-lock, got ${result.blockedOn}`);
+        }
+      }
+    });
+  } finally {
+    await holder.release();
   }
   finish(failures, "an unavailable lock ends the boot with a named blocker.");
 }
@@ -242,83 +319,82 @@ async function runStallScenario(): Promise<void> {
   console.log(
     `[parent] booting one child with a 2s step deadline and a ${stallMs} ms migration`,
   );
-  const child = spawnChild(spawn, "S", ["--stall", `--stall-ms=${stallMs}`], {
-    BRINGUP_STEP_TIMEOUT_MS: "2000",
-  });
-
   const failures: string[] = [];
   try {
-    const result = await Promise.race([
-      child.reported,
-      sleep(90_000).then(() => {
-        throw new Error("the stalled child never reported a result");
-      }),
-    ]);
+    await withChildren(async (scope) => {
+      const child = scope.spawn(spawn, "S", ["--stall", `--stall-ms=${stallMs}`], {
+        BRINGUP_STEP_TIMEOUT_MS: "2000",
+      });
+      const result = await scope.wait(child.reported, "stalled child result");
 
-    if (!result) failures.push("the child produced no result");
-    else {
-      console.log(
-        `[parent] child: ok=${result.ok} concurrency=${result.concurrency} ` +
-          `blockedOn=${result.blockedOn} error=${result.error}`,
-      );
-      if (result.ok) failures.push("a step that blows its deadline must fail the boot");
-      if (result.blockedOn !== "migrations") {
-        failures.push(`expected blockedOn=migrations, got ${result.blockedOn}`);
+      if (!result) failures.push("the child produced no result");
+      else {
+        console.log(
+          `[parent] child: ok=${result.ok} concurrency=${result.concurrency} ` +
+            `blockedOn=${result.blockedOn} error=${result.error}`,
+        );
+        if (result.ok) failures.push("a step that blows its deadline must fail the boot");
+        if (result.blockedOn !== "migrations") {
+          failures.push(`expected blockedOn=migrations, got ${result.blockedOn}`);
+        }
       }
-    }
 
-    // THE POINT: the failed child is still holding the lock, because the work
-    // it gave up on may still be running.
-    const stolen = await storage.advisoryLock.tryAcquireSession(BRINGUP_LOCK_NAME, {
-      timeoutMs: 3_000,
+      // THE POINT: the failed child is still holding the lock, because the work
+      // it gave up on may still be running.
+      const stolen = await storage.advisoryLock.tryAcquireSession(BRINGUP_LOCK_NAME, {
+        timeoutMs: 3_000,
+      });
+      if (stolen) {
+        await stolen.release();
+        failures.push(
+          "the lock was released while the timed-out migration may still be running — " +
+            "another task could start migrating alongside it",
+        );
+      } else {
+        console.log("[parent] the failed child still holds the lock, as it must");
+      }
     });
-    if (stolen) {
-      await stolen.release();
-      failures.push(
-        "the lock was released while the timed-out migration may still be running — " +
-          "another task could start migrating alongside it",
-      );
-    } else {
-      console.log("[parent] the failed child still holds the lock, as it must");
-    }
-  } finally {
     // Killing it stands in for ECS replacing the task: the session dies, so
     // the database drops the lock and the next rollout is not wedged.
-    child.kill();
-    await child.closed;
-  }
 
-  const afterDeath = await storage.advisoryLock.tryAcquireSession(BRINGUP_LOCK_NAME, {
-    timeoutMs: 10_000,
-  });
-  if (!afterDeath) {
-    failures.push("the lock was NOT released when the holding process died — that would wedge");
-  } else {
-    console.log("[parent] the lock became free as soon as that process died");
-    await afterDeath.release();
+    const afterDeath = await storage.advisoryLock.tryAcquireSession(BRINGUP_LOCK_NAME, {
+      timeoutMs: 10_000,
+    });
+    if (!afterDeath) {
+      failures.push("the lock was NOT released when the holding process died — that would wedge");
+    } else {
+      console.log("[parent] the lock became free as soon as that process died");
+      await afterDeath.release();
+    }
+  } finally {
+    await cleanUpProbes(before);
   }
-
-  await cleanUpProbes(before);
   finish(failures, "a timed-out step fails the boot and keeps the lock until the process dies.");
 }
 
 /** Remove probe markers and restore the version the probe migration bumped. */
 async function cleanUpProbes(
   before: { id: string; value: unknown } | undefined,
+  restoreVersion = true,
 ): Promise<void> {
   const { storage } = await import("../../server/storage");
   const markers = await storage.variables.getByNamePrefix(PROBE_PREFIX);
   for (const marker of markers) await storage.variables.delete(marker.id);
-  if (before) {
+  if (restoreVersion && before) {
     const now = await storage.variables.getByName(MIGRATIONS_VARIABLE);
     if (JSON.stringify(now?.value ?? null) !== JSON.stringify(before.value)) {
       await storage.variables.update(before.id, { value: before.value });
     }
+  } else if (restoreVersion) {
+    const now = await storage.variables.getByName(MIGRATIONS_VARIABLE);
+    if (now) await storage.variables.delete(now.id);
   }
-  if (markers.length > 0 || before) {
+  if (markers.length > 0 || (restoreVersion && before)) {
     console.log(
-      `[parent] restored ${MIGRATIONS_VARIABLE} to ${JSON.stringify(before?.value ?? null)} ` +
-        `and removed ${markers.length} probe marker(s)`,
+      `[parent] removed ${markers.length} probe marker(s)` +
+        (restoreVersion
+          ? ` and restored ${MIGRATIONS_VARIABLE} to ${JSON.stringify(before?.value ?? null)}`
+          : ""),
     );
   }
 }
@@ -348,80 +424,86 @@ async function runParent(): Promise<void> {
   const failures: string[] = [];
   const extra = withPending ? ["--pending"] : [];
 
-  // Both at once — the whole point.
-  const children = [spawnChild(spawn, "A", extra), spawnChild(spawn, "B", extra)];
-  const settled = await Promise.all(
-    children.map(async (c) => ({ result: await c.result, code: await c.closed })),
-  );
-  const results: ChildResult[] = [];
-  for (const { result, code } of settled) {
-    if (!result) {
-      failures.push(`a child produced no result line (exit ${code})`);
-      continue;
-    }
-    results.push(result);
-    console.log(
-      `[parent] child ${result.role}: exit=${code} ok=${result.ok} ` +
-        `concurrency=${result.concurrency} blockedOn=${result.blockedOn ?? "-"}` +
-        (result.error ? ` error=${result.error}` : ""),
-    );
-  }
-
   try {
-    // 1. Both tasks reached ready.
-    if (results.length !== 2 || !results.every((r) => r.ok)) {
-      failures.push("both processes must complete the bring-up; at least one did not");
-    }
-
-    // 2. Exactly one did the work; the other waited for it.
-    const outcomes = results.map((r) => r.concurrency).sort();
-    const soleCount = outcomes.filter((o) => o === "sole").length;
-    const waiterCount = outcomes.filter(
-      (o) => o === "waited-and-proceeded" || o === "deferred-to-peer",
-    ).length;
-    if (soleCount !== 1 || waiterCount !== 1) {
-      failures.push(
-        `expected one "sole" run and one waiter, got [${outcomes.join(", ")}]. ` +
-          "Two 'sole' runs means the lock did not serialize them.",
+    await withChildren(async (scope) => {
+      // Both at once — the whole point.
+      const children = [scope.spawn(spawn, "A", extra), scope.spawn(spawn, "B", extra)];
+      const settled = await scope.wait(
+        Promise.all(children.map(async (c) => ({ result: await c.result, code: await c.closed }))),
+        "concurrent children results and exits",
       );
-    }
-
-    // 3. The pending migration ran exactly once.
-    if (withPending) {
-      const markers = await storage.variables.getByNamePrefix(PROBE_PREFIX);
-      if (markers.length !== 1) {
-        failures.push(
-          `the probe migration ran ${markers.length} time(s); it must run exactly once`,
-        );
-      } else {
+      const results: ChildResult[] = [];
+      for (const { result, code } of settled) {
+        if (!result) {
+          failures.push(`a child produced no result line (exit ${code})`);
+          continue;
+        }
+        results.push(result);
         console.log(
-          `[parent] probe migration ran once, by ${markers[0].name.slice(PROBE_PREFIX.length)}`,
+          `[parent] child ${result.role}: exit=${code} ok=${result.ok} ` +
+            `concurrency=${result.concurrency} blockedOn=${result.blockedOn ?? "-"}` +
+            (result.error ? ` error=${result.error}` : ""),
         );
       }
-      // 4. And the waiter did NOT re-apply it.
-      const deferred = results.find((r) => r.concurrency === "deferred-to-peer");
-      const waited = results.find((r) => r.concurrency === "waited-and-proceeded");
-      if (!deferred && !waited) failures.push("no process reported waiting for the other");
-    } else {
-      // With nothing pending, the waiter must recognize there is nothing to do.
-      if (!results.some((r) => r.concurrency === "deferred-to-peer")) {
-        failures.push(
-          "on an already-current schema the waiter must report deferred-to-peer " +
-            `(got [${outcomes.join(", ")}])`,
-        );
-      }
-    }
 
-    const after = await storage.variables.getByName(MIGRATIONS_VARIABLE);
-    console.log(`[parent] ${MIGRATIONS_VARIABLE} after: ${JSON.stringify(after?.value ?? null)}`);
-    const state = await storage.variables.getByName(STATE_VARIABLE);
-    console.log(`[parent] ${STATE_VARIABLE}: ${JSON.stringify(state?.value ?? null)}`);
+      // 1. Both tasks reached ready.
+      if (results.length !== 2 || !results.every((r) => r.ok)) {
+        failures.push("both processes must complete the bring-up; at least one did not");
+      }
+
+      // 2. Exactly one did the work; the other waited for it.
+      const outcomes = results.map((r) => r.concurrency).sort();
+      const soleCount = outcomes.filter((o) => o === "sole").length;
+      const waiterCount = outcomes.filter(
+        (o) => o === "waited-and-proceeded" || o === "deferred-to-peer",
+      ).length;
+      if (soleCount !== 1 || waiterCount !== 1) {
+        failures.push(
+          `expected one "sole" run and one waiter, got [${outcomes.join(", ")}]. ` +
+            "Two 'sole' runs means the lock did not serialize them.",
+        );
+      }
+
+      // 3. The pending migration ran exactly once.
+      if (withPending) {
+        const markers = await storage.variables.getByNamePrefix(PROBE_PREFIX);
+        if (markers.length !== 1) {
+          failures.push(
+            `the probe migration ran ${markers.length} time(s); it must run exactly once`,
+          );
+        } else {
+          console.log(
+            `[parent] probe migration ran once, by ${markers[0].name.slice(PROBE_PREFIX.length)}`,
+          );
+        }
+        // 4. And the waiter did NOT re-apply it.
+        const deferred = results.find((r) => r.concurrency === "deferred-to-peer");
+        const waited = results.find((r) => r.concurrency === "waited-and-proceeded");
+        if (!deferred && !waited) failures.push("no process reported waiting for the other");
+      } else {
+        // With nothing pending, the waiter must recognize there is nothing to do.
+        if (!results.some((r) => r.concurrency === "deferred-to-peer")) {
+          failures.push(
+            "on an already-current schema the waiter must report deferred-to-peer " +
+              `(got [${outcomes.join(", ")}])`,
+          );
+        }
+      }
+
+      const after = await storage.variables.getByName(MIGRATIONS_VARIABLE);
+      console.log(`[parent] ${MIGRATIONS_VARIABLE} after: ${JSON.stringify(after?.value ?? null)}`);
+      const state = await storage.variables.getByName(STATE_VARIABLE);
+      console.log(`[parent] ${STATE_VARIABLE}: ${JSON.stringify(state?.value ?? null)}`);
+    });
   } finally {
     // Leave the database exactly as found.
-    await cleanUpProbes(withPending ? before : undefined);
+    await cleanUpProbes(before, withPending);
   }
 
   finish(failures, "both processes booted; the bring-up ran exactly once.");
 }
 
-void (childRole ? runChild(childRole) : runParent());
+void (childRole ? runChild(childRole) : runParent()).catch((error) => {
+  console.error("\nFAIL — concurrent bring-up verification failed:", error);
+  process.exit(1);
+});
