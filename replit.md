@@ -585,11 +585,35 @@ metadata (`BasePluginMetadata` in `server/plugins/_core/types.ts`,
 surfaced by the dashboard, trust-eligibility, charge, and
 event-notifier registries). This keeps the escape hatch visible and
 auditable. **Mutations always stay in storage** — the opt-in covers
-reads only. The `storage-encapsulation` architecture-lint rule
-(`npx tsx scripts/dev/lint.ts storage-encapsulation`) fails any file under
-`server/plugins/` that calls `readOnly.query(...)` without declaring
-`needsReadOnlyDb` (shared plugin-kind infrastructure such as
-`server/plugins/trust/eligibility/executor.ts` is allowlisted there).
+reads only.
+
+**What the lint enforces:** The `storage-encapsulation` architecture-lint
+rule (`npx tsx scripts/dev/lint.ts storage-encapsulation`) scans `server/`
+and every `components/<id>/server/` (not tests or `scripts/`). Outside
+`server/storage/**` and each component's `server/storage/**` it fails a
+file that value-imports the db module (`db`, `pool`, … — static or
+dynamic), `getClient` from a storage module (including via a namespace
+binding of one), or a query value from
+`drizzle-orm` (operators, `sql`, dialects; pure introspection helpers such
+as `getTableColumns`/`getTableConfig`/`is` are allowed). It also fails
+schema-table imports (`@shared/schema` or any `shared/schema/**`) when the
+file builds queries — the table is passed to `.from/.insert/.update/
+.delete/…Join`, or the file has another query import. Type-only imports,
+Zod insert/validation schemas, enums, and tables passed purely as
+declarations to a framework (metadata contexts, token roots) are fine.
+Plugin files that declare `needsReadOnlyDb` (or are listed as plugin-kind
+infrastructure, e.g. `server/plugins/trust/eligibility/executor.ts` and
+the wizard engine types) may use drizzle operators and tables for their
+read queries, but still fail on `.insert/.update/.delete(table)` builders
+or INSERT/UPDATE/DELETE/MERGE/TRUNCATE/DDL in SQL text (any `sql`
+template, `sql.raw`, or string passed to `.execute`/`.query`); the rule
+self-tests its detector against `scripts/dev/storage-encapsulation-fixtures.ts`
+first. Any other plugin
+calling `readOnly.query(...)` without `needsReadOnlyDb` fails. Files that
+violated the rule when it was tightened are listed with reasons in
+`scripts/dev/storage-encapsulation-baseline.ts`. The baseline only
+shrinks: a new violating file fails, and an entry whose file is gone or
+clean also fails until it is deleted. Never add entries.
 
 **Cross-domain query helpers:** When a feature needs to query several
 unrelated tables (for example, contact-link resolution touches
