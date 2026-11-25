@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AuthCheckError from "@/components/auth/AuthCheckError";
+import { LoginRequiredRedirect, LoginReturnRedirect } from "@/components/auth/LoginRedirect";
+import { captureLoginDestination } from "@/lib/login-destination";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
@@ -4164,9 +4166,11 @@ function Router() {
       {/* Dashboard route */}
       <Route path="/dashboard">
         <ProtectedRoute>
-          <AuthenticatedLayout>
-            <Dashboard />
-          </AuthenticatedLayout>
+          <LoginReturnRedirect>
+            <AuthenticatedLayout>
+              <Dashboard />
+            </AuthenticatedLayout>
+          </LoginReturnRedirect>
         </ProtectedRoute>
       </Route>
 
@@ -4178,9 +4182,9 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Root route - redirect to dashboard */}
+      {/* Providers return here; restore the page before the dashboard fallback. */}
       <Route path="/">
-        <Redirect to="/dashboard" />
+        {isAuthenticated ? <LoginReturnRedirect /> : <LoginRequiredRedirect pathname="/" />}
       </Route>
 
       {/* Configuration landing page */}
@@ -4206,6 +4210,13 @@ type SessionIdleStatus = {
   deadline: string | null;
 };
 
+function leaveExpiredSession() {
+  // This automatic logout is not an intentional sign-out: retain the page,
+  // but never its query, fragment or form state, before leaving the document.
+  captureLoginDestination(window.location.pathname);
+  window.location.assign("/api/logout");
+}
+
 function SessionIdleWarning() {
   const { isAuthenticated } = useAuth();
   const [now, setNow] = useState(() => Date.now());
@@ -4224,7 +4235,7 @@ function SessionIdleWarning() {
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 401) {
-        window.location.assign("/api/logout");
+        leaveExpiredSession();
       }
     },
   });
@@ -4237,7 +4248,7 @@ function SessionIdleWarning() {
 
   useEffect(() => {
     if (statusQuery.error instanceof ApiError && statusQuery.error.status === 401) {
-      window.location.assign("/api/logout");
+      leaveExpiredSession();
     }
   }, [statusQuery.error]);
 

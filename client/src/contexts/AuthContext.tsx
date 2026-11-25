@@ -9,6 +9,7 @@ import {
 import { getBrowserTimeZone, setDisplayTimeZone } from '@/lib/display-timezone';
 import { fetchAuthUser } from '@/lib/auth-user';
 import { clearSamlAttempt } from '@/lib/saml-attempt';
+import { clearLoginDestination } from '@/lib/login-destination';
 
 let _clerkSignOut: ((opts?: { redirectUrl?: string }) => Promise<void>) | null = null;
 export function registerClerkSignOut(fn: typeof _clerkSignOut) {
@@ -133,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = useCallback(async () => {
+    clearLoginDestination();
     window.dispatchEvent(new Event("auth:session-ended"));
     if (_clerkSignOut) {
       await _clerkSignOut({ redirectUrl: '/api/logout' });

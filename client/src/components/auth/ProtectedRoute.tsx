@@ -2,7 +2,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import AuthCheckError from './AuthCheckError';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertCircle, Shield } from 'lucide-react';
-import { Redirect, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
+import { LoginRequiredRedirect } from './LoginRedirect';
 import AccessDenied from './AccessDenied';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -186,11 +187,7 @@ export default function ProtectedRoute({ children, permission, policy, component
 
   // If auth is ready and user is not authenticated, redirect to login
   if (!isAuthenticated) {
-    // Save the current location to redirect back after login
-    if (location !== '/login') {
-      sessionStorage.setItem('redirectAfterLogin', location);
-    }
-    return <Redirect to="/login" />;
+    return <LoginRequiredRedirect pathname={window.location.pathname} />;
   }
 
   // Fail closed if tab lookup failed

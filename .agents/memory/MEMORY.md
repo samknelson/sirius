@@ -58,6 +58,7 @@
 - [Template Studio preview pattern](template-studio-host-pattern.md) — preview request is self-describing (specs+finished templates+context, no registry); callers compose their own templates; shared field tables keep preview==delivery.
 - [Token plugin framework](token-plugin-framework.md) — legacy ids must stay valid chains; audience gating fail-closed per channel; evaluator mirrors shared arg validation; test scripts import storage/database not barrel.
 - [Authentication and sessions](authentication-session-index.md) — provisioning, verified error disclosure, cookie restoration, idle observation, and durable account/socket authority.
+- [Login return scope](login-return-scope.md) — restore the page pathname only, within one tab; keep private page state and credentials out of return links.
 - [Template preview contexts](template-preview-subjects.md) — context is raw root JSON or an entity ref; entity refs gated per token KIND (fail closed, same id checked+loaded); persona keys belong to the kind owning the leaf.
 - [Derived registry cache versioning](derived-registry-cache-versioning.md) — caches over listEnabledSync must key on registry version + component-cache revision, else validation accepts what delivery renders as unknown.
 - [Per-plugin envelope narrowing](plugin-config-envelope-per-plugin-narrowing.md) — narrow kind-level config fields per plugin via the adapter hook served by /configs/meta; lock (don't hide) unavailable choices, keep selected ones clearable.

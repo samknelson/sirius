@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useLocation } from 'wouter';
+import { useState } from 'react';
+import { useLocation, useSearch } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import AuthCheckError from '@/components/auth/AuthCheckError';
@@ -23,6 +23,8 @@ import {
 import { queryClient } from '@/lib/queryClient';
 import { sanitizeHtml } from '@shared/utils/html';
 import { useSiteSettings, useVariableValue } from '@/lib/use-variable';
+import { useLoginReturn } from '@/components/auth/LoginRedirect';
+import { clearLoginDestination } from '@/lib/login-destination';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -194,7 +196,10 @@ function ClerkNotProvisionedMessage() {
       <Button
         variant="outline"
         className="w-full"
-        onClick={() => signOut({ redirectUrl: "/login" })}
+        onClick={() => {
+          clearLoginDestination();
+          return signOut({ redirectUrl: "/login" });
+        }}
         data-testid="button-clerk-signout"
       >
         <LogOut className="mr-2 h-4 w-4" />
@@ -207,6 +212,8 @@ function ClerkNotProvisionedMessage() {
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading, authReady, authError } = useAuth();
+  const search = useSearch();
+  useLoginReturn(isAuthenticated && authReady && !authError, search);
 
   const { data: providersData, isError: providersError } = useQuery<ProvidersResponse>({
     queryKey: ['/api/auth/providers'],
@@ -253,6 +260,7 @@ export default function LoginPage() {
           <Show when="signed-out">
             <SignIn
               routing="hash"
+              forceRedirectUrl="/"
               appearance={{
                 elements: {
                   rootBox: 'w-full',
@@ -311,18 +319,6 @@ export default function LoginPage() {
       ),
     });
   }
-
-  useEffect(() => {
-    if (isAuthenticated && authReady) {
-      const redirectTo = sessionStorage.getItem('redirectAfterLogin');
-      if (redirectTo) {
-        sessionStorage.removeItem('redirectAfterLogin');
-        setLocation(redirectTo);
-      } else {
-        setLocation('/dashboard');
-      }
-    }
-  }, [isAuthenticated, authReady, setLocation]);
 
   if (authError) return <AuthCheckError />;
   if (isLoading || !authReady) {
