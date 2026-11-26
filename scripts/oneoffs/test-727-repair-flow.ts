@@ -19,7 +19,7 @@ import { getAllComponents } from "../../shared/components";
 async function pickComponent(): Promise<{ id: string; tables: string[] }> {
   for (const c of getAllComponents()) {
     if (!c.managesSchema || !c.schemaManifest) continue;
-    if (c.schemaManifest.dependsOnComponents?.length) continue;
+    if (c.dependsOnComponents?.length) continue;
     // Single-table components give a clean drift scenario (no FK creation
     // failures against the deliberately-bogus table).
     if (c.schemaManifest.tables.length !== 1) continue;

@@ -700,10 +700,10 @@ export default function ComponentsConfigPage() {
                       <li key={table} className="font-mono text-sm">{table}</li>
                     ))}
                   </ul>
-                  {(pendingAction?.component.schemaManifest?.dependsOnComponents?.length ?? 0) > 0 && (
+                  {(pendingAction?.component.dependsOnComponents?.length ?? 0) > 0 && (
                     <p className="text-sm" data-testid="text-enable-dependencies">
                       Requires these components to be enabled first:{" "}
-                      {pendingAction?.component.schemaManifest?.dependsOnComponents
+                      {pendingAction?.component.dependsOnComponents
                         ?.map((depId) => allComponents.find((c) => c.id === depId)?.name ?? depId)
                         .join(", ")}
                     </p>

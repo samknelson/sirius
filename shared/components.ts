@@ -69,10 +69,19 @@ export interface ComponentDefinition {
    */
   pluginConfigs?: ComponentManagedPluginConfig[];
   /**
-   * Component IDs this component depends on, for components that do NOT
-   * manage a schema. Schema-managing components declare dependencies in
-   * `schemaManifest.dependsOnComponents` instead. The enable flow refuses
-   * to enable this component unless every listed component is enabled.
+   * The ONE place a component declares the component IDs it depends on —
+   * whether the link is a foreign key, raw SQL, an import, or anything else
+   * that breaks when the other component is absent or off.
+   *
+   * - Build: discovery refuses a present component whose dependency's source
+   *   is missing (core may not depend on an optional component at all).
+   * - Enable: the enable flow refuses unless every listed component is enabled
+   *   with its tables present.
+   * - Boot: per-component migrations run dependencies first.
+   *
+   * The dotted-ID hierarchy (`dispatch.asi` under `dispatch`) is naming only
+   * and implies NO dependency; declare the parent here if it is a real one.
+   * See docs/component-dependencies.md.
    */
   dependsOnComponents?: string[];
 }
@@ -90,14 +99,6 @@ export interface ComponentSchemaManifest {
   version?: number;
   schemaPath: string;
   tables: string[];
-  /**
-   * Component IDs whose schema this component's tables reference via
-   * foreign keys. Enabling this component requires every listed component
-   * to be enabled with its tables present; the enable flow fails fast with
-   * a clear message naming the missing prerequisites instead of surfacing
-   * a raw SQL foreign-key error.
-   */
-  dependsOnComponents?: string[];
 }
 
 export type ComponentTableStatus = "active" | "dropped" | "pending" | "error";
@@ -491,11 +492,11 @@ export const componentRegistry: ComponentDefinition[] = [
     enabledByDefault: false,
     category: "dispatch",
     managesSchema: true,
+    dependsOnComponents: ["dispatch", "facility"],
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/dispatch/facility-schema.ts",
-      tables: ["dispatch_job_facility"],
-      dependsOnComponents: ["dispatch", "facility"]
+      tables: ["dispatch_job_facility"]
     }
   },
   {
@@ -584,6 +585,9 @@ export function getComponentsByCategory(category: string): ComponentDefinition[]
 }
 
 /**
+ * The dotted-ID hierarchy is naming/grouping only and implies NO dependency;
+ * dependencies are declared in `dependsOnComponents` (docs/component-dependencies.md).
+ *
  * Get the parent component ID from a component ID
  * For example: "trust.providers.login" -> "trust.providers"
  *              "ledger.stripe" -> "ledger"

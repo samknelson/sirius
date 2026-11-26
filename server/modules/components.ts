@@ -8,6 +8,8 @@ import {
   reconcileComponentPluginConfigs,
   checkComponentSchemaDrift,
   getComponentSchemaInfo,
+  checkComponentDependencies,
+  formatMissingDependencies,
 } from "../services/component/lifecycle";
 import {
   isComponentEnabledSync,
@@ -130,6 +132,16 @@ export function registerComponentRoutes(
             tables: schemaInfo.tables,
             instructions: "To confirm, send confirmDestructive: 'DELETE' in the request body"
           });
+        }
+      }
+
+      // Schema-managing components get this check inside enableComponentSchema;
+      // every other component is held to the same declared dependency list here.
+      if (enabled && !component.managesSchema) {
+        const missingDependencies = await checkComponentDependencies(component);
+        if (missingDependencies.length > 0) {
+          const error = formatMissingDependencies(component.name, missingDependencies);
+          return res.status(409).json({ message: error, error, missingDependencies, schemaOperations: [] });
         }
       }
 

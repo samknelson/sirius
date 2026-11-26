@@ -60,6 +60,8 @@ export interface DiscoveredComponent {
   coreRegistered: boolean;
   /** Every component ID this one declares a dependency on (core or optional). */
   dependsOn: string[];
+  /** Tables this component's schema manifest declares it owns. */
+  tables: string[];
   /** Definition module; absent for core-registered directories. */
   definition?: string;
   shared: string[];
@@ -103,7 +105,7 @@ function stringArray(expression: ts.Expression | undefined, where: string): stri
  * The module must export `const component = { id: "...", ... }`; a list export
  * (`components`) is rejected because a directory holds exactly one component.
  */
-function readDefinition(path: string): { id: string; dependsOn: string[] } {
+function readDefinition(path: string): { id: string } & DeclaredComponent {
   const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
   const found: ts.ObjectLiteralExpression[] = [];
   for (const statement of source.statements) {
@@ -129,35 +131,70 @@ function readDefinition(path: string): { id: string; dependsOn: string[] } {
   const [object] = found;
   const id = objectProperty(object, "id");
   if (!id || !ts.isStringLiteral(id)) throw new Error(`${path}: component id must be a string literal`);
-  return { id: id.text, dependsOn: declaredDependencies(object, path) };
+  return { id: id.text, dependsOn: declaredDependencies(object, path), tables: declaredTables(object), schemaPath: declaredSchemaPath(object) };
 }
 
+/**
+ * A component declares its dependencies in exactly one place: the top-level
+ * `dependsOnComponents` of its definition. The old nested
+ * `schemaManifest.dependsOnComponents` is refused so the two cannot drift.
+ */
 function declaredDependencies(object: ts.ObjectLiteralExpression, where: string): string[] {
   const schemaManifest = objectProperty(object, "schemaManifest");
-  return [...new Set([
-    ...stringArray(objectProperty(object, "dependsOnComponents"), where),
-    ...(schemaManifest && ts.isObjectLiteralExpression(schemaManifest)
-      ? stringArray(objectProperty(schemaManifest, "dependsOnComponents"), where) : []),
-  ])];
+  if (schemaManifest && ts.isObjectLiteralExpression(schemaManifest) && objectProperty(schemaManifest, "dependsOnComponents")) {
+    throw new Error(`${where}: declare dependencies in the component's top-level "dependsOnComponents", not in schemaManifest`);
+  }
+  const dependencies = stringArray(objectProperty(object, "dependsOnComponents"), where);
+  if (new Set(dependencies).size !== dependencies.length) throw new Error(`${where}: dependsOnComponents lists a component twice`);
+  return dependencies;
+}
+
+/** Declared table names of a definition's schema manifest (literal strings only). */
+function declaredTables(object: ts.ObjectLiteralExpression): string[] {
+  const schemaManifest = objectProperty(object, "schemaManifest");
+  if (!schemaManifest || !ts.isObjectLiteralExpression(schemaManifest)) return [];
+  const tables = objectProperty(schemaManifest, "tables");
+  if (!tables || !ts.isArrayLiteralExpression(tables)) return [];
+  return tables.elements.filter(ts.isStringLiteral).map(element => element.text);
 }
 
 /** IDs of the components defined in core (`shared/components.ts`), not in `components/`. */
 export function coreComponentIds(root = resolve(import.meta.dirname, "..")): Set<string> {
-  return new Set(coreComponentDependencies(root).keys());
+  return new Set(coreComponentDeclarations(root).keys());
 }
 
-/** Core component IDs mapped to the component IDs each declares a dependency on. */
-function coreComponentDependencies(root: string): Map<string, string[]> {
+interface DeclaredComponent {
+  dependsOn: string[];
+  /** Tables the component's schema manifest declares it owns. */
+  tables: string[];
+  /** Workspace-relative schema module named by `schemaManifest.schemaPath`, if any. */
+  schemaPath?: string;
+}
+
+function declaredSchemaPath(object: ts.ObjectLiteralExpression): string | undefined {
+  const schemaManifest = objectProperty(object, "schemaManifest");
+  if (!schemaManifest || !ts.isObjectLiteralExpression(schemaManifest)) return undefined;
+  const path = objectProperty(schemaManifest, "schemaPath");
+  return path && ts.isStringLiteral(path) ? path.text.replace(/^\.\//, "") : undefined;
+}
+
+/** Core component IDs mapped to their single dependency list and declared tables. */
+function coreComponentDeclarations(root: string): Map<string, DeclaredComponent> {
   const path = resolve(root, "shared/components.ts");
   const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
-  const ids = new Map<string, string[]>();
+  const ids = new Map<string, DeclaredComponent>();
   const visit = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "componentRegistry" &&
       node.initializer && ts.isArrayLiteralExpression(node.initializer)) {
       for (const element of node.initializer.elements) {
         if (!ts.isObjectLiteralExpression(element)) continue;
         const id = objectProperty(element, "id");
-        if (id && ts.isStringLiteral(id)) ids.set(id.text, declaredDependencies(element, path));
+        if (!id || !ts.isStringLiteral(id)) continue;
+        ids.set(id.text, {
+          dependsOn: declaredDependencies(element, `${path} (component "${id.text}")`),
+          tables: declaredTables(element),
+          schemaPath: declaredSchemaPath(element),
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -178,7 +215,7 @@ export function discoverOptionalComponents(root = resolve(import.meta.dirname, "
 
 /** Every directory under `components/`, including core-registered ones. */
 export function discoverComponentDirectories(root = resolve(import.meta.dirname, "..")): DiscoveredComponent[] {
-  const core = coreComponentDependencies(root);
+  const core = coreComponentDeclarations(root);
   const directory = resolve(root, "components");
   if (!existsSync(directory)) return [];
   const discovered = readdirSync(directory, { withFileTypes: true })
@@ -219,7 +256,8 @@ export function discoverComponentDirectories(root = resolve(import.meta.dirname,
           id: entry.name,
           directory: where,
           coreRegistered: true,
-          dependsOn: core.get(entry.name)!,
+          dependsOn: core.get(entry.name)!.dependsOn,
+          tables: core.get(entry.name)!.tables,
           shared: [],
           server: [],
           earlyDocument: [],
@@ -233,7 +271,7 @@ export function discoverComponentDirectories(root = resolve(import.meta.dirname,
       }
       if (!manifest.definition) throw new Error(`${where}/${MANIFEST} must name its "definition" module`);
       const definition = modulePath(manifest.definition);
-      const { id, dependsOn } = readDefinition(resolve(root, definition));
+      const { id, dependsOn, tables } = readDefinition(resolve(root, definition));
       if (id !== entry.name) {
         throw new Error(`${where} defines component "${id}". The directory name must equal the component ID.`);
       }
@@ -242,6 +280,7 @@ export function discoverComponentDirectories(root = resolve(import.meta.dirname,
         directory: where,
         coreRegistered: false,
         dependsOn,
+        tables,
         definition,
         shared: (manifest.shared ?? []).map(modulePath),
         server: (manifest.server ?? []).map(modulePath),
@@ -267,16 +306,51 @@ export function discoverComponentDirectories(root = resolve(import.meta.dirname,
       };
     });
 
-  const optional = new Set(discovered.filter(c => !c.coreRegistered).map(c => c.id));
-  for (const component of discovered) {
-    if (component.coreRegistered) continue;
+  checkDependencyPresence(core, discovered);
+  return discovered;
+}
+
+/**
+ * The build-time presence rule, applied to EVERY component (core-defined or in
+ * its own directory) from the same single `dependsOnComponents` list the
+ * enable flow reads:
+ * - a core component may depend only on core components (core is always
+ *   present; an optional directory may be deleted);
+ * - an optional component may depend on core or on another PRESENT optional
+ *   component;
+ * - a dependency on an unknown ID, on itself, or a dependency cycle is refused.
+ */
+function checkDependencyPresence(core: Map<string, DeclaredComponent>, discovered: DiscoveredComponent[]): void {
+  const optional = new Map(discovered.filter(c => !c.coreRegistered).map(c => [c.id, c]));
+  const graph = new Map<string, string[]>();
+  for (const [id, declaration] of core) {
+    graph.set(id, declaration.dependsOn);
+    for (const dependency of declaration.dependsOn) {
+      if (dependency === id) throw new Error(`Core component "${id}" lists itself in dependsOnComponents`);
+      if (core.has(dependency)) continue;
+      if (optional.has(dependency)) {
+        throw new Error(`Core component "${id}" depends on optional component "${dependency}". Core is always present but components/${dependency} may be deleted: gate the link at runtime instead, or move "${id}" into its own component directory.`);
+      }
+      throw new Error(`Core component "${id}" depends on component "${dependency}", which is not a known component. Fix the ID, or restore components/${dependency}.`);
+    }
+  }
+  for (const component of optional.values()) {
     if (core.has(component.id)) throw new Error(`components/${component.id} duplicates core component "${component.id}"`);
+    graph.set(component.id, component.dependsOn);
     for (const dependency of component.dependsOn) {
+      if (dependency === component.id) throw new Error(`Component "${component.id}" lists itself in dependsOnComponents`);
       if (core.has(dependency) || optional.has(dependency)) continue;
       throw new Error(`Component "${component.id}" depends on component "${dependency}", but components/${dependency} is not present. Restore it, or remove "${component.id}" too.`);
     }
   }
-  return discovered;
+  const done = new Set<string>();
+  const visit = (id: string, path: string[]): void => {
+    if (done.has(id)) return;
+    if (path.includes(id)) throw new Error(`Component dependency cycle: ${[...path.slice(path.indexOf(id)), id].join(" -> ")}`);
+    for (const dependency of graph.get(id) ?? []) visit(dependency, [...path, id]);
+    done.add(id);
+  };
+  for (const id of graph.keys()) visit(id, []);
 }
 
 /** Relative import specifiers of a module (static, dynamic, re-exports, `declare module`). */
@@ -357,6 +431,207 @@ export function checkComponentImports(root = resolve(import.meta.dirname, ".."))
     }
   }
   return violations;
+}
+
+/** Drizzle table variables (`const x = pgTable("name", ...)`) declared in a module. */
+function drizzleTableVariables(path: string): Map<string, string> {
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const tables = new Map<string, string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
+      ts.isCallExpression(node.initializer) && ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === "pgTable" && node.initializer.arguments[0] &&
+      ts.isStringLiteral(node.initializer.arguments[0])) {
+      tables.set(node.name.text, node.initializer.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return tables;
+}
+
+/** SQL keywords that are followed by a table name. */
+const RAW_SQL_TABLE = /\b(?:from|join|into|update|references|truncate|table(?:\s+if\s+(?:not\s+)?exists)?)\s+(?:only\s+)?(?:"?public"?\.)?"?([a-z_][a-z0-9_]*)"?/gi;
+
+interface TableReference { table: string; line: number; kind: "foreign key" | "raw SQL" | "query" }
+
+/**
+ * Cross-table references in one module: foreign keys (`.references(() => t.col)`
+ * and `foreignKey({ foreignColumns: [t.col] })`, resolved through the Drizzle
+ * table-variable map) and table names in SQL text (string and template
+ * literals, including drizzle `sql` templates and raw migration DDL).
+ */
+function tableReferences(path: string, tableVariables: Map<string, string>, knownTables: Set<string>): TableReference[] {
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const found: TableReference[] = [];
+  const line = (node: ts.Node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+  const foreignTable = (expression: ts.Expression | undefined, at: ts.Node) => {
+    while (expression && (ts.isArrowFunction(expression) || ts.isParenthesizedExpression(expression))) {
+      expression = ts.isArrowFunction(expression) && !ts.isBlock(expression.body) ? expression.body
+        : ts.isParenthesizedExpression(expression) ? expression.expression : undefined;
+    }
+    if (expression && ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+      const table = tableVariables.get(expression.expression.text);
+      if (table) found.push({ table, line: line(at), kind: "foreign key" });
+    }
+  };
+  const sqlText = (text: string, at: ts.Node) => {
+    for (const match of text.matchAll(RAW_SQL_TABLE)) {
+      const table = match[1].toLowerCase();
+      if (knownTables.has(table)) found.push({ table, line: line(at), kind: "raw SQL" });
+    }
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "references") {
+      foreignTable(node.arguments[0], node);
+    } else if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "foreignKey" &&
+      node.arguments[0] && ts.isObjectLiteralExpression(node.arguments[0])) {
+      const columns = objectProperty(node.arguments[0], "foreignColumns");
+      if (columns && ts.isArrayLiteralExpression(columns)) columns.elements.forEach(column => foreignTable(column, node));
+    } else if (ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+      // A Drizzle table imported by name is used to query that table.
+      for (const element of node.importClause.namedBindings.elements) {
+        const table = tableVariables.get((element.propertyName ?? element.name).text);
+        if (table && !element.isTypeOnly && !node.importClause.isTypeOnly) found.push({ table, line: line(node), kind: "query" });
+      }
+    } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      sqlText(node.text, node);
+    } else if (ts.isTemplateExpression(node)) {
+      // Join the literal parts so a keyword and its table may straddle nothing
+      // but whitespace; interpolations break the match.
+      sqlText([node.head.text, ...node.templateSpans.map(span => span.literal.text)].join(" ${} "), node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
+/** Workspace-relative schema modules declared by any component or core. */
+function schemaModules(root: string): string[] {
+  const roots = [resolve(root, "shared/schema"), resolve(root, "components")];
+  return roots.filter(existsSync).flatMap(sourceFiles)
+    .filter(file => file.includes(`${sep}shared${sep}schema${sep}`) || file.startsWith(resolve(root, "shared/schema") + sep));
+}
+
+export interface ComponentTableLink {
+  /** Component whose source holds the reference; `null` for core (non-component) source. */
+  from: string | null;
+  /** Component that declares the referenced table. */
+  owner: string;
+  table: string;
+  kind: TableReference["kind"];
+  /** Workspace-relative `file:line`. */
+  where: string;
+  /** True when `owner` is `from` itself or one of its declared dependencies. */
+  declared: boolean;
+}
+
+/** Core source roots scanned (informationally) for references into component tables. */
+const CORE_TABLE_LINK_ROOTS = ["server", "shared", "scripts", "client/src"];
+
+/**
+ * Every reference from one component's source (its directory, plus a core
+ * component's declared schema module) or from core source to a table another
+ * component declares in its schema manifest. Table ownership is each
+ * component's declared `schemaManifest.tables`; a table no component declares
+ * is core and never reported. Kinds: `foreign key` (`.references()` /
+ * `foreignKey()`), `raw SQL` (a table named after FROM/JOIN/INTO/UPDATE/
+ * REFERENCES/TABLE in any string or template literal) and `query` (a Drizzle
+ * table imported by name).
+ */
+export function auditComponentTableLinks(root = resolve(import.meta.dirname, "..")): ComponentTableLink[] {
+  const core = coreComponentDeclarations(root);
+  const directories = discoverComponentDirectories(root);
+  const owners = new Map<string, string>();
+  const declare = (id: string, tables: string[]) => {
+    for (const table of tables) {
+      const existing = owners.get(table);
+      if (existing && existing !== id) throw new Error(`Table "${table}" is declared by both "${existing}" and "${id}"`);
+      owners.set(table, id);
+    }
+  };
+  for (const [id, declaration] of core) declare(id, declaration.tables);
+  for (const component of directories) declare(component.id, component.tables);
+
+  const tableVariables = new Map<string, string>();
+  for (const file of schemaModules(root)) {
+    for (const [name, table] of drizzleTableVariables(file)) {
+      // Ambiguous variable names resolve to nothing rather than to a guess.
+      tableVariables.set(name, tableVariables.has(name) && tableVariables.get(name) !== table ? "" : table);
+    }
+  }
+  for (const [name, table] of tableVariables) if (!table) tableVariables.delete(name);
+  const knownTables = new Set(owners.keys());
+  const display = (file: string) => relative(root, file).split(sep).join("/");
+
+  const scopes = new Map<string, { files: Set<string>; dependsOn: string[] }>();
+  for (const [id, declaration] of core) {
+    const files = new Set<string>();
+    if (declaration.schemaPath && existsSync(resolve(root, declaration.schemaPath))) files.add(resolve(root, declaration.schemaPath));
+    scopes.set(id, { files, dependsOn: declaration.dependsOn });
+  }
+  for (const component of directories) {
+    const scope = scopes.get(component.id) ?? { files: new Set<string>(), dependsOn: component.dependsOn };
+    for (const file of sourceFiles(resolve(root, component.directory))) scope.files.add(file);
+    scopes.set(component.id, scope);
+  }
+
+  const links: ComponentTableLink[] = [];
+  const collect = (from: string | null, file: string, allowed: Set<string>) => {
+    const seen = new Set<string>();
+    for (const reference of tableReferences(file, tableVariables, knownTables)) {
+      const owner = owners.get(reference.table);
+      if (!owner || owner === from) continue;
+      const where = `${display(file)}:${reference.line}`;
+      const key = `${where}:${reference.table}:${reference.kind}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      links.push({ from, owner, table: reference.table, kind: reference.kind, where, declared: allowed.has(owner) });
+    }
+  };
+  const attributed = new Set<string>();
+  for (const [id, scope] of scopes) {
+    const allowed = new Set([id, ...scope.dependsOn]);
+    for (const file of scope.files) {
+      attributed.add(file);
+      collect(id, file, allowed);
+    }
+  }
+  const generated = GENERATED_DIRECTORIES.map(d => resolve(root, d) + sep);
+  for (const coreRoot of CORE_TABLE_LINK_ROOTS) {
+    const absoluteRoot = resolve(root, coreRoot);
+    if (!existsSync(absoluteRoot)) continue;
+    for (const file of sourceFiles(absoluteRoot)) {
+      if (attributed.has(file) || generated.some(d => file.startsWith(d))) continue;
+      collect(null, file, new Set());
+    }
+  }
+  return links;
+}
+
+/**
+ * Undeclared hard dependencies through the database, reported by the
+ * `component-imports` developer check alongside import violations:
+ * - a component with a foreign key into, or raw SQL naming, another
+ *   component's declared table without declaring that component;
+ * - a core schema module with a foreign key into any component's table (core
+ *   cannot depend on a component).
+ * Drizzle `query` imports and core raw SQL are left to the audit
+ * (docs/component-dependencies.md): many are runtime-gated soft links that a
+ * static check cannot tell apart from hard ones.
+ */
+export function checkComponentTableReferences(root = resolve(import.meta.dirname, "..")): string[] {
+  const schemas = new Set(schemaModules(root).map(file => relative(root, file).split(sep).join("/")));
+  return auditComponentTableLinks(root).flatMap(link => {
+    if (link.declared || link.kind === "query") return [];
+    if (link.from !== null) {
+      return [`${link.where} has a ${link.kind} reference to table "${link.table}" of component "${link.owner}". Declare "${link.owner}" in "${link.from}" dependsOnComponents, or remove the reference.`];
+    }
+    if (link.kind !== "foreign key" || !schemas.has(link.where.replace(/:\d+$/, ""))) return [];
+    return [`${link.where} is a core schema module with a foreign key into table "${link.table}" of component "${link.owner}". Core cannot depend on a component; move the table into a component that declares the dependency.`];
+  });
 }
 
 /** Component-local exceptions retain the same stale-entry checks as core ones. */

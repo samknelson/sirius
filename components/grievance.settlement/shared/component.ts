@@ -6,10 +6,10 @@ export const component: ComponentDefinition = {
   enabledByDefault: false,
   category: "grievance",
   managesSchema: true,
+  dependsOnComponents: ["grievance"],
   schemaManifest: {
     version: 1,
     schemaPath: "./components/grievance.settlement/shared/schema/grievance/settlement-schema.ts",
     tables: ["options_grievance_settlement_type", "grievance_settlements"],
-    dependsOnComponents: ["grievance"],
   },
 };

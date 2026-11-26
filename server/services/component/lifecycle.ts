@@ -105,13 +105,16 @@ function logLifecycleFailure(
 }
 
 /**
- * Check that every component listed in `dependsOnComponents` is enabled and
- * has its tables present, so a schema push doesn't die on a raw FK error.
+ * Check that every component listed in the component's single
+ * `dependsOnComponents` declaration is enabled and has its tables present, so
+ * enabling fails with a clear message instead of a raw FK error or a feature
+ * that silently reads another component's missing data. Build-time discovery
+ * reads the same list (scripts/optional-components.ts).
  */
-export async function checkSchemaDependencies(
+export async function checkComponentDependencies(
   component: ComponentDefinition,
 ): Promise<MissingDependency[]> {
-  const deps = component.schemaManifest?.dependsOnComponents ?? component.dependsOnComponents ?? [];
+  const deps = component.dependsOnComponents ?? [];
   if (deps.length === 0) return [];
 
   await loadComponentCache();
@@ -140,7 +143,7 @@ export async function checkSchemaDependencies(
   return missing;
 }
 
-function formatMissingDependencies(componentName: string, missing: MissingDependency[]): string {
+export function formatMissingDependencies(componentName: string, missing: MissingDependency[]): string {
   const parts = missing.map((m) =>
     m.reason === "disabled"
       ? `"${m.componentName}" (${m.componentId}) is not enabled`
@@ -207,7 +210,7 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
     };
   }
 
-  const missingDependencies = await checkSchemaDependencies(component);
+  const missingDependencies = await checkComponentDependencies(component);
   if (missingDependencies.length > 0) {
     return {
       success: false,
@@ -422,7 +425,7 @@ export async function repairComponentSchema(componentId: string): Promise<Compon
     };
   }
 
-  const missingDependencies = await checkSchemaDependencies(component);
+  const missingDependencies = await checkComponentDependencies(component);
   if (missingDependencies.length > 0) {
     return {
       success: false,

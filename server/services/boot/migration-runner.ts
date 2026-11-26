@@ -532,11 +532,7 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
     if (visited.has(component.id)) return;
     if (visiting.has(component.id)) throw new Error(`Cyclic component schema dependency: ${component.id}`);
     visiting.add(component.id);
-    const dependencies = new Set([
-      ...(component.dependsOnComponents ?? []),
-      ...(component.schemaManifest?.dependsOnComponents ?? []),
-    ]);
-    for (const id of dependencies) {
+    for (const id of component.dependsOnComponents ?? []) {
       const parent = byId.get(id);
       if (!parent) throw new Error(`Component "${component.id}" requires unavailable component "${id}"`);
       visit(parent);

@@ -6,10 +6,10 @@ export const component: ComponentDefinition = {
   enabledByDefault: false,
   category: "trust.providers",
   managesSchema: true,
+  dependsOnComponents: ["system.sftp.client"],
   schemaManifest: {
     version: 1,
     schemaPath: "./components/trust.providers.edi/shared/schema/trust/provider-edi-schema.ts",
     tables: ["plugin_configs_trust_provider_edi"],
-    dependsOnComponents: ["system.sftp.client"],
   },
 };

@@ -124,15 +124,19 @@ require authored migrations. Discovery does not execute migration code.
 
 ## Dependencies and imports
 
-A component declares the components it needs in `dependsOnComponents` (or
-`schemaManifest.dependsOnComponents`), exactly as core components do. These
-may be core components or other directories under `components/`.
+A component declares the components it needs in its one top-level
+`dependsOnComponents` list, exactly as core components do. These may be core
+components or other directories under `components/`; a core component may
+depend only on core. The dotted-ID hierarchy is not a dependency. See
+docs/component-dependencies.md for the rules and the cross-component audit.
 
 - If a declared dependency is neither core nor present under `components/`,
   discovery fails with an error naming both components. Delete dependents
   together with what they depend on, leaves first.
 - A component may import only from itself, from core, or from a component it
-  declares as a dependency. The `component-imports` lint rule enforces this.
+  declares as a dependency, and may hold a foreign key into or name in raw SQL
+  only those components' declared tables. The `component-imports` lint rule
+  enforces this.
   Code that several components use lives in the component they all depend on
  .
 - Core never imports from an optional component; the generated modules are the

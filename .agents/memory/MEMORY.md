@@ -169,3 +169,4 @@
 - [Incomplete dependency snapshots](incomplete-dependency-snapshots.md) — populated node_modules may lack executable links or type declarations; repair locked packages before changing app types.
 - [Plugin metadata projection](plugin-metadata-projection.md) — compound component requirements must survive both registry availability and serialized manifest adapters.
 - [Isolated source verification](isolated-source-verification.md) — temporary lint copies need their own initialized Git snapshot; inherited or unborn repositories invalidate the check.
+- [Component dependency declaration](component-dependency-declaration.md) — one top-level dependsOnComponents; hierarchy ≠ dependency; FK/raw SQL linted, Drizzle imports audit-only.

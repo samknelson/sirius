@@ -17,10 +17,10 @@ export const component: ComponentDefinition = {
     },
   ],
   managesSchema: true,
+  dependsOnComponents: ["edls"],
   schemaManifest: {
     version: 1,
     schemaPath: "./components/sitespecific.freeman/shared/schema/sitespecific/freeman/schema.ts",
     tables: ["sitespecific_freeman_crewleads"],
-    dependsOnComponents: ["edls"],
   },
 };

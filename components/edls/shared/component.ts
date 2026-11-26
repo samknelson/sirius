@@ -7,11 +7,11 @@ export const component: ComponentDefinition = {
   enabledByDefault: false,
   category: "core",
   managesSchema: true,
+  dependsOnComponents: ["dispatch.job_group", "facility"],
   schemaManifest: {
     version: 1,
     schemaPath: "./components/edls/shared/schema/edls/schema.ts",
     tables: ["options_edls_tasks", "options_edls_show_status", "edls_sheets", "edls_crews", "edls_assignments", "worker_edls"],
-    dependsOnComponents: ["dispatch.job_group", "facility"],
   },
   permissions: [
     { key: "edls.manager", description: "Full EDLS management access" },

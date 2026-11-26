@@ -92,7 +92,7 @@ const RULES: Rule[] = [
   {
     id: "component-imports",
     script: "scripts/dev/check-component-imports.ts",
-    summary: "components import only from themselves, core, or declared dependencies",
+    summary: "components import, hold foreign keys into, or name in raw SQL only themselves, core, or declared dependencies",
   },
   {
     id: "maintenance-guards",
