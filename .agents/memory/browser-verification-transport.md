@@ -26,3 +26,12 @@ from initializing without exposing an application defect.
 or intercept complete identity fixtures only in the test browser. Never add a
 server authentication bypass, alter saved workspace settings, or require a live
 identity-provider account just to verify a component.
+
+Mount a page inside its actual route when using a disposable component harness.
+
+**Why:** A page that normalizes its query string can redirect back to itself
+after a link is activated if the harness keeps it mounted at the destination.
+This falsely makes a working application link look broken.
+
+**How to apply:** Let the router unmount the page on navigation before checking
+the destination. Keep fixture responses and harness code out of application source.

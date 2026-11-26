@@ -166,7 +166,7 @@ export default function EdlsAssignmentsPage() {
             : <div>
               <Table className="table-fixed [&_th]:whitespace-normal [&_th]:[overflow-wrap:anywhere] [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere] [&_th]:px-1 [&_td]:px-1 sm:[&_th]:px-2 sm:[&_td]:px-2 [&_td_div]:flex-wrap [&_td_svg]:shrink-0">
                 <TableHeader><TableRow>
-                  <TableHead>Worker</TableHead><TableHead>Sheet</TableHead><TableHead>Sheet status</TableHead><TableHead>Crew / task</TableHead><TableHead>Effective time</TableHead><TableHead>Accepted?</TableHead><TableHead>Notified?</TableHead><TableHead>In population?</TableHead><TableHead>Tools</TableHead>
+                  <TableHead>Worker</TableHead><TableHead>Sheet</TableHead><TableHead>Sheet status</TableHead><TableHead>Crew / task</TableHead><TableHead>Effective time</TableHead><TableHead>Accepted?</TableHead><TableHead>Notified?</TableHead><TableHead>In population?</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>{rows.map((row) => <AssignmentRow key={row.id} row={row} />)}</TableBody>
               </Table>
@@ -188,7 +188,7 @@ function AssignmentRow({ row }: { row: AssignmentExplorerRow }) {
   const statusKey = row.sheetStatus.toLowerCase();
   const exactCommStatus = row.commStatus ? getCommStatusLabel(row.commStatus) : null;
   return <TableRow>
-    <TableCell><div className="font-medium">{row.workerName || "Unknown worker"}</div></TableCell>
+    <TableCell><Link href={`/workers/${encodeURIComponent(row.workerId)}`} className="font-medium text-primary hover:underline">{row.workerName || "Unknown worker"}</Link></TableCell>
     <TableCell><Link href={`/edls/sheet/${encodeURIComponent(row.sheetId)}`} className="font-medium text-primary hover:underline">{row.sheetTitle || "Untitled sheet"}</Link></TableCell>
     <TableCell><Badge className={sheetStatusStyles[statusKey] ?? "bg-muted text-muted-foreground"}>{assignmentSheetStatusLabels[statusKey] ?? row.sheetStatus}</Badge></TableCell>
     <TableCell><div className="font-medium">{row.crewTitle || "Crew"}</div><div className="text-xs text-muted-foreground">{row.taskName || "No task"}</div></TableCell>
@@ -196,12 +196,6 @@ function AssignmentRow({ row }: { row: AssignmentExplorerRow }) {
     <TableCell><StatusPill label={acceptedLabel} tone={row.accepted === true ? "good" : row.accepted === false ? "bad" : "neutral"} /></TableCell>
     <TableCell><div className="flex items-center gap-2"><StatusPill label={notifiedLabel} tone={row.notified === "sent" ? "good" : row.notified === "failed" ? "bad" : "neutral"} />{row.commId && row.commStatus && <AssignmentCommStatusIcon assignmentId={row.id} commId={row.commId} commStatus={row.commStatus} workerName={row.workerName} />}</div>{exactCommStatus && <div className="mt-1 max-w-32 truncate text-xs text-muted-foreground" title={exactCommStatus}>{exactCommStatus}</div>}</TableCell>
     <TableCell><StatusPill label={row.inPopulation ? "Yes" : "No"} tone={row.inPopulation ? "good" : "neutral"} /></TableCell>
-    <TableCell>
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        <Link href={`/edls/sheet/${encodeURIComponent(row.sheetId)}`} className="whitespace-nowrap text-primary hover:underline">View sheet</Link>
-        <Link href={`/workers/${encodeURIComponent(row.workerId)}`} className="whitespace-nowrap text-primary hover:underline">View worker</Link>
-      </div>
-    </TableCell>
   </TableRow>;
 }
 
