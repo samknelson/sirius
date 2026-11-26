@@ -81,7 +81,7 @@ export const ediTerminationGuidance = `
   counts. Older checks without a timestamp say so. Refresh the relevant denorm
   detail page with <strong>Refresh counts</strong>. A pending or requeued WMB scan
   temporarily makes its prior summary unavailable. When it finishes, a changed
-  termination or any retained ending for that month queues new span work. Finish pending
+  termination or an affected inferred ending can queue new span work. Finish pending
   and processing scans, then let <strong>Trust WMB Terminate Events</strong> and
   <strong>Worker benefit coverage spans</strong> become current before retrying.
   <strong>Check coverage again</strong> starts a new read after a confirmed failure;
@@ -96,9 +96,10 @@ export const ediTerminationGuidance = `
   compare the original scan's previous-month evidence and the authoritative
   coverage history. A failed continuation can also delete current-month-only
   coverage; that alone does not prove a previous-month ending. An
-  <strong>unsupported-termination</strong> issue means the ending's scan result was
-  unavailable when spans were computed, for example while that scan was requeued.
-  Do not add coverage,
+  <strong>unsupported-termination</strong> issue means no current scan result for
+  that month ends the benefit for the person. A person scanned in the same month
+  by their own scan and by a subscriber's scan is supported when either result
+  ends the benefit. Do not add coverage,
   delete events, run scans or repeatedly recompute just to pass the check.
   Historical inferred events require their own source-history review. Any
   approved repair must preserve scan evidence and be followed by a fresh check;

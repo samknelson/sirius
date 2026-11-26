@@ -483,24 +483,50 @@ None had unfinished October/November scan work; all terminate rows were OK.
   the 22:33 rollout. Nothing re-invalidates a producer when its code changes.
   Recovery is a bounded terminate recompute of these owners (operator
   authorization required), after which changed events invalidate spans.
-* **130 unsupported cases (demonstrated defect, fixed locally):** a supporting
-  November scan exists now. Scan reset/requeue nulls the result summary and
-  invalidates spans; spans recompute while the scan is pending and correctly
-  find no support. When the scan completes with identical evidence, the
-  terminate rewrite is unchanged, so no span invalidation followed. Only
-  inferred events had a completion handoff. The correction hands off every
-  retained termination for the completed scan's month and people (inferred
-  rows confirmed by the scan still rely on their real replacement write).
-  A regression test fails without the change. The counter keeps the
-  historical `scan_completion_inferred_evidence` name because of its DB
-  check constraint. Existing affected rows still need a bounded span
-  recompute after rollout.
+* **130 unsupported cases:** first hypothesised as a lost span recheck
+  after scan reset. That was **disproved**: after the authorized recompute
+  (below) these spans were recomputed with scan results present and stayed
+  unsupported, so that speculative change was withdrawn.
 * **326 + 57 later-October-deletion cases:** source-authority decision, as
   before; no code change is justified.
 * The ~965 non-November and 8 contradicted-inference issues remain
   unclassified.
 
-**Staging remains unresolved.** No staging writes were performed.
+#### Authorized bounded recompute, 2026-11-26
+
+The operator marked terminate and span status rows stale only for workers
+with an ending-evidence issue (an earlier attempt ran on another database
+first; it marked rows for recalculation only). Terminate recomputed all
+119,941 (newest 01:04:37); spans then had 213 stale and were recomputed.
+At **01:17:13 UTC**: November missing-coverage **635 → 383** (exactly the
+absent-snapshot group cleared), other months **965 → 438**, unsupported
+unchanged at **130** November / **29** other, contradicted-inference **8**.
+
+#### Unsupported endings: producer/reader disagreement (fixed)
+
+Read-only classification of the 130: every span was recomputed that night
+and each worker had exactly one November scan of their own. For **111**,
+another owner's newest November scan named the worker and ended the
+benefit; for **128**, the worker's own scan mentioned the benefit. The
+terminate producer emits an ending when **any** newest-attempt action for
+the person ends the benefit (and no coverage remains), but the span reader
+took only the **first** scan in completion order with any matching action
+and labelled a non-ending mention as `contradicted`, which derivation
+reports as `unsupported-termination`. The reader now applies the producer's
+rule: confirmed if any newest-attempt scan for that month ends the benefit
+for the person; contradicted only if scans mention it and none end it.
+Ownerless actions still belong to the scan owner only. A regression test
+fails without the change. Recovery needs deployment, then a span-only
+bounded recompute of the issue workers.
+
+October reasons for the 383 remaining missing-coverage cases (aggregate):
+dependent no longer selected by a valid subscriber election (222 rule
+failures), no linked benefit in October (~330), active election not
+covering the benefit (~33), Health Net geography rule (~15+). These are
+ordinary eligibility rules; the operator has not yet decided whether
+October is authoritative.
+
+**Staging remains unresolved.**
 
 ### Initial access and deployment observations
 

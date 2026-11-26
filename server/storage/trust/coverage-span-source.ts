@@ -96,6 +96,12 @@ export function createCoverageSpanSourceStorage() {
         return true;
       });
       const events: CoverageEndingEvidence[] = retained.map(event => {
+        // A person can be scanned in the same month by several owners (their
+        // own scan and each subscriber's scan listing them as a dependent),
+        // and one scan can carry several source actions for them. The
+        // producer emits an ending when ANY newest-attempt action ends the
+        // benefit and no coverage remains that month; judge evidence by the
+        // same rule. Another owner's non-ending mention is not a contradiction.
         let decision: CoverageEndingEvidence["decision"] = "unsupported";
         let scanId: string | undefined;
         for (const scan of latest) {
@@ -104,14 +110,20 @@ export function createCoverageSpanSourceStorage() {
             workerId?: string; benefitId?: string; executionError?: unknown;
             scanType?: string; eligible?: boolean; action?: string;
           }[] } | null)?.actions;
-          const action = Array.isArray(actions) ? actions.find(a => !a.executionError &&
+          const matching = Array.isArray(actions) ? actions.filter(a => !a.executionError &&
             (a.workerId ? a.workerId === workerId : scan.workerId === workerId) &&
-            a.benefitId === event.benefitId) : undefined;
-          if (!action) continue;
-          scanId = scan.id;
-          decision = action.scanType === "continue" && (action.eligible === false || action.action === "delete")
-            ? "confirmed" : "contradicted";
-          break;
+            a.benefitId === event.benefitId) : [];
+          if (!matching.length) continue;
+          if (matching.some(action => action.scanType === "continue" &&
+            (action.eligible === false || action.action === "delete"))) {
+            decision = "confirmed";
+            scanId = scan.id;
+            break;
+          }
+          if (decision === "unsupported") {
+            decision = "contradicted";
+            scanId = scan.id;
+          }
         }
         return { ...event, decision, scanId };
       });

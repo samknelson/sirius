@@ -227,6 +227,17 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     expect(await applyComputed(plugin, "config", "worker", facts, claim.generation, claim.claimToken)).toBe(false);
     const corrected = await createCoverageSpanSourceStorage().read("worker");
     expect(deriveCoverageSpans("worker", corrected.coverage, corrected.families, corrected.events).spans[0].ending).toBeNull();
+    // A newer scan by another owner that only mentions this person does not
+    // contradict the ending the producer emitted from their own scan.
+    await pool.query(`INSERT INTO trust_wmb_scan_queue VALUES ('subscriber-scan','subscriber',2026,4,'success',
+      now() + interval '1 minute',
+      '{"people":[{"workerId":"worker"}],"actions":[{"workerId":"worker","benefitId":"benefit","scanType":"start","eligible":false}]}')`);
+    expect((await createCoverageSpanSourceStorage().read("worker")).events)
+      .toMatchObject([{ decision: "confirmed", scanId: "scan" }]);
+    await pool.query(`UPDATE trust_wmb_scan_queue SET result_summary =
+      '{"actions":[{"benefitId":"benefit","scanType":"continue","eligible":true}]}' WHERE id = 'scan'`);
+    expect((await createCoverageSpanSourceStorage().read("worker")).events)
+      .toMatchObject([{ decision: "contradicted", scanId: "subscriber-scan" }]);
   });
   it("refuses apparently ready empty spans until upstream endings are complete and enabled", async () => {
     await status.insertStaleBatch([seed]);
@@ -500,30 +511,26 @@ describe("maintained coverage on isolated PostgreSQL", () => {
       .toEqual([false, true, undefined, undefined, undefined, undefined]);
   });
 
-  it("invalidates spans at scan completion for retained evidence an unchanged rewrite would miss", async () => {
+  it("invalidates spans at scan completion only for retained inferred evidence", async () => {
     await pool.query(`
       INSERT INTO trust_wmb_scan_status(id,month,year,scope_type,status,queued_at)
         VALUES ('handoff-run',4,2026,'all','running',now()),
                ('plain-run',4,2026,'all','running',now()),
-               ('confirmed-run',4,2026,'all','running',now()),
-               ('rescanned-run',4,2026,'all','running',now())
+               ('confirmed-run',4,2026,'all','running',now())
         ON CONFLICT (id) DO NOTHING;
       INSERT INTO trust_wmb_scan_queue(id,status_id,worker_id,month,year,status,trigger_source)
         VALUES ('handoff-job','handoff-run','handoff-owner',4,2026,'processing','test'),
                ('plain-job','plain-run','plain-owner',4,2026,'processing','test'),
-               ('confirmed-job','confirmed-run','confirmed-owner',4,2026,'processing','test'),
-               ('rescanned-job','rescanned-run','rescanned-owner',4,2026,'processing','test')
+               ('confirmed-job','confirmed-run','confirmed-owner',4,2026,'processing','test')
         ON CONFLICT (id) DO NOTHING;
       INSERT INTO trust_wmb_events(id,worker_id,benefit_id,year,month,event_type,data)
         VALUES ('inferred-event','inferred-worker','benefit',2026,4,'terminate',
           '{"provenance":"coverage_inferred"}'),
                ('confirmed-inferred-event','confirmed-worker','benefit',2026,4,'terminate',
-          '{"provenance":"coverage_inferred"}'),
-               ('rescanned-event','rescanned-worker','benefit',2026,4,'terminate',
-          '{"failedPlugins":[]}')
+          '{"provenance":"coverage_inferred"}')
         ON CONFLICT (id) DO UPDATE SET data=excluded.data;
     `);
-    for (const entityId of ["inferred-worker", "plain-worker", "confirmed-worker", "rescanned-worker"])
+    for (const entityId of ["inferred-worker", "plain-worker", "confirmed-worker"])
       await status.upsertStatus({ ...seed, entityId, status: "ok" });
 
     const queue = createWmbScanQueueStorage();
@@ -546,19 +553,6 @@ describe("maintained coverage on isolated PostgreSQL", () => {
       entityId: "confirmed-worker", entityType: "worker", configId: "terminate-config",
     }]);
 
-    // A reset scan's spans were computed without its result. When it completes
-    // again with identical evidence, the terminate rewrite is unchanged, so the
-    // completion itself must send the retained scan-backed ending back.
-    await queue.recordJobResult("rescanned-job", true, {
-      people: [{ workerId: "rescanned-worker" }],
-      actions: [{ workerId: "rescanned-worker", benefitId: "benefit", scanType: "continue", eligible: false }],
-    }, undefined, [{
-      entityId: "rescanned-worker", entityType: "worker", configId: "terminate-config",
-    }]);
-    await createTrustWmbEventsStorage().replaceForWorkerAndType("rescanned-worker", "terminate", [
-      { benefitId: "benefit", year: 2026, month: 4, data: { failedPlugins: [] } },
-    ]);
-    expect(await status.get("rescanned-worker", "config")).toMatchObject({ status: "stale" });
     expect(await status.get("inferred-worker", "config")).toMatchObject({ status: "stale" });
     expect(await status.get("plain-worker", "config")).toMatchObject({ status: "ok" });
     expect(await status.get("confirmed-worker", "config")).toMatchObject({ status: "ok" });
@@ -573,14 +567,14 @@ describe("maintained coverage on isolated PostgreSQL", () => {
     expect(attribution.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({
         operation: "scan_completion_inferred_evidence",
-        call_count: "2",
-        affected_count: "2",
+        call_count: "1",
+        affected_count: "1",
         last_affected_count: 1,
       }),
       expect.objectContaining({
         operation: "wmb_scan_completion_handoff",
-        call_count: "4",
-        affected_count: "4",
+        call_count: "3",
+        affected_count: "3",
         last_affected_count: 1,
       }),
     ]));

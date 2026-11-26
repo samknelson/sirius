@@ -69,3 +69,8 @@ loading and refuse invalid cutoff/traversal evidence. Do not widen the importer'
 allowlist or add per-history exclusions. Remote rollout requires actual remote
 fleet and pinned-image proof; fixture tests are not deployment
 evidence.
+## Producer/reader agreement on multi-owner scans
+A person can be scanned in one month by their own scan and by subscribers' scans. The terminate producer unions ending actions across newest attempts; the span evidence reader must use the same rule, or OK spans carry `unsupported-termination` issues that no recompute clears.
+**Why:** staging had 130 November issues that survived a recompute for exactly this reason.
+**How to apply:** any change to how either side picks scan actions must change both.
+Also: SQL tools often show only the LAST statement's result — give operators single-statement queries, not BEGIN…ROLLBACK scripts.

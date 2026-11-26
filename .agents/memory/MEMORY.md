@@ -140,7 +140,7 @@
 - [Appeal benefit inventory format](appeal-benefit-inventory-format.md) — for T16 appeal unmapped triage, supply a read-only staging query rather than expanding loader reports.
 - Worker exports — [sensitive filters](worker-list-sensitive-filters.md) stay body-only with opaque caches; [keyset traversal](worker-export-traversal-consistency.md) may move rows if sort keys change mid-download.
 - [Payment safety decisions](payment-safety-index.md) — checkout authority, cancellation, provider-entry proof, allocation hydration, currency discovery and historical corrections.
-- [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
+- [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps ≠ failed scans; producer and span reader must share the multi-owner scan rule.
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.
 - [Validation heartbeat vs ownership](validation-heartbeat-ownership.md) — missing persisted progress does not prove stopped work; fence execution separately and cancel blocked writes in PostgreSQL.
