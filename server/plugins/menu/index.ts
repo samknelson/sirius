@@ -4,7 +4,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { registerPluginKind } from "../_core/kinds";
 import { menuPluginRegistry } from "./registry";
-import { resolveMenuForRequest } from "./resolve";
+import { MenuPluginUnavailableError, resolveMenuForRequest } from "./resolve";
 
 export { menuPluginRegistry, registerMenuPlugin } from "./registry";
 export type { MenuGate, MenuItemDef, MenuPlugin, MenuManifestEntry } from "./types";
@@ -56,14 +56,14 @@ export function registerMenuRoutes(app: Express, requireAuth: AuthMiddleware): v
         if (!access.granted) {
           return res.status(403).json({ message: "Admin access required to preview a menu layout" });
         }
-        if (!menuPluginRegistry.has(requested)) {
-          return res.status(404).json({ message: `Unknown menu plugin: ${requested}` });
-        }
         overridePluginId = requested;
       }
       const menu = await resolveMenuForRequest(req, overridePluginId);
       res.json(menu);
     } catch (error) {
+      if (error instanceof MenuPluginUnavailableError) {
+        return res.status(404).json({ message: error.message });
+      }
       console.error("Failed to resolve menu:", error);
       res.status(500).json({ message: "Failed to resolve menu" });
     }

@@ -14,6 +14,13 @@ export const menuTreeHook = alterHooks.declare<MenuItemDef[], { readonly pluginI
   semantics: "Return a replacement tree. Gates are evaluated afterwards; menu visibility never grants destination access.",
 });
 
+export class MenuPluginUnavailableError extends Error {
+  constructor(pluginId: string) {
+    super(`Unknown or unavailable menu plugin: ${pluginId}`);
+    this.name = "MenuPluginUnavailableError";
+  }
+}
+
 interface GateContext {
   req: Request;
   userId: string;
@@ -163,7 +170,8 @@ async function resolveItems(
 /**
  * Resolve the selected menu plugin's tree for the requesting user.
  * Reads the `site_menu_plugin` variable (falling back to `default` when
- * unset or naming an unknown plugin) and evaluates every gate.
+ * unset or naming an unavailable plugin) and evaluates every gate.
+ * Explicit previews refuse unavailable plugins instead of silently falling back.
  */
 export async function resolveMenuForRequest(
   req: Request,
@@ -175,7 +183,10 @@ export async function resolveMenuForRequest(
   }
 
   let pluginId = DEFAULT_MENU_PLUGIN_ID;
-  if (overridePluginId && menuPluginRegistry.has(overridePluginId)) {
+  if (overridePluginId !== undefined) {
+    if (!(await menuPluginRegistry.isEnabledAsync(overridePluginId))) {
+      throw new MenuPluginUnavailableError(overridePluginId);
+    }
     pluginId = overridePluginId;
   } else {
     try {
@@ -183,7 +194,7 @@ export async function resolveMenuForRequest(
       if (variable?.value) {
         const raw = typeof variable.value === "string" ? variable.value : String(variable.value);
         const candidate = raw.replace(/^"|"$/g, "");
-        if (menuPluginRegistry.has(candidate)) {
+        if (await menuPluginRegistry.isEnabledAsync(candidate)) {
           pluginId = candidate;
         }
       }

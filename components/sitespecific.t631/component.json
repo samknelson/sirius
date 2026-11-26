@@ -1,0 +1,4 @@
+{
+  "definition": "shared/component.ts",
+  "server": ["server/plugins/menu/plugins/t631.ts"]
+}

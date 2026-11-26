@@ -61,6 +61,7 @@ import "./../../components/internationalization.weglot/server/plugins/client-inj
 import "./../../components/sitespecific.freeman/server/plugins/web-service/edls-sheet-export";
 import "./../../components/sitespecific.freeman.authorization/server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization";
 import "./../../components/sitespecific.freeman.edls_migrate/server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
+import "./../../components/sitespecific.t631/server/plugins/menu/plugins/t631";
 import "./../../components/sitespecific.t631.client/server/plugins/wc-vendors/plugins/sitespecific-t631";
 import "./../../components/sitespecific.t631.client/server/plugins/system/status/plugins/sitespecific-t631-client";
 import "./../../components/sitespecific.t631.client/server/plugins/system/flood/plugins/t631-arrival";
