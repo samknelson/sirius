@@ -105,7 +105,6 @@ import { type MemberStatusScanStorage, createMemberStatusScanStorage } from "./m
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
-import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "../../components/system.sftp.client/server/storage/sftp-client-destinations";
 import { type BusinessCalendarStorage, createBusinessCalendarStorage } from "./business-calendars";
 import { type HelpStorage, createHelpStorage } from "./helps";
 import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk/messages";
@@ -251,7 +250,6 @@ export interface IStorage extends ComponentStorage {
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
   contracts: ContractStorage;
-  sftpClientDestinations: SftpClientDestinationStorage;
   businessCalendars: BusinessCalendarStorage;
   helps: HelpStorage;
   bulkMessages: BulkMessageStorage;
@@ -351,7 +349,6 @@ export class DatabaseStorage implements IStorage {
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
   contracts: ContractStorage;
-  sftpClientDestinations: SftpClientDestinationStorage;
   businessCalendars: BusinessCalendarStorage;
   helps: HelpStorage;
   bulkMessages: BulkMessageStorage;
@@ -576,10 +573,6 @@ export class DatabaseStorage implements IStorage {
     this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
     this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);
     this.contracts = withStorageLogging(createContractStorage(), contractLoggingConfig);
-    this.sftpClientDestinations = withStorageLogging(
-      createSftpClientDestinationStorage(),
-      sftpClientDestinationLoggingConfig
-    );
     this.businessCalendars = createBusinessCalendarStorage();
     this.letterTemplates = withStorageLogging(
       createLetterTemplateStorage(),

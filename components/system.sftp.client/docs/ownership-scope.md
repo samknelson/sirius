@@ -1,9 +1,73 @@
 # File transfers (SFTP/FTP) and Trust Provider EDI — ownership and extraction scope
 
-Status: **APPROVED (2026-11-25) — Option C: extract SFTP and EDI together in
-one change. Not yet implemented.**
-Companion to `docs/system-component-relocation.md` (items 4 and 5 of its
-"Reviewed later removal design").
+Status: **IMPLEMENTED — approved joint extraction.**
+
+Both directories now use full optional manifests. The inventory and alternatives
+below record the approved pre-extraction design, not the current composition.
+In particular, metadata `recordGo` and browser `pluginViews` already existed
+at implementation time and were reused, not rebuilt.
+
+## Current ownership and removal
+
+SFTP owns its definition, destination schema/storage/audit/metadata, admin API,
+transfer implementation, tab tree, routes, navigation and maintenance declarations.
+EDI owns its definition, subsidiary schema/storage, two unchanged historical
+migrations, kind/adapter/file-type registry, BAO file types, wizard, dashboard,
+browser views, tests and domain guidance. BAO file types keep their separate
+`sitespecific.bao` gates and stable IDs.
+
+Remove EDI by itself, or remove EDI together with SFTP, while stopped; then run
+discovery, build and restart. Removing only SFTP is invalid and discovery names
+EDI as its dependent. No other installed component currently requires EDI.
+Retained flags, destinations, configs, tables and migration counters are not
+deleted. Restoring source restores the same identities, without data migration.
+The destination foreign key keeps its name and `ON DELETE RESTRICT`.
+
+Core retains only generated bridges, authored historical migration SQL and the
+configuration-revision trigger's table-existence-guarded EDI table entry.
+The ordinary storage contribution can export typed `pluginConfigSubsidiaries`;
+the existing single dispatcher validates duplicate kinds without querying tables
+at construction. Declarations remain installed even while disabled.
+
+SFTP's metadata declares the exact admin record-go requirement. Missing
+requirements deny; duplicate metadata contexts or access declarations throw.
+All tabs and routes retain admin checks. Browser routes/layouts remain lazy.
+Standalone maintenance declarations follow the transfer source rather than a
+handwritten core path. Maintenance refusal runs before SDK construction; transfer
+errors scrub configured credentials, and destination audit payloads omit data.
+No live transfers are used for verification.
+
+## Extraction verification
+
+- Installed discovery, TypeScript checks, production build, all 16 architecture
+  checks and migration checks passed. The existing EDI conformance suite moved
+  with its owner; focused access/ownership/browser-registry checks passed too.
+- Disposable fake clients verified FTP without TLS, explicit TLS, implicit TLS,
+  SFTP key/passphrase authentication, connection cleanup, maintenance refusal
+  before constructing clients, and credential-safe failure results/logs.
+- An isolated database exercised destination creation/connection updates,
+  provider/config picker and filtered config save/search, EDI generation and
+  encoded delivery preview, with no upload. The existing restrict FK refused
+  deleting a referenced destination. Credential canaries were absent from logs.
+- Real synthetic-account sign-in verified admin access and unauthenticated and
+  non-admin refusals. Signed-in browser checks resolved SFTP pages, the EDI
+  dashboard, its dashboard widget and all four contributed wizard views.
+  The workspace preview also initialized through its proxy with working HMR.
+- EDI-only and joint removal each passed discovery, types, architecture,
+  migrations, production build and complete route-registration/ready startup,
+  on fresh and retained-disabled databases. Invalid SFTP-only removal failed
+  discovery naming the EDI dependent. Restoration recovered saved configurations
+  and destinations without migration replay or duplicate seeding.
+- Additional retained-enabled removal checks verified absent ownership/status,
+  refusal to enable missing source, unchanged saved switches/configurations/
+  destinations/migration counters, and working core contracts, workers, Trust
+  providers, files and generic plugin configuration APIs.
+
+The startup/browser/removal fixtures were temporary rather than a permanent UI
+or removal matrix. No shared workspace switches or live vendor accounts were
+used to create those fixtures.
+
+The sections below are the historical approved boundary.
 
 ## 1. The real blocker (re-verified)
 

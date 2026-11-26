@@ -25,16 +25,18 @@ import { component as definition21 } from "./../../components/sitespecific.freem
 import { component as definition22 } from "./../../components/sitespecific.t631.client/shared/component";
 import { component as definition23 } from "./../../components/sitespecific.t631.interviews/shared/component";
 import { component as definition24 } from "./../../components/system.session_history/shared/component";
-import { component as definition25 } from "./../../components/worker.aat/shared/component";
-import { component as definition26 } from "./../../components/worker.badges/shared/component";
-import { component as definition27 } from "./../../components/worker.certifications/shared/component";
-import { component as definition28 } from "./../../components/worker.login/shared/component";
-import { component as definition29 } from "./../../components/worker.ratings/shared/component";
-import { component as definition30 } from "./../../components/worker.relations/shared/component";
-import { component as definition31 } from "./../../components/worker.skills/shared/component";
-import { component as definition32 } from "./../../components/worker.steward/shared/component";
-import { component as definition33 } from "./../../components/worker.tos/shared/component";
-const discovered: [string, ComponentDefinition][] = [["bookmark", definition0], ["contract.chat", definition1], ["contract.chat.foray", definition2], ["debug", definition3], ["dispatch.asi", definition4], ["dispatch.ban", definition5], ["dispatch.bullpen", definition6], ["dispatch.department", definition7], ["dispatch.dnc", definition8], ["dispatch.eba", definition9], ["dispatch.fore", definition10], ["dispatch.hfe", definition11], ["dispatch.singleshift", definition12], ["edls", definition13], ["grievance", definition14], ["grievance.contract", definition15], ["grievance.settlement", definition16], ["internationalization", definition17], ["internationalization.weglot", definition18], ["sitespecific.freeman", definition19], ["sitespecific.freeman.authorization", definition20], ["sitespecific.freeman.edls_migrate", definition21], ["sitespecific.t631.client", definition22], ["sitespecific.t631.interviews", definition23], ["system.session_history", definition24], ["worker.aat", definition25], ["worker.badges", definition26], ["worker.certifications", definition27], ["worker.login", definition28], ["worker.ratings", definition29], ["worker.relations", definition30], ["worker.skills", definition31], ["worker.steward", definition32], ["worker.tos", definition33]];
+import { component as definition25 } from "./../../components/system.sftp.client/shared/component";
+import { component as definition26 } from "./../../components/trust.providers.edi/shared/component";
+import { component as definition27 } from "./../../components/worker.aat/shared/component";
+import { component as definition28 } from "./../../components/worker.badges/shared/component";
+import { component as definition29 } from "./../../components/worker.certifications/shared/component";
+import { component as definition30 } from "./../../components/worker.login/shared/component";
+import { component as definition31 } from "./../../components/worker.ratings/shared/component";
+import { component as definition32 } from "./../../components/worker.relations/shared/component";
+import { component as definition33 } from "./../../components/worker.skills/shared/component";
+import { component as definition34 } from "./../../components/worker.steward/shared/component";
+import { component as definition35 } from "./../../components/worker.tos/shared/component";
+const discovered: [string, ComponentDefinition][] = [["bookmark", definition0], ["contract.chat", definition1], ["contract.chat.foray", definition2], ["debug", definition3], ["dispatch.asi", definition4], ["dispatch.ban", definition5], ["dispatch.bullpen", definition6], ["dispatch.department", definition7], ["dispatch.dnc", definition8], ["dispatch.eba", definition9], ["dispatch.fore", definition10], ["dispatch.hfe", definition11], ["dispatch.singleshift", definition12], ["edls", definition13], ["grievance", definition14], ["grievance.contract", definition15], ["grievance.settlement", definition16], ["internationalization", definition17], ["internationalization.weglot", definition18], ["sitespecific.freeman", definition19], ["sitespecific.freeman.authorization", definition20], ["sitespecific.freeman.edls_migrate", definition21], ["sitespecific.t631.client", definition22], ["sitespecific.t631.interviews", definition23], ["system.session_history", definition24], ["system.sftp.client", definition25], ["trust.providers.edi", definition26], ["worker.aat", definition27], ["worker.badges", definition28], ["worker.certifications", definition29], ["worker.login", definition30], ["worker.ratings", definition31], ["worker.relations", definition32], ["worker.skills", definition33], ["worker.steward", definition34], ["worker.tos", definition35]];
 for (const [directory, definition] of discovered) {
   if (definition.id !== directory) throw new Error(`components/${directory} defines component ${definition.id}; the directory name must equal the component ID`);
 }

@@ -64,14 +64,14 @@ inside that directory. Unknown fields are an error.
 | `migrations` | Modules registering migrations under the component's ID and versions |
 | `coreMigrations` | Historical global migrations, kept with their original version and scope |
 | `startup` | Optional `register`, `registerRoutes`, `start` functions (`ComponentStartup`) |
-| `storage` | Module exporting `createStorage`; its returned namespaces extend host storage |
+| `storage` | Module exporting `createStorage`; its returned namespaces extend host storage; optional typed `pluginConfigSubsidiaries` factories extend the existing config dispatcher |
 | `metadata` | Module exporting `metadataContexts` for record history (a context may carry a `recordGo` access requirement) and optionally `excludedTables` — tables refused record history; holds while the component is disabled |
 | `contributions` | Shared tabs, menus, operation aliases and deployment branches (`ComponentContributions`) |
 | `client` | Browser routes, config navigation, lifecycle observers, named page `slots`, snapshot renderers and scoped dispatch UI contributions (`ComponentBrowserContributions`) |
 | `earlyDocument` | Self-contained classic JavaScript files inlined first in the document head, before resources |
 | `initializers` | Browser modules exporting `initialize()`, called before React mounts |
 | `documentPolicies` | Exact public document paths with `referrerPolicy: "no-referrer"` and `cacheControl: "private, no-store"`, enforced in development and static-only production services |
-| `maintenanceGuards` | Vendor handler declarations audited by the maintenance-guards lint rule |
+| `maintenanceGuards` | Vendor handler declarations audited by the maintenance-guards lint rule; standalone infrastructure can declare `standaloneExemptions` while retaining the shared maintenance refusal |
 
 Component manifests may also name `developerChecks`, a local JSON declaration of
 `provenanceColumns`, `storageEncapsulationBaseline` and `readOnlyFlagExemptFiles`.
@@ -88,6 +88,18 @@ Installation discovers contributions, while server manifests and route policies
 still decide availability. Do not eagerly import navigation-dependent route
 layouts while registering browser contributions. Enablement does not change
 discovery, and no core re-export is needed.
+
+Storage modules may export `pluginConfigSubsidiaries`, a readonly list of
+`PluginConfigSubsidiaryDescriptor` (`kind`, `create`) from the existing subsidiary
+storage contract. Factories declare tables/queries without executing them.
+The single config dispatcher rejects duplicate component/core kinds; optional
+row/filter types extend the existing interfaces by module augmentation. Keep
+this static declaration independent of enablement: availability-filtered hooks
+cannot describe disabled/retained subsidiary ownership.
+
+Metadata context IDs must be unique across components and core. A component's
+`recordGo` requirement is merged with the core access requirements, never treated
+as a grant; undeclared requirements fail closed and collisions fail explicitly.
 
 Snapshot owners register capture adapters with `registerSnapshotCaptureAdapter`
 and decoder/access mappings with `registerSnapshotEntityType` in `startup.register`,
@@ -344,3 +356,12 @@ Use isolated databases for enabled/disabled retained fixtures and fresh
 missing-source setup; never change the shared workspace switches or call live
 vendors. Temporary smoke checks are preferable to a blanket permanent removal
 or browser suite.
+
+## File transfers and provider EDI
+
+`system.sftp.client` and `trust.providers.edi` are removable through full manifests.
+EDI requires SFTP; remove EDI first or remove the pair together. Removing SFTP
+alone fails discovery. EDI's BAO file-type plugins move with EDI but retain their
+separate BAO runtime gates. Trust providers and unrelated Trust features stay in
+core. The configuration-revision trigger's existence-guarded EDI table name and
+authored historical core migration SQL are intentional retained-data exceptions.

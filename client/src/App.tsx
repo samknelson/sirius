@@ -171,7 +171,6 @@ const ContractFullTextPage = lazy(() => import("@/pages/contracts/full-text"));
 const ContractSectionManagePage = lazy(() => import("@/pages/contracts/section-manage"));
 const ContractLogsPage = lazy(() => import("@/pages/contracts/logs"));
 const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
-const TrustProviderEdiDashboardPage = lazy(() => import("@/pages/trust/provider-edi-dashboard"));
 const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
 const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
 const TrustProviderContactsPage = lazy(() => import("@/pages/trust-provider-contacts"));
@@ -250,7 +249,6 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
-const SftpClientsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
 const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-calendars/detail"));
@@ -258,11 +256,6 @@ const BusinessCalendarClosedDaysPage = lazy(() => import("@/pages/config/busines
 const BusinessCalendarVacationsPage = lazy(() => import("@/pages/config/business-calendars/vacations"));
 const BusinessCalendarOpenDaysPage = lazy(() => import("@/pages/config/business-calendars/open-days"));
 const BusinessCalendarTestPage = lazy(() => import("@/pages/config/business-calendars/test"));
-const SftpClientDetailsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-details"));
-const SftpClientConnectionPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-connection"));
-const SftpClientTestPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-test"));
-const SftpClientLogsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-logs"));
-const SftpClientEditPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-edit"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
@@ -2094,13 +2087,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/trust/provider-edi">
-        <ProtectedRoute permission="admin" component="trust.providers.edi">
-          <AuthenticatedLayout>
-            <TrustProviderEdiDashboardPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       {/* Bargaining Units routes */}
       <Route path="/bargaining-units/:id/edit">
@@ -2578,56 +2564,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WsClientsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/sftp/client/:id/connection">
-        <ProtectedRoute permission="admin" component="system.sftp.client">
-          <AuthenticatedLayout>
-            <SftpClientConnectionPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/sftp/client/:id/test">
-        <ProtectedRoute permission="admin" component="system.sftp.client">
-          <AuthenticatedLayout>
-            <SftpClientTestPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/sftp/client/:id/logs">
-        <ProtectedRoute permission="admin" component="system.sftp.client">
-          <AuthenticatedLayout>
-            <SftpClientLogsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/sftp/client/:id/edit">
-        <ProtectedRoute permission="admin" component="system.sftp.client">
-          <AuthenticatedLayout>
-            <SftpClientEditPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/sftp/client/:id">
-        <ProtectedRoute permission="admin" component="system.sftp.client">
-          <AuthenticatedLayout>
-            <SftpClientDetailsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/sftp/clients">
-        <ProtectedRoute permission="admin" component="system.sftp.client">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <SftpClientsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -24,9 +24,6 @@ import {
   pluginConfigsCron,
   type PluginConfigCron,
   type InsertPluginConfigCron,
-  pluginConfigsTrustProviderEdi,
-  type PluginConfigTrustProviderEdi,
-  type InsertPluginConfigTrustProviderEdi,
 } from "@shared/schema";
 import { pluginConfigsFlood, type PluginConfigFlood, type InsertPluginConfigFlood } from "@shared/schema";
 import { eq, isNull, arrayContains, arrayOverlaps, sql, type SQL } from "drizzle-orm";
@@ -58,6 +55,20 @@ export interface SubsidiaryStorage<TRow, TInsert> {
   buildConditions(params: SubsidiarySearchParams): SQL[];
 }
 
+/**
+ * Static subsidiary declarations contributed by component storage modules.
+ * Factories must not query tables: disabled/retained owners still declare their
+ * contract, while the normal kind/component gates control runtime access.
+ */
+export interface PluginConfigSubsidiaryDescriptor {
+  kind: string;
+  create: () => SubsidiaryStorage<any, any>;
+}
+
+/** Optional owners augment these types; there is still only one dispatcher. */
+export interface ComponentPluginConfigSubsidiaryRows {}
+export interface ComponentSubsidiarySearchParams {}
+
 /** An ID-only subsidiary anchors typed foreign keys without moving JSON settings. */
 export function createFloodSubsidiaryStorage(): SubsidiaryStorage<PluginConfigFlood, InsertPluginConfigFlood> {
   return {
@@ -77,7 +88,7 @@ export function createFloodSubsidiaryStorage(): SubsidiaryStorage<PluginConfigFl
 }
 
 /** Superset of every subsidiary's filterable columns (all optional). */
-export interface SubsidiarySearchParams {
+export interface SubsidiarySearchParams extends ComponentSubsidiarySearchParams {
   scope?: string;
   employerId?: string | null;
   account?: string | null;
@@ -96,10 +107,6 @@ export interface SubsidiarySearchParams {
   // Cron: exact cron-expression match (rarely filtered on; present for
   // completeness so the schedule is a real, searchable column).
   schedule?: string;
-  // Trust provider EDI: which provider the file is generated for, and which
-  // SFTP client destination it is delivered to.
-  providerId?: string | null;
-  sftpClientId?: string | null;
 }
 
 /** `col = val`, or `col IS NULL` when val is explicitly null; skip undefined. */
@@ -201,44 +208,6 @@ export function createBenefitEligibilitySubsidiaryStorage(): SubsidiaryStorage<
       eqOrNull(out, pluginConfigsBenefitEligibility.policy, params.policy);
       eqOrNull(out, pluginConfigsBenefitEligibility.benefit, params.benefit);
       containsToken(out, pluginConfigsBenefitEligibility.appliesTo, params.appliesTo);
-      return out;
-    },
-  };
-}
-
-export function createTrustProviderEdiSubsidiaryStorage(): SubsidiaryStorage<
-  PluginConfigTrustProviderEdi,
-  InsertPluginConfigTrustProviderEdi
-> {
-  return {
-    table: pluginConfigsTrustProviderEdi,
-    async get(id) {
-      const client = getClient();
-      const [row] = await client
-        .select()
-        .from(pluginConfigsTrustProviderEdi)
-        .where(eq(pluginConfigsTrustProviderEdi.id, id));
-      return row || undefined;
-    },
-    async upsert(row) {
-      const client = getClient();
-      const [result] = await client
-        .insert(pluginConfigsTrustProviderEdi)
-        .values(row)
-        .onConflictDoUpdate({
-          target: pluginConfigsTrustProviderEdi.id,
-          set: {
-            providerId: row.providerId ?? null,
-            sftpClientId: row.sftpClientId ?? null,
-          },
-        })
-        .returning();
-      return result;
-    },
-    buildConditions(params) {
-      const out: SQL[] = [];
-      eqOrNull(out, pluginConfigsTrustProviderEdi.providerId, params.providerId);
-      eqOrNull(out, pluginConfigsTrustProviderEdi.sftpClientId, params.sftpClientId);
       return out;
     },
   };

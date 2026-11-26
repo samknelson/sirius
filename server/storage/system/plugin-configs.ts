@@ -1,4 +1,6 @@
 import { createNoopValidator } from '../utils/validation';
+import { componentPluginConfigSubsidiaries } from "../../generated/component-storage";
+import type { ComponentPluginConfigSubsidiaryRows, ComponentSubsidiarySearchParams } from "./plugin-configs-subsidiary";
 import { getClient, onAfterCommit } from '../transaction-context';
 import { defineLoggingConfig } from "../middleware/logging";
 import {
@@ -32,7 +34,6 @@ import {
   createEventNotifierSubsidiaryStorage,
   createCronSubsidiaryStorage,
   createFloodSubsidiaryStorage,
-  createTrustProviderEdiSubsidiaryStorage,
   type SubsidiaryStorage,
 } from "./plugin-configs-subsidiary";
 
@@ -103,6 +104,7 @@ function emitConfigSaved(
  * with no relational dimensions (e.g. "dashboard") has `null`.
  */
 export type PluginConfigSubsidiary =
+  | ComponentPluginConfigSubsidiaryRows[keyof ComponentPluginConfigSubsidiaryRows]
   | PluginConfigCharge
   | PluginConfigBenefitEligibility
   | PluginConfigDispatch
@@ -130,7 +132,7 @@ export interface PluginConfigWithSubsidiary {
  * ignored by the dispatcher (route-level validation via the per-kind adapter
  * is responsible for rejecting malformed input).
  */
-export interface PluginConfigSearchParams {
+export interface PluginConfigSearchParams extends ComponentSubsidiarySearchParams {
   // Base dimensions (every kind)
   pluginId?: string;
   enabled?: boolean;
@@ -265,8 +267,13 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     cron: createCronSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     flood: createFloodSubsidiaryStorage() as SubsidiaryStorage<any, any>,
-    "trust-provider-edi": createTrustProviderEdiSubsidiaryStorage() as SubsidiaryStorage<any, any>,
   };
+  for (const descriptor of componentPluginConfigSubsidiaries) {
+    if (Object.hasOwn(subsidiaries, descriptor.kind)) {
+      throw new Error(`Duplicate plugin-config subsidiary kind: ${descriptor.kind}`);
+    }
+    subsidiaries[descriptor.kind] = descriptor.create();
+  }
 
   /** Fetch the subsidiary row for a base config of a given type, if any. */
   async function getSubsidiary(type: string, id: string): Promise<PluginConfigSubsidiary> {

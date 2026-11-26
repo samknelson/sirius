@@ -1,0 +1,17 @@
+{
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/trust/provider-edi-schema.ts"],
+  "storage": "server/storage.ts",
+  "startup": "server/startup.ts",
+  "server": [
+    "server/plugins/wizards/plugins/trust-provider-edi.ts",
+    "server/plugins/dashboard/plugins/edi-summary.ts"
+  ],
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx",
+  "developerChecks": "developer-checks.json",
+  "migrations": [
+    "scripts/migrate/components/trust.providers.edi/001_drop_legacy_table.ts",
+    "scripts/migrate/components/trust.providers.edi/002_create_subsidiary_table.ts"
+  ]
+}

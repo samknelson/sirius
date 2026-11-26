@@ -39,6 +39,9 @@ export interface OptionalComponentManifest {
     handlerContainers: string[];
     handlerProperty: string;
     vendorIdentifiers: string[];
+  } | {
+    /** Standalone infrastructure still uses the shared maintenance refusal. */
+    standaloneExemptions: Record<string, string>;
   }>;
 }
 
@@ -452,15 +455,25 @@ export function generateOptionalComponents(root = resolve(import.meta.dirname, "
   const storageFile = "server/generated/component-storage.ts";
   const stores = components.filter(c => c.storage);
   emit(storageFile, [
+    'import type { PluginConfigSubsidiaryDescriptor } from "../storage/system/plugin-configs-subsidiary";',
     ...stores.map((c, i) => `import { createStorage as create${i} } from ${spec(storageFile, c.storage!)};`),
+    ...stores.map((c, i) => `import * as storage${i} from ${spec(storageFile, c.storage!)};`),
+    `export const componentPluginConfigSubsidiaries: readonly PluginConfigSubsidiaryDescriptor[] = [${stores.map((_, i) => `...((storage${i} as { pluginConfigSubsidiaries?: readonly PluginConfigSubsidiaryDescriptor[] }).pluginConfigSubsidiaries ?? [])`).join(", ")}];`,
     `export function createComponentStorage() { return {${stores.map((_, i) => `...create${i}()`).join(", ")}}; }`,
     "export type ComponentStorage = ReturnType<typeof createComponentStorage>;",
   ]);
   const metadataFile = "server/generated/component-metadata.ts";
   const metadata = components.filter(c => c.metadata);
   emit(metadataFile, [
+    'import type { MetadataRecordContext } from "../storage/entity-metadata-record-tables";',
     ...metadata.map((c, i) => `import * as metadata${i} from ${spec(metadataFile, c.metadata!)};`),
-    `export const componentMetadataContexts = {${metadata.map((_, i) => `...metadata${i}.metadataContexts`).join(", ")}};`,
+    "export const componentMetadataContexts: Record<string, MetadataRecordContext> = {};",
+    `for (const contexts of [${metadata.map((_, i) => `metadata${i}.metadataContexts`).join(", ")}] as Record<string, MetadataRecordContext>[]) {`,
+    "  for (const [id, declaration] of Object.entries(contexts)) {",
+    '    if (Object.hasOwn(componentMetadataContexts, id)) throw new Error(`Duplicate component metadata context: ${id}`);',
+    "    componentMetadataContexts[id] = declaration;",
+    "  }",
+    "}",
     "/** Tables a component's metadata module excludes from record history; holds while the component is disabled. */",
     `export const componentExcludedMetadataTables: readonly string[] = [${metadata.map((_, i) => `...((metadata${i} as { excludedTables?: readonly string[] }).excludedTables ?? [])`).join(", ")}];`,
   ]);

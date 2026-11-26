@@ -6,6 +6,12 @@ import type { StorageLoggingConfig } from "../../../../server/storage/middleware
 
 export const validate = createNoopValidator<InsertSftpClientDestination, SftpClientDestination>();
 
+/** Credentials remain editable by admins, but never enter storage audit payloads. */
+function auditDestination(row: (Partial<Omit<InsertSftpClientDestination, "data">> & { data?: unknown }) | undefined) {
+  if (!row) return row;
+  return { ...row, data: row.data ? { configured: true } : null };
+}
+
 export interface SftpClientDestinationStorage {
   getAll(): Promise<SftpClientDestination[]>;
   getById(id: string): Promise<SftpClientDestination | undefined>;
@@ -79,6 +85,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
   methods: {
     create: {
       enabled: true,
+      logArgs: (args) => [auditDestination(args[0])],
       getEntityId: (args, result) => result?.id || 'new sftp client',
       getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
@@ -87,7 +94,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
       },
       after: async (args, result) => {
         return {
-          sftpClientDestination: result,
+          sftpClientDestination: auditDestination(result),
           metadata: {
             sftpClientDestinationId: result?.id,
             siriusId: result?.siriusId,
@@ -98,6 +105,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
     },
     update: {
       enabled: true,
+      logArgs: (args) => [args[0], auditDestination(args[1])],
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
       getDescription: async (args, result, beforeState) => {
@@ -110,11 +118,11 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
       },
       before: async (args, storage) => {
         const sftpClientDestination = await storage.getById(args[0]);
-        return { sftpClientDestination };
+        return { sftpClientDestination: auditDestination(sftpClientDestination) };
       },
       after: async (args, result, _storage, beforeState) => {
         return {
-          sftpClientDestination: result,
+          sftpClientDestination: auditDestination(result),
           previousSftpClientDestination: beforeState?.sftpClientDestination,
           metadata: {
             sftpClientDestinationId: result?.id,
@@ -134,7 +142,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
       },
       before: async (args, storage) => {
         const sftpClientDestination = await storage.getById(args[0]);
-        return { sftpClientDestination };
+        return { sftpClientDestination: auditDestination(sftpClientDestination) };
       },
       after: async (args, result, _storage, beforeState) => {
         return {

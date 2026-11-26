@@ -1,6 +1,23 @@
 import type { ConnectionData, SftpConnectionData, FtpConnectionData } from "../../shared/schema/system/sftp-client-schema";
 import { storageLogger } from "../../../../server/logger";
 import { getRequestContext } from "../../../../server/middleware/request-context";
+import { assertExternalServiceAllowed } from "../../../../server/services/maintenance-flag";
+declare module "../../../../server/services/maintenance-flag" {
+  interface ComponentExternalServices { "File transfer": true; }
+}
+
+function safeTransferError(err: unknown, conn: ConnectionData): string {
+  let message = err instanceof Error ? err.message : String(err);
+  const data = conn as unknown as Record<string, unknown>;
+  for (const key of ["password", "privateKey", "publicKey", "passphrase"]) {
+    const value = data[key];
+    if (typeof value !== "string" || !value) continue;
+    for (const spelling of [value, encodeURIComponent(value), JSON.stringify(value).slice(1, -1)]) {
+      message = message.split(spelling).join("[REDACTED]");
+    }
+  }
+  return message;
+}
 
 export interface FileEntry {
   name: string;
@@ -21,13 +38,14 @@ interface ConnectInfo {
   serverType?: string;
 }
 
-async function timedResult<T>(fn: () => Promise<T>): Promise<TransferResult<T>> {
+async function timedResult<T>(conn: ConnectionData, fn: () => Promise<T>): Promise<TransferResult<T>> {
+  assertExternalServiceAllowed("File transfer", "test");
   const start = Date.now();
   try {
     const data = await fn();
     return { success: true, duration: Date.now() - start, data };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = safeTransferError(err, conn);
     return { success: false, duration: Date.now() - start, error: message };
   }
 }
@@ -62,6 +80,7 @@ async function withSftpClient<T>(
   conn: SftpConnectionData,
   fn: (client: import("ssh2-sftp-client")) => Promise<T>
 ): Promise<T> {
+  assertExternalServiceAllowed("File transfer", "SFTP");
   const SftpClient = (await import("ssh2-sftp-client")).default;
   const client = new SftpClient();
   const connectOpts: Record<string, unknown> = {
@@ -88,6 +107,7 @@ async function withFtpClient<T>(
   conn: FtpConnectionData,
   fn: (client: import("basic-ftp").Client) => Promise<T>
 ): Promise<T> {
+  assertExternalServiceAllowed("File transfer", "FTP");
   const { Client: FtpClientClass } = await import("basic-ftp");
   const client = new FtpClientClass();
   client.ftp.verbose = false;
@@ -107,7 +127,7 @@ async function withFtpClient<T>(
 }
 
 export async function testConnect(conn: ConnectionData, destinationId: string): Promise<TransferResult<ConnectInfo>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(conn, async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const cwd = await client.cwd();
@@ -130,7 +150,7 @@ export async function testConnect(conn: ConnectionData, destinationId: string): 
 }
 
 export async function testList(conn: ConnectionData, remotePath: string, destinationId: string): Promise<TransferResult<FileEntry[]>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(conn, async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const items = await client.list(remotePath || "/");
@@ -158,7 +178,7 @@ export async function testList(conn: ConnectionData, remotePath: string, destina
 }
 
 export async function testCd(conn: ConnectionData, remotePath: string, destinationId: string): Promise<TransferResult<{ path: string }>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(conn, async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const exists = await client.exists(remotePath);
@@ -185,7 +205,7 @@ export async function testUpload(
   content: Buffer,
   destinationId: string
 ): Promise<TransferResult<{ bytesWritten: number }>> {
-  const result = await timedResult(async () => {
+  const result = await timedResult(conn, async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const fullPath = remotePath.endsWith("/")
@@ -254,10 +274,10 @@ export async function streamDownload(
     }, `Download ${remoteFilePath} (${bytesTransferred} bytes)`);
   } catch (err: unknown) {
     const duration = Date.now() - start;
-    const message = err instanceof Error ? err.message : String(err);
+    const message = safeTransferError(err, conn);
     logTestOperation("download", destinationId, {
       success: false, duration, error: message,
     }, `Download ${remoteFilePath} (${bytesTransferred} bytes)`);
-    throw err;
+    throw new Error(message);
   }
 }

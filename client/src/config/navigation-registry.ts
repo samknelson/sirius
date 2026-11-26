@@ -217,7 +217,6 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/admin/ws", label: "Incoming", icon: Network, testId: "nav-config-ws", permission: "admin" },
       { path: "/admin/wc", label: "Outgoing", icon: Cloud, testId: "nav-config-wc", permission: "admin" },
-      { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
     ],
   },
 ];

@@ -1,5 +1,5 @@
-import { registerDashboardPlugin } from "../registry";
-import type { DashboardPlugin } from "../types";
+import { registerDashboardPlugin } from "../../../../../../server/plugins/dashboard/registry";
+import type { DashboardPlugin } from "../../../../../../server/plugins/dashboard/types";
 import {
   getTrustProviderEdiDashboardRows,
   type TrustProviderEdiDashboardRow,

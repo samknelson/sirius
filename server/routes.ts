@@ -37,7 +37,6 @@ import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
-import { registerTrustProviderEdiDashboardRoutes } from "./modules/trust/provider-edi-dashboard";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/workers/ids";
@@ -75,7 +74,6 @@ import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
-import { registerSftpClientDestinationRoutes } from "../components/system.sftp.client/server/modules/sftp-client-destinations";
 import { registerBusinessCalendarRoutes } from "./modules/business-calendars";
 import { registerHelpRoutes } from "./modules/helps";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
@@ -479,13 +477,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register bargaining units configuration routes
   registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
 
-  // Register SFTP client destination routes
-  registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
   registerBusinessCalendarRoutes(app, requireAuth, requireAccess, storage);
   registerHelpRoutes(app, requireAuth, requireAccess, storage);
 
-  // Register trust provider EDI routes
-  registerTrustProviderEdiDashboardRoutes(app, requireAuth);
 
   // Register bulk message routes
   registerBulkMessageRoutes(app, requireAuth, requireAccess, storage);

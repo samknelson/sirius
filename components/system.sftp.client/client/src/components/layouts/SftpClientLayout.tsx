@@ -13,7 +13,7 @@ import {
 } from "@/components/shared/RecordTitleBar";
 import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useSftpClientDestinationTabAccess } from "@/hooks/useTabAccess";
+import { useTabAccess } from "@/hooks/useTabAccess";
 import type { SftpClientDestination } from "../../../../shared/schema/system/sftp-client-schema";
 
 interface SftpClientLayoutProps {
@@ -48,7 +48,7 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
     enabled: !!id,
   });
 
-  const { tabs: mainTabs } = useSftpClientDestinationTabAccess(id);
+  const { tabs: mainTabs } = useTabAccess({ entityType: "sftp_client_destination", entityId: id });
 
   usePageTitle(destination?.name || "Destination Details");
 

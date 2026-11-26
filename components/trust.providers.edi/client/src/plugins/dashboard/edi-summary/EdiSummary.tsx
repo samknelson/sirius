@@ -2,8 +2,8 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileOutput, ChevronRight } from "lucide-react";
-import { DashboardPluginProps } from "../registry";
-import { useDashboardContent } from "../useDashboardContent";
+import { DashboardPluginProps } from "@/plugins/dashboard/registry";
+import { useDashboardContent } from "@/plugins/dashboard/useDashboardContent";
 
 interface EdiSummaryConfig {
   configId: string;

@@ -38,8 +38,7 @@ const context = (
   entityTypes?: readonly string[],
 ): MetadataRecordContext => ({ table, label, hrefTemplate, entityTypes });
 
-export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
-  ...componentMetadataContexts,
+const coreMetadataContexts: Record<string, MetadataRecordContext> = {
   bargaining_units: context(coreSchema.bargainingUnits, "Bargaining Units", "/bargaining-units/{id}"),
   bulk_messages: context(coreSchema.bulkMessages, "Bulk Messages", "/bulk/{id}"),
   bulk_messages_email: context(coreSchema.bulkMessagesEmail, "Bulk Message Email Settings", null),
@@ -78,7 +77,6 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   policies: context(coreSchema.policies, "Access Policies", "/policies/{id}"),
   role_permissions: context(coreSchema.rolePermissions, "Role Permissions", null),
   roles: context(coreSchema.roles, "Roles", null),
-  sftp_client_destinations: context(coreSchema.sftpClientDestinations, "SFTP Client Destinations", "/config/sftp/client/{id}"),
   sitespecific_bao_employer_immediate_eligibility: context(coreSchema.sitespecificBaoEmployerImmediateEligibility, "BAO Immediate Eligibility", null),
   sitespecific_btu_csg: context(coreSchema.sitespecificBtuCsg, "BTU Class Size Grievances", "/sitespecific/btu/csg/{id}"),
   sitespecific_btu_employer_map: context(coreSchema.sitespecificBtuEmployerMap, "BTU Employer Map", null),
@@ -107,6 +105,12 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
 export interface MetadataRecordContextInfo extends MetadataRecordContext {
   contextId: string;
   tableName: string;
+}
+
+export const entityMetadataContexts: Record<string, MetadataRecordContext> = { ...coreMetadataContexts };
+for (const [id, declaration] of Object.entries(componentMetadataContexts)) {
+  if (Object.hasOwn(entityMetadataContexts, id)) throw new Error(`Duplicate metadata context: ${id}`);
+  entityMetadataContexts[id] = declaration;
 }
 
 function contextInfo(contextId: string, declaration: MetadataRecordContext): MetadataRecordContextInfo {

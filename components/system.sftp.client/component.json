@@ -1,4 +1,26 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/system/sftp-client-schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/system/sftp-client-schema.ts"],
+  "storage": "server/storage.ts",
+  "startup": "server/startup.ts",
+  "metadata": "server/metadata.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx",
+  "maintenanceGuards": {
+    "server/services/file-transfer-client.ts": {
+      "standaloneExemptions": {
+        "withSftpClient": "Intentional SFTP infrastructure, not a wc-vendor operation.",
+        "withFtpClient": "Intentional FTP infrastructure, not a wc-vendor operation.",
+        "testConnect": "Explicit file-transfer connection test.",
+        "testList": "Explicit file-transfer listing operation.",
+        "testCd": "Explicit file-transfer directory operation.",
+        "testUpload": "Explicit file-transfer upload operation.",
+        "streamDownload": "Explicit file-transfer download operation.",
+        "anonymous function at line 130": "Callback used only by the explicit SFTP connection test.",
+        "anonymous function at line 153": "Callback used only by the explicit SFTP listing test.",
+        "anonymous function at line 181": "Callback used only by the explicit SFTP directory test.",
+        "anonymous function at line 208": "Callback used only by the explicit SFTP upload test."
+      }
+    }
+  }
 }

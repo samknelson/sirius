@@ -1,5 +1,5 @@
-import { registerWizardPlugin } from "../registry";
-import type { WizardPlugin, WizardStepContext, WizardStepHandler } from "../types";
+import { registerWizardPlugin } from "../../../../../../server/plugins/wizards/registry";
+import type { WizardPlugin, WizardStepContext, WizardStepHandler } from "../../../../../../server/plugins/wizards/types";
 import type { Wizard } from "@shared/schema";
 import {
   trustProviderEdiPluginRegistry,
@@ -283,7 +283,7 @@ const deliverStep: WizardStepHandler = {
     );
     if (!destination) throw new Error("SFTP destination not found");
     const { connectionDataSchema } = await import(
-      "../../../../components/system.sftp.client/shared/schema/system/sftp-client-schema"
+      "../../../../../system.sftp.client/shared/schema/system/sftp-client-schema"
     );
     const parsed = connectionDataSchema.safeParse(destination.data ?? {});
     if (!parsed.success) {
@@ -291,7 +291,7 @@ const deliverStep: WizardStepHandler = {
     }
     const conn = parsed.data;
     const filename = plugin.buildFilename(ediCtx);
-    const { testUpload } = await import("../../../../components/system.sftp.client/server/services/file-transfer-client");
+    const { testUpload } = await import("../../../../../system.sftp.client/server/services/file-transfer-client");
     const result = await testUpload(
       conn,
       conn.homeDir || "/",
@@ -303,7 +303,7 @@ const deliverStep: WizardStepHandler = {
       throw new Error(result.error || "SFTP upload failed");
     }
 
-    const { getEffectiveUser } = await import("../../../modules/masquerade");
+    const { getEffectiveUser } = await import("../../../../../../server/modules/masquerade");
     const { dbUser } = await getEffectiveUser(
       (ctx.req as any).session,
       (ctx.req as any).user,

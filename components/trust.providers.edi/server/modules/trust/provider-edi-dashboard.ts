@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../../storage";
-import { requireComponent } from "../components";
-import { requireAccess } from "../../services/access-policy-evaluator";
-import { wizardPluginRegistry } from "../../plugins/wizards";
+import { storage } from "../../../../../server/storage";
+import { requireComponent } from "../../../../../server/modules/components";
+import { requireAccess } from "../../../../../server/services/access-policy-evaluator";
+import { wizardPluginRegistry } from "../../../../../server/plugins/wizards/registry";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 

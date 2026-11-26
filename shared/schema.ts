@@ -1237,27 +1237,6 @@ export {
 } from "./schema/ledger/payment-batch/schema";
 
 export {
-  sftpClientDestinations,
-  insertSftpClientDestinationSchema,
-  type SftpClientDestination,
-  type InsertSftpClientDestination,
-  sftpConnectionSchema,
-  ftpConnectionSchema,
-  connectionDataSchema,
-  type ConnectionData,
-  type SftpConnectionData,
-  type FtpConnectionData,
-  PROTOCOL_DEFAULTS,
-} from "../components/system.sftp.client/shared/schema/system/sftp-client-schema";
-
-export {
-  pluginConfigsTrustProviderEdi,
-  insertPluginConfigTrustProviderEdiSchema,
-  type PluginConfigTrustProviderEdi,
-  type InsertPluginConfigTrustProviderEdi,
-} from "./schema/trust/provider-edi-schema";
-
-export {
   sitespecificBtuPoliticalOfficials,
   insertBtuPoliticalOfficialSchema,
   type BtuPoliticalOfficial,

@@ -27,6 +27,18 @@ or intercept complete identity fixtures only in the test browser. Never add a
 server authentication bypass, alter saved workspace settings, or require a live
 identity-provider account just to verify a component.
 
+Production-format browser fixtures need a matching HTTPS origin, not only an
+HTTP test server. Use an isolated TLS proxy and ordinary browser sign-in.
+
+**Why:** Canonical HTTPS origins, browser-origin checks and Secure session
+cookies can each refuse an otherwise valid synthetic login. Command-line
+clients must preserve every Set-Cookie value, not just the first device cookie.
+
+**How to apply:** Keep synthetic accounts and TLS keys disposable, set the
+fixture's own public origin, and assert session restoration before feature
+checks. Wait for rendered content rather than global network-idle when optional
+external resources can stall.
+
 Mount a page inside its actual route when using a disposable component harness.
 
 **Why:** A page that normalizes its query string can redirect back to itself

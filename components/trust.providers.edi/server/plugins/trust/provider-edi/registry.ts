@@ -1,9 +1,9 @@
-import { logger } from "../../../logger";
+import { logger } from "../../../../../../server/logger";
 import { wmbPrimaryKeys, type EdiField } from "./base";
-import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
-import type { BasePluginMetadata } from "../../_core";
+import { PluginRegistry, isPluginComponentEnabledSync } from "../../../../../../server/plugins/_core";
+import type { BasePluginMetadata } from "../../../../../../server/plugins/_core";
 import type { JsonSchema } from "@shared/json-schema-form";
-import type { storage as storageType } from "../../../storage";
+import type { storage as storageType } from "../../../../../../server/storage";
 
 /**
  * Context handed to an EDI plugin's data functions. Everything the plugin

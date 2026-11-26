@@ -65,7 +65,6 @@ import { initializeQuicksearchPluginSystem } from "./plugins/quicksearch";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
-import { initializeTrustProviderEdiSystem } from "./plugins/trust/provider-edi";
 import { initializeMenuPluginSystem } from "./plugins/menu";
 import { initializeTokenPluginSystem } from "./plugins/tokens";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
@@ -568,7 +567,6 @@ export async function bootstrapApp(
   logger.info("System status plugins registered", { source: "startup" });
 
   // Register wizards as the sixth plugin kind (self-registering plugin imports)
-  initializeTrustProviderEdiSystem();
   logger.info("Trust provider EDI system initialized", { source: "startup" });
 
   initializeWizardPluginSystem();

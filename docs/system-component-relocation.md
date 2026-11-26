@@ -2,10 +2,13 @@
 
 ## Status and inventory
 
-`system.session_history` is now a normal optional component: stopping the app,
-deleting its directory, discovering, rebuilding and restarting removes its
-features without deleting retained data. `system.sftp.client` still uses the
-transitional `coreRegistered: true` contract and cannot be deleted alone.
+`system.session_history`, `system.sftp.client` and `trust.providers.edi` now use
+normal optional manifests. Stopping the app, removing a valid dependency closure,
+discovering, rebuilding and restarting removes features without deleting data.
+SFTP cannot be deleted while EDI remains installed: discovery refuses the missing
+required dependency. EDI alone can be removed while retaining SFTP.
+See the current boundary in
+`components/system.sftp.client/docs/ownership-scope.md`.
 The directories preserve host-relative paths; implementations were moved,
 not copied.
 
@@ -98,9 +101,9 @@ sessions, system plugin kinds, processes and semaphores remain core.
 
 ## Removal design review
 
-Items 1–3 are now implemented for session history using the existing alter
-framework, not an observer registry. Items 4–5 describe the remaining SFTP/EDI
-boundary and are not part of the history extraction.
+Items 1–3 were implemented for session history using the existing alter framework.
+Items 4–5 below record the historical SFTP/EDI review; both are now implemented
+through optional manifests and the existing metadata record-go declaration.
 
 1. **Reuse normal manifest contributions.** Existing definitions, schema,
    migrations, storage factories, side-effect server modules, startup

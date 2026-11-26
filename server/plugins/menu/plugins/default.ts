@@ -306,15 +306,6 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
           gate: { allOf: [{ component: "trust.providers" }, { permission: "staff" }] },
         },
         {
-          id: "trust-provider-edi",
-          label: "Provider EDI",
-          icon: "FileOutput",
-          href: "/trust/provider-edi",
-          active: { type: "prefix", value: "/trust/provider-edi" },
-          testId: "menu-trust-provider-edi",
-          gate: { allOf: [{ component: "trust.providers.edi" }, { permission: "admin" }] },
-        },
-        {
           id: "benefit-scan",
           label: "Benefit Scan",
           icon: "ScanLine",

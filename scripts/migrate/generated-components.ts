@@ -56,6 +56,8 @@ import "./../../components/sitespecific.t631.interviews/scripts/migrate/componen
 import "./../../components/system.session_history/scripts/migrate/components/system.session_history/001_create_session_history";
 import "./../../components/system.session_history/scripts/migrate/components/system.session_history/002_add_device_id";
 import "./../../components/system.session_history/scripts/migrate/components/system.session_history/003_require_user_id";
+import "./../../components/trust.providers.edi/scripts/migrate/components/trust.providers.edi/001_drop_legacy_table";
+import "./../../components/trust.providers.edi/scripts/migrate/components/trust.providers.edi/002_create_subsidiary_table";
 import "./../../components/worker.aat/scripts/migrate/components/worker.aat/001_create_worker_aat";
 import "./../../components/worker.badges/scripts/migrate/components/worker.badges/001_create_worker_badges";
 import "./../../components/worker.ratings/scripts/migrate/components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";

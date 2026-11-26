@@ -427,17 +427,6 @@ export function useWsClientTabAccess(clientId: string | undefined, enabled = tru
   });
 }
 
-/**
- * Hook specifically for SFTP client destination entity tabs
- */
-export function useSftpClientDestinationTabAccess(destinationId: string | undefined, enabled = true) {
-  return useTabAccess({ 
-    entityType: 'sftp_client_destination', 
-    entityId: destinationId, 
-    enabled 
-  });
-}
-
 export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabled = true) {
   return useTabAccess({ 
     entityType: 'bulk_message', 

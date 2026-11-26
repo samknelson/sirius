@@ -15,6 +15,8 @@ export * from "./../../components/sitespecific.freeman/shared/schema/sitespecifi
 export * from "./../../components/sitespecific.freeman.edls_migrate/shared/schema/sitespecific/freeman/edls-migrate-schema";
 export * from "./../../components/sitespecific.t631.interviews/shared/schema/sitespecific/t631/interviews-schema";
 export * from "./../../components/system.session_history/shared/schema/system/session-history-schema";
+export * from "./../../components/system.sftp.client/shared/schema/system/sftp-client-schema";
+export * from "./../../components/trust.providers.edi/shared/schema/trust/provider-edi-schema";
 export * from "./../../components/worker.aat/shared/schema/worker/aat/schema";
 export * from "./../../components/worker.badges/shared/schema/worker/badges/schema";
 export * from "./../../components/worker.certifications/shared/schema/worker/certifications/schema";

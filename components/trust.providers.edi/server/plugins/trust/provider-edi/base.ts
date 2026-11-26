@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { readTrustRelationships } from "../../../services/trust-relationships";
+import { readTrustRelationships } from "../../../../../../server/services/trust-relationships";
 import {
   workers,
   contacts,

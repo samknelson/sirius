@@ -78,7 +78,8 @@ const OUTBOUND_MODULES = [
   "server/services/files/providers/s3.ts",
   "server/services/files/providers/replit.ts",
   "server/services/files/providers/local.ts",
-  "components/system.sftp.client/server/services/file-transfer-client.ts",
+  ...discoverOptionalComponents().flatMap(p => Object.entries(p.maintenanceGuards ?? {})
+    .filter(([, guard]) => "standaloneExemptions" in guard).map(([path]) => path)),
   "server/auth/providers/replit.ts",
   "server/storage/db.ts",
 ];
@@ -844,32 +845,8 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
     replitCallbackHandler:
       "Inbound Replit callback that initializes the configured authentication strategy.",
   },
-  "components/system.sftp.client/server/services/file-transfer-client.ts": {
-    withSftpClient:
-      "Intentional SFTP transport for the configured file-transfer destination; this is " +
-      "file-transfer infrastructure, not a wc-vendor operation.",
-    withFtpClient:
-      "Intentional FTP transport for the configured file-transfer destination; this is " +
-      "file-transfer infrastructure, not a wc-vendor operation.",
-    testConnect:
-      "Runs the explicitly requested SFTP/FTP connection test for a file-transfer destination.",
-    testList:
-      "Runs the explicitly requested SFTP/FTP listing operation for a file-transfer destination.",
-    testCd:
-      "Runs the explicitly requested SFTP/FTP directory operation for a file-transfer destination.",
-    testUpload:
-      "Runs the explicitly requested SFTP/FTP upload operation for a file-transfer destination.",
-    streamDownload:
-      "Runs the explicitly requested SFTP/FTP download operation for a file-transfer destination.",
-    "anonymous function at line 110":
-      "Callback used only by the explicitly requested SFTP file-transfer connection test.",
-    "anonymous function at line 133":
-      "Callback used only by the explicitly requested SFTP file-transfer listing test.",
-    "anonymous function at line 161":
-      "Callback used only by the explicitly requested SFTP file-transfer directory test.",
-    "anonymous function at line 188":
-      "Callback used only by the explicitly requested SFTP file-transfer upload test.",
-  },
+  ...Object.fromEntries(discoverOptionalComponents().flatMap(p => Object.entries(p.maintenanceGuards ?? {})
+    .flatMap(([path, guard]) => "standaloneExemptions" in guard ? [[path, guard.standaloneExemptions]] : []))),
   "server/storage/db.ts": {
     iamPasswordProvider:
       "Generates an expiring AWS RDS IAM signer token for the database driver's password " +
@@ -916,7 +893,8 @@ export const HANDLERS_ON_FRAMEWORK: Record<
     vendorIdentifiers: string[];
   }
 > = {
-  ...Object.fromEntries(discoverOptionalComponents().flatMap(p => Object.entries(p.maintenanceGuards ?? {}))),
+  ...Object.fromEntries(discoverOptionalComponents().flatMap(p => Object.entries(p.maintenanceGuards ?? {})
+    .filter(([, guard]) => "handlerContainers" in guard))),
   "server/plugins/wc-vendors/plugins/stripe.ts": {
     handlerContainers: ["operations"],
     handlerProperty: "run",

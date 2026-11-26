@@ -96,7 +96,6 @@ export interface TabEntityTypes {
   worker_hours: true;
   user: true;
   ws_client: true;
-  sftp_client_destination: true;
   bulk_message: true;
   ledger_payment_batch: true;
   facility: true;
@@ -614,13 +613,6 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/admin/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
-export const sftpClientDestinationTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/config/sftp/client/{id}', permission: 'admin', component: 'system.sftp.client' },
-  { id: 'connection', label: 'Connection', hrefTemplate: '/config/sftp/client/{id}/connection', permission: 'admin', component: 'system.sftp.client' },
-  { id: 'test', label: 'Test', hrefTemplate: '/config/sftp/client/{id}/test', permission: 'admin', component: 'system.sftp.client' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/config/sftp/client/{id}/logs', permission: 'admin', component: 'system.sftp.client' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/client/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
-];
 
 export const ledgerPaymentBatchTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/ledger/payment-batch/{id}', policyId: 'staff', component: 'ledger.payment.batch' },
@@ -762,7 +754,6 @@ export const tabTreeRegistry: Partial<Record<TabEntityType, HierarchicalTab[]>> 
   worker_hours: workerHoursTabTree,
   user: userTabTree,
   ws_client: wsClientTabTree,
-  sftp_client_destination: sftpClientDestinationTabTree,
   bulk_message: bulkMessageTabTree,
   ledger_payment_batch: ledgerPaymentBatchTabTree,
   facility: facilityTabTree,

@@ -39,7 +39,6 @@ const recordGoAccessRequirements: Record<string, RecordGoAccessRequirement> = {
   events: { kind: "policy", id: "admin", componentId: "event" },
   facilities: { kind: "policy", id: "facility.view", componentId: "facility" },
   policies: { kind: "policy", id: "admin" },
-  sftp_client_destinations: { kind: "policy", id: "admin", componentId: "system.sftp.client" },
   sitespecific_btu_csg: { kind: "policy", id: "authenticated", componentId: "sitespecific.btu" },
   trust_benefits: { kind: "permission", id: "staff" },
   trust_provider_contacts: { kind: "policy", id: "staff" },

@@ -384,20 +384,6 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core"
   },
   {
-    id: "trust.providers.edi",
-    name: "Provider Data Interchange",
-    description: "Data interchange functionality for trust providers (EDI file plugin configs and delivery)",
-    enabledByDefault: false,
-    category: "trust.providers",
-    managesSchema: true,
-    schemaManifest: {
-      version: 1,
-      schemaPath: "./shared/schema/trust/provider-edi-schema.ts",
-      tables: ["plugin_configs_trust_provider_edi"],
-      dependsOnComponents: ["system.sftp.client"]
-    }
-  },
-  {
     id: "trust.benefits",
     name: "Trust Benefits",
     description: "Management of trust benefits and eligibility",
@@ -568,19 +554,6 @@ export const componentRegistry: ComponentDefinition[] = [
       { key: "staff.bulk", description: "Access to bulk messaging functionality" }
     ]
   },
-  {
-    id: "system.sftp.client",
-    name: "SFTP Client",
-    description: "SFTP client for secure file transfers",
-    enabledByDefault: false,
-    category: "core",
-    managesSchema: true,
-    schemaManifest: {
-      version: 1,
-      schemaPath: "./components/system.sftp.client/shared/schema/system/sftp-client-schema.ts",
-      tables: ["sftp_client_destinations"]
-    }
-  }
 ];
 
 const installedComponentIds = new Set<string>();

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { logger } from "../../../logger";
+import { logger } from "../../../../../../server/logger";
 import {
   registerPluginKind,
   registerPluginConfigAdapter,
   baseConfigSchemaShape,
   baseSearchSchemaShape,
-} from "../../_core";
+} from "../../../../../../server/plugins/_core";
 import { trustProviderEdiPluginRegistry } from "./registry";
 
 export {
@@ -31,7 +31,7 @@ function registerTrustProviderEdiKind(): void {
     sortEntries: (a, b) => a.id.localeCompare(b.id),
     validateConfig: async (plugin, config) => {
       if (!plugin.configSchema) return { valid: true };
-      const { validateAgainstSchema } = await import("../../../utils/json-schema-validator");
+      const { validateAgainstSchema } = await import("../../../../../../server/utils/json-schema-validator");
       const result = validateAgainstSchema(plugin.configSchema, config);
       if (result.valid) return { valid: true };
       return { valid: false, errors: result.errors ?? ["Invalid configuration"] };

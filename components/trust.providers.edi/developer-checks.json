@@ -1,0 +1,7 @@
+{
+  "readOnlyFlagExemptFiles": [
+    "server/plugins/trust/provider-edi/base.ts",
+    "server/plugins/trust/provider-edi/plugins/sitespecific-bao-healthnet.ts",
+    "server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser.ts"
+  ]
+}

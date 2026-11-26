@@ -162,7 +162,10 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **Wizard Plugin Framework (spike)**: `server/plugins/wizards/` (sixth plugin kind on `server/plugins/_core/`; fixed dispatcher routes so adding a wizard adds zero routes), pilot at `server/plugins/wizards/plugins/report-gbhet-legal-compliance.ts`; client generic renderers `client/src/components/wizards/framework/`, escape-hatch component registry `client/src/plugins/wizards/`
 -   **Dispatch System**: `server/modules/dispatch/`, `client/src/pages/dispatch/`
 -   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
--   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
+-   **File transfers and provider EDI**: `components/system.sftp.client/` and
+    `components/trust.providers.edi/`; EDI requires SFTP. Remove EDI alone or
+    remove both while stopped, then discover/build/restart. Ownership guidance
+    lives with SFTP in `docs/ownership-scope.md` inside its directory.
 
 ## Stable layout CSS ids (public contract)
 

@@ -1,0 +1,1 @@
+- [EDI membership scoping](scoping.md) — membership is benefit-driven, not providerId-driven; COBRA uses the employer's Sirius ID.

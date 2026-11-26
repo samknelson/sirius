@@ -75,4 +75,6 @@ import "./../../components/sitespecific.t631.interviews/server/plugins/event-not
 import "./../../components/sitespecific.t631.interviews/server/plugins/system/denorm/plugins/dispatch/sitespecific-t631-interview";
 import "./../../components/system.session_history/server/plugins/event-notifier/plugins/new-ip-sign-in";
 import "./../../components/system.session_history/server/plugins/system/data-retention/plugins/sessionHistory";
+import "./../../components/trust.providers.edi/server/plugins/wizards/plugins/trust-provider-edi";
+import "./../../components/trust.providers.edi/server/plugins/dashboard/plugins/edi-summary";
 export {};
