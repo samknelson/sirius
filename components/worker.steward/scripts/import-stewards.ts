@@ -1,4 +1,4 @@
-import { db } from "../../server/db";
+import { db } from "../../../server/db";
 import { sql } from "drizzle-orm";
 import * as fs from "fs";
 import { parse } from "csv-parse/sync";
@@ -16,7 +16,7 @@ async function importStewards() {
   const csvPath = process.argv[2];
   if (!csvPath) {
     throw new Error(
-      "Usage: npx tsx scripts/oneoffs/import-stewards.ts <steward-csv-path>",
+      "Usage: npx tsx components/worker.steward/scripts/import-stewards.ts <steward-csv-path>",
     );
   }
 

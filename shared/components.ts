@@ -401,6 +401,7 @@ export const componentRegistry: ComponentDefinition[] = [
     id: "trust.benefits.scan",
     name: "Trust Benefit Scan",
     description: "Automated scanning for worker benefit eligibility",
+    dependsOnComponents: ["trust.benefits"],
     enabledByDefault: false,
     category: "trust.benefits"
   },
@@ -408,6 +409,7 @@ export const componentRegistry: ComponentDefinition[] = [
     id: "trust.benefits.eligibility.exemptions",
     name: "Eligibility Exemptions",
     description: "Exempt individual members from specified eligibility plugins",
+    dependsOnComponents: ["trust.benefits"],
     enabledByDefault: false,
     category: "trust.benefits.eligibility",
     managesSchema: true,

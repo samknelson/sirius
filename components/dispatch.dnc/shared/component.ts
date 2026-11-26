@@ -5,6 +5,7 @@ declare module "../../../shared/accessPolicies" {
 export const component: ComponentDefinition = {
   id: "dispatch.dnc", name: "Dispatch Do Not Call", description: "Do Not Call list management for dispatch",
   enabledByDefault: false, category: "dispatch", managesSchema: true,
+  dependsOnComponents: ["dispatch"],
   schemaManifest: { version: 1, schemaPath: "./components/dispatch.dnc/shared/schema/dispatch/dnc-schema.ts", tables: ["worker_dispatch_dnc"] },
   permissions: [{ key: "worker", description: "Worker access to their own data" }],
   policies: [

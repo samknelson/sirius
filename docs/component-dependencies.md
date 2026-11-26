@@ -40,8 +40,8 @@ a parent page, a route guarded by `requireComponent(parent)`) is a soft link.
 - **soft** — gated at runtime (`requireComponent`, `isComponentEnabled*`,
   plugin `requiredComponent`, existence-guarded SQL, contribution slots) and
   safe when the other component is absent or off.
-- **to fix** — neither declared nor gated. Listed for the owner's review;
-  nothing in this section was declared or changed by guessing.
+- **to fix** — neither declared nor gated; requires an owner decision before
+  changing component availability.
 
 `npx tsx scripts/dev/check-component-imports.ts --audit` prints the
 table-level inventory below (foreign keys, raw SQL, Drizzle table imports) from
@@ -56,6 +56,8 @@ current source.
 | `dispatch.facility` (core) | `dispatch`, `facility` | FKs from `dispatch_job_facility` |
 | `edls` | `dispatch.job_group`, `facility` | FKs from `edls_sheets`, migrations, queries |
 | `dispatch.bullpen`, `dispatch.department`, `dispatch.fore` | `dispatch` | FKs into `dispatch_jobs`, migrations, queries |
+| `dispatch.asi`, `dispatch.dnc`, `dispatch.eba`, `dispatch.hfe`, `dispatch.ban`, `dispatch.singleshift` | `dispatch` | owner-confirmed functional dependencies; these features require dispatch even without an FK |
+| `trust.benefits.scan`, `trust.benefits.eligibility.exemptions` (core) | `trust.benefits` | owner-confirmed functional dependencies: benefit eligibility scanning and plugin exemptions |
 | `sitespecific.t631.interviews` | `dispatch` | FK into `dispatch_jobs`, queries, raw SQL |
 | `grievance.contract` | `grievance`, `contract` | FKs into `grievances`, `contract_sections`; client calls `/api/grievances` |
 | `grievance.settlement` | `grievance` | FK into `grievances`; client calls `/api/grievances` |
@@ -80,8 +82,6 @@ read with `isComponentEnabledSync("dispatch.job_group")`.
 
 | From | To | Gate |
 | --- | --- | --- |
-| `dispatch.asi`, `dispatch.dnc`, `dispatch.eba`, `dispatch.hfe` | `dispatch` | routes guarded by `requireComponent("dispatch")`; worker panels contribute into dispatch UI slots; schemas FK only core `workers`/`employers` |
-| `dispatch.ban`, `dispatch.singleshift` | `dispatch` | eligibility plugins run only inside dispatch eligibility evaluation |
 | `dispatch.ban` | `dispatch.facility`, `dispatch.singleshift` | `isComponentEnabled` checks in the facility-ban plugin and verify script |
 | `debug` | `dispatch` | eligible-workers SQL route guarded by `requireComponent("dispatch")` (it imports the core `worker_dispatch_status` table and core dispatch eligibility query) |
 | `trust.providers.edi` | `sitespecific.bao` | BAO HealthNet/Kaiser file-type plugins declare `requiredComponent: "sitespecific.bao"` |
@@ -97,25 +97,32 @@ their tables are their own code and cannot be attributed statically; the
 `--audit` listing shows them as `(core) -> <component>`. They become checkable
 when the component moves into its own directory.
 
-### To fix — for owner review (not changed)
+### Owner decisions (2026-11-26)
 
-1. **`dispatch.ban` → `dispatch`**: `scripts/verify-dispatch-eligibility-enforcement.ts`
-   queries `options_dispatch_job_type` with no gate. It is a verification
-   script, not runtime code. Options: declare `dispatch` (making the ban
-   component hard-depend on dispatch, which matches its purpose), or leave the
-   script as a soft dev-only link.
-2. **core `scripts/oneoffs/import-stewards.ts` → `worker.steward`**: raw SQL
-   on `worker_steward_assignments` from core, ungated. If `components/worker.steward`
-   were removed the oneoff would fail at runtime. Options: move it into the
-   `worker.steward` directory, or retire it.
-3. **Dispatch children with no declaration** (`dispatch.asi`, `dispatch.dnc`,
-   `dispatch.eba`, `dispatch.hfe`, `dispatch.ban`, `dispatch.singleshift`)
-   versus those that declare `dispatch` (`bullpen`, `department`, `fore`):
-   the split follows whether a table FKs into dispatch. Question for the owner:
-   should every dispatch child declare `dispatch` (they are useless without
-   it), or keep the current FK-driven split?
-4. **`trust.benefits.eligibility.exemptions`, `trust.benefits.scan`** →
-   `trust.benefits`: no declaration; exemptions act on eligibility plugins
-   owned by `trust.benefits` and the scan runs benefit eligibility. Both look
-   like real dependencies but are core components whose links live in core
-   code, so they were not declared without confirmation.
+All four previously pending questions are resolved:
+
+1. **`dispatch.ban` → `dispatch`** is declared. The original ungated-script
+   finding was stale: the script now lives at
+   `components/dispatch.ban/scripts/verify-dispatch-eligibility-enforcement.ts`
+   and checks that dispatch, ban and single-shift are enabled before querying
+   dispatch tables. Keep that runtime preflight in addition to the declaration.
+2. **Steward import stays with its owner**, rather than being retired:
+   `components/worker.steward/scripts/import-stewards.ts`. Run it with
+   `npx tsx components/worker.steward/scripts/import-stewards.ts <steward-csv-path>`.
+   Its SQL on `worker_steward_assignments` is now an owner-local reference;
+   removing the component removes the tool too. The old core oneoff is removed,
+   not kept as a forwarding script.
+3. **All six reviewed dispatch children require dispatch**:
+   `dispatch.asi`, `dispatch.dnc`, `dispatch.eba`, `dispatch.hfe`,
+   `dispatch.ban`, and `dispatch.singleshift` now declare it, like
+   `dispatch.bullpen`, `dispatch.department`, and `dispatch.fore`.
+   Functional requirements, not only foreign keys, justify a hard dependency.
+   Existing route and plugin gates remain as additional protection.
+4. **Both benefit children require `trust.benefits`**:
+   `trust.benefits.eligibility.exemptions` and `trust.benefits.scan` declare it
+   in their core definitions. Exemptions act on benefit eligibility plugins;
+   the scan runs benefit eligibility.
+
+These are explicit declarations, not a change to the dotted-ID hierarchy
+rule. They do not automatically enable components or change saved settings.
+There are no remaining owner-review items from this audit.
