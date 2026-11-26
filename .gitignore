@@ -18,3 +18,4 @@ __replit_disk_meta.json
 # Deployment-only directories: tracked on owning package branches, never on main
 .github/
 deploy/
+/generated-artifacts/
