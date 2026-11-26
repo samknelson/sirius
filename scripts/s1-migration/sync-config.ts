@@ -27,6 +27,11 @@ import { MIGRATION_SYSTEM_TIME_ZONE } from "./lib/timezone-pin";
  * be added here (and given a mode policy) before any profile may allow it —
  * validateSyncConfig refuses unknown kinds. */
 export const KNOWN_FINDING_KINDS = [
+  "merge_log_invalid",
+  "size_differs",
+  "sweep_over_limit",
+  "mapping_repaired",
+  "mapping_dangling",
   "deleted_in_s1", // framework standard (§10): S1 source vanished, rows preserved
   "source_worker_missing", // beneficiaries: staged worker vanished entirely (fund ruling required)
   "pending_retention", // cardchecks: signed authorization vanished (retention ruling required)
@@ -277,6 +282,16 @@ export const FLEET: FleetStep[] = [
     supportsAllowRejects: true,
     extraArgs: ["--migration-mode"],
   },
+  {
+    id: "files",
+    script: "load-files.ts",
+    loader: "s1-files",
+    logicVersion: 1,
+    supportsForceReconcile: true,
+    supportsAllowFindings: true,
+    supportsAllowRejects: true,
+    extraArgs: ["--migration-mode"],
+  },
 ];
 
 /** Configuration-mutating setup steps operators may explicitly omit on daily runs. */
@@ -411,6 +426,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "pending_retention",
     ],
     steps: {
+      files: {},
       "seed-trust-config": {},
       "seed-policy-benefits": {},
       options: {},
@@ -511,6 +527,9 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "seed-trust-config": {},
       "seed-policy-benefits": {},
       options: {},
+      // Plan v2 acceptance criterion 2: ~440 missing bytes and 3 unresolved owners in production.
+      // Plus file_row_missing ruled acceptable by the operator on 2026-11-22 (2 in production).
+      files: { allowRejects: ["bytes_missing", "owner_unresolved", "file_row_missing"] },
       "contacts-workers": {
         allowRejects: [
           "worker_id_value_collision",

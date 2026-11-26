@@ -90,7 +90,7 @@ writing entrypoint is gated and no loader reads a user zone).
 
 **T7 / T8 / T9 — REMOVED (dispatch is out of scope, 06 §4.7).** Dispatch status, HFE, and EBA transforms are not built; their fields are not read.
 
-**T10 — files.** For each referenced `fid`: read `file_managed` (uri `private://…` or S3 via `s3fs_file`), copy the blob from the S1 file store into S2 object storage, insert a `files` row (`file_name = origname`, `mime_type = filemime`, `size = filesize`, `uploaded_at` = `timestamp` unix seconds → datetime, `entity_type`/`entity_id` = the migrated owner, `metadata.s1Fid = fid`, `access_level` per owner type — worker docs private). Requires file-store access (Q38: the DB snapshot has no blobs). `_display=0` attachments are still migrated but marked `metadata.hidden=true`; `_description` → `metadata.description`.
+**T10 — files: superseded.** The authoritative [final file plan](plan-v2.md), Part B and D1–D8, replaces this transform and the November 20 handoff. `load-files.ts` reads the separate, read-only private archive, creates staff-only entity attachments with six stable file types, and retains original upload dates. Neither display/description flags nor `s3fs_file` drive migration. Contracts remain attachments, never structured contracts.
 
 **T11 — names.** `field_sirius_name_*` map 1:1 onto `contacts` name parts (S1's name module columns match S2's contact columns exactly — S2 was modeled on S1). `display_name = trim(concat_ws(' ', given, family))` when S1's computed display is unavailable. Masked columns (`title`, `middle`, `generational`, `credentials`) migrate as-is from live data.
 

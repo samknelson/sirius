@@ -211,6 +211,9 @@ ENV NODE_ENV=production
 ENV TZ=America/Los_Angeles
 WORKDIR /app
 RUN test -f scripts/oneoffs/backfill-wmb-events.ts \
+    && test -f scripts/s1-migration/load-files.ts \
+    && test -f scripts/s1-migration/lib/file-archive.ts \
+    && node -e "require.resolve('@aws-sdk/client-s3')" \
     && test -f scripts/s1-migration/lib/wmb-event-phase.ts \
     && test -f server/plugins/system/oneoff/plugins/s1-migration/workers.ts \
     && test -f server/plugins/system/oneoff/plugins/s1-migration/wmb-events.ts \

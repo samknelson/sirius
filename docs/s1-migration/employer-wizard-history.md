@@ -35,7 +35,7 @@ the merged implementation before a meaningful importer rehearsal can occur.
 - Preserve the real supported S2 upload type, employer, reporting year/month,
   source chronology, and evidence-backed status.
 - Retain original source identity and original type/status values for traceability.
-- Historical file bytes are unavailable in S2. Do not create attachments,
+- Historical file bytes are held in the S1 archive bucket and deliberately not imported into S2. Do not create attachments,
   external retrieval links, completed steps, or processing results.
 - Opening history must explain file unavailability without changing its status.
   Neither the UI nor server endpoints may resume, process, download, or rerun it.

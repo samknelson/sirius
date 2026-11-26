@@ -1,3 +1,111 @@
+# S1 file attachments
+
+The authoritative specification is `docs/s1-migration/plan-v2.md`, Part B.
+Part A configuration is operator-owned; this loader never changes it.
+`load-files.ts` runs last in the fleet and records the standard `s1-files`
+run envelope in the existing migration run-history view (the view enumerates
+stored runs dynamically, without a separate loader catalog).
+
+Prerequisites: a complete raw-file inventory from `stage.ts`, existing owner
+mappings, verified maintenance mode, `TZ=America/Los_Angeles`, enabled ledger,
+and usable private worker/employer/ledger_payment file areas. Scripts use only
+the task's filesystem environment, not app environment overrides. The archive
+must not be configured in `FILESYSTEMS`.
+
+```
+npx tsx scripts/s1-migration/load-files.ts --migration-mode \
+  [--dry-run] [--force-reconcile] [--max-bytes 104857600] [--limit N] \
+  [--allow-rejects bytes_missing,owner_unresolved,file_row_missing] \
+  [--allow-findings size_differs,mapping_repaired,mapping_dangling] \
+  [--missing-file-list /secure/output/missing-files.json]
+```
+
+The production fleet allows only `bytes_missing`, `owner_unresolved` and
+`file_row_missing`: plan v2 acceptance criterion 2 covers about 440 missing
+bytes and 3 unresolved owners; the operator ruled `file_row_missing` acceptable
+on 2026-11-22 (2 in production, referencing fids absent from S1 `file_managed`).
+The dev profile is unchanged. No file findings or other reject reasons are
+automatically approved. `--limit` limits new byte-backed writes, including
+owner moves; it does not truncate candidate discovery or authorize deletions.
+`--dry-run` reports missing types in `detail.fileTypesToCreate` (six on a fresh
+target), performs archive HEAD checks and writes no database or destination
+objects. Type collisions and incompatible definitions still refuse both modes.
+The optional report file
+contains only fid/sourceNid pairs.
+
+Raw-only refresh includes file metadata; skip-raw leaves it untouched.
+Incomplete or changing raw extraction never publishes a partial inventory or
+deletes stale rows. A changing inventory retries the complete two-pass read up
+to three times with a short pause. Exhaustion records `skipped_changing` in the
+stage report without failing other staging work. The previous inventory and
+evidence row remain untouched; separate latest-attempt admission stays blocked.
+The files loader then exits nonzero with `file_inventory_unverified` before
+writing files or types. Run a successful raw refresh before retrying files.
+Existing installations also need that refresh to establish the admission row.
+Other extraction errors still fail staging. Reads are keyset-paged; only metadata is buffered.
+Local synthetic rehearsal uses `--archive-directory` and requires local
+destination providers. Normal operation uses the AWS default credential chain,
+`S1_FILES_ARCHIVE_BUCKET`, and `S1_FILES_ARCHIVE_PREFIX` (default `private/`).
+Never use production connections for a synthetic rehearsal.
+
+The dedicated `s1-files` advisory-lock session sends `SELECT 1` every 60
+seconds, including source loading and owner preflight. A client error, pool
+error, or failed heartbeat stops the loader at the next candidate boundary
+with `s1-files failed: database_connection_lost` and a nonzero exit. No driver
+error details are printed. Shutdown drains deferred storage work, clears the
+heartbeat, destroys the lock client, and attempts pool shutdown independently.
+Retry normally after connectivity is restored: committed attachments missing
+their mapping are adopted through provenance (`mapping_repaired`), not
+duplicated. Uncommitted row writes roll back; uncertain orphan objects remain
+for the destination consistency sweep rather than risking committed bytes.
+
+The isolated rehearsal includes an actual backend termination during mapping
+and a dry run paused for more than 15 minutes with a two-minute server idle
+timeout. Allow roughly 17 minutes for the complete rehearsal.
+
+Missing objects younger than 48 hours are pending, not rejects. Non-private
+URIs and older missing objects reject. Authorization/network failures are
+separate errors, never missing-byte evidence. The default maximum is 100 MiB.
+Deletion is loader-scoped and removes only destination attachments/objects;
+more than 50 sweep candidates require explicit `sweep_over_limit` allowance.
+Current rejected, pending, and limited source identities remain protected.
+Provenance adoption and dangling-map recovery emit findings for review.
+`size_differs` is an archive HEAD observation during create/owner-move checks,
+not a comparison re-emitted on unchanged daily files. Verification uses the
+actual stored size. An unchanged rerun performs no archive GETs or file writes.
+
+A missing resolved context owner rejects only its candidate as `owner_missing`.
+Malformed material/election JSON rejects its candidate as `source_json_invalid`.
+Malformed merge logs produce a count-only `merge_log_invalid` finding; a readable
+from-nid and its upstream chains reject as `merge_unresolved`. Conflicting edges
+and cycles likewise reject their dependent handlers, without stopping healthy
+candidates. Unreadable from-nids are never guessed. These new reasons/findings
+are not allowed by either fleet profile and keep the files step failing until
+reviewed. Rejected candidates retain protection from deletion sweeps.
+
+Storage sampling must be zero and migration debug logging unset; filenames,
+URIs, material titles, and summaries are not diagnostic fields.
+Original names, dates, material metadata, election status and dependent links
+remain in the protected attachment records. Existing attachment help remains
+sufficient: no new UI actions, permissions, or serving behavior are introduced.
+The D1 SQL writes the UTC-naive representation used by the actual Drizzle
+`files.uploadedAt` Date codec; a session-local SQL conversion would make the
+download metadata report a different instant. Verification checks both SQL
+storage and the application read path. The process/session timezone gate remains
+America/Los_Angeles as required by the rest of the migration framework.
+
+Run the isolated rehearsal after the scripts check:
+`node scripts/s1-migration/dev/rehearse-files.mjs`.
+It launches its own disposable PostgreSQL cluster and supplies a clean child
+environment with only local source/target databases and local file providers.
+Its source adapter translates keyset parameter placeholders for PostgreSQL;
+this is not a claim of real MariaDB transport or production performance proof.
+
+Real-data count tolerance, throughput, fund missing-file review, and UI spot
+checks are operator acceptance work, not conclusions from synthetic tests.
+Release requires a registry `repository@sha256:...` manifest digest built from
+the tested source. A source revision or local image ID is not that evidence.
+
 ## Data Migration: Employer Wizards
 
 **Implementation approved for merge; data migration not yet verified.** The
