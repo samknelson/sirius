@@ -7,7 +7,6 @@ import { ComponentSlot } from "@/lib/component-contributions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -190,8 +189,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
           titleTestId={`text-worker-name-${worker.id}`}
           badges={
             <>
-              <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
-              <ComponentSlot name="worker.header.badges" props={{ workerId: worker.id }} />
+              <ComponentSlot name="worker.header.badges" props={{ workerId: worker.id, entityName: contact?.displayName || `Worker ${worker.id.slice(0, 8)}` }} />
             </>
           }
           actions={<DebugRecordViewer record={worker} entityLabel="Worker" />}

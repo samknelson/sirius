@@ -41,7 +41,6 @@ by the dashboard's pre-fetch filter.
 | Plugin id | requiredPermissions (UI hint) | requiredComponent | requiredPolicy | Visible to |
 | --- | --- | --- | --- | --- |
 | `active-sessions` | `admin` | — | `admin` | admins only |
-| `bookmarks` | `bookmark`, `admin` | — | — | any user with `bookmark` or `admin` (data is scoped to caller) |
 | `btu-bu-summary` | (none) | `sitespecific.btu` | `admin` | admins on BTU deploys |
 | `btu-dues-status` | (none) | `sitespecific.btu` | `admin` | admins on BTU deploys |
 | `employer-monthly-uploads` | (none) | — | — | rendered for all; resolver filters wizards per role via `allowedWizardTypes` |
@@ -53,11 +52,6 @@ by the dashboard's pre-fetch filter.
 
 Notes:
 
-- `bookmarks` intentionally has no server-side `requiredPolicy` or
-  `componentId` — the data is per-user, and the client-side
-  `requiredPermissions: ["bookmark","admin"]` is the only gate. A
-  worker without `bookmark` perm will neither render the widget nor
-  call `/content/bookmarks`.
 - `my-shops`, `my-steward`, `welcome-messages`,
   `employer-monthly-uploads` are deliberately "always-render, hide
   if empty" widgets: their content resolver returns an empty array
@@ -71,7 +65,6 @@ Every widget that calls `useDashboardContent` was inspected
 return-null / loading-only paths:
 
 - `ActiveSessions.tsx:31` — `if (isLoading || !data) return null;`
-- `Bookmarks.tsx:20,23` — null on missing data or empty list
 - `BtuBuSummary.tsx:53-54` — null on loading or empty `units`
 - `BtuDuesStatus.tsx:73-74` — null on loading or `!summary.hasData`
 - `MyShops.tsx:59` — null on error / missing / empty shops
@@ -100,8 +93,7 @@ the widget, the only `/content` calls a user makes are for plugins
 whose `requiredPermissions` / `requiredComponent` / `requiredPolicy`
 already match. The remaining "always-render" widgets
 (`my-shops`, `my-steward`, `welcome-messages`,
-`employer-monthly-uploads`, `bookmarks` when the user has the
-permission) intentionally call `/content` and rely on the resolver
+`employer-monthly-uploads`) intentionally call `/content` and rely on the resolver
 to return empty arrays / null fields — none of those resolvers
 return 403 for an "expected" non-match (they return empty
 structures). The one exception is `my-shops`, which throws 403

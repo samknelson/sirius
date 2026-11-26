@@ -6,7 +6,7 @@ import { Company } from "@shared/schema/employer/company-schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookmarkButton } from "@/components/ui/bookmark-button";
+import { ComponentSlot } from "@/lib/component-contributions";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useCompanyTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -121,7 +121,7 @@ export function CompanyLayout({ activeTab, children }: CompanyLayoutProps) {
         icon={<Building className="text-primary-foreground" size={16} />}
         title={company.name}
         titleTestId={`text-company-name-${company.id}`}
-        badges={<BookmarkButton entityType="company" entityId={company.id} entityName={company.name} />}
+        badges={<ComponentSlot name="company.header.badges" props={{ companyId: company.id, entityName: company.name }} />}
         actions={<DebugRecordViewer record={company} entityLabel="Company" />}
         backLink={COMPANY_BACK_LINK}
         recordId={company.id}

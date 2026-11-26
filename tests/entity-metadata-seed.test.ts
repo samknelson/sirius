@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   metadataColumns: ["table_name"] as string[],
   queries: [] as string[],
+  contextLookup: vi.fn(() => ({ contextId: "plugin_configs" })),
 }));
 
 vi.mock("../server/storage/transaction-context", () => ({
@@ -46,7 +47,7 @@ vi.mock("../server/storage/transaction-context", () => ({
 }));
 
 vi.mock("../server/storage/entity-metadata-record-tables", () => ({
-  getMetadataContextForTable: () => ({ contextId: "plugin_configs" }),
+  getMetadataContextForTable: state.contextLookup,
 }));
 
 vi.mock("../server/logger", () => ({
@@ -63,6 +64,7 @@ describe("entity metadata provenance seeding across the discriminator rename", (
   beforeEach(() => {
     state.metadataColumns = ["table_name"];
     state.queries = [];
+    state.contextLookup.mockClear();
   });
 
   it.each([
@@ -80,6 +82,7 @@ describe("entity metadata provenance seeding across the discriminator rename", (
     const seedQueries = state.queries.filter(
       (query) => query.includes("FROM entity_metadata") || query.includes("INSERT INTO entity_metadata"),
     );
+    expect(state.contextLookup).toHaveBeenCalledWith("plugin_configs", { includeDisabled: true });
     expect(seedQueries).toHaveLength(2);
     expect(seedQueries[0]).toContain(`m."${expected}" <>`);
     expect(seedQueries[1]).toContain(`"${expected}", entity_id`);

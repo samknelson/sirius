@@ -1,0 +1,17 @@
+{
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/bookmarks.ts"],
+  "storage": "server/storage.ts",
+  "startup": "server/startup.ts",
+  "metadata": "server/metadata.ts",
+  "server": [
+    "server/plugins/dashboard/plugins/bookmarks.ts",
+    "server/plugins/system/flood/plugins/bookmark.ts"
+  ],
+  "coreMigrations": [
+    "scripts/migrate/core/1100_seed_bookmark_provenance.ts",
+    "scripts/migrate/core/1101_drop_bookmarks_created_at.ts"
+  ],
+  "migrations": ["scripts/migrate/components/bookmark/001_create_bookmarks.ts"],
+  "client": "client/src/contributions.tsx"
+}

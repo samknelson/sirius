@@ -43,7 +43,6 @@ const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
-const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
 const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
 const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
@@ -1040,14 +1039,6 @@ function Router() {
         <ProtectedRoute policy="worker.list">
           <AuthenticatedLayout>
             <Workers />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/bookmarks">
-        <ProtectedRoute policy="staff">
-          <AuthenticatedLayout>
-            <Bookmarks />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -6,7 +6,7 @@ import { Employer } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookmarkButton } from "@/components/ui/bookmark-button";
+import { ComponentSlot } from "@/lib/component-contributions";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useEmployerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -125,7 +125,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
         icon={<Building2 className="text-primary-foreground" size={16} />}
         title={employer.name}
         titleTestId={`text-employer-name-${employer.id}`}
-        badges={<BookmarkButton entityType="employer" entityId={employer.id} entityName={employer.name} />}
+        badges={<ComponentSlot name="employer.header.badges" props={{ employerId: employer.id, entityName: employer.name }} />}
         actions={<DebugRecordViewer record={employer} entityLabel="Employer" />}
         backLink={EMPLOYER_BACK_LINK}
         recordId={employer.id}

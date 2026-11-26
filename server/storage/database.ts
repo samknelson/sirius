@@ -11,7 +11,6 @@ import { type TrustWmbStorage, createTrustWmbStorage, trustWmbLoggingConfig } fr
 import { type TrustWmbEventsStorage, createTrustWmbEventsStorage } from "./trust/wmb-events";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
-import { type BookmarkStorage, createBookmarkStorage, bookmarkLoggingConfig } from "./bookmarks";
 import {
   type LedgerStorage,
   createLedgerStorage,
@@ -183,7 +182,6 @@ export interface IStorage extends ComponentStorage {
   trust: { wmb: TrustWmbStorage };
   trustWmbEvents: TrustWmbEventsStorage;
   workerIds: WorkerIdStorage;
-  bookmarks: BookmarkStorage;
   ledger: LedgerStorageWithPaymentMethods;
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
@@ -283,7 +281,6 @@ export class DatabaseStorage implements IStorage {
   trust: { wmb: TrustWmbStorage };
   trustWmbEvents: TrustWmbEventsStorage;
   workerIds: WorkerIdStorage;
-  bookmarks: BookmarkStorage;
   ledger: LedgerStorageWithPaymentMethods;
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
@@ -407,10 +404,6 @@ export class DatabaseStorage implements IStorage {
     this.workerIds = withStorageLogging(
       createWorkerIdStorage(),
       workerIdLoggingConfig,
-    );
-    this.bookmarks = withStorageLogging(
-      createBookmarkStorage(),
-      bookmarkLoggingConfig,
     );
     this.ledger = {
       ...createLedgerStorage(

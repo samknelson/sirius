@@ -96,8 +96,6 @@ import "./core/1096_seed_policy_history_provenance";
 import "./core/1097_drop_policy_history_created_at";
 import "./core/1098_seed_worker_status_history_provenance";
 import "./core/1099_drop_worker_msh_created_at";
-import "./core/1100_seed_bookmark_provenance";
-import "./core/1101_drop_bookmarks_created_at";
 import "./core/1102_add_entity_metadata_rev";
 import "./core/1103_remove_process_entity_metadata";
 import "./core/1104_own_process_capture_provenance";

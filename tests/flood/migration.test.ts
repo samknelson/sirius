@@ -86,7 +86,7 @@ it("preserves existing operator settings and explicit disablement", async () => 
 });
 it("retains malformed and orphaned sources, while generic seeding supplies safe defaults", async () => {
   legacy("local-login", "{broken");
-  legacy("bookmark", { threshold: -1, windowSeconds: 5 });
+  legacy("quicksearch", { threshold: -1, windowSeconds: 5 });
   legacy("retired", { threshold: 1, windowSeconds: 2 });
   await migrateLegacyFloodConfigs();
   expect(state.variables.size).toBe(3);

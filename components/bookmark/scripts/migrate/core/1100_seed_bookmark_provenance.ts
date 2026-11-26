@@ -1,5 +1,5 @@
-import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
-import { logger } from "../../../server/logger";
+import { registerMigration, type Migration } from "../../../../../server/services/boot/migration-runner";
+import { logger } from "../../../../../server/logger";
 
 const SERVICE = "migration-1100";
 
@@ -28,7 +28,7 @@ async function up(): Promise<void> {
   // Imported here rather than at module load: the storage barrel builds the
   // whole storage layer, and a migration file is loaded while that is still
   // being assembled.
-  const { storage } = await import("../../../server/storage");
+  const { storage } = await import("../../../../../server/storage");
 
   const result = await storage.entityMetadataSeed.seedFromColumns({
     table: "bookmarks",

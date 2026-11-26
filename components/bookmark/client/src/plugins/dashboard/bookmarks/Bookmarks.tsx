@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Bookmark, User, Building, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { DashboardPluginProps } from "../registry";
-import { useDashboardContent } from "../useDashboardContent";
-import type { Bookmark as BookmarkType } from "@shared/schema";
+import type { DashboardPluginProps } from "@/plugins/dashboard/registry";
+import { useDashboardContent } from "@/plugins/dashboard/useDashboardContent";
+import type { Bookmark as BookmarkType } from "../../../../../shared/schema/bookmarks";
 
 interface EnrichedBookmark extends BookmarkType {
   displayName: string;

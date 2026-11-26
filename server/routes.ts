@@ -48,7 +48,6 @@ import {
   getEffectiveUser,
 } from "./modules/masquerade";
 import { registerDashboardRoutes } from "./modules/dashboard";
-import { registerBookmarkRoutes } from "./modules/bookmarks";
 import {
   registerComponentRoutes,
   getEnabledComponentIds,
@@ -380,9 +379,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // decided server-side from the caller's roles, never from the request.
   const { registerQuicksearchRoutes } = await import("./modules/system/quicksearch");
   registerQuicksearchRoutes(app, requireAuth);
-
-  // Register bookmark routes
-  registerBookmarkRoutes(app, requireAuth, requirePermission);
 
   // Register wizard routes
   registerWizardRoutes(app, requireAuth, requirePermission);

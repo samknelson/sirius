@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ComponentSlot } from "@/lib/component-contributions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,6 @@ import {
   Building2,
   UserCog,
   Home,
-  Bookmark,
   ChevronDown,
   ChevronRight,
   Calendar,
@@ -400,19 +400,7 @@ export default function Header() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {(hasPermission("bookmark") || hasPermission("admin")) && (
-                  <>
-                    <DropdownMenuItem asChild>
-                      <Link href="/bookmarks" className="w-full">
-                        <div className="flex items-center cursor-pointer" data-testid="menu-bookmarks">
-                          <Bookmark className="h-4 w-4 mr-2" />
-                          Bookmarks
-                        </div>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
+                <ComponentSlot name="profile.dropdown.items" props={{}} />
                 {localAuthEnabled && (
                   <>
                     <DropdownMenuItem asChild>

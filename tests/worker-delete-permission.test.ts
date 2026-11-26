@@ -94,7 +94,7 @@ describe("worker DELETE route authorization", () => {
   });
 
   it("refuses staff and unrelated permissions", async () => {
-    const response = await deleteWithPermissions("staff", "bookmark");
+    const response = await deleteWithPermissions("staff", "users.view");
 
     expect(response.status).toBe(403);
     expect(mocks.deleteWorker).not.toHaveBeenCalled();

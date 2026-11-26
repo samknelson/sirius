@@ -786,18 +786,6 @@ export const phoneNumbers = pgTable("contact_phone", {
   validationResponse: jsonb("validation_response"),
 });
 
-// When a bookmark was added, and by whom, is provenance: it lives in
-// `entity_metadata`, written by storage logging (see
-// `docs/provenance-columns.md`). The bookmark reads that date back through
-// the storage layer's provenance join, which is also where its newest-first
-// order comes from.
-export const bookmarks = pgTable("bookmarks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  entityType: text("entity_type").notNull(),
-  entityId: varchar("entity_id").notNull(),
-});
-
 export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   entityType: text("entity_type").notNull(),
@@ -1462,10 +1450,6 @@ export const insertPhoneNumberSchema = createInsertSchema(phoneNumbers).omit({
   id: true,
 });
 
-export const insertBookmarkSchema = createInsertSchema(bookmarks).omit({
-  id: true,
-});
-
 export const insertLedgerPaymentMethodSchema = createInsertSchema(ledgerPaymentMethods).omit({
   id: true,
 });
@@ -1724,8 +1708,6 @@ export type ContactPostal = typeof contactPostal.$inferSelect;
 export type InsertPhoneNumber = z.infer<typeof insertPhoneNumberSchema>;
 export type PhoneNumber = typeof phoneNumbers.$inferSelect;
 
-export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
-export type Bookmark = typeof bookmarks.$inferSelect;
 
 export type InsertLedgerPaymentMethod = z.infer<typeof insertLedgerPaymentMethodSchema>;
 export type LedgerPaymentMethod = typeof ledgerPaymentMethods.$inferSelect;

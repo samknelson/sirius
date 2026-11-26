@@ -146,11 +146,6 @@ export function initializePermissions(): void {
   // Register core permissions
   const corePermissions: PermissionDefinition[] = [
     {
-      key: 'bookmark',
-      description: 'Create and manage bookmarks for workers and employers',
-      module: 'core'
-    },
-    {
       key: 'masquerade',
       description: 'Ability to masquerade as other users',
       module: 'core'

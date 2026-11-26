@@ -57,7 +57,7 @@ const config = (enabled: boolean, data = { threshold: 2, windowSeconds: 60 }) =>
 describe("singleton flood plugins", () => {
   it("registers every legacy identity with singleton metadata, gates and defaults", async () => {
     expect(floodPluginRegistry.listIds().sort()).toEqual([
-      "bookmark", "fixture-resource", "local-login", "local-password-change",
+      "fixture-resource", "local-login", "local-password-change",
       "notification-email", "notification-inapp", "notification-postal", "notification-sms",
       "quicksearch",
       "webclient-vendor-operation",
@@ -118,7 +118,6 @@ describe("singleton flood plugins", () => {
     expect(result).toMatchObject({ allowed: true, threshold: 10, windowSeconds: 900, identifier: "fixture|127.0.0.1" });
     await recordFloodEvent("notification-sms", { contactId: "c", pluginId: "p" });
     expect(mocks.record).toHaveBeenCalledWith("config-notification-sms", "notification-sms", "c|p", expect.any(Date));
-    expect(floodPluginRegistry.get("bookmark")!.defaults).toEqual({ threshold: 1000, windowSeconds: 360 });
     expect(floodPluginRegistry.get("quicksearch")!.getIdentifier({ ip: "ip" })).toBe("ip");
   });
 

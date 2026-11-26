@@ -172,7 +172,9 @@ export function createEntityMetadataSeedStorage(): EntityMetadataSeedStorage {
         modifiedDateColumn,
         modifiedByColumn,
       } = spec;
-      const metadataContext = getMetadataContextForTable(table);
+      // Historical migrations must preserve dates even for installed-disabled
+      // owners. This resolves declarations only; it does not enable operations.
+      const metadataContext = getMetadataContextForTable(table, { includeDisabled: true });
       if (!metadataContext) {
         throw new Error(`Refusing to seed provenance for "${table}": no eligible metadata context`);
       }

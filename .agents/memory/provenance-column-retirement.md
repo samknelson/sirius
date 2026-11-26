@@ -14,6 +14,16 @@ timestamp column never could.
 
 ## Before any of it: the table has to be in the framework
 
+Historical provenance seeding resolves installed metadata declarations, not
+runtime component availability. It must work for a disabled owner and before
+the component cache has initialized; feature reads must still use live gates.
+
+**Why:** A historical seed followed by a column drop otherwise either blocks
+startup or loses legacy dates solely because an optional feature is disabled.
+
+**How to apply:** Keep ownership declarations discoverable while disabled, and
+use declaration-only resolution in migration infrastructure, never in API reads.
+
 Nothing writes `entity_metadata` for a table that is not under storage logging,
 so a table that never had a logging config needs one FIRST — the create/delete
 named methods already resolve to the `created` / `deleted` provenance modes by

@@ -98,8 +98,10 @@ parent policy and snapshot membership before decoding historical payloads.
 Browser `snapshotRenderers` contributions use the same entity-type identifier.
 Deleting source removes discovery, not retained snapshots or database objects.
 
-Named browser slots include `worker.header.badges`, whose props contain
-`workerId`. Domain owners declare and type their own other slot names/props;
+Named browser slots include `worker.header.badges` (`workerId`, optional
+`entityName`), `employer.header.badges` (`employerId`, `entityName`),
+`company.header.badges` (`companyId`, `entityName`), and
+`profile.dropdown.items` (no props). Domain owners declare and type their own other slot names/props;
 the generic contribution library does not own domain-specific editor contracts.
 
 Mirror the host's `shared/`, `server/`, `client/`, and `scripts/` boundaries.

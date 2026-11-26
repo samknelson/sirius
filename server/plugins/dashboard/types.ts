@@ -66,7 +66,7 @@ export interface DashboardPlugin extends BasePluginMetadata {
   /**
    * Content resolver(s). May be a single resolver (served at /content)
    * or a map of action → resolver (served at /content/:action).
-   * Plugins with no server-side content (e.g. bookmarks) may omit this.
+   * Plugins with no server-side content may omit this.
    */
   content?: DashboardContentResolver | Record<string, DashboardContentResolver>;
   /**

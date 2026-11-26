@@ -1,8 +1,9 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
-import { bookmarks, entityMetadata, workers, employers, contacts, type Bookmark, type InsertBookmark } from "@shared/schema";
+import { createNoopValidator } from '../../../../server/storage/utils/validation';
+import { getClient } from '../../../../server/storage/transaction-context';
+import { entityMetadata, workers, employers, contacts } from "@shared/schema";
+import { bookmarks, type Bookmark, type InsertBookmark } from "../../shared/schema/bookmarks";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { defineLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig } from "../../../../server/storage/middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed

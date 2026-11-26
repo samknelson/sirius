@@ -272,7 +272,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     /**
      * Hard-delete a user account and everything that references it, in one
      * transaction. FK rules handle most tables (CASCADE for identities,
-     * bookmarks, in-app messages, component-owned user links, wizard feed mappings;
+     * cascading user-owned records, in-app messages, component-owned user links, wizard feed mappings;
      * SET NULL for opt-ins, component-owned assignees, snapshot authors).
      * user_roles has no FK, so it is cleaned up explicitly; active sessions
      * for the user are revoked; winston audit logs keep the bare user id.

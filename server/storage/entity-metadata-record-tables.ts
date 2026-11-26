@@ -41,7 +41,6 @@ const context = (
 export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   ...componentMetadataContexts,
   bargaining_units: context(coreSchema.bargainingUnits, "Bargaining Units", "/bargaining-units/{id}"),
-  bookmarks: context(coreSchema.bookmarks, "Bookmarks", null),
   bulk_messages: context(coreSchema.bulkMessages, "Bulk Messages", "/bulk/{id}"),
   bulk_messages_email: context(coreSchema.bulkMessagesEmail, "Bulk Message Email Settings", null),
   bulk_messages_inapp: context(coreSchema.bulkMessagesInapp, "Bulk Message In-App Settings", null),
@@ -123,11 +122,14 @@ export function getMetadataRecordContext(contextId: string): MetadataRecordConte
 }
 
 /** Resolve a logging config's physical table to its unambiguous context id. */
-export function getMetadataContextForTable(tableName: string): MetadataRecordContextInfo | undefined {
+export function getMetadataContextForTable(
+  tableName: string,
+  options: { includeDisabled?: boolean } = {},
+): MetadataRecordContextInfo | undefined {
   if (!isMetadataTableEligible(tableName)) return undefined;
   const matches = Object.entries(entityMetadataContexts)
     .filter(([, declaration]) => getTableName(declaration.table) === tableName &&
-      (!declaration.component || metadataComponentEnabled(declaration.component)))
+      (options.includeDisabled || !declaration.component || metadataComponentEnabled(declaration.component)))
     .map(([contextId, declaration]) => contextInfo(contextId, declaration));
   return matches.length === 1 ? matches[0] : undefined;
 }

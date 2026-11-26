@@ -1,18 +1,14 @@
-import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
-import { insertBookmarkSchema } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
-import { enforceFloodLimit, FloodError } from "../flood";
-import { getEffectiveUser } from "./masquerade";
+import type { Express } from "express";
+import { storage } from "../../../../server/storage";
+import { insertBookmarkSchema } from "../../shared/schema/bookmarks";
+import { requireAccess } from "../../../../server/services/access-policy-evaluator";
+import { enforceFloodLimit, FloodError } from "../../../../server/flood";
+import { getEffectiveUser } from "../../../../server/modules/masquerade";
+import { requireComponent } from "../../../../server/modules/components";
 
-type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
-type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
-
-export function registerBookmarkRoutes(
-  app: Express, 
-  requireAuth: AuthMiddleware, 
-  requirePermission: PermissionMiddleware
-) {
+export function registerBookmarkRoutes(app: Express) {
+  // Availability is additive to staff authority and runs before any feature read.
+  app.use("/api/bookmarks", requireComponent("bookmark"));
   // GET /api/bookmarks - Get all bookmarks for the current user
   app.get("/api/bookmarks", requireAccess('staff'), async (req, res) => {
     try {

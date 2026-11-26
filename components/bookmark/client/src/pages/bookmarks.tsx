@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { Link } from "wouter";
-import type { Bookmark as BookmarkType } from "@shared/schema";
+import type { Bookmark as BookmarkType } from "../../../shared/schema/bookmarks";
 import {
   AlertDialog,
   AlertDialogAction,

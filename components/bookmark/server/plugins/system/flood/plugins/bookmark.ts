@@ -1,7 +1,8 @@
-import { registerFloodPlugin } from "../registry";
+import { registerFloodPlugin } from "../../../../../../../server/plugins/system/flood/registry";
 
 registerFloodPlugin({
   id: "bookmark", name: "Bookmarks", singleton: true,
+  requiredComponent: "bookmark",
   description: "Limits bookmark creation per user.",
   defaults: { threshold: 1000, windowSeconds: 360 },
   getIdentifier(context) {
@@ -9,7 +10,7 @@ registerFloodPlugin({
     return context.userId;
   },
   async resolveIdentifierName(identifier) {
-    const { storage } = await import("../../../../storage");
+    const { storage } = await import("../../../../../../../server/storage");
     const user = await storage.users.getUser(identifier);
     return user ? (user.firstName && user.lastName
       ? `${user.firstName} ${user.lastName}`.trim() : user.email || null) : null;

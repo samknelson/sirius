@@ -49,7 +49,6 @@ export function initializeFloodPluginSystem(): void {
 }
 
 import "./plugins/quicksearch";
-import "./plugins/bookmark";
 import "./plugins/local-login";
 import "./plugins/local-password-change";
 import "./plugins/notifications";

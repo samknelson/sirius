@@ -1,7 +1,7 @@
-import { db } from "../../../server/db";
+import { db } from "../../../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerMigration, type Migration } from "../../../server/services/boot/migration-runner";
-import { logger } from "../../../server/logger";
+import { registerMigration, type Migration } from "../../../../../server/services/boot/migration-runner";
+import { logger } from "../../../../../server/logger";
 
 const SERVICE = "migration-1101";
 
@@ -18,7 +18,7 @@ const SERVICE = "migration-1101";
  */
 async function up(): Promise<void> {
   const result = await db.execute(sql`
-    ALTER TABLE bookmarks DROP COLUMN IF EXISTS created_at
+    ALTER TABLE IF EXISTS bookmarks DROP COLUMN IF EXISTS created_at
   `);
   void result;
 
