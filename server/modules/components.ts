@@ -10,6 +10,8 @@ import {
   getComponentSchemaInfo,
   checkComponentDependencies,
   formatMissingDependencies,
+  checkComponentDependents,
+  formatEnabledDependents,
 } from "../services/component/lifecycle";
 import {
   isComponentEnabledSync,
@@ -120,6 +122,16 @@ export function registerComponentRoutes(
 
       const shouldRetainData = retainData !== false;
 
+      // Refuse before changing flags, plugin configs, or touching any tables,
+      // including when the caller asks to retain the dependency's data.
+      if (!enabled) {
+        const enabledDependents = await checkComponentDependents(componentId);
+        if (enabledDependents.length > 0) {
+          const error = formatEnabledDependents(component.name, enabledDependents);
+          return res.status(409).json({ message: error, error, enabledDependents, schemaOperations: [] });
+        }
+      }
+
       if (component.managesSchema && !enabled && !shouldRetainData) {
         const schemaInfo = await getComponentSchemaInfo(component);
         const hasActiveTables = schemaInfo.tablesExist.some(exists => exists);
@@ -170,17 +182,18 @@ export function registerComponentRoutes(
             });
           }
         } else {
-          // Flip the cache to "off" BEFORE any table is dropped. Callers that
-          // consult component state to decide whether a component-owned table
-          // is safe to query (note availability, the notes orphan sweep) must
-          // never see "on" while the drop is in flight, or they hit a relation
-          // that has just disappeared. A failed drop deliberately leaves the
-          // component disabled: half-dropped tables are not a state to keep
-          // serving from, and "disabled with data retained" is already a
-          // supported resting state.
-          await updateComponentCache(componentId, false);
+          // The lifecycle rechecks dependents before publishing "off" and
+          // processing tables, including for callers outside this route.
           const lifecycleResult = await disableComponentSchema(componentId, { retainData: shouldRetainData });
           if (!lifecycleResult.success) {
+            if (lifecycleResult.enabledDependents?.length) {
+              return res.status(409).json({
+                message: lifecycleResult.error,
+                error: lifecycleResult.error,
+                enabledDependents: lifecycleResult.enabledDependents,
+                schemaOperations: lifecycleResult.schemaOperations,
+              });
+            }
             return res.status(500).json({
               message: "Failed to process component tables",
               schemaOperations: lifecycleResult.schemaOperations,

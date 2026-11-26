@@ -13,3 +13,9 @@ Owner-approved policy: a functional prerequisite can justify a hard dependency e
 **Why:** the owner explicitly chose hard prerequisites for the reviewed dispatch children and benefit scan/exemptions, rather than keeping the FK-driven split. Dotted naming alone remains insufficient.
 
 **How to apply:** evaluate whether the feature is useful without the other component; preserve existing route/plugin checks alongside approved declarations.
+
+Component disabling refuses enabled dependents rather than cascading, even when retaining tables.
+
+**Why:** keeping a table does not keep the dependency's features available, and an implicit cascade would turn off unrelated features without separate administrator consent.
+
+**How to apply:** use the same declared dependency edges in reverse; administrators disable dependents explicitly before their prerequisites.

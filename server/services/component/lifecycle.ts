@@ -4,6 +4,7 @@ import { storageLogger } from "../../logger";
 import type { SchemaDriftReport } from "./schema-push";
 import {
   getComponentById,
+  getAllComponents,
   getComponentSchemaStateVariableName,
   ComponentSchemaState,
   ComponentTableState,
@@ -11,7 +12,8 @@ import {
   ComponentDefinition,
 } from "../../../shared/components";
 import { runComponentMigrations, getComponentMigrations } from "../boot/migration-runner";
-import { isComponentEnabledSync, isCacheInitialized, loadComponentCache } from "./cache";
+import { isComponentEnabledSync, isCacheInitialized, loadComponentCache, updateComponentCache } from "./cache";
+import { readComponentStateFromStorage, resolveComponentEnabled } from "./state";
 
 export interface SchemaOperationResult {
   success: boolean;
@@ -26,6 +28,27 @@ export interface MissingDependency {
   componentName: string;
   reason: "disabled" | "tables-missing";
   missingTables: string[];
+}
+
+export interface EnabledDependent {
+  componentId: string;
+  componentName: string;
+}
+
+/** Reverse the same declaration used by enable; dotted parents imply nothing. */
+export async function checkComponentDependents(componentId: string): Promise<EnabledDependent[]> {
+  const { state } = await readComponentStateFromStorage();
+  return getAllComponents()
+    .filter(component => component.id !== componentId &&
+      component.dependsOnComponents?.includes(componentId) &&
+      resolveComponentEnabled(component, state))
+    .map(component => ({ componentId: component.id, componentName: component.name }));
+}
+
+export function formatEnabledDependents(componentName: string, dependents: EnabledDependent[]): string {
+  return `Cannot disable "${componentName}" because enabled components depend on it: ` +
+    dependents.map(component => `${component.componentName} (${component.componentId})`).join(", ") +
+    ". Disable those components first.";
 }
 
 export interface DriftedTableInfo {
@@ -45,6 +68,8 @@ export interface ComponentLifecycleResult {
   message?: string;
   /** Set when enable was refused because prerequisite components are not ready. */
   missingDependencies?: MissingDependency[];
+  /** Set when disable was refused because enabled components still rely on it. */
+  enabledDependents?: EnabledDependent[];
   /** Set when enable failed because existing tables drifted from the expected schema. */
   driftTables?: DriftedTableInfo[];
   /** Set by repairComponentSchema: tables that were dropped and recreated. */
@@ -543,6 +568,18 @@ export async function disableComponentSchema(
     };
   }
 
+  const enabledDependents = await checkComponentDependents(componentId);
+  if (enabledDependents.length > 0) {
+    return {
+      success: false,
+      componentId,
+      schemaOperations: [],
+      schemaState: null,
+      enabledDependents,
+      error: formatEnabledDependents(component.name, enabledDependents),
+    };
+  }
+
   if (!component.managesSchema || !component.schemaManifest) {
     return {
       success: true,
@@ -551,6 +588,10 @@ export async function disableComponentSchema(
       schemaState: null,
     };
   }
+
+  // Publish "off" only after the refusal check, but before dropping any table.
+  // A failed drop deliberately leaves the component disabled.
+  await updateComponentCache(componentId, false);
 
   const operations: SchemaOperationResult[] = [];
   let hasError = false;

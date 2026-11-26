@@ -85,6 +85,11 @@ export default function ComponentsConfigPage() {
   const submissionLock = useRef(false);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const enabledDependents = pendingAction && !pendingAction.enabled
+    ? allComponents.filter(component => component.id !== pendingAction.componentId &&
+      states.get(component.id) === true &&
+      component.dependsOnComponents?.includes(pendingAction.componentId))
+    : [];
   const [confirmText, setConfirmText] = useState("");
   const [isCheckingSchema, setIsCheckingSchema] = useState(false);
   const [dataAction, setDataAction] = useState<"retain" | "delete">("retain");
@@ -230,7 +235,7 @@ export default function ComponentsConfigPage() {
         }
         const schemaInfo: SchemaInfo = await response.json();
         
-        if (!enabled && schemaInfo.tablesExist.some(exists => exists)) {
+        if (!enabled) {
           setPendingAction({ componentId, enabled, component, schemaInfo });
           setIsCheckingSchema(false);
           return;
@@ -250,11 +255,16 @@ export default function ComponentsConfigPage() {
       setIsCheckingSchema(false);
     }
 
+    if (!enabled) {
+      setPendingAction({ componentId, enabled, component });
+      return;
+    }
+
     updateComponentMutation.mutate({ componentId, enabled });
   };
 
   const handleConfirmAction = () => {
-    if (!pendingAction || busy || submissionLock.current) return;
+    if (!pendingAction || busy || submissionLock.current || enabledDependents.length > 0) return;
 
     const isDisabling = !pendingAction.enabled;
     const hasActiveTables = pendingAction.schemaInfo?.tablesExist.some(exists => exists);
@@ -711,6 +721,19 @@ export default function ComponentsConfigPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {enabledDependents.length > 0 && (
+                    <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3" data-testid="text-enabled-dependents">
+                      <p className="font-medium">Disable these dependent components first:</p>
+                      <ul className="list-disc list-inside mt-2 space-y-1">
+                        {enabledDependents.map(component => (
+                          <li key={component.id}>{component.name} ({component.id})</li>
+                        ))}
+                      </ul>
+                      <p className="text-sm mt-2">Keeping tables does not remove this requirement.</p>
+                    </div>
+                  )}
+                  {pendingAction?.schemaInfo?.tables.length ? (
+                    <>
                   <p className="text-muted-foreground">
                     This component manages the following database tables:
                   </p>
@@ -773,6 +796,10 @@ export default function ComponentsConfigPage() {
                       />
                     </div>
                   )}
+                    </>
+                  ) : (
+                    <p>Disable this component? Its features will no longer be available.</p>
+                  )}
                 </div>
               )}
             </DialogDescription>
@@ -784,12 +811,13 @@ export default function ComponentsConfigPage() {
             <Button
               variant={pendingAction?.enabled ? "default" : (dataAction === "delete" ? "destructive" : "default")}
               onClick={handleConfirmAction}
-              disabled={busy || (!pendingAction?.enabled && dataAction === "delete" && confirmText !== "DELETE")}
+              disabled={busy || enabledDependents.length > 0 || (!pendingAction?.enabled && dataAction === "delete" && confirmText !== "DELETE")}
               data-testid="button-confirm"
             >
               {updateComponentMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {pendingAction?.enabled 
                 ? "Enable Component" 
+                : !pendingAction?.schemaInfo?.tables.length ? "Disable Component"
                 : (dataAction === "delete" ? "Delete Tables & Disable" : "Disable & Keep Tables")}
             </Button>
           </DialogFooter>
