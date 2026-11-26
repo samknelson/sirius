@@ -3,6 +3,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import { storage } from "../../../../storage";
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
+import { logCleanupDefaults } from "../log-cleanup-defaults";
 
 const retentionPolicySchema = z.object({
   module: z.string().nullable().default(null),
@@ -17,27 +18,6 @@ const settingsSchema = z.object({
 
 export type RetentionPolicy = z.infer<typeof retentionPolicySchema>;
 export type LogCleanupSettings = z.infer<typeof settingsSchema>;
-
-/**
- * Pre-seeded retention policies shipped with the plugin.
- * All policies start with `enabled: false` — an admin must explicitly enable
- * each one after turning on the log-cleanup cron job (which is also disabled by
- * default under Config → Cron Jobs).
- *
- * saml_debug: captures full SAML assertion payloads written when the "debug"
- * component is enabled. Kept short (7 days) because entries include raw
- * SAMLResponse XML and full IdP attribute payloads.
- */
-const DEFAULT_SETTINGS: LogCleanupSettings = {
-  policies: [
-    {
-      module: "saml_debug",
-      operation: null,
-      retentionDays: 7,
-      enabled: false,
-    },
-  ],
-};
 
 /**
  * Each policy purges log rows older than `retentionDays` for one
@@ -98,11 +78,11 @@ registerCronPlugin({
   settingsSchema,
   configSchema,
 
-  getDefaultSettings: () => DEFAULT_SETTINGS,
+  getDefaultSettings: logCleanupDefaults,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const settings = settingsSchema.parse({
-      ...DEFAULT_SETTINGS,
+      ...logCleanupDefaults(),
       ...context.settings,
     });
 

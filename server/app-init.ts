@@ -4,6 +4,9 @@ import { componentStartups } from "./generated/component-startups";
 // imports them. The route module invoking this hook loads later in boot.
 import "@shared/tab-visibility";
 import "./auth/sign-in-events";
+import "./auth/saml-observation";
+import "./plugins/system/cron/log-cleanup-defaults";
+import "./modules/sitespecific/bao/echp-date";
 import "./services/record-go";
 import "./services/trust-relationships";
 import "./services/participant-worker-facts";
@@ -291,6 +294,7 @@ export async function bootstrapApp(
   alterHooks.close({
     isKnown: id => getComponentById(id) !== undefined,
     isEnabled: isComponentEnabled,
+    isEnabledSync: isComponentEnabledSync,
   });
   registerAlterCatalog();
 

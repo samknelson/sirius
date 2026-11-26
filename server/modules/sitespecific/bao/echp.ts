@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireComponent, isComponentEnabled } from "../../components";
-import { getEffectiveUser } from "../../masquerade";
+import { requireComponent } from "../../components";
+import { resolveAsOf } from "./echp-date";
 import { storage } from "../../../storage";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import { fetchBuildupStatus } from "../../../plugins/trust/eligibility/plugins/sitespecific-bao-buildup";
@@ -51,45 +51,6 @@ interface EchpEvalResult {
   extra: Record<string, unknown>;
   /** Present only when eligible (`permitted`); drives the purchase write. */
   context?: EchpPermittedContext;
-}
-
-/**
- * Resolve the effective ("as of") date. Defaults to today. A debug + admin user
- * may override it via ?asOf=YYYY-MM-DD; the override is ignored for everyone else.
- */
-async function resolveAsOf(req: Request): Promise<{ asOf: AsOf; asOfApplied: boolean }> {
-  const now = new Date();
-  let year = now.getFullYear();
-  let month = now.getMonth() + 1;
-  let day = now.getDate();
-  let asOfApplied = false;
-
-  const asOfRaw = typeof req.query.asOf === "string" ? req.query.asOf : undefined;
-  if (asOfRaw) {
-    const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asOfRaw);
-    const parsedMonth = parsed ? parseInt(parsed[2], 10) : 0;
-    const parsedDay = parsed ? parseInt(parsed[3], 10) : 0;
-    if (parsed && parsedMonth >= 1 && parsedMonth <= 12 && parsedDay >= 1 && parsedDay <= 31) {
-      const debugEnabled = await isComponentEnabled("debug");
-      let isAdmin = false;
-      if (debugEnabled) {
-        const session = req.session as any;
-        const user = req.user as any;
-        const { dbUser } = await getEffectiveUser(session, user);
-        if (dbUser) {
-          isAdmin = await storage.users.userHasPermission(dbUser.id, "admin");
-        }
-      }
-      if (debugEnabled && isAdmin) {
-        year = parseInt(parsed[1], 10);
-        month = parseInt(parsed[2], 10);
-        day = parseInt(parsed[3], 10);
-        asOfApplied = true;
-      }
-    }
-  }
-
-  return { asOf: { year, month, day }, asOfApplied };
 }
 
 /**

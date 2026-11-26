@@ -10,6 +10,7 @@ import {
 } from "./auth-settings";
 import type { User, AuthIdentity } from "@shared/schema";
 import { isUserEmailConflict } from "@shared/utils/user-email";
+import type { RoleReconciliationFacts } from "./saml-observation";
 
 interface ProvisionInfo {
   externalId: string;
@@ -114,31 +115,6 @@ interface IdentityMetadata {
   [key: string]: unknown;
 }
 
-/** Returned to the SAML capture, never stored on the user or auth identity. */
-export interface RoleReconciliationDiagnostics {
-  outcome: "no_mappings" | "no_changes" | "changed" | "error";
-  identityId: string;
-  mappings?: Array<{
-    attribute: string;
-    expectedValue: string | null;
-    actualValue: unknown;
-    matched: boolean;
-    roleId: string;
-    roleName: string | null;
-    roleExists: boolean;
-    result: "missing_attribute" | "empty_attribute" | "value_mismatch" |
-      "unknown_role" | "already_held_locally" | "already_managed" | "granted";
-  }>;
-  rolesBefore?: Array<{ roleId: string; role: string }>;
-  rolesAfter?: Array<{ roleId: string; role: string }>;
-  managedRoleIdsBefore?: string[];
-  managedRoleIdsAfter?: string[];
-  granted?: Array<{ roleId: string; role: string }>;
-  revoked?: Array<{ roleId: string; role: string }>;
-  metadataUpdated?: boolean;
-  error?: { name: string; message: string; stack?: string };
-}
-
 function attributeMatches(
   attributes: Record<string, unknown>,
   mapping: SamlRoleMapping,
@@ -171,7 +147,7 @@ export async function reconcileMappedRoles(
   user: User,
   identity: AuthIdentity,
   attributes: Record<string, unknown>,
-): Promise<RoleReconciliationDiagnostics> {
+): Promise<RoleReconciliationFacts> {
   const settings = await getAuthSettings(storage);
   const mappings = provider === "saml" ? settings.samlRoleMappings : [];
 
@@ -248,9 +224,6 @@ export async function reconcileMappedRoles(
   }
 
   const roleName = (id: string) => allRoles.find((r) => r.id === id)?.name ?? id;
-  const describeRoles = (ids: Iterable<string>) =>
-    Array.from(ids, (id) => ({ roleId: id, role: roleName(id) }));
-
   if (granted.length > 0 || revoked.length > 0) {
     clearAccessCache();
     setImmediate(() => {
@@ -273,37 +246,7 @@ export async function reconcileMappedRoles(
   return {
     outcome: granted.length || revoked.length || changedManaged ? "changed" : "no_changes",
     identityId: identity.id,
-    mappings: mappings.map((mapping, index) => {
-      const raw = attributes[mapping.attribute];
-      const matched = matching[index];
-      let result: NonNullable<RoleReconciliationDiagnostics["mappings"]>[number]["result"];
-      if (!matched) {
-        if (raw === undefined) result = "missing_attribute";
-        else if (raw === null || raw === "" ||
-          (Array.isArray(raw) && raw.every((value) => String(value) === ""))) {
-          result = "empty_attribute";
-        } else result = "value_mismatch";
-      } else if (!knownRoleIds.has(mapping.roleId)) result = "unknown_role";
-      else if (heldRoleIds.has(mapping.roleId)) {
-        result = previousManaged.includes(mapping.roleId) ? "already_managed" : "already_held_locally";
-      } else result = "granted";
-      return {
-        attribute: mapping.attribute,
-        expectedValue: mapping.value,
-        actualValue: raw ?? null,
-        matched,
-        roleId: mapping.roleId,
-        roleName: knownRoleIds.has(mapping.roleId) ? roleName(mapping.roleId) : null,
-        roleExists: knownRoleIds.has(mapping.roleId),
-        result,
-      };
-    }),
-    rolesBefore: describeRoles(heldRoleIds),
-    rolesAfter: describeRoles(new Set([...heldRoleIds].filter((id) => !revoked.includes(id)).concat(granted))),
-    managedRoleIdsBefore: previousManaged,
-    managedRoleIdsAfter: nextManagedList,
-    granted: describeRoles(granted),
-    revoked: describeRoles(revoked),
-    metadataUpdated: changedManaged,
+    mappings, attributes, matching, allRoles, heldRoleIds: [...heldRoleIds],
+    previousManaged, nextManagedList, granted, revoked, changedManaged,
   };
 }

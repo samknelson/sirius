@@ -14,6 +14,8 @@ interface LogsTransportInfo {
   user_id?: string;
   user_email?: string;
   ip_address?: string;
+  /** Persist the full entry without publishing its contents on the shared bus. */
+  publishEvent?: boolean;
   // WS request specific fields (stored in meta)
   method?: string;
   path?: string;
@@ -44,7 +46,7 @@ export class LogsTransport extends Transport {
     try {
       const { level, message, timestamp, source, module, operation, 
               entity_id, host_entity_id, description, 
-              user_id, user_email, ip_address, ...rest } = info;
+              user_id, user_email, ip_address, publishEvent, ...rest } = info;
       
       const meta = Object.keys(rest).length > 0 ? rest : null;
 
@@ -63,7 +65,7 @@ export class LogsTransport extends Transport {
         ipAddress: ip_address || null,
       };
 
-      await this.logsStorage.create(data);
+      await this.logsStorage.create(data, { publishEvent });
     } catch (error) {
       console.error("[LogsTransport] Failed to write log:", error);
     }

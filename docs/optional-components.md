@@ -159,6 +159,10 @@ it, with null history decisions; normal session persistence is independent.
 
 ## Discovery and registration
 
+Optional diagnostic tooling follows the same discovery and removal contract as
+other components. Its operator documentation and focused tests live with its
+source; shared history used by normal preview consumers remains host-owned.
+
 `npm run components:discover` (`scripts/optional-components.ts`) generates
 literal imports in the host's generated modules (`shared/generated/`,
 `server/generated/`, `client/src/generated/`,

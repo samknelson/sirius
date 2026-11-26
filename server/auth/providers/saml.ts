@@ -5,13 +5,12 @@ import type { AuthProvider, SamlProviderConfig, AuthenticatedUser } from "../typ
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
-import { maybeProvisionUser, reconcileMappedRoles, type RoleReconciliationDiagnostics } from "../provisioning";
+import { maybeProvisionUser, reconcileMappedRoles } from "../provisioning";
+import { observeSaml, type RoleReconciliationFacts } from "../saml-observation";
 import { getEnvironmentVariable } from "../../config/env-registry";
-import { isComponentEnabledSync } from "../../services/component/cache";
 import { samlMilestone, samlHandoffFailure, samlHandoffError, setSamlCallbackPath } from "../saml-roundtrip";
 
 const STRATEGY_NAME = "saml";
-const SAML_DEBUG_MODULE = "saml_debug";
 
 import { categorizeSamlError } from "./saml-error-categories";
 export { categorizeSamlError } from "./saml-error-categories";
@@ -23,74 +22,6 @@ function decodeSamlResponse(raw: unknown): string | undefined {
     return Buffer.from(raw, "base64").toString("utf8");
   } catch {
     return undefined;
-  }
-}
-
-/**
- * When the "debug" component is enabled, write a full SAML login capture to
- * the system logs (module "saml_debug") so admins can inspect exactly what
- * the IdP is sending — including all attribute keys the app currently ignores.
- *
- * Wrapped in try/catch so a logging failure can never break authentication.
- * Gated with a sync component check so toggling the component takes effect
- * immediately without a restart.
- *
- * Retention: configure a log-cleanup retention policy for module "saml_debug"
- * with ~7 days. The log-cleanup cron plugin is disabled by default — enable it
- * under Config → Cron Jobs and add the policy there.
- */
-function captureSamlDebugLog(
-  req: Request,
-  outcome: "success" | "access_denied" | "saml_error",
-  options: {
-    profile?: SamlProfile | null;
-    matchedEmail?: string;
-    matchedUserId?: string | number;
-    externalId?: string;
-    errorCategory?: string;
-    errorMessage?: string;
-    roleReconciliation?: RoleReconciliationDiagnostics;
-  } = {}
-): void {
-  try {
-    if (!isComponentEnabledSync("debug")) return;
-
-    const context = getRequestContext();
-    const samlResponseRaw = (req.body as Record<string, unknown> | undefined)?.SAMLResponse;
-    const relayState =
-      typeof (req.body as any)?.RelayState === "string"
-        ? (req.body as any).RelayState
-        : undefined;
-
-    storageLogger.info(`SAML debug capture [${outcome}]`, {
-      module: SAML_DEBUG_MODULE,
-      operation: outcome,
-      description: `SAML login attempt outcome: ${outcome}`,
-      ip_address: context?.ipAddress ?? req.ip,
-      // Full profile — all IdP-sent attributes, not just the ones
-      // extractProfileData reads. This is the primary diagnostic payload.
-      profileAttributes: options.profile ? { ...options.profile } : null,
-      // Raw SAMLResponse so admins can decode/inspect the assertion XML
-      samlResponseBase64:
-        typeof samlResponseRaw === "string" ? samlResponseRaw : undefined,
-      samlResponseXml: decodeSamlResponse(samlResponseRaw),
-      // Useful request context
-      relayState,
-      matchedEmail: options.matchedEmail,
-      matchedUserId:
-        options.matchedUserId !== undefined
-          ? String(options.matchedUserId)
-          : undefined,
-      externalId: options.externalId,
-      // One capture contains both the original assertion and the explanation
-      // of how its attributes affected roles; no duplicate raw payload log.
-      roleReconciliation: options.roleReconciliation,
-      // Error context (only populated for saml_error outcome)
-      errorCategory: options.errorCategory,
-      errorMessage: options.errorMessage,
-    });
-  } catch {
-    // Never break authentication due to debug logging failures
   }
 }
 
@@ -127,10 +58,7 @@ function recordSamlFailure(
     samlResponseXml: decodeSamlResponse(samlResponseRaw),
     samlResponseBase64: typeof samlResponseRaw === "string" ? samlResponseRaw : undefined,
   }); } catch { /* Logging must not prevent the safe error redirect. */ }
-  // Debug capture: log raw SAMLResponse + error context under saml_debug.
-  // Profile is unavailable here (the assertion failed before parsing), but the
-  // raw response and error category are still useful for diagnosis.
-  captureSamlDebugLog(req, "saml_error", {
+  observeSaml(req, "saml_error", {
     errorCategory: category,
     errorMessage: err.message,
   });
@@ -192,7 +120,7 @@ type SamlRequest = Request & {
 };
 
 type CheckUserAccessResult =
-  | { allowed: true; user: any; roleReconciliation: RoleReconciliationDiagnostics }
+  | { allowed: true; user: any; roleReconciliation: RoleReconciliationFacts }
   | { allowed: false; reason: AccessDenialReason; email?: string; externalId?: string };
 
 /**
@@ -351,7 +279,7 @@ async function reconcileSamlRoles(
   user: { id: string } & Record<string, any>,
   identity: { id: string; metadata: unknown },
   profile: SamlProfile,
-): Promise<RoleReconciliationDiagnostics> {
+): Promise<RoleReconciliationFacts> {
   try {
     const attributes: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(profile)) {
@@ -361,11 +289,10 @@ async function reconcileSamlRoles(
     return await reconcileMappedRoles("saml", user as any, identity as any, attributes);
   } catch (error) {
     logger.error("SAML role reconciliation failed", { userId: user.id, error });
-    const err = error instanceof Error ? error : new Error(String(error));
     return {
       outcome: "error",
       identityId: identity.id,
-      error: { name: err.name, message: err.message, stack: err.stack },
+      error,
     };
   }
 }
@@ -545,7 +472,7 @@ class SamlAuthProvider implements AuthProvider {
                 externalId: result.externalId,
               }, req);
               (req as SamlRequest)._samlAccessDenied = { reference, reason: result.reason };
-              captureSamlDebugLog(req, "access_denied", {
+              observeSaml(req, "access_denied", {
                 profile: samlProfile,
                 matchedEmail: result.email,
                 externalId: result.externalId,
@@ -555,7 +482,7 @@ class SamlAuthProvider implements AuthProvider {
 
             const { externalId, email, firstName, lastName } = extractProfileData(samlProfile);
 
-            captureSamlDebugLog(req, "success", {
+            observeSaml(req, "success", {
               profile: samlProfile,
               matchedEmail: email,
               matchedUserId: result.user?.id,

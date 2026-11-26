@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ComponentSlot } from "@/lib/component-contributions";
-import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
+import { RECORD_ACTIONS_SLOT, type RecordActionsProps } from "@/lib/record-actions";
 import { useEmployerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
@@ -126,7 +126,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
         title={employer.name}
         titleTestId={`text-employer-name-${employer.id}`}
         badges={<ComponentSlot name="employer.header.badges" props={{ employerId: employer.id, entityName: employer.name }} />}
-        actions={<DebugRecordViewer record={employer} entityLabel="Employer" />}
+        actions={<ComponentSlot<RecordActionsProps> name={RECORD_ACTIONS_SLOT} props={{ record: employer, entityLabel: "Employer" }} />}
         backLink={EMPLOYER_BACK_LINK}
         recordId={employer.id}
       />

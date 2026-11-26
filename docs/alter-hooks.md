@@ -70,9 +70,10 @@ on enablement, schema existence, service role or maintenance mode. Registration
 must not read tables. Component code owns its callback, requirements description
 and optional-table queries. The comm entity loader remains core-owned.
 
-Startup closes the registry with two injected capabilities: `isKnown` validates
+Startup closes the registry with injected capabilities: `isKnown` validates
 every owner against the component definitions; `isEnabled` is checked immediately
-before **each callback invocation**. Shared code imports no server services.
+before **each asynchronous callback invocation**, and synchronous hooks require
+`isEnabledSync` at the same boundary. Shared code imports no server services.
 Disabled implementations are not called and cannot touch optional tables.
 Toggling a component changes execution without re-registering anything.
 This follows the existing component-state consistency boundary; it is not a new
@@ -179,8 +180,7 @@ authorized tab) and `tabs.entity-policy` (the base access policy for an entity
 type's tab batch check; answer only for entity types the component owns). Facts
 that must hold while a component is disabled — record-history exclusions, record
 "go" access, notes/files context tables — are manifest/metadata/registration
-data, not hooks, because hooks skip disabled components. There is no synchronous
-run variant. This is an
+data, not hooks, because hooks skip disabled components. This is an
 incremental extraction boundary, not physical component packaging, build-time
 discovery, deployment profiles, a general lifecycle framework, or editable
 priority/configuration. Existing plugin, event and catalog frameworks keep their
@@ -204,3 +204,20 @@ query optional tables.
 Retained metadata exclusions and record-navigation access declarations remain
 static contributions, not enabled-only hooks. Synchronous dispatch eligibility
 continues to use its existing plugin framework.
+
+## Synchronous host boundaries
+
+Declare `declareSync<Value, Context, Metadata>()`, register with `registerSync`,
+and invoke with `runSync` only for genuinely synchronous hosts. The same registry,
+ordering, closure, JSON metadata, safe error and catalog rules apply. Closure
+requires an injected `isEnabledSync`; it uses the normal component cache and is
+checked immediately before each callback. A promise returned by an untyped
+implementation is refused with a safe `AlterExecutionError`, including when the
+async entrypoint is used; rejected promises are consumed without leaking their
+errors. Do not schedule asynchronous side effects in synchronous observers.
+
+Private authentication observations are not authorization hooks. Their host
+catches failures and ignores results, preserving authentication and role
+decisions. Contexts, raw payloads and errors never appear in catalogs or on the
+event bus. Cleanup-default composition changes suggestions only; explicit
+persisted policies remain authoritative.

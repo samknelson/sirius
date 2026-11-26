@@ -1,6 +1,5 @@
 export * from './date';
 export * from './geocode';
-export * from './sql-prettify';
 export * from './ssn';
 export * from './uuid';
 // `./html` is deliberately NOT re-exported here: its sanitizer imports

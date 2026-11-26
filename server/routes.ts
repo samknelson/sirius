@@ -70,7 +70,6 @@ import { registerWorkerWshRoutes } from "./modules/worker-wsh";
 import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerCronJobRoutes } from "./modules/system/cron";
-import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerEbsInspectionRoutes } from "./modules/system/ebs";
 import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
@@ -434,9 +433,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerCronJobRoutes(app, requireAuth, requirePermission);
   const { registerOneoffRoutes } = await import("./modules/system/oneoff");
   registerOneoffRoutes(app, requireAuth);
-
-  // Register event bus introspection routes (debug component)
-  registerEventBusIntrospectRoutes(app);
 
   // Register read-only EBS (deferred event bus) inspection routes (admin)
   registerEbsInspectionRoutes(app);

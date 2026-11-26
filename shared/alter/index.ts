@@ -12,6 +12,9 @@ declare const contract: unique symbol;
 export interface AlterHook<Value, Context, Metadata = Record<string, never>> extends AlterDeclaration {
   readonly [contract]?: (value: Value, context: Context, metadata: Metadata) => [Value, Context, Metadata];
 }
+export interface SyncAlterHook<Value, Context, Metadata = Record<string, never>> extends AlterHook<Value, Context, Metadata> {
+  readonly synchronous: true;
+}
 
 export interface AlterImplementation<Value, Context, Metadata> {
   id: string;
@@ -25,6 +28,7 @@ export interface AlterImplementation<Value, Context, Metadata> {
 export interface AlterSource {
   isKnown(component: string): boolean;
   isEnabled(component: string): boolean | Promise<boolean>;
+  isEnabledSync?(component: string): boolean;
 }
 
 export class AlterExecutionError extends Error {
@@ -83,6 +87,24 @@ export function createAlterRegistry() {
   }
 
   return {
+    declareSync<Value, Context, Metadata = Record<string, never>>(declaration: AlterDeclaration): SyncAlterHook<Value, Context, Metadata> {
+      open();
+      identifier(declaration.id);
+      text(declaration.description);
+      text(declaration.semantics);
+      if (hooks.has(declaration.id)) throw new Error(`Duplicate alter hook '${declaration.id}'`);
+      const hook = Object.freeze({ id: declaration.id, description: declaration.description, semantics: declaration.semantics, synchronous: true as const });
+      hooks.set(hook.id, hook);
+      return hook;
+    },
+    registerSync<Value, Context, Metadata>(
+      hook: SyncAlterHook<Value, Context, Metadata>,
+      implementation: Omit<AlterImplementation<NoInfer<Value>, NoInfer<Context>, NoInfer<Metadata>>, "alter"> & {
+        alter(value: NoInfer<Value>, context: Readonly<NoInfer<Context>>): NoInfer<Value>;
+      },
+    ): void {
+      this.register(hook, implementation);
+    },
     declare<Value, Context, Metadata = Record<string, never>>(declaration: AlterDeclaration): AlterHook<Value, Context, Metadata> {
       open();
       identifier(declaration.id);
@@ -121,10 +143,39 @@ export function createAlterRegistry() {
         known(cb.hook);
         if (!capability.isKnown(cb.component)) throw new Error(`Unknown alter component '${cb.component}'`);
       }
+      if ([...hooks.values()].some(hook => "synchronous" in hook) && typeof capability.isEnabledSync !== "function") {
+        throw new Error("Synchronous alter component capability required");
+      }
       source = Object.freeze({ ...capability });
+    },
+    runSync<Value, Context, Metadata>(hook: SyncAlterHook<Value, Context, Metadata>, value: NoInfer<Value>, context: NoInfer<Context>): Value {
+      known(hook);
+      if (!source) throw new Error("Alter registration has not closed");
+      let result = value;
+      for (const cb of ordered(hook)) {
+        try {
+          const enabled = source.isEnabledSync!(cb.component);
+          if (typeof enabled !== "boolean") {
+            void Promise.resolve(enabled).catch(() => {});
+            throw new Error("Synchronous availability required");
+          }
+          if (!enabled) continue;
+          const next = cb.alter(result, context);
+          if (next != null && typeof next.then === "function") {
+            // Consume a rejected promise as well as refusing it; never leak its error.
+            void Promise.resolve(next).catch(() => {});
+            throw new Error("Synchronous callback returned a promise");
+          }
+          result = next;
+        } catch {
+          throw new AlterExecutionError(hook.id, cb.id);
+        }
+      }
+      return result;
     },
     async run<Value, Context, Metadata>(hook: AlterHook<Value, Context, Metadata>, value: NoInfer<Value>, context: NoInfer<Context>): Promise<Value> {
       known(hook);
+      if ("synchronous" in hook) return this.runSync(hook as SyncAlterHook<Value, Context, Metadata>, value, context);
       if (!source) throw new Error("Alter registration has not closed");
       let result = value;
       for (const cb of ordered(hook)) {

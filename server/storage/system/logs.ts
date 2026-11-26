@@ -74,7 +74,7 @@ export interface LogsStorage {
   getLogFilters(): Promise<LogFilters>;
   getLogById(id: number): Promise<WinstonLog | undefined>;
   getLogsByHostEntityIds(params: HostEntityLogsParams): Promise<WinstonLog[]>;
-  create(data: LogInsertData): Promise<WinstonLog>;
+  create(data: LogInsertData, options?: { publishEvent?: boolean }): Promise<WinstonLog>;
   getModuleOperationStats(): Promise<ModuleOperationStats[]>;
   purgeByModuleOperation(module: string | null, operation: string | null, olderThanDays: number): Promise<PurgeResult>;
   countByModuleOperationOlderThan(module: string | null, operation: string | null, olderThanDays: number): Promise<number>;
@@ -217,7 +217,7 @@ export function createLogsStorage(): LogsStorage {
       return query;
     },
 
-    async create(data: LogInsertData): Promise<WinstonLog> {
+    async create(data: LogInsertData, options?: { publishEvent?: boolean }): Promise<WinstonLog> {
       validate.validateOrThrow(data);
       const client = getClient();
       const [log] = await client
@@ -238,7 +238,7 @@ export function createLogsStorage(): LogsStorage {
         })
         .returning(logColumns);
 
-      eventBus.emit(EventType.LOG, {
+      if (options?.publishEvent !== false) eventBus.emit(EventType.LOG, {
         id: log.id,
         level: log.level,
         message: log.message,

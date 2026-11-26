@@ -8,7 +8,7 @@ const f = vi.hoisted(() => ({
   createIdentity: vi.fn(), updateUser: vi.fn(), lastLogin: vi.fn(), lastUsed: vi.fn(),
   verify: undefined as undefined | ((...args: any[]) => void),
 }));
-vi.mock("../../server/storage", () => ({ storage: {
+vi.mock("../../../../server/storage", () => ({ storage: {
   variables: { getByName: f.settings },
   users: {
     getAllRoles: f.allRoles, getUserRoles: f.heldRoles,
@@ -21,17 +21,19 @@ vi.mock("../../server/storage", () => ({ storage: {
     updateLastUsed: f.lastUsed, create: f.createIdentity,
   },
 } }));
-vi.mock("../../server/storage/transaction-context", () => ({
+vi.mock("../../../../server/storage/transaction-context", () => ({
   runInTransaction: (fn: () => unknown) => fn(),
 }));
-vi.mock("../../server/logger", () => ({
+vi.mock("../../../../server/logger", () => ({
   storageLogger: { info: f.info, error: f.error },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("../../server/services/access-policy-evaluator", () => ({ clearAccessCache: f.clearCache }));
-vi.mock("../../server/services/component/cache", () => ({ isComponentEnabledSync: f.debug }));
-vi.mock("../../server/middleware/request-context", () => ({ getRequestContext: () => undefined }));
-vi.mock("../../server/config/env-registry", () => ({
+vi.mock("../../../../server/services/access-policy-evaluator", () => ({ clearAccessCache: f.clearCache, requireAccess: () => (_req: unknown, _res: unknown, next: () => void) => next() }));
+vi.mock("../../../../server/modules/components", () => ({ requireComponent: () => (_req: unknown, _res: unknown, next: () => void) => next() }));
+vi.mock("../../server/storage/eligible-workers", () => ({ eligibleWorkersSql: vi.fn() }));
+vi.mock("../../../../server/modules/masquerade", () => ({ getEffectiveUser: vi.fn() }));
+vi.mock("../../../../server/middleware/request-context", () => ({ getRequestContext: () => undefined }));
+vi.mock("../../../../server/config/env-registry", () => ({
   getEnvironmentVariable: (key: string) => ({
     SAML_ENTRY_POINT: "https://idp.example.invalid/sso", SAML_ISSUER: "test",
     SAML_CERT: "test-cert", PUBLIC_URL: "https://app.example.invalid",
@@ -46,7 +48,13 @@ vi.mock("@node-saml/passport-saml", () => ({
   },
 }));
 
-import { createProvider } from "../../server/auth/providers/saml";
+import { createProvider } from "../../../../server/auth/providers/saml";
+import { alterHooks } from "@shared/alter";
+import { register } from "../../server/startup";
+import { observeSaml } from "../../../../server/auth/saml-observation";
+
+register();
+alterHooks.close({ isKnown: id => id === "debug", isEnabled: () => f.debug(), isEnabledSync: () => f.debug() });
 
 const user = { id: "user-1", email: "fixture@example.invalid", isActive: true };
 const identity = { id: "identity-1", userId: user.id, metadata: {} };
@@ -86,6 +94,24 @@ async function login(attributes: Record<string, unknown> = profile) {
 }
 
 describe("SAML role mapping capture", () => {
+  it("captures a real access denial without changing the denial", async () => {
+    f.findUser.mockResolvedValue({ ...user, isActive: false });
+    const result = await login();
+    expect(result.error).toBeNull();
+    expect(result.user).toBeUndefined();
+    expect(result.capture).toMatchObject({ operation: "access_denied", profileAttributes: profile });
+    expect(f.assign).not.toHaveBeenCalled();
+  });
+
+  it("captures SAML errors privately and skips them when disabled", () => {
+    const request = { body: { SAMLResponse: Buffer.from("<failed/>").toString("base64") } } as Request;
+    observeSaml(request, "saml_error", { errorCategory: "signature", errorMessage: "failure fixture" });
+    expect(f.info.mock.calls[0][1]).toMatchObject({ module: "saml_debug", operation: "saml_error", samlResponseXml: "<failed/>", errorMessage: "failure fixture" });
+    f.info.mockClear();
+    f.debug.mockReturnValue(false);
+    observeSaml(request, "saml_error");
+    expect(f.info).not.toHaveBeenCalled();
+  });
   it("explains every rule and revocation in the existing full assertion capture", async () => {
     f.settings.mockResolvedValue({ value: { samlRoleMappings: [
       mapping,
@@ -102,6 +128,7 @@ describe("SAML role mapping capture", () => {
     expect(result.error).toBeNull();
     expect(result.user.dbUser.id).toBe(user.id);
     expect(result.capture).toMatchObject({
+      publishEvent: false,
       samlResponseBase64: result.raw, samlResponseXml: result.xml,
       profileAttributes: { ...profile, department: "IT", empty: "" },
       matchedUserId: user.id,

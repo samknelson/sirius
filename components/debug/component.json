@@ -1,0 +1,5 @@
+{
+  "definition": "shared/component.ts",
+  "startup": "server/startup.ts",
+  "client": "client/src/contributions.tsx"
+}

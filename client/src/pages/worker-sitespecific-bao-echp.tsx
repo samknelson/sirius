@@ -1,11 +1,8 @@
-import { useState } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CheckCircle2, XCircle, ShoppingCart } from "lucide-react";
 import { WorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,7 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient, ApiError, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { ComponentWrappers } from "@/lib/component-contributions";
+import { ECHP_INPUTS_SLOT, useEchpInputs } from "@/lib/echp-inputs";
 
 interface EligibilityResult {
   eligible: boolean;
@@ -43,22 +41,21 @@ function formatPrice(price: number): string {
 
 function WorkerEchpContent() {
   const { id: workerId } = useParams<{ id: string }>();
-  const { hasComponent, hasPermission } = useAuth();
   const { toast } = useToast();
-  const showAsOf = hasComponent("debug") && hasPermission("admin");
-  const [asOf, setAsOf] = useState("");
+  const inputs = useEchpInputs();
+  const query = new URLSearchParams(inputs).toString();
 
   const eligibilityKey = [
     "/api/sitespecific/bao/echp/worker",
     workerId,
     "eligibility",
-    showAsOf ? asOf : "",
+    query,
   ];
 
   const { data, isLoading, isError } = useQuery<EligibilityResult>({
     queryKey: eligibilityKey,
     queryFn: async () => {
-      const qs = showAsOf && asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
+      const qs = query ? `?${query}` : "";
       return await apiRequest(
         "GET",
         `/api/sitespecific/bao/echp/worker/${workerId}/eligibility${qs}`,
@@ -69,7 +66,7 @@ function WorkerEchpContent() {
 
   const purchase = useMutation({
     mutationFn: async () => {
-      const qs = showAsOf && asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
+      const qs = query ? `?${query}` : "";
       return await apiRequest(
         "POST",
         `/api/sitespecific/bao/echp/worker/${workerId}/purchase${qs}`,
@@ -112,22 +109,6 @@ function WorkerEchpContent() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {showAsOf && (
-          <div className="space-y-2 max-w-xs" data-testid="section-asof-override">
-            <Label htmlFor="asof-date">Evaluate as of date</Label>
-            <Input
-              id="asof-date"
-              type="date"
-              value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
-              data-testid="input-asof-date"
-            />
-            <p className="text-xs text-muted-foreground">
-              Debug override (admin only). Leave blank to use today.
-            </p>
-          </div>
-        )}
-
         {isLoading ? (
           <Skeleton className="h-24 w-full" data-testid="skeleton-eligibility" />
         ) : isError || !data ? (
@@ -261,7 +242,7 @@ function WorkerEchpContent() {
 export default function WorkerSitespecificBaoEchpPage() {
   return (
     <WorkerLayout activeTab="sitespecific-bao-echp">
-      <WorkerEchpContent />
+      <ComponentWrappers name={ECHP_INPUTS_SLOT} props={{}}><WorkerEchpContent /></ComponentWrappers>
     </WorkerLayout>
   );
 }

@@ -7,7 +7,7 @@ import { ComponentSlot } from "@/lib/component-contributions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
+import { RECORD_ACTIONS_SLOT, type RecordActionsProps } from "@/lib/record-actions";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -192,7 +192,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
               <ComponentSlot name="worker.header.badges" props={{ workerId: worker.id, entityName: contact?.displayName || `Worker ${worker.id.slice(0, 8)}` }} />
             </>
           }
-          actions={<DebugRecordViewer record={worker} entityLabel="Worker" />}
+          actions={<ComponentSlot<RecordActionsProps> name={RECORD_ACTIONS_SLOT} props={{ record: worker, entityLabel: "Worker" }} />}
           backLink={WORKER_BACK_LINK}
           recordId={worker.id}
         />

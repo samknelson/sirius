@@ -9,13 +9,9 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
+import type { RecordActionsProps } from "../../../../../client/src/lib/record-actions";
 
-interface DebugRecordViewerProps {
-  record: unknown;
-  entityLabel: string;
-}
-
-export function DebugRecordViewer({ record, entityLabel }: DebugRecordViewerProps) {
+export function DebugRecordViewer({ record, entityLabel }: RecordActionsProps) {
   const [open, setOpen] = useState(false);
   const { hasPermission, hasComponent } = useAuth();
 

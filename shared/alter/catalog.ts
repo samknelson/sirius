@@ -14,7 +14,9 @@ export function registerAlterCatalog(): void {
       detail: {
         semantics: hook.semantics,
         ordering: 'Ascending priority, then callback ID in code-point order',
-        execution: 'Sequential awaited replacement values; no callbacks preserves the original value',
+        execution: 'synchronous' in hook
+          ? 'Synchronous replacement values; promises refused; no callbacks preserves the original value'
+          : 'Sequential awaited replacement values; no callbacks preserves the original value',
         errors: 'Abort and throw safe hook/callback identities; caller defines safe failure result',
       },
     })),

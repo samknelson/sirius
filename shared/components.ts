@@ -538,16 +538,6 @@ export const componentRegistry: ComponentDefinition[] = [
       tables: ["facilities"]
     }
   },
-  {
-    id: "debug",
-    name: "Debug",
-    description: "Debug tools and developer utilities",
-    enabledByDefault: false,
-    category: "developer",
-    permissions: [
-      { key: "debug", description: "Access to debug tools and raw data viewers" }
-    ]
-  },
   ...optionalComponents,
   {
     id: "sitespecific.bao",

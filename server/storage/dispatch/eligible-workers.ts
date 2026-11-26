@@ -51,15 +51,6 @@ export interface EligibleWorkersResult {
   }>;
 }
 
-export interface EligibleWorkersSqlResult {
-  sql: string;
-  params: unknown[];
-  appliedConditions: Array<{
-    pluginId: string;
-    condition: EligibilityCondition;
-  }>;
-}
-
 export interface PluginCheckResult {
   pluginId: string;
   pluginName: string;
@@ -91,7 +82,6 @@ export interface WorkerAcceptanceResult {
 
 export interface DispatchEligibleWorkersStorage {
   getEligibleWorkersForJob(jobId: string, limit?: number, offset?: number, filters?: EligibleWorkersFilters): Promise<EligibleWorkersResult>;
-  getEligibleWorkersForJobSql(jobId: string, limit?: number, offset?: number, filters?: EligibleWorkersFilters): Promise<EligibleWorkersSqlResult | null>;
   checkWorkerEligibility(jobId: string, workerId: string): Promise<WorkerEligibilityCheckResult | null>;
   /**
    * Point-in-time enforcement for dispatch create AND accept: evaluate the
@@ -185,7 +175,7 @@ interface QueryBuildResult {
   appliedConditions: Array<{ pluginId: string; condition: EligibilityCondition }>;
 }
 
-async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorkersFilters): Promise<QueryBuildResult | null> {
+export async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorkersFilters): Promise<QueryBuildResult | null> {
   const client = getClient();
   const jobStorage = createDispatchJobStorage();
   const pluginConfigStorage = createPluginConfigStorage();
@@ -637,28 +627,6 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
       return {
         workers: eligibleWorkers,
         total,
-        appliedConditions,
-      };
-    },
-
-    async getEligibleWorkersForJobSql(jobId: string, limit = 100, offset = 0, filters?: EligibleWorkersFilters): Promise<EligibleWorkersSqlResult | null> {
-      const result = await buildEligibleWorkersQuery(jobId, filters);
-      if (!result) {
-        return null;
-      }
-
-      const { finalQuery, appliedConditions } = result;
-
-      const paginatedQuery = finalQuery
-        .orderBy(sql`${workerDispatchStatus.seniorityDate} ASC NULLS LAST`, contacts.displayName)
-        .limit(limit)
-        .offset(offset);
-
-      const sqlResult = paginatedQuery.toSQL();
-
-      return {
-        sql: sqlResult.sql,
-        params: sqlResult.params,
         appliedConditions,
       };
     },

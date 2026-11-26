@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ComponentSlot } from "@/lib/component-contributions";
-import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
+import { RECORD_ACTIONS_SLOT, type RecordActionsProps } from "@/lib/record-actions";
 import { useCompanyTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
@@ -122,7 +122,7 @@ export function CompanyLayout({ activeTab, children }: CompanyLayoutProps) {
         title={company.name}
         titleTestId={`text-company-name-${company.id}`}
         badges={<ComponentSlot name="company.header.badges" props={{ companyId: company.id, entityName: company.name }} />}
-        actions={<DebugRecordViewer record={company} entityLabel="Company" />}
+        actions={<ComponentSlot<RecordActionsProps> name={RECORD_ACTIONS_SLOT} props={{ record: company, entityLabel: "Company" }} />}
         backLink={COMPANY_BACK_LINK}
         recordId={company.id}
       />

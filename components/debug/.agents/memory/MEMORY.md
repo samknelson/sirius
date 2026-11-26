@@ -1,0 +1,1 @@
+- [Private SAML capture](private-saml-capture.md) — full assertions belong only in admin capture, never entity history or shared events.

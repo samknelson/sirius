@@ -1,7 +1,7 @@
 import type { Express } from "express";
-import { eventBus, EventType, getEventTypes, type EventName, EVENT_BUS_RING_BUFFER_CAP } from "../../services/event-bus";
-import { requireAccess } from "../../services/access-policy-evaluator";
-import { requireComponent } from "../components";
+import { eventBus, EventType, getEventTypes, type EventName, EVENT_BUS_RING_BUFFER_CAP } from "../../../../server/services/event-bus";
+import { requireAccess } from "../../../../server/services/access-policy-evaluator";
+import { requireComponent } from "../../../../server/modules/components";
 
 const COMPONENT_ID = "debug";
 
