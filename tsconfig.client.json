@@ -23,6 +23,6 @@
   "extends": "./tsconfig.json",
   "include": ["client/src/**/*", "shared/**/*", "components/*/client/**/*", "components/*/shared/**/*"],
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.client"
+    "tsBuildInfoFile": "./.cache/typescript/tsbuildinfo.client"
   }
 }

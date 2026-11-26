@@ -12,6 +12,6 @@
   "compilerOptions": {
     // A build-info file per program: the two halves would otherwise clobber
     // each other's cache and re-check everything on every run.
-    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.server"
+    "tsBuildInfoFile": "./.cache/typescript/tsbuildinfo.server"
   }
 }
