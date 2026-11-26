@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { edlsSheetStatusEnum } from "@shared/schema/edls/schema";
+import { edlsSheetStatusEnum } from "../../../../edls/shared/schema/edls/schema";
 import { getEdlsPassportExportPage } from "../../storage/edls/passport-export";
 import { buildPassportExportEnvelope } from "../../modules/webservices/edls-passport-export-mapper";
 import { registerWebServicePlugin } from "../../../../../server/plugins/web-service/registry";

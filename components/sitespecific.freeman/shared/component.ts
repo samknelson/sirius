@@ -1,4 +1,5 @@
 import type { ComponentDefinition } from "../../../shared/components";
+import "./worker-sync-result";
 
 export const component: ComponentDefinition = {
   id: "sitespecific.freeman",
@@ -20,5 +21,6 @@ export const component: ComponentDefinition = {
     version: 1,
     schemaPath: "./components/sitespecific.freeman/shared/schema/sitespecific/freeman/schema.ts",
     tables: ["sitespecific_freeman_crewleads"],
+    dependsOnComponents: ["edls"],
   },
 };

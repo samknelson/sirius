@@ -52,6 +52,5 @@ import "./plugins/quicksearch";
 import "./plugins/bookmark";
 import "./plugins/local-login";
 import "./plugins/local-password-change";
-import "./plugins/edls-schedule-answer";
 import "./plugins/notifications";
 import "./plugins/webclient-vendor-operation";

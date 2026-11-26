@@ -90,4 +90,3 @@ export function initializeDataRetentionPluginSystem(): void {
 import "./plugins/expiredFloodEvents";
 import "./plugins/oldCronLogs";
 import "./plugins/expiredReports";
-import "./plugins/edlsSheetSnapshots";

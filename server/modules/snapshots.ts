@@ -6,7 +6,6 @@ import {
   snapshotRevisionFromNode,
   type SnapshotNode,
 } from "@shared/snapshots";
-import { decodeEdlsSheetSnapshot } from "./edls/snapshot-decode";
 
 /**
  * Per-entity-type registration for the generic snapshot API.
@@ -17,7 +16,7 @@ import { decodeEdlsSheetSnapshot } from "./edls/snapshot-decode";
  * verified to belong to that entity — never authorized from the snapshot
  * row alone.
  */
-interface SnapshotEntityTypeConfig {
+export interface SnapshotEntityTypeConfig {
   /** Access policy evaluated against the live parent entity id. */
   policyId: string;
   /** Component gating the entity type (undefined = always available). */
@@ -26,13 +25,19 @@ interface SnapshotEntityTypeConfig {
   decode: (node: SnapshotNode) => unknown;
 }
 
-const entityTypes: Record<string, SnapshotEntityTypeConfig> = {
-  edls_sheet: {
-    policyId: "edls.sheet.view",
-    component: "edls",
-    decode: decodeEdlsSheetSnapshot,
-  },
-};
+const entityTypes = new Map<string, SnapshotEntityTypeConfig>();
+let registrationClosed = false;
+
+/** Keeps decoding and live-parent authorization on the same declaration. */
+export function registerSnapshotEntityType(entityType: string, config: SnapshotEntityTypeConfig): void {
+  if (registrationClosed) throw new Error("Snapshot entity registration is closed");
+  if (!entityType || entityTypes.has(entityType)) throw new Error(`Duplicate or invalid snapshot entity type '${entityType}'`);
+  entityTypes.set(entityType, Object.freeze({ ...config }));
+}
+
+export function closeSnapshotEntityRegistration(): void {
+  registrationClosed = true;
+}
 
 export function registerSnapshotsRoutes(app: Express, requireAuth: any) {
   /**
@@ -40,7 +45,7 @@ export function registerSnapshotsRoutes(app: Express, requireAuth: any) {
    * types, then defer to the type's own access policy for the entity id.
    */
   function requireEntityType(req: Request, res: Response, next: NextFunction) {
-    const config = entityTypes[req.params.entityType];
+    const config = entityTypes.get(req.params.entityType);
     if (!config || (config.component && !isComponentEnabledSync(config.component))) {
       res.status(404).json({ message: "Unknown snapshot entity type" });
       return;

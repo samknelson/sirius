@@ -54,11 +54,11 @@ ownership and ordering did not.
   wrapper. The engine and browser modules continue using the shared feed
   framework, worker identifier choices and file services. Options stay central.
 - **TOS:** the worker layout still uses the banner helper; variable declarations,
-  EDLS TOS endpoints and T631 synchronization stay with their existing owners.
+  Scheduling TOS endpoints and site-specific synchronization stay with their existing owners.
   The core storage barrel re-exports the same `WorkerTosConflictError` class for
   T631's existing `instanceof` checks, avoiding a new undeclared component
   dependency. Core denorm/notifier loaders keep the existing side-effect imports.
-- **AAT:** worker access-token routes/storage moved, but EDLS bearer-link
+- **AAT:** worker access-token routes/storage moved, but scheduling bearer-link
   authorization, schedule cards, token producers and notifiers did not.
 - **Relations:** generic relation options, shared worker/contact infrastructure
   and tab definitions remain central.

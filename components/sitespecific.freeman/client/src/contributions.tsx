@@ -10,5 +10,8 @@ export const contributions: ComponentBrowserContributions = {
     { path: "/edls/freeman/crewleads", page: lazy(() => import("./routes").then(m => ({default: m.CrewLeadsRoute}))) },
     { path: "/static/sitespecific/freeman/changelog", page: lazy(() => import("./routes").then(m => ({default: m.ChangelogRoute}))) },
   ],
-  crewUi: [{ component: "sitespecific.freeman", editor: CrewLeadEditor, detail: CrewLeadDetail }],
+  slots: [
+    { slot: "edls.crew.editor", component: "sitespecific.freeman", section: CrewLeadEditor },
+    { slot: "edls.crew.detail", component: "sitespecific.freeman", section: CrewLeadDetail },
+  ],
 };

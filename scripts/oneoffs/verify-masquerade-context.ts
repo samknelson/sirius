@@ -21,7 +21,9 @@ async function runMiddleware(req: any): Promise<any> {
 
 async function main() {
   const realUser = await storage.users.getUserByEmail("samknelson@gmail.com");
-  const masqUser = await storage.users.getUserByEmail("edls_manager@gmail.com");
+  const targetEmail = process.argv[2];
+  if (!targetEmail) throw new Error("Pass the target user's email as the first argument");
+  const masqUser = await storage.users.getUserByEmail(targetEmail);
   if (!realUser || !masqUser) {
     console.error("FAIL: fixture users missing");
     process.exit(1);

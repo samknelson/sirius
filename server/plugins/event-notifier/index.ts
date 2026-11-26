@@ -362,7 +362,6 @@ export { ALL_NOTIFICATION_MEDIA };
 
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/trust-wmb-scan";
-import "./plugins/edls-sheet-status-notifier";
 import "./plugins/dispatch-status-notifier";
 import "./plugins/worker-ban-notifier";
 import "./plugins/cardcheck-status-notifier";

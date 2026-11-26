@@ -12,7 +12,6 @@ export { resolveMenuForRequest } from "./resolve";
 
 // Side-effect: register the bundled menu plugins.
 import "./plugins/default";
-import "./plugins/edls";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 

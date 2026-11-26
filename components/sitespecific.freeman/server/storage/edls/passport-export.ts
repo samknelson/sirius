@@ -28,7 +28,7 @@ import {
   facilities,
   entityMetadata,
 } from "@shared/schema";
-import type { EdlsSheetStatus } from "@shared/schema/edls/schema";
+import type { EdlsSheetStatus } from "../../../../edls/shared/schema/edls/schema";
 import { and, asc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getClient } from "../../../../../server/storage/transaction-context";

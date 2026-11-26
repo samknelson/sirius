@@ -6,6 +6,13 @@ import { isComponentEnabled } from "../../modules/components";
 import { storage } from "../../storage";
 import { menuPluginRegistry } from "./registry";
 import type { MenuGate, MenuItemDef } from "./types";
+import { alterHooks } from "@shared/alter";
+
+export const menuTreeHook = alterHooks.declare<MenuItemDef[], { readonly pluginId: string }>({
+  id: "menu.tree",
+  description: "Alter the selected menu tree before evaluating visibility gates",
+  semantics: "Return a replacement tree. Gates are evaluated afterwards; menu visibility never grants destination access.",
+});
 
 interface GateContext {
   req: Request;
@@ -197,7 +204,7 @@ export async function resolveMenuForRequest(
     if (worker) workerId = worker.id;
   }
 
-  const tree = plugin.buildTree();
+  const tree = await alterHooks.run(menuTreeHook, plugin.buildTree(), { pluginId: plugin.metadata.id });
 
   // Only fetch employers when some item actually needs them.
   const needsEmployers = (defs: MenuItemDef[]): boolean =>

@@ -1,0 +1,42 @@
+{
+  "definition": "shared/component.ts",
+  "developerChecks": "developer-checks.json",
+  "schema": ["shared/schema/edls/schema.ts"],
+  "shared": ["shared/schema/edls/schema.ts"],
+  "startup": "server/startup.ts",
+  "storage": "server/storage.ts",
+  "metadata": "server/metadata.ts",
+  "contributions": "shared/contributions.ts",
+  "client": "client/src/contributions.tsx",
+  "server": [
+    "server/events.ts",
+    "server/options.ts",
+    "server/plugins/dashboard/plugins/edls-summary.ts",
+    "server/plugins/event-notifier/plugins/edls-sheet-status-notifier.ts",
+    "server/plugins/menu/plugins/edls.ts",
+    "server/plugins/quicksearch/plugins/edls-sheet.ts",
+    "server/plugins/system/data-retention/plugins/edlsSheetSnapshots.ts",
+    "server/plugins/system/flood/plugins/edls-schedule-answer.ts",
+    "server/plugins/tokens/plugins/edls.ts",
+    "server/plugins/tokens/plugins/edls-worker.ts",
+    "server/plugins/wizards/plugins/report-edls-scheduled-too-soon.ts",
+    "server/plugins/wizards/plugins/report-edls-soop.ts"
+  ],
+  "coreMigrations": [
+    "scripts/migrate/core/005_add_edls_sheet_job_group.ts",
+    "scripts/migrate/core/1007_add_edls_sheet_facility_fk.ts",
+    "scripts/migrate/core/1046_add_edls_sheet_job_group_fk.ts",
+    "scripts/migrate/core/1091_seed_edls_sheet_provenance.ts"
+  ],
+  "migrations": [
+    "scripts/migrate/components/edls/001_add_show_status.ts",
+    "scripts/migrate/components/edls/002_add_sheet_notes_and_change_tracking.ts",
+    "scripts/migrate/components/edls/003_add_assignment_comm_id.ts",
+    "scripts/migrate/components/edls/004_add_assignment_accepted.ts",
+    "scripts/migrate/components/edls/005_add_sheet_notifications_enabled.ts",
+    "scripts/migrate/components/edls/006_drop_sheet_created_by.ts",
+    "scripts/migrate/components/edls/007_index_assignments_by_worker_date.ts",
+    "scripts/migrate/components/edls/008_retain_assignments_on_crew_delete.ts",
+    "scripts/migrate/components/edls/009_index_daily_assignment_scope.ts"
+  ]
+}

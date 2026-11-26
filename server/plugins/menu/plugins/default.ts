@@ -8,7 +8,7 @@ import type { MenuItemDef } from "../types";
  * Every item carries the same permission / policy / component gating the
  * old JSX enforced inline; the resolver evaluates the gates per user.
  *
- * Exported so other menu plugins (e.g. `edls`) can reuse pieces of this
+ * Exported so other menu plugins can reuse pieces of this
  * tree by calling the builder and reshaping the result.
  */
 function buildCoreDefaultMenuTree(): MenuItemDef[] {
@@ -284,20 +284,6 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
       ],
     },
     {
-      id: "edls",
-      label: "EDLS",
-      icon: "FileSpreadsheet",
-      active: { type: "prefix", value: "/edls" },
-      testId: "nav-edls",
-      gate: {
-        allOf: [
-          { component: "edls" },
-          { anyOf: [{ policy: "staff" }, { policy: "edls.any" }] },
-        ],
-      },
-      children: buildEdlsMenuItems(),
-    },
-    {
       id: "trust",
       label: "Trust",
       icon: "Shield",
@@ -372,7 +358,7 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
       icon: "FileText",
       active: { type: "prefix", value: "/reports" },
       testId: "nav-reports",
-      gate: { anyOf: [{ permission: "admin" }, { permission: "staff" }, { policy: "edls.reader" }] },
+      gate: { anyOf: [{ permission: "admin" }, { permission: "staff" }] },
       children: [
         {
           id: "reports-all",
@@ -380,7 +366,7 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
           icon: "FileText",
           href: "/reports",
           testId: "menu-reports-all",
-          gate: { anyOf: [{ permission: "admin" }, { policy: "edls.reader" }] },
+          gate: { permission: "admin" },
         },
         {
           id: "cardcheck-report",
@@ -420,60 +406,7 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
   ];
 }
 
-/**
- * The EDLS links with their per-item gates. Shared between the
- * `default` plugin (as a dropdown) and the `edls` plugin (as top-level
- * items). Gates are self-contained so promotion to top level keeps the
- * exact same access behavior.
- */
-export function buildEdlsMenuItems(): MenuItemDef[] {
-  return [
-    {
-      id: "edls-sheets",
-      label: "Sheets",
-      icon: "FileSpreadsheet",
-      href: "/edls/sheets",
-      testId: "menu-edls-sheets",
-      gate: { policy: "edls.any" },
-      children: [
-        {
-          id: "edls-sheets-list",
-          label: "Sheets",
-          icon: "FileSpreadsheet",
-          href: "/edls/sheets",
-          testId: "menu-edls-sheets-list",
-          gate: { policy: "edls.any" },
-        },
-        {
-          id: "edls-assignments",
-          label: "Assignments",
-          icon: "List",
-          href: "/edls/assignments",
-          testId: "menu-edls-assignments",
-          gate: { allOf: [{ component: "edls" }, { policy: "edls.coordinator" }] },
-        },
-      ],
-    },
-    {
-      id: "edls-workers",
-      label: "Workers",
-      icon: "Users",
-      href: "/edls/workers",
-      testId: "menu-edls-workers",
-      gate: { policy: "edls.any" },
-    },
-    {
-      id: "edls-reports",
-      label: "Reports",
-      icon: "FileText",
-      href: "/reports/edls",
-      testId: "menu-edls-reports",
-      gate: { policy: "edls.reader" },
-    },
-  ];
-}
-
-/** The admin Users dropdown, reused by the `edls` plugin. */
+/** The admin Users dropdown, reusable by alternative menus. */
 export function buildUsersMenuItem(): MenuItemDef {
   return {
     id: "users",
@@ -537,7 +470,7 @@ export function buildUsersMenuItem(): MenuItemDef {
   };
 }
 
-/** The Configuration link, reused by the `edls` plugin. */
+/** The Configuration link, reusable by alternative menus. */
 export function buildConfigMenuItem(): MenuItemDef {
   return {
     id: "config",
@@ -555,7 +488,7 @@ registerMenuPlugin({
     id: "default",
     name: "Default",
     description:
-      "The standard Sirius main navigation: Workers, Employers, EDLS, Trust, Reports, Users, and Configuration.",
+      "The standard Sirius main navigation: Workers, Employers, Trust, Reports, Users, Configuration and installed contributions.",
   },
   buildTree: buildDefaultMenuTree,
 });
@@ -565,7 +498,10 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
     const find = (nodes: MenuItemDef[], id: string): MenuItemDef | undefined => {
       for (const n of nodes) { if (n.id === id) return n; const child = find(n.children ?? [], id); if (child) return child; }
     };
-    for (const c of componentContributions) for (const {parent, before, node} of c.menu ?? []) {
+    for (const c of componentContributions) for (const {parent, before, node: declaration} of c.menu ?? []) {
+      // A later contribution may append children. Never mutate the installed
+      // declaration, or repeated default/promoted menu builds accumulate nodes.
+      const node = structuredClone(declaration);
       // No parent: a top-level entry.
       const target = parent === undefined ? undefined : find(tree, parent);
       if (parent !== undefined && !target) continue;

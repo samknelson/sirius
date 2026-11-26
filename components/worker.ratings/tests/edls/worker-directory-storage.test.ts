@@ -14,7 +14,7 @@ vi.mock("../../../../server/storage/transaction-context", () => ({
 }));
 
 const { createEdlsWorkerDirectoryStorage } = await import(
-  "../../../../server/storage/edls/worker-directory"
+  "../../../edls/server/storage/edls/worker-directory"
 );
 
 describe("EDLS worker directory storage", () => {

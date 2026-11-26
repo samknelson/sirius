@@ -23,6 +23,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { EdlsSheet } from "@shared/schema";
 import type { SnapshotWithProvenance } from "../../../../server/storage/system/snapshots";
 import type { SnapshotNode } from "@shared/snapshots";
+import "../../../edls/server/plugins/tokens/plugins/edls";
+import "../../../edls/server/plugins/tokens/plugins/edls-worker";
 import { buildRecipientTemplateContext, composeFromTemplates, resolveTemplates } from "../../../../server/plugins/event-notifier/token-templates";
 
 vi.mock("../../../../server/services/component/cache", () => ({ isComponentEnabledSync: () => true }));

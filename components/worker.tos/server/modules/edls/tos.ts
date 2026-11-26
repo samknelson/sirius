@@ -3,7 +3,7 @@ import { storage } from "../../../../../server/storage";
 import { requireAccess } from "../../../../../server/services/access-policy-evaluator";
 import { requireComponent } from "../../../../../server/modules/components";
 import { getTodayYmd } from "@shared/utils/date";
-import { getEdlsSettings } from "../../../../../server/modules/edls/supervisor-context";
+import { getEdlsSettings } from "../../../../edls/server/modules/edls/supervisor-context";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 

@@ -35,7 +35,4 @@ export const STORAGE_ENCAPSULATION_BASELINE: Record<string, string> = {
   'server/services/maintenance-mode.ts': 'maintenance mode registers a pool checkout initializer on the db module',
   'server/services/restart-control.ts': 'restart control dynamically imports the pool to drain it',
 
-  // Freeman EDLS migration import: temporary cutover tooling with raw queries.
-  'components/sitespecific.freeman.edls_migrate/server/modules/sitespecific/freeman/edls-migrate/import.ts':
-    'Freeman EDLS migrate import queries EDLS/dispatch tables via getClient + drizzle operators',
 };

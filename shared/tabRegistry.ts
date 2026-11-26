@@ -90,7 +90,6 @@ export interface TabEntityTypes {
   dispatch_job: true;
   dispatch_job_type: true;
   dispatch_job_group: true;
-  edls_sheet: true;
   ledger_account: true;
   ledger_payment: true;
   trust_benefit: true;
@@ -235,15 +234,6 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
-  {
-    id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls',
-    children: [
-      // Keeps the pre-split URL, so existing links and bookmarks still land on
-      // the switch rather than on the new list.
-      { id: 'edls-status', label: 'Status', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
-      { id: 'edls-assignments', label: 'Assignments', hrefTemplate: '/workers/{id}/edls/assignments', policyId: 'edls.coordinator', component: 'edls' },
-    ]
-  },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   {
     id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
@@ -447,23 +437,6 @@ export const dispatchJobGroupTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job_group/{id}', permission: 'staff', component: 'dispatch.job_group' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job_group/{id}/edit', permission: 'staff', component: 'dispatch.job_group' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/dispatch/job_group/{id}/logs', permission: 'staff', component: 'dispatch.job_group' },
-];
-
-/**
- * EDLS sheet entity tab tree
- */
-export const edlsSheetTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls', children: [
-    { id: 'overview', label: 'Overview', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls' },
-    { id: 'next-assignments', label: 'Next Assignments', hrefTemplate: '/edls/sheet/{id}/next-assignments', policyId: 'edls.sheet.view', component: 'edls' },
-  ] },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
-  { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage_view', component: 'edls' },
-  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.assign', component: 'edls' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.any', component: 'edls', children: [
-    { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.any', component: 'edls' },
-    { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
-  ] },
 ];
 
 /**
@@ -783,7 +756,6 @@ export const tabTreeRegistry: Partial<Record<TabEntityType, HierarchicalTab[]>> 
   dispatch_job: dispatchJobTabTree,
   dispatch_job_type: dispatchJobTypeTabTree,
   dispatch_job_group: dispatchJobGroupTabTree,
-  edls_sheet: edlsSheetTabTree,
   ledger_account: ledgerAccountTabTree,
   ledger_payment: ledgerPaymentTabTree,
   trust_benefit: trustBenefitTabTree,

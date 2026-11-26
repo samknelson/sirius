@@ -39,6 +39,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+import { readComponentDeveloperChecks } from "../optional-components";
 
 const INVENTORY_DOC = "docs/provenance-columns.md";
 
@@ -107,6 +108,7 @@ const FRAMEWORK_TABLES = new Set(["entity_metadata"]);
  * the longer rationale.
  */
 const ALLOWLIST: Record<string, string> = {
+  ...readComponentDeveloperChecks().provenanceColumns,
   // ── KEEP: operational timestamps ─────────────────────────────────────────
   // Rate-limit window. `created_at` is when the bucket entry was recorded and
   // is compared against `expires_at` to decide whether a caller is over quota.
@@ -126,10 +128,6 @@ const ALLOWLIST: Record<string, string> = {
   // Event-bus scheduling state. The status row's `created_at` is when the
   // deferred event was claimed, which the pump and the retention purge read.
   "ebs_status.created_at": "KEEP — event-bus scheduling state, not provenance",
-  // Change watermark. `edls_sheets.changed` drives changed-since export
-  // filtering, passport export ordering and a notifier — it is read by
-  // behaviour, so it is business data. See the inventory's KEEP table.
-  "edls_sheets.changed": "KEEP — change watermark read by exports and a notifier",
   // Membership join tables with no id of their own. Provenance is keyed by a
   // record id and these rows do not have one, so the framework cannot answer
   // for them at all.

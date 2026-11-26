@@ -22,7 +22,7 @@ from strings, arrays, object values *and keys*. Route-level catch blocks send
 error text through the same pass, since that text is written by code we do not
 control end to end.
 
-**Why:** a code review caught exactly this on the Freeman EDLS migration ping —
+**Why:** a code review caught exactly this on an import connection diagnostic —
 own-request masking was in place, relayed content was not. Redaction must not
 swallow the message itself: the remote's own words are the useful part.
 

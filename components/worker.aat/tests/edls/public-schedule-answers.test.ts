@@ -116,7 +116,7 @@ vi.mock("../../../../server/flood/service", () => ({
   async recordFloodEvent() {},
 }));
 
-vi.mock("../../../../server/flood/constants", () => ({
+vi.mock("../../../edls/server/flood-constants", () => ({
   EDLS_SCHEDULE_ANSWER_FLOOD_EVENT: "edls-schedule-answer",
 }));
 

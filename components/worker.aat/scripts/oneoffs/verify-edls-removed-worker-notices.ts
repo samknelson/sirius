@@ -27,10 +27,12 @@
  * Run: npx tsx components/worker.aat/scripts/oneoffs/verify-edls-removed-worker-notices.ts
  */
 import { randomUUID } from "node:crypto";
+import { initializeEdlsOperator } from "../../../edls/scripts/oneoffs/initialize";
 import type { Comm, Variable } from "@shared/schema";
 import { formatYmd } from "@shared/utils/date";
 import { loadComponentCache } from "../../../../server/services/component/cache";
-import { eventBus, EventType, type EdlsSheetSavedPayload } from "../../../../server/services/event-bus";
+import { eventBus } from "../../../../server/services/event-bus";
+import { EDLS_SHEET_SAVED, type EdlsSheetSavedPayload } from "../../../edls/server/events";
 import { SNAPSHOTS_SETTINGS_VARIABLE } from "../../../../server/services/snapshots/capture";
 import { storage, createCommSmsOptinStorage } from "../../../../server/storage";
 import { runInTransaction } from "../../../../server/storage/transaction-context";
@@ -69,6 +71,7 @@ const createdSnapshotIds: string[] = [];
 let settingsBefore: { existed: boolean; variable?: Variable } | null = null;
 
 async function main() {
+  await initializeEdlsOperator();
   await loadComponentCache();
 
   // ---- a sheet with a roster, and two textable workers not on it -----------
@@ -288,7 +291,7 @@ async function verifyLiveSaveCapture(sheetId: string): Promise<void> {
   const emitted: EdlsSheetSavedPayload[] = [];
   const realEmit = eventBus.emit.bind(eventBus);
   (eventBus as { emit: unknown }).emit = async (event: string, payload: unknown) => {
-    if (event === EventType.EDLS_SHEET_SAVED) {
+    if (event === EDLS_SHEET_SAVED) {
       emitted.push(payload as EdlsSheetSavedPayload);
       return;
     }
@@ -368,7 +371,7 @@ function contextFor(
   changed: Date,
 ): EventNotifierEventContext {
   return {
-    event: EventType.EDLS_SHEET_SAVED,
+    event: EDLS_SHEET_SAVED,
     payload: {
       sheetId: sheet.id,
       previousStatus: OTHER_STATUS,
@@ -424,7 +427,7 @@ function withStatusAndExtraWorker(
   status: string,
   workerId: string,
   changed: Date,
-): unknown {
+): Parameters<typeof storage.snapshots.create>[0]["data"] {
   const clone = JSON.parse(JSON.stringify(bundle)) as {
     version: number;
     data: Record<string, unknown> & { crews?: Array<{ data: { assignments?: unknown[] } }> };
@@ -435,10 +438,10 @@ function withStatusAndExtraWorker(
   if (crews.length === 0) throw new Error("sheet bundle has no crew to add a worker to");
   const assignments = (crews[0].data.assignments ??= []);
   assignments.push({ version: 1, data: { id: randomUUID(), workerId } });
-  return clone;
+  return clone as Parameters<typeof storage.snapshots.create>[0]["data"];
 }
 
-async function createSnapshot(sheetId: string, data: import("@shared/schema").Snapshot["data"], label: string) {
+async function createSnapshot(sheetId: string, data: Parameters<typeof storage.snapshots.create>[0]["data"], label: string) {
   const row = await storage.snapshots.create({
     entityType: ENTITY_TYPE,
     entityId: sheetId,
@@ -457,7 +460,7 @@ async function disableSnapshotCapture(): Promise<void> {
     ...((existing?.value as Record<string, unknown>) ?? {}),
     events: {
       ...(((existing?.value as { events?: Record<string, boolean> } | null)?.events) ?? {}),
-      [EventType.EDLS_SHEET_SAVED]: false,
+      [EDLS_SHEET_SAVED]: false,
     },
   };
   if (existing) await storage.variables.update(existing.id, { value });
@@ -471,7 +474,7 @@ async function cleanup(): Promise<void> {
   if (settingsBefore) {
     const current = await storage.variables.getByName(SNAPSHOTS_SETTINGS_VARIABLE);
     if (settingsBefore.existed && settingsBefore.variable && current) {
-      await storage.variables.update(current.id, { value: settingsBefore.variable.value as import("@shared/schema").InsertVariable["value"] });
+      await storage.variables.update(current.id, { value: settingsBefore.variable.value as Parameters<typeof storage.variables.update>[1]["value"] });
     } else if (!settingsBefore.existed && current) {
       await storage.variables.delete(current.id);
     }

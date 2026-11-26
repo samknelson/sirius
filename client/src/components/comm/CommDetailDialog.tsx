@@ -21,7 +21,7 @@ export interface CommDetailDialogProps {
 
 /**
  * Read-only communication record in a dialog, for surfaces that link a
- * communication (an EDLS assignment, say) and want to inspect its delivery
+ * communication from another record and want to inspect its delivery
  * without leaving the page.
  *
  * The record is fetched only while the dialog is open: the body — and the

@@ -2,13 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { EventNotifierPlugin, EventNotifierEventContext } from "../../../../server/plugins/event-notifier/types";
 import { buildRecipientTemplateContext, composeFromTemplates, defaultTemplatesFor, resolveTemplates } from "../../../../server/plugins/event-notifier/token-templates";
 import { templatesSchemaBlock, stampNotifierTemplateIds, hideUnsupportedTemplateChannels } from "../../../../server/plugins/event-notifier/template-schema";
-import { renderWorkerAssignmentSms, EDLS_REVIEW_NOTICE } from "@shared/edls-worker-assignment";
+import { renderWorkerAssignmentSms, EDLS_REVIEW_NOTICE } from "../../../edls/shared/edls-worker-assignment";
 import { formatYmd } from "@shared/utils/date";
 
 vi.mock("../../../../server/services/component/cache", () => ({ isComponentEnabledSync: () => true }));
 vi.mock("../../../../server/storage", () => ({ storage: {} }));
 
 import { edlsSheetWorkerSmsNotifier } from "../../server/plugins/event-notifier/plugins/edls-sheet-worker-sms-notifier";
+import "../../../edls/server/plugins/tokens/plugins/edls";
+import "../../../edls/server/plugins/tokens/plugins/edls-worker";
 import { createTokenEvalContext, renderTokens } from "../../../../server/plugins/tokens";
 
 const context: EventNotifierEventContext = { event: edlsSheetWorkerSmsNotifier.subscribedEvents[0], payload: {} };

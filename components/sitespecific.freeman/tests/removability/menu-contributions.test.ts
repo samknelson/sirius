@@ -5,7 +5,7 @@ vi.mock("../../../../server/plugins/menu/registry", () => ({
   registerMenuPlugin: (plugin: MenuPlugin) => registered.set(plugin.metadata.id, plugin),
 }));
 import "../../../../server/plugins/menu/plugins/default";
-import "../../../../server/plugins/menu/plugins/edls";
+import "../../../edls/server/plugins/menu/plugins/edls";
 
 it("preserves Crew Leads and its gates in both default and promoted EDLS navigation", () => {
   const defaults = registered.get("default")!.buildTree();

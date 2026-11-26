@@ -98,7 +98,7 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
   // intra-component FK dependencies (a table is created after any table it
   // references within this component). Manifest order is only a tiebreak, so
   // a manifest listing tables in the "wrong" order can no longer break a
-  // fresh enable (e.g. edls_crews → options_edls_tasks).
+  // fresh enable when a child precedes its referenced options table.
   const resolvedTables: { tableName: string; tableSchema: any }[] = [];
   for (const tableName of component.schemaManifest.tables) {
     let tableSchema = findTableInModule(schemaModule, tableName);

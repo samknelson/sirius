@@ -118,11 +118,7 @@ import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/ba
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
-import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
-import { registerEdlsAssignmentExplorerRoutes } from "./modules/edls/assignment-explorer";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
-import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
-import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyCatalog } from "./modules/terminology-catalog";
 import { registerSystemServiceRolesCatalog } from "./modules/system-service-roles-catalog";
@@ -1650,13 +1646,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register generic snapshots routes
   registerSnapshotsRoutes(app, requireAuth);
 
-  // Register EDLS routes
-  registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
-  registerEdlsAssignmentExplorerRoutes(app, requireAuth);
-  registerEdlsTasksRoutes(app, requireAuth, requirePermission);
-  registerWorkerEdlsRoutes(app, requireAuth);
-  // Public (unauthenticated) worker schedule page — still gated on the `edls`
-  // component like every other EDLS route.
 
   // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);

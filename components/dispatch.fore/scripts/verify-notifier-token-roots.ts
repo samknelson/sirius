@@ -109,7 +109,6 @@ async function main() {
     "../shared/schema/dispatch/fore-schema"
   );
   type DispatchJobFore = typeof dispatchJobFore.$inferSelect;
-  const { edlsSheets } = await import("../../../shared/schema/edls/schema");
 
   // --- dispatch status: the availability row the event carried ---
   const [wds] = await db.select().from(workerDispatchStatus).limit(1);
@@ -146,17 +145,6 @@ async function main() {
       job,
     });
   }
-
-  // --- edls sheet: the sheet the event carried ---
-  const [sheet] = await db.select().from(edlsSheets).limit(1);
-  if (!sheet) console.log("SKIP: no edls_sheets rows");
-  else
-    await verify("edls-sheet-status-notifier", {
-      sheetId: sheet.id,
-      previousStatus: null,
-      newStatus: sheet.status,
-      sheet,
-    });
 
   // --- stored-template rewrites ---
   // The grammar allows arguments in any order, arbitrary whitespace, and

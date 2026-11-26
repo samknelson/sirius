@@ -20,7 +20,7 @@ import { unguardedReferences } from "../../scripts/dev/check-core-migration-comp
 
 const OWNED = new Map([
   ["dispatches", "dispatch"],
-  ["edls_sheets", "edls"],
+  ["sample_records", "sample"],
 ]);
 
 function tablesFlagged(source: string): string[] {
@@ -68,12 +68,12 @@ describe("unguardedReferences", () => {
       async function up() {
         const check = await db.execute(sql\`
           SELECT EXISTS (SELECT 1 FROM information_schema.tables
-            WHERE table_schema='public' AND table_name='edls_sheets') AS has_edls
+            WHERE table_schema='public' AND table_name='sample_records') AS has_records
         \`);
-        if (check.rows[0]?.has_edls !== true) {
+        if (check.rows[0]?.has_records !== true) {
           return;
         }
-        await db.execute(sql\`ALTER TABLE edls_sheets ADD COLUMN job_group_id varchar\`);
+        await db.execute(sql\`ALTER TABLE sample_records ADD COLUMN group_id varchar\`);
       }
     `;
     expect(tablesFlagged(source)).toEqual([]);
@@ -83,10 +83,10 @@ describe("unguardedReferences", () => {
     const source = `
       ${GUARD_HELPER}
       async function up() {
-        if (!(await tableExists("edls_sheets"))) {
+        if (!(await tableExists("sample_records"))) {
           return;
         }
-        await db.execute(sql\`ALTER TABLE edls_sheets ADD COLUMN note text\`);
+        await db.execute(sql\`ALTER TABLE sample_records ADD COLUMN note text\`);
         await db.execute(sql\`ALTER TABLE dispatches ADD COLUMN is_primary boolean\`);
       }
     `;

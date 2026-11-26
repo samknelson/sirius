@@ -25,6 +25,8 @@ import { randomUUID } from "crypto";
 import { storage } from "../../../../server/storage";
 import { absoluteUrl } from "../../../../server/utils/base-url";
 import { loadComponentCache, updateComponentCache } from "../../../../server/services/component/cache";
+import { EDLS_SHEET_SAVED } from "../../../edls/server/events";
+import { initializeEdlsOperator } from "../../../edls/scripts/oneoffs/initialize";
 import {
   enableComponentSchema,
   disableComponentSchema,
@@ -107,7 +109,7 @@ async function phaseOff() {
 async function phaseDispatchOff() {
   await loadComponentCache();
   const sheetId = arg("link-sheet")!;
-  const { eventBus, EventType } = await import("../../../../server/services/event-bus");
+  const { eventBus } = await import("../../../../server/services/event-bus");
   const { initializeEventNotifierDispatcher } = await import(
     "../../../../server/plugins/event-notifier/dispatcher"
   );
@@ -131,7 +133,7 @@ async function phaseDispatchOff() {
     return realWrite(chunk, ...rest);
   };
   try {
-    await eventBus.emit(EventType.EDLS_SHEET_SAVED, {
+    await eventBus.emit(EDLS_SHEET_SAVED, {
       sheetId,
       previousStatus: "draft",
       newStatus: "lock",
@@ -173,6 +175,7 @@ async function phaseDisable() {
 }
 
 async function phaseOn() {
+  await initializeEdlsOperator();
   await loadComponentCache();
   const workerId = arg("worker")!;
   const freshWorkerId = arg("fresh-worker")!;

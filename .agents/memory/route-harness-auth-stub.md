@@ -5,7 +5,7 @@ description: How to exercise admin-gated Express routes in a standalone tsx scri
 
 Pattern for oneoff scripts that mount a route module on a bare express app and hit it with fetch (see `scripts/oneoffs/verify-file-browser-routes.ts`):
 
-- Init like `scripts/oneoffs/verify-edls-view-policy.ts`: `loadComponentCache()`, `initializePermissions()`, `initAccessControl(...)`, plus any service init (e.g. `initFileSystems`).
+- Initialize `loadComponentCache()`, `initializePermissions()`, `initAccessControl(...)`, plus any required service setup (e.g. `initFileSystems`).
 - The fake auth middleware must set `req.user = { claims: { sub: user.id }, dbUser: user }`. `buildContext` requires `claims`, and `resolveDbUser` short-circuits on the `dbUser` cache — a bare user object or claims-only yields 403 "Authentication required".
 - Pick a real admin user from the dev DB by probing `storage.users.userHasPermission(id, "admin")`.
 - Also `import "@shared/access-policies/loader"`. Without it the registry is

@@ -12,7 +12,7 @@ vi.mock("../../../../server/storage/transaction-context", () => ({
 }));
 
 const { getAvailableWorkersForSheetQuery, getPopulationWorkerIdsQuery } = await import(
-  "../../../../server/storage/edls/available-workers-query"
+  "../../../edls/server/storage/edls/available-workers-query"
 );
 
 describe("available scheduling worker query", () => {

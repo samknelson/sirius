@@ -7,13 +7,13 @@ import { getClient, runInSavepoint, runInTransaction, runOutsideTransaction } fr
 import {
   validate as validateEdlsSheet,
   type CrewInput,
-} from "../../../../../../../server/storage/edls/sheets";
+} from "../../../../../../edls/server/storage/edls/sheets";
 import { wcRequest } from "../../../../../../../server/services/webclient";
 import { logger } from "../../../../../../../server/logger";
 import { getRequestContext, requestContext } from "../../../../../../../server/middleware/request-context";
 import { isMaintenanceActive } from "../../../../../../../server/services/maintenance-flag";
 import { isComponentEnabled } from "../../../../../../../server/modules/components";
-import { getEdlsSettings } from "../../../../../../../server/modules/edls/supervisor-context";
+import { getEdlsSettings } from "../../../../../../edls/server/modules/edls/supervisor-context";
 import { recomputeDenormEntity } from "../../../../../../../server/plugins/system/denorm/registry";
 import {
   dispatchJobGroups,

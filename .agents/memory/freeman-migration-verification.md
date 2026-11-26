@@ -11,6 +11,6 @@ Do not add or retain automated tests specifically for Freeman migration function
 
 ## Related migration semantics
 
-- [Passport response envelopes and rejected epoch dates](freeman-passport-response-envelope.md)
+- [Passport response envelopes and rejected epoch dates](../../components/sitespecific.freeman/.agents/memory/freeman-passport-response-envelope.md)
 - [Counts include matched existing child records](freeman-migration-count-semantics.md)
 - [Normalized EIN takes precedence over T631 matches](freeman-worker-id-precedence.md)

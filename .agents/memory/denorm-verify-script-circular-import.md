@@ -47,8 +47,7 @@ app does; the plugin registries then load cleanly. That import registers other
 plugin kinds noisily, so silence winston first
 (`for (const t of logger.transports) t.silent = true`).
 
-**Storage reads that gate a join on a component** (EDLS assignments checking
-`dispatch.job_group`, etc.) throw `Component cache not initialized` in a
+**Storage reads that gate a join on another component** throw `Component cache not initialized` in a
 standalone script even once the imports resolve. Fix: `await
 loadComponentCache()` (from `server/services/component-cache`) before the
 first storage call — the app does this during boot, an ad-hoc script does not.

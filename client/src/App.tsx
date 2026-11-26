@@ -72,8 +72,6 @@ const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
 const EmployerFiles = lazy(() => import("@/pages/employers/files"));
 const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
 const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files"));
-const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
-const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
 const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
@@ -244,8 +242,6 @@ const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatc
 const DispatchSeniorityResetConfigPage = lazy(() => import("@/pages/config/dispatch-seniority-reset"));
 const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill"));
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
-const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
-const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
 const WsStatsPage = lazy(() => import("@/pages/admin/ws-stats"));
@@ -379,16 +375,6 @@ const BtuCardcheckScrapeImportPage = lazy(() => import("@/pages/sitespecific/btu
 const BtuBuildingRepImportPage = lazy(() => import("@/pages/sitespecific/btu/building-rep-import"));
 const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profile"));
 const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
-const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
-const EdlsAssignmentsPage = lazy(() => import("@/pages/edls/assignments"));
-const EdlsWorkersPage = lazy(() => import("@/pages/edls/workers"));
-const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
-const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
-const EdlsSheetNextAssignmentsPage = lazy(() => import("@/pages/edls/sheet-next-assignments"));
-const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
-const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
-const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
-const EdlsSheetSnapshotsPage = lazy(() => import("@/pages/edls/sheet-snapshots"));
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
 const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
 const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
@@ -422,14 +408,6 @@ function PageLoader() {
   );
 }
 
-/**
- * The public EDLS worker schedule is the one route both audiences share: an
- * anonymous visitor holding the link gets bare content (no header, menu or
- * footer), while a signed-in staff member sees the same page inside the normal
- * site chrome. The choice waits for the auth check to settle so the layout
- * never flips on load. Deliberately local to this route — every other public
- * route is unwrapped unconditionally.
- */
 function Router() {
   const { isAuthenticated, isLoading, authReady, authError } = useAuth();
   const [location, setLocation] = useLocation();
@@ -774,22 +752,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-
-      <Route path="/workers/:id/edls">
-        <ProtectedRoute tabId="edls-status" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerEdls />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/edls/assignments">
-        <ProtectedRoute tabId="edls-assignments" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerEdlsAssignments />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
 
       <Route path="/workers/:id/sitespecific/bao/beneficiaries">
@@ -1166,14 +1128,6 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports activeCategory="BTU" />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/reports/edls">
-        <ProtectedRoute policy="edls.reader" component="edls">
-          <AuthenticatedLayout>
-            <Reports activeCategory="EDLS" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2538,26 +2492,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/edls/settings">
-        <ProtectedRoute permission="admin" component="edls">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EdlsSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/edls/tasks">
-        <ProtectedRoute permission="admin" component="edls">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EdlsTasksPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
 
 
       <Route path="/config/trust/sitespecific/bao/thresholds">
@@ -3000,86 +2934,6 @@ function Router() {
         <ProtectedRoute tabId="manage" entityType="dispatch">
           <AuthenticatedLayout>
             <DispatchManagePage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheets">
-        <ProtectedRoute policy="edls.any" component="edls">
-          <AuthenticatedLayout>
-            <EdlsSheetsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/workers">
-        <ProtectedRoute policy="edls.any" component="edls">
-          <AuthenticatedLayout>
-            <EdlsWorkersPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/assignments">
-        <ProtectedRoute policy="edls.coordinator" component="edls">
-          <AuthenticatedLayout>
-            <EdlsAssignmentsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id">
-        <ProtectedRoute tabId="details" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetDetailsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id/next-assignments">
-        <ProtectedRoute tabId="next-assignments" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetNextAssignmentsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id/assignments">
-        <ProtectedRoute tabId="assignments" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetAssignmentsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id/manage">
-        <ProtectedRoute tabId="manage" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetManagePage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id/edit">
-        <ProtectedRoute tabId="edit" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetEditPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id/logs">
-        <ProtectedRoute tabId="logs" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetLogsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/sheet/:id/logs/snapshots">
-        <ProtectedRoute tabId="snapshots" entityType="edls_sheet">
-          <AuthenticatedLayout>
-            <EdlsSheetSnapshotsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

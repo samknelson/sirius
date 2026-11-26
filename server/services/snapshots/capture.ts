@@ -1,7 +1,7 @@
-import { eventBus, EventType, type EventPayloadMap } from "../event-bus";
+import type { EventPayloadMap, EventName } from "../event-bus";
 import { storage } from "../../storage";
 import { logger } from "../../logger";
-import { entityMetadataStorage } from "../../storage/system/entity-metadata";
+import { isComponentEnabledSync } from "../component/cache";
 import type { SnapshotNode, SnapshotRecordMetadata } from "@shared/snapshots";
 
 const SERVICE_NAME = "snapshot-capture";
@@ -19,8 +19,9 @@ export const SNAPSHOTS_SETTINGS_VARIABLE = "snapshots_settings";
  * to capture. This is deliberately an in-code registry (not a plugin kind):
  * capture policy is configuration on a single capture service.
  */
-interface SnapshotCaptureAdapter<E extends keyof EventPayloadMap> {
+export interface SnapshotCaptureAdapter<E extends EventName> {
   event: E;
+  component?: string;
   entityType: string;
   /** Return false to skip capture for this occurrence. */
   shouldCapture: (payload: EventPayloadMap[E]) => boolean;
@@ -39,29 +40,25 @@ interface SnapshotCaptureAdapter<E extends keyof EventPayloadMap> {
   getMetadata: (payload: EventPayloadMap[E]) => Promise<SnapshotRecordMetadata | null>;
 }
 
-const adapters: SnapshotCaptureAdapter<any>[] = [
-  {
-    event: EventType.EDLS_SHEET_SAVED,
-    entityType: "edls_sheet",
-    // Capture only on status transitions (create arrives with
-    // previousStatus === null, which counts as a transition).
-    shouldCapture: (payload) => payload.previousStatus !== payload.newStatus,
-    getEntityId: (payload) => payload.sheetId,
-    getLabel: (payload) =>
-      payload.previousStatus === null
-        ? `status: → ${payload.newStatus}`
-        : `status: ${payload.previousStatus} → ${payload.newStatus}`,
-    exportEntity: (payload) => storage.edlsSheets.export(payload.sheetId),
-    getMetadata: async (payload) =>
-      entityMetadataStorage.getSnapshotMetadata(payload.sheetId),
-  },
-];
+const adapters = new Map<EventName, SnapshotCaptureAdapter<any>>();
+let registrationClosed = false;
+
+/** Declaration only: called during startup, never reads component tables. */
+export function registerSnapshotCaptureAdapter<E extends EventName>(adapter: SnapshotCaptureAdapter<E>): void {
+  if (registrationClosed) throw new Error("Snapshot capture registration is closed");
+  if (adapters.has(adapter.event)) throw new Error(`Duplicate snapshot capture event '${adapter.event}'`);
+  adapters.set(adapter.event, Object.freeze({ ...adapter }));
+}
+
+export function closeSnapshotCaptureRegistration(): void {
+  registrationClosed = true;
+}
 
 /**
  * Whether capture is currently switched on for an event.
  *
  * Exported because capture being off is not only this service's business: a
- * consumer reading snapshots back as history (e.g. the EDLS worker notifier
+ * consumer reading snapshots back as history (e.g. a notifier
  * diffing rosters) otherwise sees "no snapshot" and cannot tell an entity
  * with no history from a switch someone turned off. A read error answers
  * ACTIVE, matching the capture path: the setting exists to disable capture,
@@ -97,9 +94,8 @@ export async function isSnapshotCaptureActive(event: string): Promise<boolean> {
  *  - WHETHER it is there yet. Capture and the notifiers that read history back
  *    are sibling after-commit handlers of the same save, none of them awaited.
  *    A save whose snapshot had not landed yet is indistinguishable, to the next
- *    save's notifier, from a save that never had one — and for the EDLS worker
- *    notifier that means a worker is never told they came off a crew, with no
- *    later chance to recover: the next baseline no longer holds them.
+ *    save's notifier, from a save that never had one. A history consumer can
+ *    miss a removal permanently once its next baseline no longer holds it.
  *
  * Committing the snapshot with the save settles both. History exists exactly
  * when the save it describes exists, and anything running after a save's
@@ -111,10 +107,11 @@ export async function captureEntitySnapshot<E extends keyof EventPayloadMap>(
   event: E,
   payload: EventPayloadMap[E],
 ): Promise<void> {
-  const adapter = adapters.find((candidate) => candidate.event === event) as
+  const adapter = adapters.get(event) as
     | SnapshotCaptureAdapter<E>
     | undefined;
   if (!adapter) return;
+  if (adapter.component && !isComponentEnabledSync(adapter.component)) return;
   if (!adapter.shouldCapture(payload)) return;
   if (!(await isSnapshotCaptureActive(adapter.event as string))) return;
 

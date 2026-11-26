@@ -12,7 +12,7 @@ These vendors require allowlists by default:
 | Stable plugin ID | Default allowed hosts |
 | --- | --- |
 | `sitespecific-example-authorization` | `["*.example.com"]` |
-| `sitespecific-example-edls-migrate` | `["*.example.com"]` |
+| `sitespecific-example-import` | `["*.example.com"]` |
 | `sitespecific-t631` | `["*.teamsters631.com"]` |
 
 Set **WEBCLIENT_VENDOR_ALLOWED_HOSTS** to a JSON object to replace selected
@@ -24,7 +24,7 @@ vendors' defaults or constrain any other vendor. Example raw value:
     "allowedHosts": ["*.example.com"],
     "allowPrivateAddresses": true
   },
-  "sitespecific-example-edls-migrate": {
+  "sitespecific-example-import": {
     "allowedHosts": ["legacy.example.com"]
   },
   "sitespecific-t631": {
@@ -115,7 +115,7 @@ matching. It trusts the allowed hostnames to identify internal services; a
 compromised hostname/DNS entry can reach other ordinary private services.
 Requests have a maximum 30-second timeout and a 32 MiB response-body limit.
 
-Guarded vendors: Example authorization, Example EDLS migration, Teamsters631,
+Guarded vendors: Example authorization, Example import, Teamsters631,
 Google geocoding, Census geocoding, OpenStates, Lob, SendGrid, Stripe, and Twilio.
 Stripe uses its SDK's custom fetch transport; Twilio uses a webclient HTTP
 adapter; SendGrid uses the same mail API through the guarded capability.

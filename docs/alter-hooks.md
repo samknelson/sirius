@@ -44,8 +44,8 @@ import { summaryHook } from "./summary"; // use the declaration's actual path
 
 export function registerSummaryAlter(): void {
   alterHooks.register(summaryHook, {
-    id: "edls.record-summary",
-    component: "edls",
+    id: "example.record-summary",
+    component: "example",
     priority: 10,
     description: "Append the scheduling summary",
     metadata: { purpose: "Explain the scheduling context" },
@@ -123,13 +123,30 @@ projected in catalogs. The history component registers its implementation throug
 `startup.register` before closure; registration itself reads no history tables.
 
 `comm.view` validates the ID first, calculates the existing broad read grant,
-then runs the hook. Its EDLS implementation leaves grants unchanged, verifies the
-communication exists, obtains stored links and loads fresh sheets before
-delegating sheet access. Caller-supplied sheet data is never used. This retains
+then runs the hook. A relationship-based implementation leaves grants unchanged, verifies the
+communication exists, obtains stored links and loads fresh parent records before
+delegating parent access. Caller-supplied parent data is never used. This retains
 immediate relationship/permission revocation, missing-record behavior, effective
 user handling and the existing read/write distinction. The policy keeps
 `skipCache` and `noAdminBypass`. Its requirements are composed from typed callback
 metadata; this is documentation, not a second execution hook.
+
+### Validated policy request inputs
+
+`policyRequestInputsHook` is declared beside the policy evaluation endpoint.
+An owner claims extra query keys only for its exact policy and returns validated
+scalar values under those supplied keys. Every unclaimed key, invalid value,
+reserved identity key or collision with server-loaded entity fields is refused.
+The hook cannot replace the server-selected user, resource identity or records.
+It runs with the existing component enablement checks.
+
+### Menu trees before authorization
+
+`menuTreeHook` is declared beside asynchronous menu resolution. It receives the
+selected plugin's tree and ID before gate evaluation. Contributions may extend
+existing parent gates here; additive nodes still use menu contributions.
+Execution is asynchronous. A menu gate controls discovery only and never grants
+access to a destination's routes or data.
 
 ## Catalog projection
 
@@ -178,7 +195,6 @@ query optional tables.
 
 | Hook | Value and context | Default and refusal | Database contract |
 | --- | --- | --- | --- |
-| `edls.workers.query-plan` | Typed SQL join, selected value, conditions, ordering, availability and request refusal; available-worker/directory selection context | No optional-table SQL, NULL display value and original ordering. Explicit unhandled selections or returned refusals become client errors. | Ratings returns fragments only. The host executes with its existing bounds, ordering and ambient transaction. |
 | `trust.relationships.resolve` | Nullable relationship facts; discriminated pair, ID-list or subscriber context | Null means authority unavailable, distinct from an empty result. Dependent validation refuses before no-rules shortcuts. | Read-only, caller transaction. ID hydration is batched; the owner preserves pair direction and active-date semantics. |
 | `record-go.resolve` | Nullable resolved destination and parent; known metadata context and record ID | Missing/unknown contexts and hook errors refuse. Owner must use one parent snapshot for both authorization and navigation. | Read-only lookup; no credential minting or identity fallback. |
 | `employer.view.extend` | Boolean grant after the retained employer-view policy denies | False; removing stewardship never removes core staff/employer grants. | Read-only assignment check, caller transaction. |

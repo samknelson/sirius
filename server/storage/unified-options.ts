@@ -3,9 +3,9 @@ import { getClient } from './transaction-context';
 import { eq, asc, getTableName, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { 
-  optionsGender, 
-  optionsWorkerIdType, 
-  optionsTrustBenefitType, 
+  optionsGender,
+  optionsWorkerIdType,
+  optionsTrustBenefitType,
   optionsLedgerPaymentType,
   optionsEmployerContactType,
   optionsEmployerType,
@@ -15,8 +15,6 @@ import {
   optionsEmploymentStatus,
   optionsEventType,
   optionsDispatchJobType,
-  optionsEdlsTasks,
-  optionsEdlsShowStatus,
   optionsClassifications,
   optionsIndustry,
   optionsWorkerMs,
@@ -54,8 +52,6 @@ export interface OptionsTypeNames {
   "event-type": true;
   "dispatch-job-type": true;
   "ledger-payment-type": true;
-  "edls-task": true;
-  "edls-show-status": true;
   "classification": true;
   "industry": true;
   "worker-ms": true;
@@ -606,41 +602,6 @@ const optionsMetadata = {
       // Choices come from the entity-file context registry so this list and
       // the API's context validation cannot drift.
       { name: "contextIds", label: "Applies To", inputType: "multi-enum", required: true, helperText: "Record types that can use this file type.", showInTable: true, columnHeader: "Applies To", dataField: true, enumOptionsResolver: () => listEntityFileContexts().map((c) => ({ value: c.id, label: c.recordLabel })) },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "edls-task": {
-    table: optionsEdlsTasks,
-    displayName: "EDLS Task",
-    description: "Manage tasks for the Employer Day Labor Scheduler",
-    singularName: "EDLS Task",
-    pluralName: "EDLS Tasks",
-    orderByColumn: "name" as const,
-    loggingModule: "options.edlsTasks",
-    bespokePath: "/config/edls/tasks",
-    requiredFields: ["name", "departmentId"],
-    optionalFields: ["siriusId", "data"],
-    supportsSequencing: false,
-    fields: [
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Task name", showInTable: true, columnHeader: "Name" },
-      { name: "departmentId", label: "Department", inputType: "select-options", required: true, showInTable: true, columnHeader: "Department", selectOptionsType: "department" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "edls-show-status": {
-    table: optionsEdlsShowStatus,
-    displayName: "EDLS Show Status",
-    description: "Manage show statuses for EDLS sheets",
-    singularName: "EDLS Show Status",
-    pluralName: "EDLS Show Statuses",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.edlsShowStatuses",
-    requiredComponent: "edls",
-    requiredFields: ["name"],
-    optionalFields: ["siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    fields: [
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Show status name", showInTable: true, columnHeader: "Name" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },

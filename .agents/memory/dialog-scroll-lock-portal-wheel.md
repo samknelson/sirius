@@ -16,7 +16,7 @@ and the wheel does nothing. The exact same component on a plain page scrolls
 fine — no lock is mounted there.
 
 Do not generalize this failure to Radix Select without measuring it. Select
-mounts its own scroll-lock boundary. In a scrollable EDLS create dialog,
+mounts its own scroll-lock boundary. In a scrollable record-creation dialog,
 the unmodified Select displayed all offered options and wheel scrolling moved
 the viewport normally, just as on the standalone edit form. Its trigger-height
 viewport class alone was not evidence of a one-row dropdown.

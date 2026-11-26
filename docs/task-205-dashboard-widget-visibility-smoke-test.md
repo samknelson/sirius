@@ -44,7 +44,6 @@ by the dashboard's pre-fetch filter.
 | `bookmarks` | `bookmark`, `admin` | — | — | any user with `bookmark` or `admin` (data is scoped to caller) |
 | `btu-bu-summary` | (none) | `sitespecific.btu` | `admin` | admins on BTU deploys |
 | `btu-dues-status` | (none) | `sitespecific.btu` | `admin` | admins on BTU deploys |
-| `edls-summary` | (none) | `edls` | `edls.coordinator` | EDLS coordinators on EDLS deploys |
 | `employer-monthly-uploads` | (none) | — | — | rendered for all; resolver filters wizards per role via `allowedWizardTypes` |
 | `my-shops` | (none) | — | — | rendered for all; resolver returns 403 unless `employer` perm + linked contact |
 | `my-steward` | (none) | `worker.steward` | — | rendered when component enabled; resolver returns `{stewards:[], worker:null}` for non-workers, widget then renders nothing |
@@ -83,11 +82,8 @@ return-null / loading-only paths:
 - `WmbScanStatus.tsx:77` — null when `!data`
 - `EmployerMonthlyUploads.tsx:68,132` — null when no wizard types
   or no stats
-- `EdlsSummary.tsx` — the only widget that renders a card
-  (header + date picker) even with no data. This is intentional
-  (operator-facing scrubber) and the EDLS dashboard filter
-  (`requiredComponent: edls` + `requiredPolicy: edls.coordinator`)
-  prevents non-EDLS users from rendering it in the first place.
+- Component-owned widgets may intentionally retain controls without data;
+  their declared component and policy gates still apply.
 
 `client/src/plugins/dashboard/generic/Card.tsx` would render
 "No content available" for empty data, but a project-wide search
@@ -127,9 +123,8 @@ but is the one place where a non-admin user makes an "expected
   `dashboard.tsx`. Admin sees the full admin-only set
   (`active-sessions`, `reports`, `wmb-scan-status`, `btu-bu-summary`,
   `btu-dues-status`); non-admins are filtered out client-side.
-- **No stray empty cards**: every widget except `edls-summary`
-  returns `null` on undefined/empty data, and `edls-summary` is
-  itself component- and policy-gated.
+- **No stray empty cards**: core widgets return `null` on undefined/empty data.
+  Component-owned controls remain component- and policy-gated.
 - **No widget reads through `generic/Card`**: the "No content
   available" placeholder is dormant and cannot produce empty cards
   in production.

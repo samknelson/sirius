@@ -18,12 +18,12 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('safe page-only login destinations', () => {
-  it.each(['/edls/sheets', '/workers/123/contacts', '/dashboard', '/reports/monthly-total'])(
+  it.each(['/records/list', '/workers/123/contacts', '/dashboard', '/reports/monthly-total'])(
     'accepts %s', path => expect(destination.validateLoginDestination(path)).toBe(path),
   );
   it.each([
-    '', '/', 'edls/sheets', 'https://evil.invalid', '//evil.invalid', '/\\evil.invalid',
-    '/edls/sheets?token=secret', '/edls/sheets#secret', '/a\nb', '/a\u0085b',
+    '', '/', 'records/list', 'https://evil.invalid', '//evil.invalid', '/\\evil.invalid',
+    '/records/list?token=secret', '/records/list#secret', '/a\nb', '/a\u0085b',
     '/a/../dashboard', '/a/./b', '/a//b', '/a/%2e%2e/b', '/%2f%2fevil.invalid',
     '/%5cevil.invalid', '/%252f%252fevil.invalid', '/%61pi/logout', '/%6cogin',
     '/a/%3fsecret', '/a/%23secret', '/a/%00', '/a/%zz', '/a/%',
@@ -32,17 +32,17 @@ describe('safe page-only login destinations', () => {
   ])('rejects %j', path => expect(destination.validateLoginDestination(path)).toBeNull());
 
   it('builds the interrupted page URL without accepting page state', () => {
-    expect(destination.captureLoginDestination('/edls/sheets'))
-      .toBe('/login?destination=%2Fedls%2Fsheets');
-    expect(destination.buildLoginUrl('/edls/sheets?credential=secret')).toBe('/login');
+    expect(destination.captureLoginDestination('/records/list'))
+      .toBe('/login?destination=%2Frecords%2Flist');
+    expect(destination.buildLoginUrl('/records/list?credential=secret')).toBe('/login');
   });
 });
 
 describe('one per-tab return-location lifecycle', () => {
   it('lets an explicit destination replace an older saved page', () => {
     destination.captureLoginDestination('/workers');
-    destination.applyLoginDestinationQuery('?destination=%2Fedls%2Fsheets');
-    expect(destination.consumeLoginDestination()).toBe('/edls/sheets');
+    destination.applyLoginDestinationQuery('?destination=%2Frecords%2Flist');
+    expect(destination.consumeLoginDestination()).toBe('/records/list');
     expect(destination.consumeLoginDestination()).toBe('/dashboard');
     expect(values.has('redirectAfterLogin')).toBe(false);
   });
@@ -57,24 +57,24 @@ describe('one per-tab return-location lifecycle', () => {
 
   it('rejects ambiguous duplicate parameters', () => {
     destination.captureLoginDestination('/workers');
-    destination.applyLoginDestinationQuery('?destination=/edls/sheets&destination=/workers');
+    destination.applyLoginDestinationQuery('?destination=/records/list&destination=/workers');
     expect(destination.consumeLoginDestination()).toBe('/dashboard');
   });
 
   it('retains pending state across failed attempts and login without a parameter', () => {
-    destination.applyLoginDestinationQuery('?destination=%2Fedls%2Fsheets');
+    destination.applyLoginDestinationQuery('?destination=%2Frecords%2Flist');
     destination.applyLoginDestinationQuery('?error=failed');
-    expect(destination.getLoginDestination()).toBe('/edls/sheets');
-    expect(destination.getLoginDestination()).toBe('/edls/sheets');
+    expect(destination.getLoginDestination()).toBe('/records/list');
+    expect(destination.getLoginDestination()).toBe('/records/list');
   });
 
   it('survives refresh and same-tab provider roundtrips to root or dashboard', async () => {
-    destination.applyLoginDestinationQuery('?destination=%2Fedls%2Fsheets');
+    destination.applyLoginDestinationQuery('?destination=%2Frecords%2Flist');
     vi.resetModules(); // New document, same tab's storage.
     destination = await import('../../client/src/lib/login-destination');
-    expect(destination.captureLoginDestination('/')).toBe('/login?destination=%2Fedls%2Fsheets');
-    expect(destination.captureLoginDestination('/dashboard')).toBe('/login?destination=%2Fedls%2Fsheets');
-    expect(destination.consumeLoginDestination()).toBe('/edls/sheets');
+    expect(destination.captureLoginDestination('/')).toBe('/login?destination=%2Frecords%2Flist');
+    expect(destination.captureLoginDestination('/dashboard')).toBe('/login?destination=%2Frecords%2Flist');
+    expect(destination.consumeLoginDestination()).toBe('/records/list');
   });
 
   it('validates legacy stored values before using them', () => {
@@ -83,7 +83,7 @@ describe('one per-tab return-location lifecycle', () => {
   });
 
   it('clears the return location for intentional logout', () => {
-    destination.captureLoginDestination('/edls/sheets');
+    destination.captureLoginDestination('/records/list');
     destination.clearLoginDestination();
     expect(destination.consumeLoginDestination()).toBe('/dashboard');
   });
@@ -93,8 +93,8 @@ describe('one per-tab return-location lifecycle', () => {
       get sessionStorage() { throw new Error('storage denied'); },
     });
     expect(destination.getLoginDestination()).toBeNull();
-    destination.applyLoginDestinationQuery('?destination=%2Fedls%2Fsheets');
-    expect(destination.consumeLoginDestination()).toBe('/edls/sheets');
+    destination.applyLoginDestinationQuery('?destination=%2Frecords%2Flist');
+    expect(destination.consumeLoginDestination()).toBe('/records/list');
     expect(destination.consumeLoginDestination()).toBe('/dashboard');
   });
 });

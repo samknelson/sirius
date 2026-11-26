@@ -2,17 +2,14 @@ import type { Comm, EdlsSheet } from "@shared/schema";
 import type { SnapshotWithProvenance } from "../../../../../../server/storage/system/snapshots";
 import type { SnapshotNode } from "@shared/snapshots";
 import { formatYmd, getTodayYmd, isValidYmd, isYmdBefore } from "@shared/utils/date";
-import {
-  EventType,
-  type EdlsSheetSavedPayload,
-} from "../../../../../../server/services/event-bus";
+import { EDLS_SHEET_SAVED, type EdlsSheetSavedPayload } from "../../../../../edls/server/events";
 import { absoluteUrl } from "../../../../../../server/utils/base-url";
 import { logger } from "../../../../../../server/logger";
 import { registerEventNotifier } from "../../../../../../server/plugins/event-notifier/registry";
 import { templatesSchemaBlock } from "../../../../../../server/plugins/event-notifier/template-schema";
-import { projectWorkerAssignments } from "../../../../../../server/services/edls-worker-assignment";
-import { renderWorkerAssignmentSms } from "@shared/edls-worker-assignment";
-import type { AssignmentForWorker } from "../../../../../../server/storage/edls/assignments";
+import { projectWorkerAssignments } from "../../../../../edls/server/services/edls-worker-assignment";
+import { renderWorkerAssignmentSms } from "../../../../../edls/shared/edls-worker-assignment";
+import type { AssignmentForWorker } from "../../../../../edls/server/storage/edls/assignments";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
@@ -264,7 +261,7 @@ async function resolveBaselineWorkerIds(
 
   const { storage } = await import("../../../../../../server/storage");
   const { decodeEdlsSheetSnapshot } = await import(
-    "../../../../../../server/modules/edls/snapshot-decode"
+    "../../../../../edls/server/modules/edls/snapshot-decode"
   );
 
   const changed = toMillis(sheet.changed);
@@ -376,7 +373,7 @@ async function resolveRemovedWorkers(
   // capture switched off there is no next baseline, so a stale one would
   // re-announce the same removal at every transition. Refuse to guess, and say
   // so — the alternative is a setting silently turning a feature off.
-  if (!(await isSnapshotCaptureActive(EventType.EDLS_SHEET_SAVED))) {
+  if (!(await isSnapshotCaptureActive(EDLS_SHEET_SAVED))) {
     logger.error(
       "EDLS worker SMS notifier cannot notify removed workers: snapshot capture for EDLS_SHEET_SAVED is disabled",
       {
@@ -449,7 +446,7 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
   order: 110,
   requiredComponent: "edls",
   requiredComponents: ["worker.aat"],
-  subscribedEvents: [EventType.EDLS_SHEET_SAVED],
+  subscribedEvents: [EDLS_SHEET_SAVED],
   supportedMedia: ["sms"],
   tokenTemplates: {
     roots: [{

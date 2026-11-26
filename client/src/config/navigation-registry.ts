@@ -184,16 +184,6 @@ export const configSections: NavSection[] = [
     ],
   },
   {
-    id: "edls",
-    title: "EDLS",
-    description: "Employer Day Labor Scheduler configuration",
-    icon: Calendar,
-    items: [
-      { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
-      bespokeOptionsNavItem({ path: "/config/edls/tasks", optionsType: "edls-task", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" }),
-    ],
-  },
-  {
     id: "btu",
     title: "BTU",
     description: "Boston Teachers Union configuration",

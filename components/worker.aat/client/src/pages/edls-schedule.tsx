@@ -11,7 +11,7 @@ import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
 import { useAuth } from "@/contexts/AuthContext";
 import { assignmentUpdateAge } from "@/lib/assignment-update-age";
 import { isValidTimeZone } from "@shared/utils/timezone";
-import { EDLS_REVIEW_NOTICE, workerAssignmentFields } from "@shared/edls-worker-assignment";
+import { EDLS_REVIEW_NOTICE, workerAssignmentFields } from "../../../../edls/shared/edls-worker-assignment";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;

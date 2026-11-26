@@ -173,7 +173,7 @@ async function deactivateMissingWorkers(
   runUnit: SyncUnit,
 ): Promise<void> {
   if (ctx.syncedMsIds.length === 0) return;
-  const holders = await storage.workerMsh.getWorkerIdsWithCurrentMs(ctx.syncedMsIds, true);
+  const holders = await storage.workerEdls.getActiveWorkersWithCurrentMs(ctx.syncedMsIds);
   const candidateIds = new Set(
     holders.map((h) => h.workerId).filter((id) => !ctx.seenWorkerIds.has(id)),
   );

@@ -73,6 +73,7 @@ import ts from 'typescript';
 import { is, Table, View } from 'drizzle-orm';
 import { STORAGE_ENCAPSULATION_BASELINE } from './storage-encapsulation-baseline';
 import { runSelfTest } from './storage-encapsulation-fixtures';
+import { readComponentDeveloperChecks } from '../optional-components';
 
 export type Pattern =
   | 'db-import'
@@ -102,6 +103,7 @@ const ALLOWED_FILES = [
 // needsReadOnlyDb declaration requirement below, and — like a flagged plugin —
 // may build read queries with drizzle-orm and schema tables.
 const READONLY_FLAG_EXEMPT_FILES = [
+  ...readComponentDeveloperChecks().readOnlyFlagExemptFiles,
   // Trust-eligibility executor: shared infra that loads exemptions across all
   // eligibility plugins; it is not itself a plugin with a metadata flag.
   'server/plugins/trust/eligibility/executor.ts',
@@ -124,7 +126,6 @@ const READONLY_FLAG_EXEMPT_FILES = [
   'server/plugins/wizards/engine/types/report_gbhet_legal_compliance.ts',
   'server/plugins/wizards/engine/types/report_employer_users.ts',
   'server/plugins/wizards/engine/types/report_btu_workers_invalid_cardcheck.ts',
-  'server/plugins/wizards/engine/types/report_edls_scheduled_too_soon.ts',
   'server/plugins/wizards/engine/types/btu_dues_allocation.ts',
   'server/plugins/wizards/engine/types/btu_cardcheck_import.ts',
 ];
@@ -315,7 +316,7 @@ export async function checkSource(relPath: string, content: string): Promise<Fil
 
   const isPlugin = normalized.startsWith('server/plugins/');
   const readOnlyOptIn =
-    isPlugin && (content.includes('needsReadOnlyDb') || READONLY_FLAG_EXEMPT_FILES.includes(normalized));
+    isPlugin && (content.includes('needsReadOnlyDb') || READONLY_FLAG_EXEMPT_FILES.includes(relPath));
 
   const push = (line: number, pattern: Pattern, detail: string) =>
     violations.push({ file: relPath, line, pattern, detail });
@@ -520,7 +521,7 @@ async function main() {
     if (violations.length) byFile.set(violations[0].file, violations);
   }
 
-  const baseline = STORAGE_ENCAPSULATION_BASELINE;
+  const baseline = { ...STORAGE_ENCAPSULATION_BASELINE, ...readComponentDeveloperChecks().storageEncapsulationBaseline };
   const reported: Violation[] = [];
   for (const [file, violations] of byFile) {
     const baselined = Object.prototype.hasOwnProperty.call(baseline, file);

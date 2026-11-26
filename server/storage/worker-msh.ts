@@ -2,7 +2,6 @@ import { createNoopValidator } from './utils/validation';
 import { getClient, onAfterCommit } from './transaction-context';
 import {
   workerMsh,
-  workerEdls,
   optionsWorkerMs,
   optionsIndustry,
   type WorkerMsh,
@@ -14,6 +13,17 @@ import { logger } from "../logger";
 import { parseYmdParts } from '@shared/utils/date';
 
 export const validate = createNoopValidator();
+
+/** Authoritative latest status per worker/industry; reusable by scoped SQL queries. */
+export function currentMemberStatusesQuery() {
+  return getClient()
+    .selectDistinctOn([workerMsh.workerId, workerMsh.industryId], {
+      workerId: workerMsh.workerId, msId: workerMsh.msId,
+    })
+    .from(workerMsh)
+    .orderBy(workerMsh.workerId, workerMsh.industryId, desc(workerMsh.date), desc(workerMsh.id))
+    .as("latest");
+}
 
 export interface WorkerMshStorage {
   getWorkerMsh(workerId: string): Promise<any[]>;
@@ -29,7 +39,7 @@ export interface WorkerMshStorage {
    * given status option IDs. Authoritative (reads worker_msh directly, not
    * the denorm table). Returns one row per (worker, matching status).
    */
-  getWorkerIdsWithCurrentMs(msIds: string[], activeEdlsOnly?: boolean): Promise<Array<{ workerId: string; msId: string }>>;
+  getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>>;
   createWorkerMsh(data: { workerId: string; date: string; msId: string; industryId: string; data?: any }): Promise<WorkerMsh>;
   updateWorkerMsh(id: string, data: { date?: string; msId?: string; industryId?: string; data?: any }): Promise<WorkerMsh | undefined>;
   deleteWorkerMsh(id: string): Promise<boolean>;
@@ -92,30 +102,10 @@ export function createWorkerMshStorage(
       return Array.from(latestByIndustry.values());
     },
 
-    async getWorkerIdsWithCurrentMs(msIds: string[], activeEdlsOnly = false): Promise<Array<{ workerId: string; msId: string }>> {
+    async getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>> {
       if (msIds.length === 0) return [];
       const client = getClient();
-      const latest = client
-        .selectDistinctOn([workerMsh.workerId, workerMsh.industryId], {
-          workerId: workerMsh.workerId,
-          msId: workerMsh.msId,
-        })
-        .from(workerMsh)
-        // Same tie-breaking as getCurrentMemberStatusIds: date decides, and
-        // the unique (worker_id, industry_id, date) constraint guarantees it
-        // can decide on its own.
-        .orderBy(
-          workerMsh.workerId,
-          workerMsh.industryId,
-          desc(workerMsh.date),
-          desc(workerMsh.id),
-        )
-        .as("latest");
-      if (activeEdlsOnly) return client
-        .select({ workerId: latest.workerId, msId: latest.msId })
-        .from(latest)
-        .innerJoin(workerEdls, and(eq(workerEdls.workerId, latest.workerId), eq(workerEdls.active, true)))
-        .where(inArray(latest.msId, msIds));
+      const latest = currentMemberStatusesQuery();
       return client
         .select({ workerId: latest.workerId, msId: latest.msId })
         .from(latest)

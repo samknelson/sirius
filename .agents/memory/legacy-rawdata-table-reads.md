@@ -38,7 +38,7 @@ write cannot half-land either.
 
 Drupal keeps each field in its own `field_data_field_*` table, and on an old
 site those names record the feature the field was FIRST built for, not the one
-it now serves — several EDLS sheet fields are named for grievances. Guessing
+it now serves — fields can retain another feature's historic names. Guessing
 names silently under-collects: a missing table looks exactly like a field
 nobody filled in.
 

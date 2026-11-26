@@ -13,7 +13,7 @@
  * Entity types that can have entity-level access policies
  */
 export interface ComponentPolicyEntityTypes {}
-export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig' | 'dispatch' | 'edls_sheet' | 'facility' | 'comm' | keyof ComponentPolicyEntityTypes;
+export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig' | 'dispatch' | 'facility' | 'comm' | keyof ComponentPolicyEntityTypes;
 
 /**
  * Attribute predicate operator

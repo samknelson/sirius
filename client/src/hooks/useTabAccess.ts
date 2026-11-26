@@ -417,17 +417,6 @@ export function useUserTabAccess(userId: string | undefined, enabled = true) {
 }
 
 /**
- * Hook specifically for EDLS sheet entity tabs
- */
-export function useEdlsSheetTabAccess(sheetId: string | undefined, enabled = true) {
-  return useTabAccess({ 
-    entityType: 'edls_sheet', 
-    entityId: sheetId, 
-    enabled 
-  });
-}
-
-/**
  * Hook specifically for web service client entity tabs
  */
 export function useWsClientTabAccess(clientId: string | undefined, enabled = true) {

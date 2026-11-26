@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { UserCheck } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { CrewExtensionProps } from "../../../../client/src/lib/component-contributions";
+import type { CrewExtensionProps } from "../../../edls/client/src/crew-extension";
 
 function useCrewLeads() {
   return useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/sitespecific/freeman/crewleads"] }).data ?? [];

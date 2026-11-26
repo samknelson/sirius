@@ -33,7 +33,6 @@ const recordGoAccessRequirements: Record<string, RecordGoAccessRequirement> = {
   dispatch_job_group: { kind: "policy", id: "authenticated", componentId: "dispatch.job_group" },
   dispatch_jobs: { kind: "policy", id: "admin", componentId: "dispatch" },
   dispatches: { kind: "policy", id: "worker.view", componentId: "dispatch" },
-  edls_sheets: { kind: "policy", id: "edls.sheet.view", componentId: "edls" },
   employer_contacts: { kind: "policy", id: "employer.manage" },
   employers: { kind: "policy", id: "employer.view" },
   entity_notes: { kind: "permission", id: "staff" },

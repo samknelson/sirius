@@ -3,7 +3,6 @@ import { logger } from "../logger";
 
 import type {
   DispatchJob,
-  EdlsSheet,
   WorkerDispatchStatus,
 } from "@shared/schema";
 
@@ -77,7 +76,6 @@ export enum EventType {
   WORKER_WS_CHANGED = "worker.ws.changed",
   WORKER_WSH_SAVED = "worker.wsh.saved",
   WORKER_MSH_SAVED = "worker.msh.saved",
-  EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
   // Wall-clock heartbeats from the tick emitter cron; see CronTickPayload.
@@ -277,26 +275,6 @@ export interface WorkerMshSavedPayload {
 
 
 /**
- * Emitted after an EDLS sheet create or update commits. Carries the sheet's
- * status before and after the write so a notifier can detect a genuine
- * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
- * at its initial status), and equals the pre-update status on update. The
- * whole sheet row rides on the payload so consumers can describe it without
- * re-querying a row that may have changed since.
- *
- * The save's history entry is NOT carried here and is not a listener's job: it
- * is written inside the save's own transaction, so a consumer of this event
- * can rely on the history of every earlier save already being committed. See
- * `captureEntitySnapshot`.
- */
-export interface EdlsSheetSavedPayload {
-  sheetId: string;
-  previousStatus: string | null;
-  newStatus: string;
-  sheet: EdlsSheet;
-}
-
-/**
  * Per-worker scan-result event, emitted after one worker's WMB scan queue job
  * result is recorded (successfully). Carries the per-benefit actions
  * (including per-plugin eligibility results) so listeners — e.g. the
@@ -481,7 +459,6 @@ export interface EventPayloadMap extends ComponentEventPayloadMap {
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;
   [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
-  [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
   [EventType.CRON_TICK_10M]: CronTickPayload;

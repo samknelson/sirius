@@ -130,5 +130,4 @@ export function initializeQuicksearchPluginSystem(): void {
 
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/worker";
-import "./plugins/edls-sheet";
 import "./plugins/go";

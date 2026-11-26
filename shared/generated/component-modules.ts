@@ -3,6 +3,7 @@ export * from "./../../components/contract.chat/shared/types";
 export * from "./../../components/dispatch.asi/shared/access-policies/worker/dispatch/asi";
 export * from "./../../components/dispatch.dnc/shared/access-policies/worker/dispatch/dnc/view";
 export * from "./../../components/dispatch.dnc/shared/access-policies/worker/dispatch/dnc/edit";
+export * from "./../../components/edls/shared/schema/edls/schema";
 export * from "./../../components/sitespecific.freeman/shared/freemanCrewleadsTransfer";
 export * from "./../../components/sitespecific.t631.interviews/shared/access-policies/sitespecific/t631/job-interviews";
 export {};

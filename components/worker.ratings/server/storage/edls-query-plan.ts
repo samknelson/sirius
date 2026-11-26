@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { alterHooks } from "../../../../shared/alter";
-import { edlsWorkerQueryPlanHook } from "../../../../server/storage/edls/worker-query-plan";
+import { edlsWorkerQueryPlanHook } from "../../../edls/server/storage/edls/worker-query-plan";
 
 export function registerEdlsRatingQueryPlan() {
   alterHooks.register(edlsWorkerQueryPlanHook, {

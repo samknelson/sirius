@@ -17,8 +17,8 @@ other three are silent failures if skipped.
   recursive, so a child id resolves, but an id that matches nothing fails
   closed with a "tab not found" screen.
 - Child ids must be unique across the WHOLE entity tree, not just their
-  parent's siblings — prefix them with the parent (`edls-status`,
-  `edls-assignments`), mirroring the dispatch tabs.
+  parent's siblings — prefix them with the parent (`profile-status`,
+  `profile-records`), mirroring the dispatch tabs.
 
 **Why:** access is resolved per tab id, so a child that repeats the parent's
 policy/component keeps exactly the audience the single tab had; anything else

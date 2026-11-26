@@ -1,5 +1,6 @@
 {
   "definition": "shared/component.ts",
+  "developerChecks": "developer-checks.json",
   "client": "client/src/contributions.tsx",
   "contributions": "shared/contributions.ts",
   "server": [

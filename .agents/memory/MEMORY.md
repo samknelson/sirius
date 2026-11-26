@@ -1,8 +1,6 @@
-- [EDLS sheet list layout](edls-sheet-list-layout.md) — preserve the table at every width; wrap text and controls rather than switching to stacked cards.
+- [Component-owned guidance](component-owned-guidance.md) — feature-specific decisions move with their removable owner; read its local memory before editing.
 - [Contract Chat direction](contract-chat-direction.md) — thin vendor-neutral wrapper for contract-specific chat; Foray is the first provider, not the only intended one.
-- [Supervisor sheet management](edls-supervisor-management.md) — use the existing Manage tab with action-specific permissions, not a separate Details button.
 - [Build tool peer resolution](build-tool-peer-resolution.md) — coordinated peer upgrades, stale lockfile conflicts, and clean-install verification during package security-block recovery.
-- [EDLS layoff feed terminology](edls-layoff-feed.md) — “layoff” sheet requests mean reserved, not the dispatch assignment status.
 - [Environment configuration](environment-configuration-index.md) — override precedence, PUBLIC_URL, registry, shared UI and reload rules; owner requires ALL registered variables remain overridable.
 - [Entity metadata eligibility](entity-metadata-eligibility.md) — record history is for directly maintained records; central policy rejects process families at writes, reads, registry, and cleanup.
 - [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
@@ -81,7 +79,6 @@
 - [Branch-scoped CI/deploy dirs](branch-scoped-ci-files.md) — .github/deploy are per-branch, never on main; task agents silently delete them; gitignore can't untrack, `git add` no-ops; use `git checkout <branch> -- paths` / `git rm --cached`.
 - [Deploy env var sources](deploy-env-var-sources.md) — ECS container env comes ONLY from GitHub `APP_*` vars/secrets; the repo `deploy/env.<env>.json` source is referenced as if it works but is unbuilt (silent no-op).
 - [Per-recipient notifier messages](notifier-per-recipient-message.md) — recipient roots/variants need isolated caches and resolved send identities; preview never mints links; pre-filter SMS opt-in.
-- [EDLS worker message ownership](edls-worker-message-ownership.md) — user chose separate Template Studio messages for updates and removals; removals link to the schedule without an accept/decline prompt.
 - [Notifier comm writeback](notifier-comm-writeback.md) — senders own comm creation; onCommCreated is the only way a plugin learns its message id; fires on failures too; order single-link writes by sent-time, not write order.
 - Dialog/modal gotchas — [scroll lock vs portaled dropdowns](dialog-scroll-lock-portal-wheel.md) (stop wheel/touchmove on the list, not `<Popover modal>`) + [seeding runs in the render phase](modal-render-phase-seeding.md) (useModalSeed; an effect on `open` lands too late).
 - [Plugin config public addressing](plugin-config-public-addressing.md) — config ids are per-database, so a public URL needs a manifest-declared alias; resolve id-then-alias, refuse ambiguity at call time in the ONE shared refusal.
@@ -95,7 +92,6 @@
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Vendor put on a shared framework by its registrar](framework-wrapping-at-registration.md) — strip the runnable half into a private map at registration (lint the accessor's importers); the lexical per-file lint goes blind, so check "only handlers reach the vendor" BACKWARDS.
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
-- [EDLS schedule answer authority](edls-schedule-answer-authority.md) — an AAT bearer link intentionally authorizes its worker’s final EDLS accept/decline response; legacy schedule links remain read-only.
 - [Permission registry vs role tables](permission-registry-vs-role-tables.md) — getRolePermissions drops keys an uninitialized registry doesn't know (empty pre-app-init); ask getRolesWithPermission for authority questions.
 - [Break-glass admin from env](break-glass-admin-from-env.md) — LOCAL_AUTH_* is a per-boot reconciler (exists/active/admin/password); refusals must be decided BEFORE the first write, and env overrides mean in-app admins can set it too.
 - [Generated API doc addressing](generated-api-doc-addressing.md) — the address a document publishes must be the exact inverse of the request-time resolver (ids beat aliases, aliases aren't unique); keep the pair in one leaf.
@@ -145,7 +141,6 @@
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
 - [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
 - [Permission-dependent public response caching](permission-dependent-public-response-caching.md) — viewer-specific enrichment needs private/no-store + Vary: Cookie and a viewer-scoped browser query key.
-- [Retained assignment generations](retained-assignment-generations.md) — a durable assignment ID can represent successive fillings, even in the same crew; stale actions need the filling's generation.
 - [Node BlockList IPv4 mapping](node-blocklist-ipv4-mapping.md) — an IPv6 `::ffff:0:0/96` block also rejects ordinary IPv4 addresses in Node; don't combine it with a public-IPv4 allow check.
 - [Local WS test in split roles](local-ws-test-split-roles.md) — api-user must reach its own dispatcher for admin tests, but ordinary /api/ws traffic must remain api-ws-owned.
 - [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.

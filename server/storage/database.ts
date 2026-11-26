@@ -144,11 +144,6 @@ import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig }
 import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
 import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
 import { type TrustBenefitEligibilityExemptionsStorage, createTrustBenefitEligibilityExemptionsStorage, trustBenefitEligibilityExemptionsLoggingConfig } from "./trust/eligibility-exemptions";
-import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
-import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
-import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
-import { type WorkerEdlsStorage, createWorkerEdlsStorage, workerEdlsLoggingConfig } from "./edls/workers";
-import { type EdlsWorkerDirectoryStorage, createEdlsWorkerDirectoryStorage } from "./edls/worker-directory";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./dispatch/worker-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
@@ -239,11 +234,6 @@ export interface IStorage extends ComponentStorage {
   entityNotes: EntityNotesStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
   trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
-  edlsSheets: EdlsSheetsStorage;
-  edlsCrews: EdlsCrewsStorage;
-  edlsAssignments: EdlsAssignmentsStorage;
-  workerEdls: WorkerEdlsStorage;
-  edlsWorkerDirectory: EdlsWorkerDirectoryStorage;
   snapshots: SnapshotsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
@@ -344,11 +334,6 @@ export class DatabaseStorage implements IStorage {
   entityNotes: EntityNotesStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
   trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
-  edlsSheets: EdlsSheetsStorage;
-  edlsCrews: EdlsCrewsStorage;
-  edlsAssignments: EdlsAssignmentsStorage;
-  workerEdls: WorkerEdlsStorage;
-  edlsWorkerDirectory: EdlsWorkerDirectoryStorage;
   snapshots: SnapshotsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
@@ -574,11 +559,6 @@ export class DatabaseStorage implements IStorage {
     this.entityNotes = withStorageLogging(createEntityNotesStorage(), entityNotesLoggingConfig);
     this.workerTrustElections = withStorageLogging(createWorkerTrustElectionsStorage(), workerTrustElectionsLoggingConfig);
     this.trustBenefitEligibilityExemptions = withStorageLogging(createTrustBenefitEligibilityExemptionsStorage(), trustBenefitEligibilityExemptionsLoggingConfig);
-    this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
-    this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
-    this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
-    this.workerEdls = withStorageLogging(createWorkerEdlsStorage(), workerEdlsLoggingConfig);
-    this.edlsWorkerDirectory = createEdlsWorkerDirectoryStorage();
     this.snapshots = withStorageLogging(createSnapshotsStorage(), snapshotsLoggingConfig);
     this.authIdentities = withStorageLogging(createAuthIdentitiesStorage(), authIdentitiesLoggingConfig);
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();

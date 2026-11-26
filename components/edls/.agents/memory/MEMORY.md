@@ -1,0 +1,6 @@
+- [Sheet list layout](edls-sheet-list-layout.md) — retain the table at every viewport width.
+- [Supervisor management](edls-supervisor-management.md) — use the Manage tab with action-specific permissions.
+- [Layoff feed terminology](edls-layoff-feed.md) — layoff sheet requests mean reserved.
+- [Worker message ownership](edls-worker-message-ownership.md) — separate update/removal authoring; removals have no answer prompt.
+- [Schedule answer authority](edls-schedule-answer-authority.md) — bearer links authorize final answers; legacy links remain read-only.
+- [Retained assignment generations](retained-assignment-generations.md) — writes must match the filling's generation, not just its durable ID.

@@ -33,8 +33,15 @@ import { invalidatePluginConfigCache } from "../../server/plugins/_core/plugin-c
 import { getPluginKind, isSingletonPluginType } from "../../server/plugins/_core/kinds";
 import { getPluginConfigAdapter } from "../../server/plugins/_core/config-adapter";
 import { registerPluginsConfigRoutes } from "../../server/modules/system/plugins-config";
+import { registerFloodPlugin } from "../../server/plugins/system/flood/registry";
 
 initializeFloodPluginSystem();
+registerFloodPlugin({
+  id: "fixture-resource", name: "Fixture resource", description: "Component limiter fixture",
+  requiredComponent: "fixture-component", singleton: true,
+  defaults: { threshold: 30, windowSeconds: 900 },
+  getIdentifier: context => `${context.resourceId}|${context.ip}`,
+});
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.admin = true;
@@ -50,7 +57,7 @@ const config = (enabled: boolean, data = { threshold: 2, windowSeconds: 60 }) =>
 describe("singleton flood plugins", () => {
   it("registers every legacy identity with singleton metadata, gates and defaults", async () => {
     expect(floodPluginRegistry.listIds().sort()).toEqual([
-      "bookmark", "edls-schedule-answer", "local-login", "local-password-change",
+      "bookmark", "fixture-resource", "local-login", "local-password-change",
       "notification-email", "notification-inapp", "notification-postal", "notification-sms",
       "quicksearch",
       "webclient-vendor-operation",
@@ -68,7 +75,7 @@ describe("singleton flood plugins", () => {
     const kind = getPluginKind("flood")!;
     expect(kind.requiredPolicy).toBe("admin");
     expect(kind.requiredComponent).toBeUndefined();
-    expect(floodPluginRegistry.get("edls-schedule-answer")!.requiredComponent).toBe("edls");
+    expect(floodPluginRegistry.get("fixture-resource")!.requiredComponent).toBe("fixture-component");
     expect(floodPluginRegistry.get("local-login")!.requiredComponent).toBeUndefined();
     expect((await kind.validateConfig!({} as never, { threshold: 0, windowSeconds: 1 })).valid).toBe(false);
     expect((await kind.validateConfig!({} as never, { threshold: 1.5, windowSeconds: 1 })).valid).toBe(false);
@@ -96,7 +103,7 @@ describe("singleton flood plugins", () => {
   it("bypasses component-off plugins before reading config or validating context", async () => {
     mocks.component.mockResolvedValue(false);
     mocks.search.mockRejectedValue(new Error("Must not read configs"));
-    for (const id of ["edls-schedule-answer"]) {
+    for (const id of ["fixture-resource"]) {
       expect(await checkFlood(id, {})).toEqual({ allowed: true, skipped: true, reason: "component-disabled" });
       await recordFloodEvent(id, {});
       await enforceFloodLimit(id, {});
@@ -146,7 +153,7 @@ describe("singleton flood plugins", () => {
     mocks.component.mockResolvedValue(false);
     const names = await resolveFloodIdentifierNames([
       { event: "local-login", identifier: "not-an-email", pluginConfigurationId: "config-local-login" },
-      { event: "edls-schedule-answer", identifier: "s|ip", pluginConfigurationId: "config-edls" },
+      { event: "fixture-resource", identifier: "s|ip", pluginConfigurationId: "config-resource" },
       { event: "retired", identifier: "raw", pluginConfigurationId: "retired-config" },
     ]);
     expect(names.size).toBe(0);
@@ -154,9 +161,9 @@ describe("singleton flood plugins", () => {
   });
 
   it("filters component-owned plugins from the real manifest, not core limiters", async () => {
-    mocks.component.mockImplementation(async (id: string) => id !== "edls");
+    mocks.component.mockImplementation(async (id: string) => id !== "fixture-component");
     const visible = await floodPluginRegistry.listVisibleTo({} as never);
-    expect(visible.some(p => p.id === "edls-schedule-answer")).toBe(false);
+    expect(visible.some(p => p.id === "fixture-resource")).toBe(false);
     expect(visible.some(p => p.id === "local-login")).toBe(true);
   });
 
@@ -169,7 +176,7 @@ describe("singleton flood plugins", () => {
     const req = { params: { kind: "flood", id: "fixture" }, body: { enabled: false } };
     const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn() });
     mocks.get.mockResolvedValue({ config: {
-      id: "fixture", pluginKind: "flood", pluginId: "edls-schedule-answer",
+      id: "fixture", pluginKind: "flood", pluginId: "fixture-resource",
       enabled: true, data: { threshold: 30, windowSeconds: 900 },
     } });
     mocks.admin = false;

@@ -41,10 +41,10 @@ vi.mock("../../../../server/storage", () => ({
   storage: {
     variables: { getByName: async () => state.syncStatus ? { value: ["ms"] } : null },
     workerMsh: {
-      getWorkerIdsWithCurrentMs: (...args: unknown[]) => state.candidates(...args),
       getCurrentMemberStatusIds: async () => state.currentStatus ? ["ms"] : [],
     },
     workerEdls: {
+      getActiveWorkersWithCurrentMs: (...args: unknown[]) => state.candidates(...args),
       getByWorker: async () => ({ active: true }),
       setActive: state.deactivate,
     },
@@ -154,7 +154,7 @@ describe("T631 source checks", () => {
       state.currentStatus = false;
       await work();
     });
-    expect(state.candidates).toHaveBeenCalledWith(["ms"], true);
+    expect(state.candidates).toHaveBeenCalledWith(["ms"]);
     expect(state.deactivate).not.toHaveBeenCalled();
     expect(result.edlsDeactivated).toBe(0);
   });

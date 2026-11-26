@@ -67,11 +67,40 @@ inside that directory. Unknown fields are an error.
 | `storage` | Module exporting `createStorage`; its returned namespaces extend host storage |
 | `metadata` | Module exporting `metadataContexts` for record history (a context may carry a `recordGo` access requirement) and optionally `excludedTables` — tables refused record history; holds while the component is disabled |
 | `contributions` | Shared tabs, menus, operation aliases and deployment branches (`ComponentContributions`) |
-| `client` | Browser routes, config navigation, lifecycle observers, page `slots`, EDLS crew UI and scoped dispatch UI contributions (`ComponentBrowserContributions`) |
+| `client` | Browser routes, config navigation, lifecycle observers, named page `slots`, snapshot renderers and scoped dispatch UI contributions (`ComponentBrowserContributions`) |
 | `earlyDocument` | Self-contained classic JavaScript files inlined first in the document head, before resources |
 | `initializers` | Browser modules exporting `initialize()`, called before React mounts |
 | `documentPolicies` | Exact public document paths with `referrerPolicy: "no-referrer"` and `cacheControl: "private, no-store"`, enforced in development and static-only production services |
 | `maintenanceGuards` | Vendor handler declarations audited by the maintenance-guards lint rule |
+
+Component manifests may also name `developerChecks`, a local JSON declaration of
+`provenanceColumns`, `storageEncapsulationBaseline` and `readOnlyFlagExemptFiles`.
+File keys are relative to the declaring component and must resolve to existing
+files inside it. Existing stale-exception and encapsulation checks still apply.
+Declarations are discovered without importing optional runtime code.
+
+Browser dashboard and wizard implementations use the existing `pluginViews`
+browser contributions (`dashboard`, `wizardSteps`, `wizardLaunches`), with the same
+`namespace:Export` lookup keys as core implementations. Owners supply lazy
+components and select their named or default exports inside the lazy loader.
+Duplicate keys refuse registration, including collisions with core glob entries.
+Installation discovers contributions, while server manifests and route policies
+still decide availability. Do not eagerly import navigation-dependent route
+layouts while registering browser contributions. Enablement does not change
+discovery, and no core re-export is needed.
+
+Snapshot owners register capture adapters with `registerSnapshotCaptureAdapter`
+and decoder/access mappings with `registerSnapshotEntityType` in `startup.register`,
+before both registries close. Registration does not read tables. Capture is
+called inside the saving transaction, not by an after-commit listener; a declared
+component must be enabled before its adapter runs. Retrieval checks the live
+parent policy and snapshot membership before decoding historical payloads.
+Browser `snapshotRenderers` contributions use the same entity-type identifier.
+Deleting source removes discovery, not retained snapshots or database objects.
+
+Named browser slots include `worker.header.badges`, whose props contain
+`workerId`. Domain owners declare and type their own other slot names/props;
+the generic contribution library does not own domain-specific editor contracts.
 
 Mirror the host's `shared/`, `server/`, `client/`, and `scripts/` boundaries.
 Schema modules belong under `shared/schema/`; migrations under
@@ -279,7 +308,7 @@ list:
   T631 client and any declared transitive dependents. The client still owns its
   integration: its cron job, vendor TOS operation and local synchronizer refuse
   before remote calls or writes if TOS is disabled. Public arrival requires an
-  AAT schedule link; it refuses unavailable AAT/EDLS before remote authentication
+  AAT schedule link; it refuses unavailable token or scheduling capabilities before remote authentication
   and rechecks availability before credential issuance.
 - BTU building-representative imports and attendance charges require both BTU
   and stewardship at execution and in their offers. These are optional
@@ -299,7 +328,7 @@ Awards remain denorm-plugin-owned. Certification synchronization uses the
 singleton skills storage and the caller's transaction, and preserves manual
 skills outside the certification-managed set (skills referenced by any
 certification option remain certification-managed, as before). AAT owns bearer
-schedule presentation and delivery producers; EDLS
+schedule presentation and delivery producers; the scheduling owner
 retains transactional assignment answers and generation checks.
 
 When verifying removal, derive reverse dependency closures from all installed

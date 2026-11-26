@@ -12,7 +12,6 @@ export function ComponentWrappers({ name, props, children }: {
       return <Suspense key={slot.component} fallback={content}><Provider {...props}>{content}</Provider></Suspense>;
     }, children);
 }
-import type { InsertEdlsCrew } from "@shared/schema";
 import type { NavItem, NavSection } from "../config/navigation-registry";
 import { componentBrowserContributions } from "../generated/component-contributions";
 import { useAuth } from "../contexts/AuthContext";
@@ -21,11 +20,6 @@ import type { DashboardPluginProps } from "../plugins/dashboard/registry";
 import type { WizardStepComponentProps } from "../components/wizards/framework/types";
 import type { WizardLaunchComponentProps } from "../plugins/wizards/registry";
 
-export interface CrewExtensionProps {
-  crew: { data?: unknown; id?: string };
-  index: number;
-  onChange?: (data: InsertEdlsCrew["data"]) => void;
-}
 export interface ComponentBrowserContributions {
   pluginViews?: {
     dashboard?: Record<string, ComponentType<DashboardPluginProps>>;
@@ -44,14 +38,8 @@ export interface ComponentBrowserContributions {
    * `component` is enabled; lazy-load the section.
    */
   slots?: { slot: string; component: string; section: ComponentType<any> }[];
-  crewUi?: { component: string; editor: ComponentType<CrewExtensionProps>; detail: ComponentType<CrewExtensionProps> }[];
-}
-export function CrewExtensions(props: CrewExtensionProps) {
-  const { hasComponent } = useAuth();
-  return <>{componentBrowserContributions.flatMap(p => p.crewUi ?? []).filter(p => hasComponent(p.component)).map((p, i) => {
-    const View = props.onChange ? p.editor : p.detail;
-    return <View key={i} {...props} />;
-  })}</>;
+  /** Snapshot renderers keyed by the persisted entity type. */
+  snapshotRenderers?: { entityType: string; renderer: ComponentType<any> }[];
 }
 
 /** Renders every enabled component's section for a named page slot, in contribution order. */

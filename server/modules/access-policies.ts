@@ -15,9 +15,34 @@ import {
 import { storage } from '../storage';
 import { isEntityContextAvailable } from './entity-contexts';
 import { logger } from '../logger';
-import { edlsSheetStatusEnum } from '@shared/schema';
 import { alterHooks } from '@shared/alter';
 import { tabEntityPolicyHook, tabVisibilityHook } from '@shared/tab-visibility';
+
+type PolicyInputValue = string | number | boolean | null;
+export const policyRequestInputsHook = alterHooks.declare<
+  Record<string, PolicyInputValue>,
+  { readonly policyId: string; readonly inputs: Readonly<Record<string, unknown>> }
+>({
+  id: "access.policy-request-inputs",
+  description: "Validate additional inputs to the policy evaluation endpoint",
+  semantics: "Claim only validated scalar query inputs by their supplied names. Unclaimed inputs are refused; identity and server records cannot be replaced.",
+});
+
+/** Endpoint-owned boundary: extension inputs can never replace a loaded record. */
+export async function validatePolicyRequestInputs(
+  policyId: string,
+  inputs: Readonly<Record<string, unknown>>,
+): Promise<Record<string, PolicyInputValue> | null> {
+  const values = await alterHooks.run(policyRequestInputsHook, {}, { policyId, inputs });
+  const keys = Object.keys(inputs);
+  if (keys.some(key => !Object.hasOwn(values, key))) return null;
+  for (const [key, value] of Object.entries(values)) {
+    if (!Object.hasOwn(inputs, key) || ["__proto__", "prototype", "constructor", "entityId", "entityType", "user", "storage"].includes(key)) return null;
+    if (value !== null && typeof value !== "string" && typeof value !== "boolean" &&
+      !(typeof value === "number" && Number.isFinite(value))) return null;
+  }
+  return values;
+}
 
 /**
  * Check if a tab's component requirement is met
@@ -109,17 +134,13 @@ export function registerAccessPolicyRoutes(app: Express) {
   app.get("/api/access/policies/:policyId", requireAuth, async (req, res) => {
     try {
       const { policyId } = req.params;
-      const { entityId, entityType, targetStatus } = req.query;
-
-      // Only this policy accepts a target status; never accept arbitrary
-      // client-supplied entity data in the generic policy checker.
-      if (targetStatus !== undefined && (
-        policyId !== 'edls.sheet.set_status'
-        || typeof targetStatus !== 'string'
-        || !edlsSheetStatusEnum.some(status => status === targetStatus)
-      )) {
-        return res.status(400).json({ message: 'Invalid target status for policy' });
+      const { entityId, entityType, ...inputs } = req.query;
+      if ((entityId !== undefined && typeof entityId !== "string") ||
+          (entityType !== undefined && typeof entityType !== "string")) {
+        return res.status(400).json({ message: "Invalid entity identity" });
       }
+      const validatedInputs = await validatePolicyRequestInputs(policyId, inputs);
+      if (!validatedInputs) return res.status(400).json({ message: "Invalid or unsupported policy input" });
       
       // Get the policy by ID - check both declarative and modular registries
       let policy = accessPolicyRegistry.get(policyId);
@@ -168,9 +189,10 @@ export function registerAccessPolicyRoutes(app: Express) {
         }
       }
 
-      if (policyId === 'edls.sheet.set_status' && typeof targetStatus === 'string') {
-        entityData = { targetStatus };
+      if (Object.keys(validatedInputs).some(key => entityData && Object.hasOwn(entityData, key))) {
+        return res.status(400).json({ message: "Policy input conflicts with server context" });
       }
+      if (Object.keys(validatedInputs).length) entityData = { ...entityData, ...validatedInputs };
       
       // Build context from request
       const context = await buildContext(req);
@@ -285,7 +307,6 @@ export function registerAccessPolicyRoutes(app: Express) {
         trust_election: 'staff',
         comm: 'comm.view',
         contract: 'staff',
-        edls_sheet: 'edls.sheet.view',
         business_calendar: 'admin',
         options: 'admin',
         ws: 'admin',

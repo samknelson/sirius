@@ -4,7 +4,6 @@ import { componentStartups } from "./generated/component-startups";
 // imports them. The route module invoking this hook loads later in boot.
 import "@shared/tab-visibility";
 import "./auth/sign-in-events";
-import "./storage/edls/worker-query-plan";
 import "./services/record-go";
 import "./services/trust-relationships";
 import "./services/participant-worker-facts";
@@ -38,7 +37,11 @@ import { createBrowserRequestProtection } from "./middleware/browser-request-pro
 import { alterHooks } from "@shared/alter";
 import { registerAlterCatalog } from "@shared/alter/catalog";
 import { getComponentById } from "@shared/components";
-import { registerEdlsCommViewAlter } from "./services/edls/comm-view-alter";
+import { closeSnapshotCaptureRegistration } from "./services/snapshots/capture";
+// Declare endpoint-owned hooks before closure even when no installed component
+// imports their host. Route registration itself remains on the normal lazy path.
+import "./modules/access-policies";
+import { closeSnapshotEntityRegistration } from "./modules/snapshots";
 import { wireCommViewAccess } from "./services/comm/view-access";
 import { setMetadataComponentGate } from "./storage/entity-metadata-component-gate";
 
@@ -283,7 +286,8 @@ export async function bootstrapApp(
   );
   logger.info("Access control system initialized", { source: "startup" });
   wireCommViewAccess();
-  registerEdlsCommViewAlter();
+  closeSnapshotCaptureRegistration();
+  closeSnapshotEntityRegistration();
   alterHooks.close({
     isKnown: id => getComponentById(id) !== undefined,
     isEnabled: isComponentEnabled,
@@ -294,11 +298,6 @@ export async function bootstrapApp(
   registerEntityLoader('dispatch', async (id: string, injectedStorage: any) => {
     const dispatch = await injectedStorage.dispatches?.get?.(id);
     return dispatch || null;
-  });
-
-  registerEntityLoader('edls_sheet', async (id: string, injectedStorage: any) => {
-    const sheet = await injectedStorage.edlsSheets?.get?.(id);
-    return sheet || null;
   });
 
   // Initialize dispatch seniority reset

@@ -1,0 +1,8 @@
+{
+  "provenanceColumns": {
+    "edls_sheets.changed": "KEEP — change watermark read by exports and a notifier"
+  },
+  "readOnlyFlagExemptFiles": [
+    "server/plugins/wizards/engine/types/report_edls_scheduled_too_soon.ts"
+  ]
+}

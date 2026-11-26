@@ -1,0 +1,1407 @@
+import { 
+  createAsyncStorageValidator,
+  type ValidationError
+} from '../../../../../server/storage/utils/validation';
+import { isDeepStrictEqual } from "node:util";
+import { assignmentExplorerStorage, type AssignmentExplorerStorage } from "./assignment-explorer";
+import { 
+  edlsAssignments,
+  edlsCrews,
+  edlsSheets,
+  workers,
+  contacts,
+  users,
+  facilities,
+  employers,
+  dispatchJobGroups,
+  optionsDepartment,
+  optionsEdlsShowStatus,
+  optionsEdlsTasks,
+  optionsClassifications,
+  type EdlsAssignment, 
+  type InsertEdlsAssignment
+} from "@shared/schema";
+import { eq, and, sql, gt, gte, lte, asc, inArray, ne, isNull, getTableColumns } from "drizzle-orm";
+import { DomainValidationError } from "../../../../../server/storage/utils/validation";
+import { defineLoggingConfig } from "../../../../../server/storage/middleware/logging";
+import { getClient, runInTransaction } from "../../../../../server/storage/transaction-context";
+import { createUnifiedOptionsStorage } from "../../../../../server/storage/unified-options";
+import { createEdlsCrewsStorage } from "./crews";
+import { assignmentAnswerMetadataMode, assignmentUpdateMetadataMode } from "./assignment-provenance";
+import { isComponentEnabledSync } from "../../../../../server/services/component/cache";
+import { provenanceCreatedDate } from "../../../../../server/storage/system/entity-metadata-order";
+import type { SnapshotNode } from "@shared/snapshots";
+import {
+  getAvailableWorkersForSheetQuery,
+  getSummaryPopulationQuery,
+  type AvailableWorkerForSheet,
+  type EdlsSummaryPopulationWorker,
+} from "./available-workers-query";
+
+export type { AvailableWorkerForSheet } from "./available-workers-query";
+
+/**
+ * The dispatch_job_group table is owned by the `dispatch.job_group`
+ * component; it may not exist in the database when that component is
+ * disabled. All reads must gate their join on this check.
+ */
+function jobGroupsEnabled(): boolean {
+  return isComponentEnabledSync("dispatch.job_group");
+}
+
+export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
+  async (data, existing) => {
+    const errors: ValidationError[] = [];
+    const client = getClient();
+    
+    const crewId = data.crewId ?? existing?.crewId;
+    
+    if (crewId) {
+      const crewResult = await client.execute(
+        sql`SELECT id, worker_count FROM edls_crews WHERE id = ${crewId} FOR UPDATE`
+      );
+      const crew = crewResult.rows[0] as { id: string; worker_count: number } | undefined;
+      
+      if (!crew) {
+        errors.push({
+          field: 'crewId',
+          code: 'CREW_NOT_FOUND',
+          message: 'Crew not found'
+        });
+      } else {
+        const countResult = await client.execute(
+          sql`SELECT COUNT(*) as count FROM edls_assignments WHERE crew_id = ${crewId}`
+        );
+        const currentCount = Number((countResult.rows[0] as { count: string })?.count || 0);
+        
+        const isUpdate = !!existing;
+        const effectiveCount = isUpdate ? currentCount : currentCount + 1;
+        
+        if (effectiveCount > crew.worker_count) {
+          errors.push({
+            field: 'crewId',
+            code: 'CREW_FULL',
+            message: 'Crew is already full'
+          });
+        }
+      }
+    }
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    return { ok: true, value: {} };
+  }
+);
+
+export interface EdlsAssignmentWithWorker extends EdlsAssignment {
+  /**
+   * Status of the communication `commId` points at, or null when the
+   * assignment has no linked communication (or the reader does not join it).
+   */
+  commStatus?: string | null;
+  worker: {
+    id: string;
+    siriusId: number | null;
+    displayName: string | null;
+    given: string | null;
+    family: string | null;
+    memberStatusId: string | null;
+    memberStatusCode: string | null;
+    memberStatusName: string | null;
+  };
+}
+
+export interface WorkerAssignmentDetail {
+  sheetId: string;
+  sheetName: string;
+  sheetYmd: string;
+  sheetStatus: string;
+  crewId: string;
+  crewName: string;
+  startTime: string | null;
+  endTime: string | null;
+  supervisorName: string | null;
+}
+
+export interface WorkerAssignmentDetails {
+  workerId: string;
+  siriusId: number | null;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+  prior: WorkerAssignmentDetail | null;
+  current: WorkerAssignmentDetail | null;
+  next: WorkerAssignmentDetail | null;
+}
+
+export interface AssignmentForWorkerFilters {
+  sheetId?: string;
+  /** Strictly-after date bound (ymd > afterYmd), e.g. "next assignment after this sheet". */
+  afterYmd?: string;
+  startYmd?: string;
+  endYmd?: string;
+  supervisorId?: string;
+  facilityId?: string;
+  jobGroupId?: string;
+  /**
+   * Restrict to sheets in one of these statuses. When omitted the only
+   * exclusion is `trash` (the historic default every caller relies on).
+   * Callers that publish assignments outside the staff screens — e.g. the
+   * public worker schedule page — name the statuses they accept explicitly
+   * rather than post-filtering the rows.
+   */
+  sheetStatuses?: string[];
+}
+
+export interface AssignmentForWorker {
+  assignmentId: string;
+  generationId: string;
+  ymd: string;
+  sheetId: string;
+  sheetTitle: string;
+  sheetStatus: string;
+  crewId: string;
+  crewTitle: string;
+  startTime: string | null;
+  endTime: string | null;
+  /** Crew check-in location, as entered on the crew row. */
+  location: string | null;
+  supervisor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
+  facility: { id: string; name: string } | null;
+  jobGroup: { id: string; name: string } | null;
+  department: { id: string; name: string } | null;
+  employer: { id: string; name: string } | null;
+  showStatus: { id: string; name: string } | null;
+  task: { id: string; name: string } | null;
+  /**
+   * The assignment's resolved Extra classification. The stored option id
+   * remains in `data`; callers that display the assignment use this narrow
+   * projection rather than exposing or independently resolving the catalog.
+   */
+  classification?: { name: string; code: string | null } | null;
+  /**
+   * The worker's own answer to this assignment: null unanswered, true
+   * accepted, false declined. Carried here because the public schedule page
+   * this read backs is where the worker gives it.
+   */
+  accepted: boolean | null;
+  data: Record<string, unknown> | null;
+}
+
+export interface DailySummaryByMemberStatusRow {
+  memberStatus: string;
+  msSequence: number | null;
+  sheetStatus: string;
+  workerCount: number;
+}
+
+export type MemberStatusSummaryRow = DailySummaryByMemberStatusRow;
+
+export interface OutOfPopulationAssignmentRow {
+  assignmentId: string;
+  sheetId: string;
+  sheetTitle: string;
+  sheetYmd: string;
+  workerId: string;
+  siriusId: number | null;
+  displayName: string | null;
+  startTime: string | null;
+  taskName: string | null;
+  departmentName: string | null;
+  supervisorName: string | null;
+}
+
+/**
+ * One assignment on a sheet, resolved down to the single phone number an SMS
+ * to that worker would actually go to: their contact's ACTIVE PRIMARY number.
+ * Assignments whose worker has no such number are left out entirely — a
+ * caller pre-filtering recipients must not have to guess which of several
+ * numbers the send layer would pick.
+ */
+export interface SheetAssignmentSmsTarget {
+  /** Worker-facing details for the same generation and data snapshot as this target. */
+  assignment: AssignmentForWorker;
+  assignmentId: string;
+  crewId: string;
+  generationId: string;
+  workerId: string;
+  contactId: string;
+  phoneNumber: string;
+  /**
+   * The assignment's values as they stood when this target was resolved.
+   * Hand it back to `setCommId` so a message that goes out just before the
+   * row is edited is not recorded as a receipt for the superseded version.
+   */
+  data: unknown;
+}
+export interface EdlsAssignmentsStorage extends AssignmentExplorerStorage {
+  getSheetIdsByCommId(commId: string): Promise<string[]>;
+  getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
+  getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
+  /** Worker IDs only, with the same crew/sheet and worker/contact inclusion as getBySheetId; unordered. */
+  getWorkerIdsBySheetId(sheetId: string): Promise<string[]>;
+  /**
+   * Every assignment on a sheet that is still WAITING TO BE TEXTED: the
+   * worker has an active primary phone number, and the assignment carries no
+   * receipt (`commId`) for the values it currently holds. One query, because
+   * notifiers fan out per sheet and a per-assignment worker → contact → phone
+   * walk would be N round-trips. Ordered by assignment id so a worker
+   * appearing twice on a sheet resolves to the same assignment every time.
+   *
+   * The receipt condition lives here rather than in the notifier because this
+   * read is the single place that decides who is texted, which assignment
+   * their link names, and which row the send is recorded against. An
+   * unchanged sheet arriving at a trigger status again therefore resolves to
+   * nobody, and the dispatcher stops on its own.
+   */
+  getSmsTargetsBySheetId(sheetId: string): Promise<SheetAssignmentSmsTarget[]>;
+  get(id: string): Promise<EdlsAssignment | undefined>;
+  create(assignment: InsertEdlsAssignment, expectedSheetId?: string): Promise<EdlsAssignment>;
+  delete(id: string, expectedCrewId: string, expectedGenerationId: string): Promise<boolean>;
+  deleteByCrewId(crewId: string): Promise<number>;
+  /**
+   * Replace an assignment's extra values.
+   *
+   * Voids the assignment's receipt (`commId`) whenever the values genuinely
+   * change, because the worker has then not been told about the assignment as
+   * it now stands. A save that changes nothing leaves the receipt alone.
+   */
+  updateData(id: string, data: Record<string, unknown>, expectedCrewId: string, expectedGenerationId: string): Promise<EdlsAssignment | undefined>;
+  /**
+   * Record the communication a worker was sent about this assignment — the
+   * receipt saying they have been told about it as it stood when the message
+   * went out. Holding one is what keeps the worker out of the next send.
+   *
+   * Deliberately narrow: the link is provenance owned by whatever sent the
+   * message (which is why the insert schema omits the field), so it is set
+   * here rather than through a general-purpose update a caller could reach
+   * with a request body. The column holds ONE value — a later message to the
+   * same worker replaces an earlier one, making this the most recent message
+   * about the assignment rather than a history of every message. "Later"
+   * means later SENT, not later written: a message that overtook an earlier
+   * one in flight does not get demoted by it.
+   *
+   * `dataWhenResolved` is the assignment's values as the sender saw them
+   * (`SheetAssignmentSmsTarget.data`). A row edited since then is a different
+   * assignment than the one that was messaged about, and stamping the receipt
+   * on it would quietly cost that worker the re-notification the edit earned
+   * them, so the write is refused.
+   *
+   * Returns false when nothing was recorded — no such assignment (it can be
+   * deleted between the message going out and this write landing), a more
+   * recent message already on record, or the assignment changed underneath
+   * the send. All three are benign; the worker was texted either way.
+   */
+  setCommId(id: string, commId: string, dataWhenResolved: unknown, expectedCrewId: string, expectedGenerationId: string): Promise<boolean>;
+  /**
+   * Record the WORKER'S OWN ANSWER to an assignment: true accepted, false
+   * declined. There is no third call — clearing the answer back to
+   * unanswered is not something anybody may ask for; it happens only as part
+   * of a real edit to the assignment's values (see `updateData`).
+   *
+   * Deliberately narrow for the same reason as `setCommId`: the answer is
+   * the worker's, not assignment input, so it is set here rather than
+   * through a general-purpose update a caller could reach with a request
+   * body. Staff have no route into it at all.
+   *
+   * ONE ANSWER ONLY. The "still unanswered" condition is part of the UPDATE
+   * rather than a read-then-write, so two simultaneous taps cannot both win:
+   * exactly one of them matches a null row.
+   *
+   * Leaves the receipt (`commId`) alone. Answering is not a change to the
+   * assignment — the worker was told about it as it stands and that stays
+   * true — so voiding the receipt here would re-text them at the sheet's
+   * next notifying transition.
+   *
+   * Returns false when nothing was recorded: no such assignment, an
+   * unconfirmed sheet, or an answer already recorded.
+   */
+  setAccepted(id: string, accepted: boolean, expectedGenerationId: string): Promise<boolean>;
+  getAvailableWorkersForSheet(
+    sheetYmd: string,
+    industryId: string | null,
+    ratingId?: string,
+    includeInactive?: boolean,
+  ): Promise<AvailableWorkerForSheet[]>;
+  /** Active EDLS population and member status only; never reads assignments. */
+  getSummaryPopulation(industryId: string | null): Promise<EdlsSummaryPopulationWorker[]>;
+  /**
+   * Report query: every assignment on a future (ymd >= fromYmd), non-trash
+   * sheet whose worker is NOT in the EDLS scheduling population (no
+   * `worker_edls` row with `active = true` — the same population rule as
+   * `getAvailableWorkersForSheet`).
+   */
+  getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]>;
+  getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
+  getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
+  getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
+  getAssignmentsForWorkerIds(workerIds: string[], filters?: AssignmentForWorkerFilters): Promise<Map<string, AssignmentForWorker[]>>;
+  /** At most one non-trash assignment per worker, strictly after the given sheet date. */
+  getNextAssignmentsForWorkerIds(workerIds: string[], afterYmd: string): Promise<Map<string, AssignmentForWorker | null>>;
+  /**
+   * Snapshot export: versioned assignment bundles (worker captured as a
+   * rendered stub, including member status for the given industry), grouped
+   * by crew id. See `shared/snapshots.ts` for the bundle contract.
+   */
+  exportBySheetId(sheetId: string, industryId?: string | null): Promise<Map<string, SnapshotNode[]>>;
+}
+
+async function sortAssignmentsByClassification(
+  assignments: EdlsAssignmentWithWorker[]
+): Promise<EdlsAssignmentWithWorker[]> {
+  if (assignments.length === 0) {
+    return assignments;
+  }
+
+  const optionsStorage = createUnifiedOptionsStorage();
+  const classifications = await optionsStorage.list("classification");
+  
+  const classificationPositionMap = new Map<string, number>();
+  classifications.forEach((c: { id: string }, index: number) => {
+    classificationPositionMap.set(c.id, index);
+  });
+
+  return [...assignments].sort((a, b) => {
+    const aData = a.data as Record<string, unknown> | null;
+    const bData = b.data as Record<string, unknown> | null;
+    const aClassificationId = (aData?.classificationId as string) || null;
+    const bClassificationId = (bData?.classificationId as string) || null;
+
+    const aPos = aClassificationId ? (classificationPositionMap.get(aClassificationId) ?? Infinity) : Infinity;
+    const bPos = bClassificationId ? (classificationPositionMap.get(bClassificationId) ?? Infinity) : Infinity;
+    
+    if (aPos !== bPos) {
+      return aPos - bPos;
+    }
+
+    const aFamily = (a.worker.family || '').toLowerCase();
+    const bFamily = (b.worker.family || '').toLowerCase();
+    if (aFamily !== bFamily) {
+      return aFamily.localeCompare(bFamily);
+    }
+
+    const aGiven = (a.worker.given || '').toLowerCase();
+    const bGiven = (b.worker.given || '').toLowerCase();
+    return aGiven.localeCompare(bGiven);
+  });
+}
+
+/**
+ * SQL predicate: the assignment row's stored `data` still means what `data`
+ * means.
+ *
+ * Nulls are stripped from both sides, so a key that is absent and the same
+ * key explicitly set to null are the same value. That is what makes a no-op
+ * save a no-op: the edit dialog posts all three extras every time, while an
+ * assignment nobody has edited stores no `data` at all, and the two must not
+ * read as a change.
+ */
+function assignmentDataUnchanged(data: unknown) {
+  const json = JSON.stringify(data ?? {});
+  return sql`jsonb_strip_nulls(COALESCE(${edlsAssignments.data}, '{}'::jsonb)) = jsonb_strip_nulls(${json}::jsonb)`;
+}
+
+// The logging wrapper sees only the public assignment row. Tag the returned
+// object with the actual INSERT-vs-fill outcome rather than guessing from a
+// pre-write read (which can lose a race with another writer).
+const insertedAssignments = new WeakSet<EdlsAssignment>();
+
+export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
+  return {
+    ...assignmentExplorerStorage,
+    async getSheetIdsByCommId(commId: string): Promise<string[]> {
+      const rows = await getClient()
+        .selectDistinct({ sheetId: edlsCrews.sheetId })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .where(eq(edlsAssignments.commId, commId));
+      return rows.map(row => row.sheetId);
+    },
+
+    async getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          assignment: edlsAssignments,
+          worker: {
+            id: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName,
+            given: contacts.given,
+            family: contacts.family,
+          },
+        })
+        .from(edlsAssignments)
+        .innerJoin(workers, eq(edlsAssignments.workerId, workers.id))
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(eq(edlsAssignments.crewId, crewId));
+
+      const unsortedAssignments = rows.map(row => ({
+        ...row.assignment,
+        worker: {
+          ...row.worker,
+          memberStatusId: null,
+          memberStatusCode: null,
+          memberStatusName: null,
+        },
+      }));
+
+      return sortAssignmentsByClassification(unsortedAssignments);
+    },
+
+    async exportBySheetId(sheetId: string, industryId?: string | null): Promise<Map<string, SnapshotNode[]>> {
+      const assignments = await this.getBySheetId(sheetId, industryId ?? null);
+      const byCrewId = new Map<string, SnapshotNode[]>();
+      for (const assignment of assignments) {
+        if (!assignment.crewId) continue;
+        const nodes = byCrewId.get(assignment.crewId) ?? [];
+        nodes.push({ version: 1, data: assignment });
+        byCrewId.set(assignment.crewId, nodes);
+      }
+      return byCrewId;
+    },
+
+    async getWorkerIdsBySheetId(sheetId: string): Promise<string[]> {
+      // Keep the inner joins from getBySheetId: retained cleared assignments
+      // and workers without contacts must not enter the identifier population.
+      // No display fields, communication join, or classification sorting needed.
+      const result = await getClient().execute(sql`
+        SELECT ea.worker_id as "workerId"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE ec.sheet_id = ${sheetId}
+      `);
+      return (result.rows as unknown as { workerId: string }[]).map(row => row.workerId);
+    },
+
+    async getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]> {
+      const client = getClient();
+
+      // Lateral join to find the worker's member status for the sheet's industry,
+      // mirroring the join used by getAvailableWorkersForSheet.
+      const memberStatusJoin = industryId
+        ? sql`LEFT JOIN LATERAL (
+          SELECT ms.id, ms.code, ms.name
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
+          LIMIT 1
+        ) member_status ON true`
+        : sql``;
+      const memberStatusSelect = industryId
+        ? sql`member_status.id as "memberStatusId", member_status.code as "memberStatusCode", member_status.name as "memberStatusName"`
+        : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusCode", NULL::varchar as "memberStatusName"`;
+
+      interface RawSheetAssignmentRow {
+        id: string;
+        ymd: string;
+        workerId: string;
+        crewId: string;
+        generationId: string;
+        commId: string | null;
+        commStatus: string | null;
+        accepted: boolean | null;
+        data: unknown;
+        workerRowId: string;
+        siriusId: number | null;
+        displayName: string | null;
+        given: string | null;
+        family: string | null;
+        memberStatusId: string | null;
+        memberStatusCode: string | null;
+        memberStatusName: string | null;
+      }
+
+      const result = await client.execute(sql`
+        SELECT
+          ea.id,
+          ea.ymd,
+          ea.worker_id as "workerId",
+          ea.crew_id as "crewId",
+          ea.generation_id as "generationId",
+          ea.comm_id as "commId",
+          cm.status as "commStatus",
+          ea.accepted,
+          ea.data,
+          w.id as "workerRowId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          c.given,
+          c.family,
+          ${memberStatusSelect}
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN comm cm ON cm.id = ea.comm_id
+        ${memberStatusJoin}
+        WHERE ec.sheet_id = ${sheetId}
+      `);
+
+      const rows = result.rows as unknown as RawSheetAssignmentRow[];
+      const unsortedAssignments: EdlsAssignmentWithWorker[] = rows.map((row) => ({
+        id: row.id,
+        ymd: row.ymd,
+        workerId: row.workerId,
+        crewId: row.crewId,
+        generationId: row.generationId,
+        commId: row.commId,
+        commStatus: row.commStatus,
+        accepted: row.accepted,
+        data: row.data,
+        worker: {
+          id: row.workerRowId,
+          siriusId: row.siriusId,
+          displayName: row.displayName,
+          given: row.given,
+          family: row.family,
+          memberStatusId: row.memberStatusId,
+          memberStatusCode: row.memberStatusCode,
+          memberStatusName: row.memberStatusName,
+        },
+      }));
+
+      return sortAssignmentsByClassification(unsortedAssignments);
+    },
+
+    async getSmsTargetsBySheetId(sheetId: string): Promise<SheetAssignmentSmsTarget[]> {
+      const client = getClient();
+
+      // The phone is resolved here, in the same pass, and only the ACTIVE
+      // PRIMARY one: that is the number the SMS send layer picks for a
+      // contact, so a caller filtering on it filters on the number the
+      // message would really go to. A worker with no active primary number
+      // drops out of the result rather than coming back phone-less.
+      //
+      // `comm_id IS NULL` is the receipt condition: a worker already told
+      // about the assignment as it currently stands is not a target. Editing
+      // the assignment voids that receipt, which is what puts them back in
+      // this result for the next send.
+      //
+      // Where a contact somehow holds more than one active primary number,
+      // the oldest one wins — the answer this read has always given. That
+      // date used to be `contact_phone.created_at`; it is now the record's
+      // provenance, seeded from that very column, so the pick is unchanged.
+      // A number whose provenance has not landed yet sorts last and the id
+      // settles any remaining tie, so the ordering stays total.
+      const result = await client.execute(sql`
+        SELECT
+          ea.id as "assignmentId",
+          ea.crew_id as "crewId",
+          ea.generation_id as "generationId",
+          ea.worker_id as "workerId",
+          c.id as "contactId",
+          ph.phone_number as "phoneNumber",
+          ea.data as "data"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        INNER JOIN LATERAL (
+          SELECT p.phone_number
+          FROM contact_phone p
+          WHERE p.contact_id = c.id
+            AND p.is_active = true
+            AND p.is_primary = true
+          ORDER BY ${provenanceCreatedDate("contact_phone", sql`p.id`)} ASC NULLS LAST, p.id ASC
+          LIMIT 1
+        ) ph ON true
+        WHERE ec.sheet_id = ${sheetId}
+          AND ea.comm_id IS NULL
+        ORDER BY ea.id ASC
+      `);
+
+      const targets = result.rows as unknown as Omit<SheetAssignmentSmsTarget, "assignment">[];
+      const schedules = await this.getAssignmentsForWorkerIds(
+        [...new Set(targets.map(target => target.workerId))],
+        { sheetId, sheetStatuses: ["draft", "request", "lock", "reserved", "trash"] },
+      );
+      return targets.flatMap(target => {
+        const assignment = schedules.get(target.workerId)?.find(row =>
+          row.assignmentId === target.assignmentId &&
+          row.crewId === target.crewId && row.generationId === target.generationId &&
+          isDeepStrictEqual(row.data, target.data),
+        );
+        // A concurrent refill/edit must not be described or receipted as the old target.
+        return assignment ? [{ ...target, assignment }] : [];
+      });
+    },
+
+    async get(id: string): Promise<EdlsAssignment | undefined> {
+      const client = getClient();
+      const [assignment] = await client.select().from(edlsAssignments).where(eq(edlsAssignments.id, id));
+      return assignment || undefined;
+    },
+
+    async create(insertAssignment: InsertEdlsAssignment, expectedSheetId?: string): Promise<EdlsAssignment> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Sheet writers lock their parent before touching crews. Use the same
+        // order so a concurrent trash/delete or crew reparent cannot leave a
+        // newly filled row on a sheet the caller did not authorize.
+        const sheetResult = await client.execute(sql`
+          SELECT s.id, s.ymd, s.status
+          FROM edls_sheets s
+          JOIN edls_crews c ON c.sheet_id = s.id
+          WHERE c.id = ${insertAssignment.crewId}
+          FOR UPDATE OF s
+        `);
+        const sheet = sheetResult.rows[0] as { id: string; ymd: string; status: string } | undefined;
+        if (!sheet || (expectedSheetId && sheet.id !== expectedSheetId) ||
+            sheet.ymd !== insertAssignment.ymd || sheet.status === "trash") {
+          throw new DomainValidationError([{
+            field: "crewId",
+            code: "INVALID_SHEET",
+            message: "Crew does not belong to an assignable sheet on this date",
+          }]);
+        }
+        await validate.validateOrThrow(insertAssignment);
+        const [result] = await client.insert(edlsAssignments)
+          .values({ ...insertAssignment, generationId: sql`gen_random_uuid()::text` })
+          .onConflictDoUpdate({
+            target: [edlsAssignments.ymd, edlsAssignments.workerId],
+            set: {
+              crewId: insertAssignment.crewId,
+              data: insertAssignment.data ?? null,
+              accepted: null,
+              commId: null,
+              generationId: sql`gen_random_uuid()::text`,
+            },
+            setWhere: isNull(edlsAssignments.crewId),
+          })
+          .returning({
+            ...getTableColumns(edlsAssignments),
+            inserted: sql<boolean>`(xmax = 0)`,
+          });
+        if (!result) {
+          throw new DomainValidationError([{
+            field: "workerId",
+            code: "ALREADY_ASSIGNED",
+            message: "Worker is already assigned on this date",
+          }]);
+        }
+        const { inserted, ...assignment } = result;
+        if (inserted) insertedAssignments.add(assignment);
+        return assignment;
+      });
+    },
+
+    async delete(id: string, expectedCrewId: string, expectedGenerationId: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client.update(edlsAssignments)
+        .set({ crewId: null, generationId: null, data: null, commId: null, accepted: null })
+        .where(and(
+          eq(edlsAssignments.id, id),
+          eq(edlsAssignments.crewId, expectedCrewId),
+          eq(edlsAssignments.generationId, expectedGenerationId),
+        ))
+        .returning({ id: edlsAssignments.id });
+      return result.length > 0;
+    },
+
+    async deleteByCrewId(crewId: string): Promise<number> {
+      return runInTransaction(async () => {
+        const rows = await getClient().select({ id: edlsAssignments.id, generationId: edlsAssignments.generationId })
+          .from(edlsAssignments).where(eq(edlsAssignments.crewId, crewId));
+        const { storage } = await import("../../../../../server/storage");
+        let cleared = 0;
+        for (const row of rows) {
+          if (!row.generationId) throw new Error("Active EDLS assignment has no generation");
+          if (await storage.edlsAssignments.delete(row.id, crewId, row.generationId)) cleared++;
+        }
+        return cleared;
+      });
+    },
+
+    async updateData(id: string, data: Record<string, unknown>, expectedCrewId: string, expectedGenerationId: string): Promise<EdlsAssignment | undefined> {
+      const client = getClient();
+      // Voiding the receipt is part of the assignment write itself, not
+      // something every future writer has to remember: a worker told about an
+      // assignment has not been told about the one it just became. Expressed
+      // in the UPDATE rather than as a read-then-write, so the comparison is
+      // against the row actually being overwritten.
+      //
+      // Only a REAL change voids it. Re-saving the same values must leave the
+      // receipt standing, or the note dialog becomes a resend button by
+      // accident.
+      //
+      // The worker's answer rides on the same comparison, for the same
+      // reason: they have not agreed to the assignment it just became, so a
+      // real change puts them back to unanswered and they are asked again by
+      // the very notification the voided receipt earns them.
+      const unchanged = assignmentDataUnchanged(data);
+      const [assignment] = await client
+        .update(edlsAssignments)
+        .set({
+          data,
+          commId: sql`CASE WHEN ${unchanged} THEN ${edlsAssignments.commId} ELSE NULL END`,
+          accepted: sql`CASE WHEN ${unchanged} THEN ${edlsAssignments.accepted} ELSE NULL END`,
+        })
+        .where(and(
+          eq(edlsAssignments.id, id),
+          eq(edlsAssignments.crewId, expectedCrewId),
+          eq(edlsAssignments.generationId, expectedGenerationId),
+        ))
+        .returning();
+      return assignment || undefined;
+    },
+
+    async setAccepted(id: string, accepted: boolean, expectedGenerationId: string): Promise<boolean> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        // A sheet status edit also locks the sheet row. Lock it here before
+        // answering so a concurrent move to Requested cannot race this write.
+        const sheet = await client.execute(sql`
+          SELECT s.status
+          FROM edls_sheets s
+          JOIN edls_crews c ON c.sheet_id = s.id
+          JOIN edls_assignments a ON a.crew_id = c.id
+          WHERE a.id = ${id}
+          FOR UPDATE OF s
+        `);
+        if (!sheet.rows.length || !["lock", "reserved"].includes(String(sheet.rows[0].status))) {
+          return false;
+        }
+
+        // Recheck the current parent sheet as well as the one-answer rule in
+        // the UPDATE: an assignment moved to another crew after the lock was
+        // acquired must not gain permission through the old sheet.
+        // Answering does not void commId, so the worker isn't re-texted.
+        const result = await client
+          .update(edlsAssignments)
+          .set({ accepted })
+          .where(
+            and(
+              eq(edlsAssignments.id, id),
+              eq(edlsAssignments.generationId, expectedGenerationId),
+              sql`${edlsAssignments.accepted} IS NULL`,
+              sql`EXISTS (
+                SELECT 1 FROM ${edlsCrews} c
+                JOIN ${edlsSheets} s ON s.id = c.sheet_id
+                WHERE c.id = ${edlsAssignments.crewId}
+                  AND s.status IN ('lock', 'reserved')
+              )`,
+            ),
+          )
+          .returning({ id: edlsAssignments.id });
+        return result.length > 0;
+      });
+    },
+
+    async setCommId(id: string, commId: string, dataWhenResolved: unknown, expectedCrewId: string, expectedGenerationId: string): Promise<boolean> {
+      const client = getClient();
+      // Order by WHEN THE MESSAGES WERE SENT, not by which bookkeeping write
+      // arrives first. Two sends racing (a sheet saved twice in quick
+      // succession) finish their post-send writes in provider-latency order,
+      // so an unconditional update can leave the older text recorded. The
+      // guard makes "most recent message" true regardless of that ordering.
+      const result = await client
+        .update(edlsAssignments)
+        .set({ commId })
+        .where(
+          and(
+            eq(edlsAssignments.id, id),
+            eq(edlsAssignments.crewId, expectedCrewId),
+            eq(edlsAssignments.generationId, expectedGenerationId),
+            // The row must still be the assignment the message was about. A
+            // coordinator can edit it in the moment between the text going
+            // out and this write landing; that edit voided the receipt on
+            // purpose, and stamping the superseded message back on would
+            // silently cost the worker their re-notification.
+            assignmentDataUnchanged(dataWhenResolved),
+            sql`(
+              ${edlsAssignments.commId} IS NULL
+              OR EXISTS (
+                SELECT 1 FROM comm c_new, comm c_old
+                WHERE c_new.id = ${commId}
+                  AND c_old.id = ${edlsAssignments.commId}
+                  AND COALESCE(c_new.sent, 'epoch'::timestamp)
+                      >= COALESCE(c_old.sent, 'epoch'::timestamp)
+              )
+            )`,
+          ),
+        )
+        .returning({ id: edlsAssignments.id });
+      return result.length > 0;
+    },
+
+    async getAvailableWorkersForSheet(
+      sheetYmd: string,
+      industryId: string | null,
+      ratingId?: string,
+      includeInactive = false,
+    ): Promise<AvailableWorkerForSheet[]> {
+      return getAvailableWorkersForSheetQuery(
+        sheetYmd,
+        industryId,
+        ratingId,
+        includeInactive,
+      );
+    },
+
+    getSummaryPopulation: getSummaryPopulationQuery,
+
+    async getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          ea.id as "assignmentId",
+          es.id as "sheetId",
+          es.title as "sheetTitle",
+          es.ymd as "sheetYmd",
+          w.id as "workerId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          COALESCE(NULLIF(ea.data->>'startTime', ''), ec.start_time::text) as "startTime",
+          t.name as "taskName",
+          d.name as "departmentName",
+          COALESCE(
+            NULLIF(TRIM(CONCAT(su.first_name, ' ', su.last_name)), ''),
+            su.email,
+            NULLIF(TRIM(CONCAT(cu.first_name, ' ', cu.last_name)), ''),
+            cu.email
+          ) as "supervisorName"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN worker_edls we ON we.worker_id = w.id
+        LEFT JOIN options_edls_tasks t ON ec.task_id = t.id
+        LEFT JOIN options_department d ON es.department_id = d.id
+        LEFT JOIN users su ON es.supervisor = su.id
+        LEFT JOIN users cu ON ec.supervisor = cu.id
+        WHERE es.ymd >= ${fromYmd}
+          AND es.status != 'trash'
+          AND (we.id IS NULL OR we.active = false)
+        ORDER BY es.ymd ASC, es.title ASC, c.family ASC, c.given ASC
+      `);
+      return result.rows as unknown as OutOfPopulationAssignmentRow[];
+    },
+
+    async getAssignmentsForWorker(
+      workerId: string,
+      filters?: AssignmentForWorkerFilters
+    ): Promise<AssignmentForWorker[]> {
+      const client = getClient();
+      const conditions = [
+        eq(edlsAssignments.workerId, workerId),
+        filters?.sheetStatuses
+          ? inArray(edlsSheets.status, filters.sheetStatuses)
+          : ne(edlsSheets.status, 'trash'),
+      ];
+      if (filters?.afterYmd) conditions.push(gt(edlsSheets.ymd, filters.afterYmd));
+      if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
+      if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
+      if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
+      if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const withJobGroups = jobGroupsEnabled();
+      const baseQuery = client
+        .select({
+          assignmentId: edlsAssignments.id,
+          generationId: edlsAssignments.generationId,
+          assignmentData: edlsAssignments.data,
+          accepted: edlsAssignments.accepted,
+          ymd: edlsSheets.ymd,
+          sheetId: edlsSheets.id,
+          sheetTitle: edlsSheets.title,
+          sheetStatus: edlsSheets.status,
+          crewId: edlsCrews.id,
+          crewTitle: edlsCrews.title,
+          startTime: edlsCrews.startTime,
+          endTime: edlsCrews.endTime,
+          location: edlsCrews.location,
+          supervisorId: users.id,
+          supervisorFirstName: users.firstName,
+          supervisorLastName: users.lastName,
+          supervisorEmail: users.email,
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          departmentId: optionsDepartment.id,
+          departmentName: optionsDepartment.name,
+          employerId: employers.id,
+          employerName: employers.name,
+          showStatusId: optionsEdlsShowStatus.id,
+          showStatusName: optionsEdlsShowStatus.name,
+          taskId: optionsEdlsTasks.id,
+          taskName: optionsEdlsTasks.name,
+          classificationName: optionsClassifications.name,
+          classificationCode: optionsClassifications.code,
+          jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
+          jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
+        })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
+        .leftJoin(users, eq(edlsSheets.supervisor, users.id))
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
+        .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
+        .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
+        .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
+        .leftJoin(
+          optionsClassifications,
+          eq(
+            optionsClassifications.id,
+            sql<string>`${edlsAssignments.data}->>'classificationId'`,
+          ),
+        )
+        .$dynamic();
+
+      const rows = await (withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery)
+        .where(and(...conditions))
+        .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
+
+      return rows.map((r) => ({
+        assignmentId: r.assignmentId,
+        generationId: r.generationId!,
+        ymd: r.ymd,
+        sheetId: r.sheetId,
+        sheetTitle: r.sheetTitle,
+        sheetStatus: r.sheetStatus,
+        crewId: r.crewId,
+        crewTitle: r.crewTitle,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        location: r.location,
+        supervisor: r.supervisorId
+          ? {
+              id: r.supervisorId,
+              firstName: r.supervisorFirstName,
+              lastName: r.supervisorLastName,
+              email: r.supervisorEmail!,
+            }
+          : null,
+        facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
+        jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+        department: r.departmentId ? { id: r.departmentId, name: r.departmentName! } : null,
+        employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
+        showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
+        task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+        classification: r.classificationName
+          ? {
+              name: r.classificationName,
+              code: r.classificationCode,
+            }
+          : null,
+        accepted: r.accepted,
+        data: (r.assignmentData as Record<string, unknown> | null) ?? null,
+      }));
+    },
+
+    async getAssignmentsForWorkerIds(workerIds, filters) {
+      return readAssignmentsForWorkerIds(workerIds, filters);
+    },
+
+    async getNextAssignmentsForWorkerIds(workerIds, afterYmd) {
+      const assignments = await readAssignmentsForWorkerIds(workerIds, { afterYmd }, true);
+      return new Map(Array.from(assignments, ([workerId, list]) => [workerId, list[0] ?? null]));
+    },
+
+    getWorkerAssignmentDetails: readWorkerAssignmentDetails,
+    getMemberStatusSummaryByYmd: readMemberStatusSummaryByYmd,
+  };
+}
+
+async function readAssignmentsForWorkerIds(
+  workerIds: string[],
+  filters?: AssignmentForWorkerFilters,
+  nextOnly = false,
+): Promise<Map<string, AssignmentForWorker[]>> {
+      const result = new Map<string, AssignmentForWorker[]>();
+      for (const id of workerIds) result.set(id, []);
+      if (workerIds.length === 0) return result;
+
+      const client = getClient();
+      const conditions = [
+        inArray(edlsAssignments.workerId, workerIds),
+        filters?.sheetStatuses
+          ? inArray(edlsSheets.status, filters.sheetStatuses)
+          : ne(edlsSheets.status, 'trash'),
+      ];
+      if (filters?.sheetId) conditions.push(eq(edlsSheets.id, filters.sheetId));
+      if (filters?.afterYmd) conditions.push(gt(edlsSheets.ymd, filters.afterYmd));
+      if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
+      if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
+      if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
+      if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const nextAssignmentIds = nextOnly
+        ? sql`(
+          SELECT DISTINCT ON (a.worker_id) a.id
+          FROM edls_assignments a
+          INNER JOIN edls_crews c ON a.crew_id = c.id
+          INNER JOIN edls_sheets s ON c.sheet_id = s.id
+          WHERE a.worker_id IN (${sql.join(Array.from(result.keys(), id => sql`${id}`), sql`, `)})
+            AND s.status <> 'trash'
+            AND s.ymd > ${filters!.afterYmd}
+          ORDER BY a.worker_id ASC, s.ymd ASC, c.start_time ASC
+        )`
+        : undefined;
+      const assignmentSource = nextAssignmentIds
+        ? client.select().from(edlsAssignments)
+            .where(inArray(edlsAssignments.id, nextAssignmentIds))
+            // This bound is also an optimization fence: PostgreSQL must finish
+            // selecting the next rows before doing any descriptive joins.
+            .limit(result.size)
+            .as("edls_assignments")
+        : edlsAssignments;
+
+      const withJobGroups = jobGroupsEnabled();
+      const baseQuery = client
+        .select({
+          workerId: edlsAssignments.workerId,
+          assignmentId: edlsAssignments.id,
+          generationId: edlsAssignments.generationId,
+          assignmentData: edlsAssignments.data,
+          accepted: edlsAssignments.accepted,
+          ymd: edlsSheets.ymd,
+          sheetId: edlsSheets.id,
+          sheetTitle: edlsSheets.title,
+          sheetStatus: edlsSheets.status,
+          crewId: edlsCrews.id,
+          crewTitle: edlsCrews.title,
+          startTime: edlsCrews.startTime,
+          endTime: edlsCrews.endTime,
+          location: edlsCrews.location,
+          supervisorId: users.id,
+          supervisorFirstName: users.firstName,
+          supervisorLastName: users.lastName,
+          supervisorEmail: users.email,
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          departmentId: optionsDepartment.id,
+          departmentName: optionsDepartment.name,
+          employerId: employers.id,
+          employerName: employers.name,
+          showStatusId: optionsEdlsShowStatus.id,
+          showStatusName: optionsEdlsShowStatus.name,
+          taskId: optionsEdlsTasks.id,
+          taskName: optionsEdlsTasks.name,
+          classificationName: optionsClassifications.name,
+          classificationCode: optionsClassifications.code,
+          jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
+          jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
+        })
+        .from(assignmentSource)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
+        .leftJoin(users, eq(edlsSheets.supervisor, users.id))
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
+        .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
+        .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
+        .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
+        .leftJoin(optionsClassifications, eq(optionsClassifications.id, sql<string>`${edlsAssignments.data}->>'classificationId'`))
+        .$dynamic();
+
+      const rows = await (withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery)
+        .where(and(...conditions))
+        .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
+
+      for (const r of rows) {
+        const item: AssignmentForWorker = {
+          assignmentId: r.assignmentId,
+          generationId: r.generationId!,
+          ymd: r.ymd,
+          sheetId: r.sheetId,
+          sheetTitle: r.sheetTitle,
+          sheetStatus: r.sheetStatus,
+          crewId: r.crewId,
+          crewTitle: r.crewTitle,
+          startTime: r.startTime,
+          endTime: r.endTime,
+          location: r.location,
+          supervisor: r.supervisorId
+            ? {
+                id: r.supervisorId,
+                firstName: r.supervisorFirstName,
+                lastName: r.supervisorLastName,
+                email: r.supervisorEmail!,
+              }
+            : null,
+          facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
+          jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+          department: r.departmentId ? { id: r.departmentId, name: r.departmentName! } : null,
+          employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
+          showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
+          task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+          classification: r.classificationName ? { name: r.classificationName, code: r.classificationCode } : null,
+          accepted: r.accepted,
+          data: (r.assignmentData as Record<string, unknown> | null) ?? null,
+        };
+        const list = result.get(r.workerId);
+        if (list) list.push(item);
+      }
+      return result;
+}
+
+async function readWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null> {
+      const client = getClient();
+      
+      const workerResult = await client.execute(sql`
+        SELECT 
+          w.id as "workerId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          c.given,
+          c.family
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE w.id = ${workerId}
+      `);
+      
+      if (workerResult.rows.length === 0) {
+        return null;
+      }
+      
+      const worker = workerResult.rows[0] as {
+        workerId: string;
+        siriusId: number | null;
+        displayName: string | null;
+        given: string | null;
+        family: string | null;
+      };
+
+      const assignmentsResult = await client.execute(sql`
+        SELECT 
+          es.id as "sheetId",
+          es.title as "sheetName",
+          es.ymd as "sheetYmd",
+          es.status as "sheetStatus",
+          ec.id as "crewId",
+          ec.title as "crewName",
+          ec.start_time as "startTime",
+          ec.end_time as "endTime",
+          CONCAT(sup.first_name, ' ', sup.last_name) as "supervisorName",
+          CASE 
+            WHEN es.ymd < ${sheetYmd} THEN 'prior'
+            WHEN es.ymd = ${sheetYmd} THEN 'current'
+            WHEN es.ymd > ${sheetYmd} THEN 'next'
+          END as "period"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+        LEFT JOIN users sup ON ec.supervisor = sup.id
+        WHERE ea.worker_id = ${workerId}
+          AND (
+            (es.ymd < ${sheetYmd} AND es.ymd = (
+              SELECT MAX(es2.ymd) FROM edls_assignments ea2
+              INNER JOIN edls_crews ec2 ON ea2.crew_id = ec2.id
+              INNER JOIN edls_sheets es2 ON ec2.sheet_id = es2.id
+              WHERE ea2.worker_id = ${workerId} AND es2.ymd < ${sheetYmd}
+            ))
+            OR es.ymd = ${sheetYmd}
+            OR (es.ymd > ${sheetYmd} AND es.ymd = (
+              SELECT MIN(es2.ymd) FROM edls_assignments ea2
+              INNER JOIN edls_crews ec2 ON ea2.crew_id = ec2.id
+              INNER JOIN edls_sheets es2 ON ec2.sheet_id = es2.id
+              WHERE ea2.worker_id = ${workerId} AND es2.ymd > ${sheetYmd}
+            ))
+          )
+        ORDER BY es.ymd
+      `);
+
+      let prior: WorkerAssignmentDetail | null = null;
+      let current: WorkerAssignmentDetail | null = null;
+      let next: WorkerAssignmentDetail | null = null;
+
+      for (const row of assignmentsResult.rows) {
+        const detail = row as unknown as WorkerAssignmentDetail & { period: string };
+        const assignmentDetail: WorkerAssignmentDetail = {
+          sheetId: detail.sheetId,
+          sheetName: detail.sheetName,
+          sheetYmd: detail.sheetYmd,
+          sheetStatus: detail.sheetStatus,
+          crewId: detail.crewId,
+          crewName: detail.crewName,
+          startTime: detail.startTime,
+          endTime: detail.endTime,
+          supervisorName: detail.supervisorName,
+        };
+
+        if (detail.period === 'prior') {
+          prior = assignmentDetail;
+        } else if (detail.period === 'current') {
+          current = assignmentDetail;
+        } else if (detail.period === 'next') {
+          next = assignmentDetail;
+        }
+      }
+
+      return {
+        ...worker,
+        prior,
+        current,
+        next,
+      };
+}
+
+async function readMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          COALESCE(oms.name, 'Unassigned') AS "memberStatus",
+          oms.sequence AS "msSequence",
+          s.status AS "sheetStatus",
+          COUNT(DISTINCT a.worker_id)::int AS "workerCount"
+        FROM edls_assignments a
+        JOIN edls_crews c ON c.id = a.crew_id
+        JOIN edls_sheets s ON s.id = c.sheet_id
+        JOIN workers w ON w.id = a.worker_id
+        LEFT JOIN LATERAL (
+          SELECT oms2.name, oms2.sequence
+          FROM options_worker_ms oms2
+          JOIN employers emp ON emp.id = s.employer_id
+          WHERE oms2.industry_id = emp.industry_id
+            AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = oms2.id)
+          ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
+          LIMIT 1
+        ) oms ON true
+        WHERE a.ymd = ${ymd}
+          AND s.status != 'trash'
+        GROUP BY oms.name, oms.sequence, s.status
+        ORDER BY oms.sequence NULLS LAST, oms.name
+      `);
+      return result.rows as unknown as MemberStatusSummaryRow[];
+}
+
+async function getSheetIdFromCrewId(crewId: string): Promise<string | undefined> {
+  const crewsStorage = createEdlsCrewsStorage();
+  const crew = await crewsStorage.get(crewId);
+  return crew?.sheetId;
+}
+
+async function getWorkerDescription(workerId: string): Promise<string> {
+  const client = getClient();
+  const [row] = await client
+    .select({
+      siriusId: workers.siriusId,
+      displayName: contacts.displayName,
+      given: contacts.given,
+      family: contacts.family,
+    })
+    .from(workers)
+    .innerJoin(contacts, eq(workers.contactId, contacts.id))
+    .where(eq(workers.id, workerId));
+
+  if (!row) return 'unknown worker';
+
+  const name = row.family && row.given 
+    ? `${row.family}, ${row.given}`
+    : row.displayName || 'unknown';
+  
+  return row.siriusId ? `${name} (${row.siriusId})` : name;
+}
+
+export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsStorage>({
+  module: 'edls-assignments',
+  table: 'edls_assignments',
+  hostTable: 'edls_sheets',
+  metadataTiming: 'transactional',
+  // No module-level stateKey — `before` for delete/updateData augments the
+  // raw assignment row with a `workerDesc` lookup, and `after` is suppressed
+  // (set explicitly to undefined) so legacy logs stay byte-identical.
+  methods: {
+    create: {
+      state: { fallbackId: 'new' },
+      after: undefined,
+      metadataMode: (_args, result) => insertedAssignments.has(result) ? 'created' : 'modified',
+      getHostEntityId: async (args) => {
+        const crewId = args[0]?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
+      getDescription: async (args, result) => {
+        const workerId = result?.workerId || args[0]?.workerId;
+        if (!workerId) return 'Assigned worker';
+        const workerDesc = await getWorkerDescription(workerId);
+        return `${insertedAssignments.has(result) ? 'Created' : 'Filled'} assignment for ${workerDesc}`;
+      },
+    },
+    delete: {
+      metadataMode: (_args, result) => result ? 'modified' : 'none',
+      before: async (args, storage) => {
+        const assignment = await storage.get(args[0]);
+        if (!assignment) return undefined;
+        const workerDesc = await getWorkerDescription(assignment.workerId);
+        return { ...assignment, workerDesc };
+      },
+      getHostEntityId: async (_args, _result, beforeState) => {
+        const crewId = beforeState?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
+      getDescription: async (_args, _result, beforeState) => {
+        const workerDesc = beforeState?.workerDesc || 'unknown worker';
+        return `Cleared assignment for ${workerDesc}`;
+      },
+    },
+    updateData: {
+      metadataMode: (_args, result, beforeState) =>
+        assignmentUpdateMetadataMode(beforeState, result),
+      before: async (args, storage) => {
+        const assignment = await storage.get(args[0]);
+        if (!assignment) return undefined;
+        const workerDesc = await getWorkerDescription(assignment.workerId);
+        return { ...assignment, workerDesc };
+      },
+      after: undefined,
+      getHostEntityId: async (_args, result, beforeState) => {
+        const crewId = beforeState?.crewId || result?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
+      getDescription: async (_args, _result, beforeState) => {
+        const workerDesc = beforeState?.workerDesc || 'unknown worker';
+        return `Updated assignment for ${workerDesc}`;
+      },
+    },
+    // `setAccepted` is not a create/update/delete name, so the middleware
+    // synthesizes no state hooks for it — they are spelled out here, in the
+    // same shape as `updateData` above.
+    //
+    // The request behind it is UNAUTHENTICATED (the worker answers from
+    // their public schedule link), so the entry carries no acting user. The
+    // description therefore has to say who answered as well as which way,
+    // or the sheet's history records an answer from nobody.
+    setAccepted: {
+      // The worker's recorded answer is a real mutation of this assignment
+      // record (though not a change to the values that trigger a new SMS).
+      // Rejected/replayed attempts must keep the prior modification stamp.
+      metadataMode: (_args, recorded) => assignmentAnswerMetadataMode(recorded),
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        const assignment = await storage.get(args[0]);
+        if (!assignment) return undefined;
+        const workerDesc = await getWorkerDescription(assignment.workerId);
+        return { ...assignment, workerDesc };
+      },
+      after: async (_args, result) => ({ recorded: result === true }),
+      getHostEntityId: async (_args, _result, beforeState) => {
+        const crewId = beforeState?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const workerDesc = beforeState?.workerDesc || 'unknown worker';
+        const answer = args[1] === true ? 'accepted' : 'declined';
+        // A repeat answer changed nothing; say so rather than logging it as
+        // though the worker answered twice.
+        return result === true
+          ? `Worker ${workerDesc} ${answer} assignment`
+          : `Worker ${workerDesc} attempted to ${args[1] === true ? 'accept' : 'decline'} an already-answered assignment`;
+      },
+    },
+  },
+});

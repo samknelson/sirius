@@ -118,7 +118,6 @@ are listed here so the inventory is complete.
 | `event_occurrences` | `created_at` | Event emission time. | yes |
 | `event_participants` | `registered_at` | When a participant registered: business data about the registration. | no |
 | `ebs_status` | `created_at`, `purge_after` | Event-bus scheduling state: read by the pump and the retention purge. | `created_at` |
-| `edls_sheets` | `changed` | Change watermark: drives changed-since export filtering, external sheet-export ordering and a notifier. Refreshed by the storage layer on every save. | yes |
 | `user_roles` | `assigned_at` | Join table with no record id of its own, so provenance cannot key it at all. | yes |
 | `role_permissions` | `assigned_at` | Join table with no record id of its own. | yes |
 | `worker_wsh`, `worker_msh` | `date` | The status's EFFECTIVE date — which day the worker held that status — not when the row was written. | no |

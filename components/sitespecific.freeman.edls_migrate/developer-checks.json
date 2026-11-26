@@ -1,0 +1,5 @@
+{
+  "storageEncapsulationBaseline": {
+    "server/modules/sitespecific/freeman/edls-migrate/import.ts": "Freeman EDLS migrate import queries EDLS/dispatch tables via getClient + drizzle operators"
+  }
+}

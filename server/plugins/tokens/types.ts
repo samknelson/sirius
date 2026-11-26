@@ -49,7 +49,7 @@ export interface TokenRootSeed {
  * different shapes, so each kind says which one it is:
  *
  *  - `record` — an entity-scoped policy evaluated against a specific id
- *    (`worker.view`, `edls.sheet.view`). The id checked is the record's
+ *    (`worker.view`, `employer.view`). The id checked is the record's
  *    own id unless the kind names another subject (a dispatch status row
  *    is read as a read of its WORKER), which is why a search hit and a
  *    load both carry the subject id they were authorized on.

@@ -108,7 +108,6 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
         'file': async (id) => storage.files?.getFileById?.(id),
         'cardcheck': async (id) => storage.cardchecks?.getCardcheckById?.(id),
         'esig': async (id) => storage.esigs?.getEsigById?.(id),
-        'edls_sheet': async (id) => storage.edlsSheets?.get?.(id),
       };
       
       const fallbackLoader = fallbackLoaderMap[entityType];

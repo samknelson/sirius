@@ -230,33 +230,4 @@ export function registerLogRoutes(
     }
   });
 
-  // Sheet-scoped activity is available to any EDLS role, not just coordinators.
-  app.get("/api/edls/sheets/:sheetId/logs", requireAuth, requireComponent('edls'), requireAccess('edls.any'), async (req, res) => {
-    try {
-      const { sheetId } = req.params;
-      const { module, operation, startDate, endDate } = req.query;
-
-      // Verify the sheet exists
-      const sheet = await storage.edlsSheets.get(sheetId);
-      if (!sheet) {
-        return res.status(404).json({ message: "Sheet not found" });
-      }
-
-      // Query by sheet ID as host entity - this captures:
-      // - Sheet operations (hostEntityId = sheetId)
-      // - Crew operations (hostEntityId = sheetId)
-      const logs = await storage.logs.getLogsByHostEntityIds({
-        hostEntityIds: [sheetId],
-        module: typeof module === 'string' ? module : undefined,
-        operation: typeof operation === 'string' ? operation : undefined,
-        startDate: typeof startDate === 'string' ? startDate : undefined,
-        endDate: typeof endDate === 'string' ? endDate : undefined,
-      });
-
-      res.json(logs);
-    } catch (error) {
-      console.error("Failed to fetch EDLS sheet logs:", error);
-      res.status(500).json({ message: "Failed to fetch sheet logs" });
-    }
-  });
 }
