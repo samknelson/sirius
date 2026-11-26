@@ -63,6 +63,11 @@ No live transfers are used for verification.
   destinations/migration counters, and working core contracts, workers, Trust
   providers, files and generic plugin configuration APIs.
 
+The credential boundary alone keeps a permanent offline check,
+`tests/credential-boundary.test.ts`: fake SDK clients cover success and
+failure test-operation logs, configured password/private-key/passphrase echoes,
+download errors, destination audit payloads and the private HTTP scope.
+
 The startup/browser/removal fixtures were temporary rather than a permanent UI
 or removal matrix. No shared workspace switches or live vendor accounts were
 used to create those fixtures.
