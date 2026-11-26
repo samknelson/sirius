@@ -5,7 +5,6 @@ import { TERMINOLOGY_VARIABLE_NAME, terminologySchema, TERM_REGISTRY } from "@sh
 import { buildContext, checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../components";
 import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-reset-config";
-import { workerBanNotificationConfigSchema } from "../worker-ban-config";
 import { entityFilesConfigSchema } from "../../services/entity-files/config";
 import { entityNotesConfigSchema } from "../../services/entity-notes/config";
 import { authSettingsSchema } from "../../auth/auth-settings";
@@ -102,9 +101,6 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
       triggerStatuses: Array.from(new Set(v.triggerStatuses)),
     })),
   },
-
-  // Worker ban notification settings (admin read/write)
-  worker_ban_notifications: { schema: workerBanNotificationConfigSchema },
 
   // Auth settings: provisioning modes + SAML role mappings (admin read/write).
   // Role existence is additionally validated by PUT /api/admin/auth-settings.

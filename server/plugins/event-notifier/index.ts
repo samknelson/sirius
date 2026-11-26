@@ -364,6 +364,7 @@ export { ALL_NOTIFICATION_MEDIA };
 import "./plugins/trust-wmb-scan";
 import "./plugins/edls-sheet-status-notifier";
 import "./plugins/dispatch-status-notifier";
+import "./plugins/worker-ban-notifier";
 import "./plugins/cardcheck-status-notifier";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";

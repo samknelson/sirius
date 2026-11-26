@@ -62,7 +62,6 @@ import { initializeWizardPluginSystem } from "./plugins/wizards";
 import { initializeTrustProviderEdiSystem } from "./plugins/trust/provider-edi";
 import { initializeMenuPluginSystem } from "./plugins/menu";
 import { initializeTokenPluginSystem } from "./plugins/tokens";
-import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
@@ -525,10 +524,6 @@ export async function bootstrapApp(
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
-
-  // Initialize worker ban notifications
-  initWorkerBanNotifications();
-  logger.info("Worker ban notifications initialized", { source: "startup" });
 
   // Initialize dispatch notifications
   initDispatchNotifications();

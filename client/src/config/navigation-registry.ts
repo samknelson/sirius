@@ -1,7 +1,7 @@
 import { componentBrowserContributions } from "../generated/component-contributions";
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, BookOpen, 
-  Activity, Wallet, Settings, Shield, Key, KeyRound, FileText,
+  Activity, Wallet, Settings, Key, KeyRound, FileText,
   Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, History, type LucideIcon
 } from "lucide-react";
 import type { ResolvedCatalogEntry } from "@shared/catalog";
@@ -150,9 +150,7 @@ export const configSections: NavSection[] = [
     title: "Workers",
     description: "Worker settings and notifications",
     icon: Users,
-    items: [
-      { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
-    ],
+    items: [],
   },
   {
     id: "dispatch",

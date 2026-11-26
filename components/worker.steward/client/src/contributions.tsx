@@ -9,7 +9,7 @@ export const contributions: ComponentBrowserContributions = {
     { path: "/config/steward-settings", layout: "bare", page: componentConfigRoute(lazy(() => import("./pages/config/steward-settings")), "worker.steward") },
     { path: "/stewards", layout: "bare", page: lazy(() => import("./stewards-route")) },
   ],
-  navigation: [{ section: "workers", before: "/config/workers/ban", item: { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" } }],
+  navigation: [{ section: "workers", before: "/config/workers/tos", item: { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" } }],
   pluginViews: { dashboard: {
     "my-steward:MySteward": lazy(() => import("./plugins/dashboard/my-steward/MySteward").then(m => ({ default: m.MySteward }))),
   }, wizardSteps: {

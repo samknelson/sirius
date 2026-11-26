@@ -269,7 +269,6 @@ const SftpClientConnectionPage = lazy(() => import("../../components/system.sftp
 const SftpClientTestPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-test"));
 const SftpClientLogsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-logs"));
 const SftpClientEditPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-edit"));
-const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
@@ -2775,16 +2774,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BusinessCalendarTestPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/workers/ban">
-        <ProtectedRoute permission="admin" component="worker.ban">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkerBanConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
