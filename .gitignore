@@ -14,6 +14,7 @@ vite.config.ts.*
 __replit_disk_meta.json
 .drizzle-runtime.json
 .drizzle-runtime-schema.ts
+/generated-artifacts/
 # Deployment-only directories: tracked on owning package branches, never on main
 .github/
 deploy/
