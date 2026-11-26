@@ -5,6 +5,8 @@ import type { CronJobContext, CronJobResult } from "../../../../../../../server/
 registerCronPlugin({
   metadata: {
     id: 'worker-certification-active-scan',
+    requiredComponent: "worker.certifications",
+    requiredComponents: ["worker.skills"],
     name: 'Worker Certification Active Scan',
     description: 'Scans worker certifications and updates their active status based on expiration dates and status',
     singleton: true,

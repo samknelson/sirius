@@ -1,5 +1,6 @@
 import type { Role } from "@shared/schema";
 import { createPluginComponentRegistry } from "../_core";
+import { componentBrowserContributions } from "../../generated/component-contributions";
 
 /**
  * Props passed to every dashboard widget. Intentionally narrow: widgets must
@@ -24,6 +25,7 @@ export interface DashboardPluginProps {
 
 const registry = createPluginComponentRegistry<DashboardPluginProps>({
   kind: "dashboard",
+  contributions: componentBrowserContributions.map(c => c.pluginViews?.dashboard ?? {}),
   glob: import.meta.glob("./*/*.tsx", { eager: true }) as Record<
     string,
     Record<string, unknown>

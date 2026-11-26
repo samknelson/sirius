@@ -1,7 +1,7 @@
 import {
-  EventType,
+  TOS_ABSENCE_REMINDER,
   type TosAbsenceReminderPayload,
-} from "../../../../../../server/services/event-bus";
+} from "../../../events";
 import { registerEventNotifier } from "../../../../../../server/plugins/event-notifier/registry";
 import {
   type EventNotifierEventContext,
@@ -45,7 +45,7 @@ export const tosAbsenceNotifier: EventNotifierPlugin = {
   // Scheduled absence reminder: deliver even if the acting/operator user is the
   // resolved recipient (and don't suppress the operator on a manual pump run).
   notifySelf: true,
-  subscribedEvents: [EventType.TOS_ABSENCE_REMINDER],
+  subscribedEvents: [TOS_ABSENCE_REMINDER],
   supportedMedia: ["inapp", "email", "sms"],
 
   async getRecipients(ctx): Promise<NotifierRecipient[]> {

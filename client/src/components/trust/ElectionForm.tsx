@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ComponentSlot } from "@/lib/component-contributions";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,11 +31,6 @@ interface PolicyOption {
 interface TrustBenefitOption {
   id: string;
   name: string;
-}
-interface RelationOption {
-  id: string;
-  relationTypeName: string | null;
-  otherWorker: { displayName: string | null; given: string | null; family: string | null } | null;
 }
 
 function todayYmd(): string {
@@ -83,6 +79,7 @@ export function ElectionForm({
   const [endYmd, setEndYmd] = useState<string>("");
   const [benefitIds, setBenefitIds] = useState<string[]>([]);
   const [relationshipIds, setRelationshipIds] = useState<string[]>([]);
+  const [relationshipsEditable, setRelationshipsEditable] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -113,10 +110,6 @@ export function ElectionForm({
   });
   const { data: benefits = [] } = useQuery<TrustBenefitOption[]>({
     queryKey: ["/api/trust-benefits"],
-    enabled,
-  });
-  const { data: relations = [] } = useQuery<RelationOption[]>({
-    queryKey: ["/api/workers", workerId, "relations"],
     enabled,
   });
 
@@ -172,7 +165,7 @@ export function ElectionForm({
         startYmd,
         endYmd: endYmd || null,
         benefitIds,
-        relationshipIds,
+        ...(relationshipsEditable ? { relationshipIds } : {}),
       });
     } else {
       updateMutation.mutate({
@@ -181,19 +174,9 @@ export function ElectionForm({
         startYmd,
         endYmd: endYmd || null,
         benefitIds,
-        relationshipIds,
+        ...(relationshipsEditable ? { relationshipIds } : {}),
       });
     }
-  }
-
-  function relationLabel(r: RelationOption): string {
-    const name = r.otherWorker
-      ? [r.otherWorker.given, r.otherWorker.family].filter(Boolean).join(" ").trim() ||
-        r.otherWorker.displayName ||
-        ""
-      : "";
-    const type = r.relationTypeName || "relation";
-    return `${name || r.id} (${type})`;
   }
 
   return (
@@ -272,24 +255,7 @@ export function ElectionForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>Covered relationships</Label>
-        <div className="max-h-40 overflow-auto rounded-md border p-2 space-y-1">
-          {relations.length === 0 && (
-            <div className="text-sm text-muted-foreground">No worker relations on file.</div>
-          )}
-          {relations.map((r) => (
-            <label key={r.id} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={relationshipIds.includes(r.id)}
-                onCheckedChange={() => toggle(relationshipIds, setRelationshipIds, r.id)}
-                data-testid={`checkbox-relation-${r.id}`}
-              />
-              {relationLabel(r)}
-            </label>
-          ))}
-        </div>
-      </div>
+      <ComponentSlot name="trust.election.relationships" props={{ workerId, enabled, ids: relationshipIds, onChange: setRelationshipIds, setAvailable: setRelationshipsEditable }} />
 
       <div className="flex items-center justify-end gap-2 pt-2">
         {onCancel && (

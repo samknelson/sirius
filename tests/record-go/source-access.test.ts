@@ -10,6 +10,7 @@ vi.mock("../../server/storage/system/entity-metadata", () => ({
   entityMetadataStorage: { get: f.metadata, getByMetadataId: f.metadataId, getBySequence: f.sequence },
 }));
 vi.mock("../../server/storage/entity-metadata-record-tables", () => ({
+  entityMetadataContexts: {},
   getMetadataRecordContext: (id: string) => ({
     entity_notes: { label: "Record Notes", entityTypes: ["entity_note"] },
     worker_skills: { label: "Worker Skills", entityTypes: ["worker_skill"] },
@@ -37,6 +38,8 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
 import { resolveRecordGoIdentifier, resolveRecordGoSource } from "../../server/services/record-go";
 import { authorizeRecordGoUser, presentAuthorizedRecordGoSource } from "../../server/services/record-go-access";
 import type { User } from "@shared/schema";
+import { alterHooks } from "@shared/alter";
+alterHooks.close({ isKnown: () => true, isEnabled: async () => false });
 
 const id = "eeead217-b5a2-4b38-9c3b-c9d25765fd42";
 const viewer = { id: "effective-viewer" } as User;
@@ -107,21 +110,6 @@ describe("shared Go source authorization", () => {
     expect(f.note).toHaveBeenCalledTimes(1);
     expect(f.notesAccess).toHaveBeenCalledWith("view", "parent", viewer);
     expect(resolution.href).toContain("/workers/parent/");
-  });
-
-  it("skills enforce both their component and the owning worker policy", async () => {
-    f.metadata.mockResolvedValue(meta("worker_skills"));
-    f.component.mockResolvedValue(false);
-    expect(await presentAuthorizedRecordGoSource(viewer, "worker_skill", id)).toBeNull();
-    expect(f.policy).not.toHaveBeenCalled();
-    expect(f.skill).not.toHaveBeenCalled();
-    f.component.mockResolvedValue(true);
-    f.policy.mockResolvedValue({ granted: false });
-    expect(await presentAuthorizedRecordGoSource(viewer, "worker_skill", id)).toBeNull();
-    expect(f.policy).toHaveBeenCalledWith("worker.view", viewer, "parent");
-    f.policy.mockResolvedValue({ granted: true });
-    expect((await presentAuthorizedRecordGoSource(viewer, "worker_skill", id))?.href)
-      .toBe(`/workers/parent/skills?record=${id}`);
   });
 
   it("keeps existing standalone destinations and blocks unsupported child contexts", async () => {

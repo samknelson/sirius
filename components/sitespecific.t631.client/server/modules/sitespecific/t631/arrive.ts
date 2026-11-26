@@ -52,6 +52,14 @@ async function arrive(
   token: string,
   ip: string,
 ): Promise<T631ArrivalResult> {
+  // Refuse before authentication makes an outbound request. Keep the later
+  // check too: component availability may change while that request is in flight.
+  if (!(await isComponentEnabled("edls")) || !(await isComponentEnabled("worker.aat"))) {
+    return {
+      authenticated: false,
+      message: "The worker schedule is not available right now.",
+    };
+  }
   const typeId = await storage.workerIds.getTypeIdBySiriusId("t631");
   if (!typeId) {
     return {

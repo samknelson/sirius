@@ -74,15 +74,12 @@ export enum EventType {
   DISPATCH_JOB_SAVED = "dispatch.job.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_BAN_DENORM_FLIPPED = "worker.ban.denorm-flipped",
-  WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
   WORKER_WSH_SAVED = "worker.wsh.saved",
   WORKER_MSH_SAVED = "worker.msh.saved",
-  STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
   EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
-  TOS_ABSENCE_REMINDER = "tos.absence.reminder",
   // Wall-clock heartbeats from the tick emitter cron; see CronTickPayload.
   // One type per period so the bus routes a tick only to the handlers that
   // asked for that period, rather than waking every subscriber every time.
@@ -263,12 +260,6 @@ export interface WorkerBanDenormFlippedPayload {
   active: boolean;
 }
 
-export interface WorkerSkillSavedPayload {
-  workerSkillId: string;
-  workerId: string;
-  skillId: string;
-  isDeleted?: boolean;
-}
 
 export interface WorkerWsChangedPayload {
   workerId: string;
@@ -284,13 +275,6 @@ export interface WorkerMshSavedPayload {
   workerId: string;
 }
 
-export interface StewardAssignmentSavedPayload {
-  assignmentId: string;
-  workerId: string;
-  employerId: string;
-  bargainingUnitId: string;
-  operation: "created" | "updated" | "deleted";
-}
 
 /**
  * Emitted after an EDLS sheet create or update commits. Carries the sheet's
@@ -394,13 +378,6 @@ export interface CronTickPayload {
  * plugin; delivered by the `tos-absence-notifier` event-notifier plugin.
  * `offset` is the number of days after `absenceStartDate` this reminder fires.
  */
-export interface TosAbsenceReminderPayload {
-  tosId: string;
-  workerId: string;
-  contactId: string | null;
-  offset: number;
-  absenceStartDate: string;
-}
 
 /**
  * A single employer-monthly event that fell due. Emitted by the generic EBS
@@ -501,15 +478,12 @@ export interface EventPayloadMap extends ComponentEventPayloadMap {
   [EventType.DISPATCH_JOB_SAVED]: DispatchJobSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_BAN_DENORM_FLIPPED]: WorkerBanDenormFlippedPayload;
-  [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;
   [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
-  [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
   [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
-  [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
   [EventType.CRON_TICK_10M]: CronTickPayload;
   [EventType.CRON_TICK_1H]: CronTickPayload;
   [EventType.CRON_TICK_2H]: CronTickPayload;

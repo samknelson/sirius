@@ -107,17 +107,9 @@ import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerEntityNoteContexts } from "./modules/entity-notes-contexts";
 import { registerEntityNotesRoutes } from "./modules/entity-notes";
 import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
-import { registerWorkerSkillsRoutes } from "../components/worker.skills/server/modules/workers/skills";
-import { registerWorkerBadgesRoutes } from "../components/worker.badges/server/modules/workers/badges";
-import { registerWorkerRelationsRoutes } from "../components/worker.relations/server/modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
-import { registerWorkerTosRoutes } from "../components/worker.tos/server/modules/workers/tos";
-import { registerWorkerAatRoutes } from "../components/worker.aat/server/modules/workers/aat";
-import { registerWorkerCertificationsRoutes } from "../components/worker.certifications/server/modules/workers/certifications";
-import { registerWorkerRatingsRoutes } from "../components/worker.ratings/server/modules/workers/ratings";
 import { requireComponent } from "./modules/components";
-import { registerWorkerStewardAssignmentRoutes } from "../components/worker.steward/server/modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific/btu/csg";
 import { registerGbhetPensionRoutes } from "./modules/sitespecific/gbhet/pension";
 import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
@@ -129,10 +121,8 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsAssignmentExplorerRoutes } from "./modules/edls/assignment-explorer";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
-import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
-import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyCatalog } from "./modules/terminology-catalog";
 import { registerSystemServiceRolesCatalog } from "./modules/system-service-roles-catalog";
@@ -516,7 +506,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerEmployerComplianceRoutes(app, requireAuth);
 
   // Register worker steward assignments routes
-  registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);
 
   // Register employer policy history routes
   registerEmployerPolicyHistoryRoutes(app, requireAuth, requireAccess, storage);
@@ -1340,7 +1329,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/employers/:id - Get a specific employer (requires employer.steward.view policy)
-  app.get("/api/employers/:id", requireAuth, requireAccess('employer.steward.view', (req) => req.params.id), async (req, res) => {
+  app.get("/api/employers/:id", requireAuth, requireAccess('employer.view', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const employer = await storage.employers.getEmployer(id);
@@ -1357,7 +1346,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/employers/:employerId/workers - Get workers for an employer (requires employer.steward.view policy)
-  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.steward.view', (req) => req.params.employerId), async (req, res) => {
+  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.view', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       
@@ -1633,30 +1622,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   initEntityNotesDeleteCleanup();
   registerEntityNotesRoutes(app, requireAuth);
 
-  // Register worker skills routes (handles all access control internally)
-  registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
-  registerWorkerBadgesRoutes(app, requireAuth);
-
-  // Register worker relations routes (handles all access control internally)
-  registerWorkerRelationsRoutes(app, requireAuth, requireAccess);
-
   // Register worker trust elections routes (handles all access control internally)
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
 
   // Register trust benefit eligibility exemptions routes (handles all access control internally)
   registerTrustBenefitEligibilityExemptionsRoutes(app, requireAuth, requireAccess);
-
-  // Register worker time-off-sick (TOS) routes
-  registerWorkerTosRoutes(app, requireAuth, requireAccess);
-
-  // Register worker access token (worker.aat) routes
-  registerWorkerAatRoutes(app, requireAuth, requireAccess);
-
-  // Register worker certifications routes (handles all access control internally)
-  registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);
-
-  // Register worker ratings routes (handles all access control internally)
-  registerWorkerRatingsRoutes(app, requireAuth, requireAccess, requirePermission);
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
@@ -1683,12 +1653,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
   registerEdlsAssignmentExplorerRoutes(app, requireAuth);
-  registerEdlsTosRoutes(app, requireAuth);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
   registerWorkerEdlsRoutes(app, requireAuth);
   // Public (unauthenticated) worker schedule page — still gated on the `edls`
   // component like every other EDLS route.
-  registerEdlsPublicScheduleRoutes(app);
 
   // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);

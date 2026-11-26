@@ -1160,13 +1160,6 @@ export {
 } from "./schema/cardcheck/schema";
 
 export {
-  workerStewardAssignments,
-  insertWorkerStewardAssignmentSchema,
-  type WorkerStewardAssignment,
-  type InsertWorkerStewardAssignment,
-} from "../components/worker.steward/shared/schema/worker/steward/schema";
-
-export {
   sitespecificBtuCsg,
   insertBtuCsgSchema,
   type BtuCsgRecord,
@@ -1314,76 +1307,6 @@ export {
   type ContractSection,
   type InsertContractSection,
 } from "./schema/contract/schema";
-
-export {
-  optionsSkills,
-  insertOptionsSkillsSchema,
-  type OptionsSkill,
-  type InsertOptionsSkill,
-  workerSkills,
-  insertWorkerSkillsSchema,
-  type WorkerSkill,
-  type InsertWorkerSkill,
-} from "../components/worker.skills/shared/schema/worker/skills/schema";
-
-export {
-  optionsWorkerBadgeTypes,
-  insertOptionsWorkerBadgeTypeSchema,
-  workerBadgesDenorm,
-  insertWorkerBadgeDenormSchema,
-  type WorkerBadgeType,
-  type InsertWorkerBadgeType,
-  type WorkerBadgeDenorm,
-  type InsertWorkerBadgeDenorm,
-} from "../components/worker.badges/shared/schema/worker/badges/schema";
-
-export {
-  optionsCertifications,
-  insertOptionsCertificationsSchema,
-  type OptionsCertification,
-  type InsertOptionsCertification,
-  workerCertificationStatusEnum,
-  workerCertifications,
-  insertWorkerCertificationSchema,
-  type WorkerCertification,
-  type InsertWorkerCertification,
-} from "../components/worker.certifications/shared/schema/worker/certifications/schema";
-
-export {
-  optionsWorkerRatings,
-  insertOptionsWorkerRatingsSchema,
-  type OptionsWorkerRating,
-  type InsertOptionsWorkerRating,
-  workerRatings,
-  insertWorkerRatingsSchema,
-  type WorkerRating,
-  type InsertWorkerRating,
-} from "../components/worker.ratings/shared/schema/worker/ratings/schema";
-
-export {
-  workerTos,
-  insertWorkerTosSchema,
-  type WorkerTos,
-  type InsertWorkerTos,
-} from "../components/worker.tos/shared/schema/worker/tos/schema";
-
-export {
-  workerAat,
-  insertWorkerAatSchema,
-  type WorkerAat,
-  type InsertWorkerAat,
-} from "../components/worker.aat/shared/schema/worker/aat/schema";
-
-export {
-  optionsWorkerRelationType,
-  insertOptionsWorkerRelationTypeSchema,
-  type OptionsWorkerRelationType,
-  type InsertOptionsWorkerRelationType,
-  workerRelations,
-  insertWorkerRelationSchema,
-  type WorkerRelation,
-  type InsertWorkerRelation,
-} from "../components/worker.relations/shared/schema/worker/relations/schema";
 
 export {
   workerTrustElections,

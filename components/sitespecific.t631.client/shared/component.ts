@@ -5,4 +5,5 @@ export const component: ComponentDefinition = {
   description: "Client connection to the Teamsters 631 site",
   enabledByDefault: false,
   category: "site-specific",
+  dependsOnComponents: ["worker.tos", "worker.aat"],
 };

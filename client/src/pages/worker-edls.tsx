@@ -8,7 +8,7 @@ import { useAccessCheck } from "@/hooks/use-access-check";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { WorkerEdlsScheduleCard } from "@/components/edls/WorkerEdlsScheduleCard";
+import { ComponentSlot } from "@/lib/component-contributions";
 
 interface WorkerEdlsState {
   workerId: string;
@@ -61,7 +61,7 @@ function WorkerEdlsContent() {
 
   return (
     <div className="space-y-4">
-      <WorkerEdlsScheduleCard />
+      <ComponentSlot name="worker.edls.schedule" props={{}} />
       <Card>
         <CardHeader>
           <CardTitle>EDLS</CardTitle>

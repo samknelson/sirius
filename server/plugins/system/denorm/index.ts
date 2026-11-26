@@ -109,7 +109,6 @@ export function initializeDenormPluginSystem(): void {
 import "./plugins/workerMs";
 import "./plugins/workerWs";
 import "./plugins/workerEmployment";
-import "../../../../components/worker.tos/server/plugins/system/denorm/plugins/tosAbsenceReminder";
 import "./plugins/employerMonthly";
 // Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,
 // one event_type slice each).
@@ -122,8 +121,6 @@ import "./plugins/dispatch/accepted";
 // dispatch ends (gated by the dispatch.asi component).
 import "./plugins/dispatch/hta-home-employer";
 import "./plugins/dispatch/primary-unavailable";
-import "./plugins/dispatch/skill";
 import "./plugins/dispatch/status";
 import "./plugins/dispatch/ws";
 import "./plugins/workerBanActive";
-import "../../../../components/worker.badges/server/plugins/system/denorm/plugins/workerBadgeFromNote";

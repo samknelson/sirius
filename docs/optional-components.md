@@ -259,3 +259,53 @@ translation (`internationalization`, `internationalization.weglot`) are
 removable: remove children before parents (settlement/contract before grievance,
 Weglot before internationalization). Settlement and contract never import each
 other.
+
+## Worker components
+
+`worker.login`, `worker.skills`, `worker.certifications`, `worker.badges`,
+`worker.ratings`, `worker.relations`, `worker.steward`, `worker.tos` and
+`worker.aat` use normal manifest composition, including browser contributions.
+There are no core forwarding views. Login contributes its definition only;
+removing it does **not** disable shared authentication, account linking, the
+core worker permission, or existing worker role assignments.
+
+Required source-removal groups come from the declarations, not a hardcoded
+list:
+
+- Certifications require skills. Remove certifications with skills, or remove
+  certifications alone. Enabling certifications requires skills to be ready;
+  certification routes and scans also refuse an unavailable skills dependency.
+- T631 client requires TOS and AAT. Removing either therefore also requires removing
+  T631 client and any declared transitive dependents. The client still owns its
+  integration: its cron job, vendor TOS operation and local synchronizer refuse
+  before remote calls or writes if TOS is disabled. Public arrival requires an
+  AAT schedule link; it refuses unavailable AAT/EDLS before remote authentication
+  and rechecks availability before credential issuance.
+- BTU building-representative imports and attendance charges require both BTU
+  and stewardship at execution and in their offers. These are optional
+  integrations, not required source dependencies of either component.
+
+Source removal retains tables, credentials, options, history, component flags
+and plugin configs. Disabled and missing owners do not participate in live
+queries or browser offers. Unknown configured plugins and authority-bearing
+relationship rules refuse rather than becoming successful no-ops. A dependent
+eligibility request must resolve active relationship authority even if no
+benefit rules are configured. Explicit unavailable rating filters are errors,
+not requests for an unfiltered directory.
+Eligibility EDI generation also refuses unavailable relationship authority
+instead of treating dependent data as empty.
+
+Awards remain denorm-plugin-owned. Certification synchronization uses the
+singleton skills storage and the caller's transaction, and preserves manual
+skills outside the certification-managed set (skills referenced by any
+certification option remain certification-managed, as before). AAT owns bearer
+schedule presentation and delivery producers; EDLS
+retains transactional assignment answers and generation checks.
+
+When verifying removal, derive reverse dependency closures from all installed
+definitions. Test discovery, typechecking, architecture lint, production build
+and complete ready-state startup for each valid removal and restoration.
+Use isolated databases for enabled/disabled retained fixtures and fresh
+missing-source setup; never change the shared workspace switches or call live
+vendors. Temporary smoke checks are preferable to a blanket permanent removal
+or browser suite.

@@ -35,7 +35,7 @@ it unconditionally).
 # Startup self-heal: component becomes schema-managing while already enabled
 
 When a component that is **already enabled** on a deployment newly gains a
-`schemaManifest` + component migrations, it has no `component_schema_state_<id>`
+`schemaManifest`, with or without authored migrations, it has no `component_schema_state_<id>`
 variable yet (that variable is normally created by the enable flow). The
 per-component migration runner refuses to run migrations without that variable —
 by design, so it never invents state and loses the table-state audit trail.
@@ -57,3 +57,14 @@ component that ships enabled (or is enabled somewhere) can rely on this — no
 baseline needed solely to initialize `component_schema_state`. If the pre-existing
 live table's shape does not match the new Drizzle definition, schema-push throws
 `ComponentSchemaDriftError` and you must author a migration to reconcile it.
+
+Schema-only components need the same startup initialization as components with
+migrations, and required parents must be processed before children.
+
+**Why:** Fresh enabled installations otherwise reach the drift gate with missing
+tables; alphabetical component order can try creating a child before its
+required parent's tables exist.
+
+**How to apply:** Treat schema initialization separately from the presence of
+migration scripts, retain the normal enable-flow refusal semantics, and respect
+both definition-level and schema-level dependencies during boot.

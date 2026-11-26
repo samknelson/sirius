@@ -1,6 +1,7 @@
 import { getClient } from "../transaction-context";
 import { sql } from "drizzle-orm";
 import { getAvailableWorkersForSheetQuery } from "./available-workers-query";
+import { workerQueryPlan } from "./worker-query-plan";
 
 export interface EdlsWorkerDirectoryParams {
   page?: number;
@@ -42,6 +43,7 @@ export interface EdlsWorkerDirectoryRow {
 }
 
 export interface EdlsWorkerDirectoryResult {
+  ratingSelectionAvailable: boolean;
   rows: EdlsWorkerDirectoryRow[];
   total: number;
   page: number;
@@ -61,7 +63,9 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
       const page = Math.max(1, params.page ?? 1);
       const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 50));
       const offset = (page - 1) * pageSize;
-      const conditions = [];
+      const plan = await workerQueryPlan({ ...params, surface: "directory" },
+        sql`ORDER BY c.family NULLS LAST, c.given NULLS LAST, w.id`);
+      const conditions = [...plan.conditions];
 
       if (params.name?.trim()) {
         const name = `%${params.name.trim()}%`;
@@ -80,9 +84,6 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
             ${params.idTypeId ? sql`AND filter_wi.type_id = ${params.idTypeId}` : sql``}
             ${params.idValue?.trim() ? sql`AND filter_wi.value ILIKE ${`%${params.idValue.trim()}%`}` : sql``}
         )`);
-      }
-      if (params.ratingId && params.ratingValue !== undefined) {
-        conditions.push(sql`selected_rating.value >= ${params.ratingValue}`);
       }
       if (params.currentAssignment) {
         const exists = sql`EXISTS (
@@ -107,13 +108,8 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
       const where = conditions.length
         ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
         : sql``;
-      const ratingJoin = params.ratingId
-        ? sql`LEFT JOIN worker_ratings selected_rating
-             ON selected_rating.worker_id = w.id AND selected_rating.rating_id = ${params.ratingId}`
-        : sql``;
-      const ratingSelect = params.ratingId
-        ? sql`selected_rating.value`
-        : sql`NULL::integer`;
+      const ratingJoin = plan.join;
+      const ratingSelect = plan.value;
       const memberStatusJoin = params.industryId
         ? sql`LEFT JOIN LATERAL (
             SELECT ms.id, ms.code, ms.name, ms.sequence
@@ -163,7 +159,7 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
         ${ratingJoin}
         ${memberStatusJoin}
         ${where}
-        ORDER BY c.family NULLS LAST, c.given NULLS LAST, w.id
+        ${plan.orderBy}
         LIMIT ${pageSize} OFFSET ${offset}
       `);
 
@@ -213,6 +209,7 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
         page,
         pageSize,
         totalPages: Math.ceil(total / pageSize),
+        ratingSelectionAvailable: plan.available,
         idTypes,
       };
     },

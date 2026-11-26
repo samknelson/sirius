@@ -150,7 +150,7 @@
 - [Local WS test in split roles](local-ws-test-split-roles.md) — api-user must reach its own dispatcher for admin tests, but ordinary /api/ws traffic must remain api-ws-owned.
 - [Oneoff confirmation and cancellation races](oneoff-confirmation-races.md) — invalidate approvals after intervening work; terminal completion must atomically compete with cancellation; canonicalize JSONB inputs.
 - [Session-history boundaries](session-history-anonymous-scope.md) — user-associated capture only, no storage audit/metadata, opt-in retention; first observed values silently establish baselines.
-- [Browser verification transport](browser-verification-transport.md) — use Puppeteer pipe transport if stdout endpoint discovery stalls; signed-in fixtures stay in the test browser.
+- [Browser verification transport](browser-verification-transport.md) — use pipe transport when endpoint discovery stalls; isolate test identities from shared authentication.
 - [Queued task completion](task-queue-completion.md) — direct chat work can leave a queued entry; verify available controls, avoid duplicate background work, and check dependencies before cleanup.
 - [Browser identifier scope](browser-identifier-scope.md) — copyable profile label, never a credential; existing variable-path initialization only, without new coordination or logging changes.
 - [Primary repository intent](primary-repository-intent.md) — origin targets samknelson/sirius, superseding the older grievance instruction; keep Freeman separate.
@@ -173,3 +173,5 @@
 - [System child extraction](system-child-extraction-boundaries.md) — history login enrichment is the invocation seam; SFTP removal requires coordinating the mandatory Trust EDI dependent.
 - [Vitest import-time mock lifecycle](vitest-import-time-mock-lifecycle.md) — Vitest 5 clears mock calls before tests; observe registration with a fresh import after cleanup.
 - [Incomplete dependency snapshots](incomplete-dependency-snapshots.md) — populated node_modules may lack executable links or type declarations; repair locked packages before changing app types.
+- [Plugin metadata projection](plugin-metadata-projection.md) — compound component requirements must survive both registry availability and serialized manifest adapters.
+- [Isolated source verification](isolated-source-verification.md) — temporary lint copies need their own initialized Git snapshot; inherited or unborn repositories invalidate the check.

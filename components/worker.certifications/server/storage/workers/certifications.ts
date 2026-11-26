@@ -14,7 +14,7 @@ import {
 } from "../../../../../server/storage/utils/validation";
 import { calculateDenormActive } from "../../../../../server/storage/utils/denorm-active";
 import { normalizeToDateOnly } from "@shared/utils";
-import type { IStorage } from "../../../../../server/storage";
+import type { WorkerSkillStorage } from "../../../../worker.skills/server/storage/workers/skills";
 
 /**
  * Interface for certification option data that may contain skill associations
@@ -29,7 +29,7 @@ interface CertificationData {
  * Dependencies required by worker certification storage
  */
 export interface WorkerCertificationDependencies {
-  workerSkills: IStorage["workerSkills"];
+  workerSkills: WorkerSkillStorage;
 }
 
 /**
@@ -42,6 +42,10 @@ async function syncWorkerSkillsFromCertifications(
   workerId: string,
   deps: WorkerCertificationDependencies
 ): Promise<void> {
+  const { isComponentEnabled } = await import("../../../../../server/modules/components");
+  if (!(await isComponentEnabled("worker.skills"))) {
+    throw new Error("Certification synchronization requires worker.skills");
+  }
   const client = getClient();
   
   // Get ALL certification options to determine which skills are "certification-managed"

@@ -2,9 +2,9 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import { registerDenormPlugin } from "../../../../../../../server/plugins/system/denorm/registry";
 import type { DenormPlugin } from "../../../../../../../server/plugins/system/denorm/types";
 import {
-  EventType,
+  TOS_ABSENCE_REMINDER,
   type TosAbsenceReminderPayload,
-} from "../../../../../../../server/services/event-bus";
+} from "../../../../events";
 import { storage } from "../../../../../../../server/storage";
 
 /** Prefix + entity-type for this plugin's synthetic denorm entities. */
@@ -276,7 +276,7 @@ const tosAbsenceReminderPlugin: DenormPlugin<TosAbsenceReminderDenormPayload> = 
       uniqueId: entityId,
       pluginId: PLUGIN_ID,
       subjectId: payload.subjectId,
-      eventType: EventType.TOS_ABSENCE_REMINDER,
+      eventType: TOS_ABSENCE_REMINDER,
       payload: payload.event,
       sendOn: payload.sendOn,
       dontSendAfter: payload.dontSendAfter,

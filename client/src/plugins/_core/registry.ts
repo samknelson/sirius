@@ -20,11 +20,16 @@ import { createElement, type ComponentType } from "react";
 export function createPluginComponentRegistry<TProps>(opts: {
   kind: string;
   glob: Record<string, Record<string, unknown>>;
+  contributions?: readonly Record<string, ComponentType<TProps>>[];
 }): {
   has: (id: string) => boolean;
   resolve: (id: string) => ComponentType<TProps>;
 } {
   const registry = new Map<string, ComponentType<TProps>>();
+  const add = (id: string, component: ComponentType<TProps>) => {
+    if (registry.has(id)) throw new Error(`Duplicate plugin component "${id}" (kind=${opts.kind})`);
+    registry.set(id, component);
+  };
 
   for (const [path, mod] of Object.entries(opts.glob)) {
     const match = path.match(/^\.\/([^/]+)\/([^/]+)\.tsx$/);
@@ -34,7 +39,10 @@ export function createPluginComponentRegistry<TProps>(opts: {
     const fallback = (mod as { default?: ComponentType<TProps> }).default;
     const component = named ?? fallback;
     if (!component) continue;
-    registry.set(`${namespace}:${file}`, component);
+    add(`${namespace}:${file}`, component);
+  }
+  for (const contribution of opts.contributions ?? []) {
+    for (const [id, component] of Object.entries(contribution)) add(id, component);
   }
 
   return {

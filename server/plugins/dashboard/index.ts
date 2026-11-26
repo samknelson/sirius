@@ -200,7 +200,6 @@ import "./plugins/reports";
 import "./plugins/employer-monthly-uploads";
 import "./plugins/wmb-scan-status";
 import "./plugins/active-sessions";
-import "../../../components/worker.steward/server/plugins/dashboard/plugins/my-steward";
 import "./plugins/btu-dues-status";
 import "./plugins/btu-bu-summary";
 import "./plugins/edls-summary";

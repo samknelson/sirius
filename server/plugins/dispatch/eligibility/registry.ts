@@ -6,6 +6,7 @@ import type { DispatchJobWithRelations } from "../../../storage/dispatch/jobs";
 import type { DispatchJobFacilityWithFacility } from "../../../storage/dispatch/facility";
 import type { EmployerCompany } from "@shared/schema/employer/company-schema";
 import type { JsonSchema } from "@shared/json-schema-form";
+import type { OptionsTypeName } from "../../../storage/unified-options";
 
 /**
  * Represents a condition that a plugin contributes to the eligible workers query.
@@ -13,6 +14,8 @@ import type { JsonSchema } from "@shared/json-schema-form";
  */
 export interface EligibilityCondition {
   category: string;
+  /** The producing plugin owns any option-label enrichment for its values. */
+  optionsType?: OptionsTypeName;
   type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all" | "not_exists_unless_exists" | "exists_or_exists";
   value: string;
   values?: string[];

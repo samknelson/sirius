@@ -111,6 +111,13 @@ async function loadEnabledPluginConfigs(jobTypeId: string | null): Promise<Eligi
   if (!jobTypeId) return [];
   const pluginConfigStorage = createPluginConfigStorage();
   const rows = await pluginConfigStorage.search("dispatch-eligibility", { jobType: jobTypeId });
+  for (const row of rows) {
+    if (!row.config.enabled) continue;
+    const plugin = dispatchEligPluginRegistry.getPlugin(row.config.pluginId);
+    if (!plugin || (plugin.requiredComponent && !(await isComponentEnabled(plugin.requiredComponent)))) {
+      throw new Error(`Configured dispatch eligibility plugin "${row.config.pluginId}" is unavailable`);
+    }
+  }
   return rows
     .filter((r) => r.config.enabled)
     .map((r) => ({
@@ -794,14 +801,16 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
         });
       }
 
-      const categoryOptionsTypeMap: Record<string, OptionsTypeName> = {
-        skill: "skill",
-      };
+      const categoryOptionsTypeMap = new Map<string, OptionsTypeName>(
+        pluginResults.flatMap(result => result.condition?.optionsType
+          ? [[result.condition.category, result.condition.optionsType] as const]
+          : []),
+      );
 
       const idsToResolve: string[] = [];
       for (const result of pluginResults) {
         if (!result.passed && result.condition) {
-          const optionsType = categoryOptionsTypeMap[result.condition.category];
+          const optionsType = categoryOptionsTypeMap.get(result.condition.category);
           if (optionsType) {
             const allValues = result.condition.values || (result.condition.value ? [result.condition.value] : []);
             for (const v of allValues) {
@@ -815,7 +824,7 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
 
       if (idsToResolve.length > 0) {
         const idToName: Record<string, string> = {};
-        for (const optionsType of Object.values(categoryOptionsTypeMap)) {
+        for (const optionsType of categoryOptionsTypeMap.values()) {
           for (const id of idsToResolve) {
             try {
               const option = await unifiedOptionsStorage.get(optionsType, id);

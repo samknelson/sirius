@@ -37,6 +37,10 @@ function check(label: string, ok: boolean, detail?: string) {
 const NOTIFIER_ID = "edls-sheet-worker-sms-notifier";
 
 async function main() {
+  // Load component-owned implementations through normal composition, not core shims.
+  await import("../../server/generated/component-startups");
+  const { eventNotifierRegistry } = await import("../../server/plugins/event-notifier/registry");
+  if (!eventNotifierRegistry.get(NOTIFIER_ID)) throw new Error(`Notifier "${NOTIFIER_ID}" is unavailable`);
   await loadComponentCache();
 
   // Register the notifier plugins and subscribe the dispatcher's handlers, the

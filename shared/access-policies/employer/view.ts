@@ -1,4 +1,11 @@
 import { definePolicy, registerPolicy, type PolicyContext } from '../index';
+import { alterHooks } from "../../alter";
+
+export const employerViewExtensionHook = alterHooks.declare<boolean, { context: PolicyContext }>({
+  id: "employer.view.extend",
+  description: "Extend employer read access after the core policy denies",
+  semantics: "Read-only grant extension. Default denies. Errors propagate and refuse access. Component availability is checked before invocation.",
+});
 
 const policy = definePolicy({
   id: 'employer.view',
@@ -31,7 +38,8 @@ const policy = definePolicy({
       }
     }
     
-    return { granted: false, reason: 'No access to this employer' };
+    const granted = await alterHooks.run(employerViewExtensionHook, false, { context: ctx });
+    return { granted, reason: granted ? "Component employer access" : 'No access to this employer' };
   },
 });
 

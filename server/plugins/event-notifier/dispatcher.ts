@@ -414,10 +414,10 @@ async function dispatchForConfig(
   configData: unknown,
 ): Promise<void> {
   const plugin = eventNotifierRegistry.get(pluginId);
-  if (!plugin) return;
+  if (!plugin) throw new Error(`Configured event notifier "${pluginId}" is unavailable`);
   if (!plugin.subscribedEvents.includes(ctx.event)) return;
   if (!isPluginComponentEnabledSync(plugin)) {
-    return;
+    throw new Error(`Configured event notifier "${pluginId}" requires an unavailable component`);
   }
 
   // Per-config gate (e.g. a role filter): skip this config when the plugin says
@@ -625,7 +625,13 @@ function makeHandler(event: EventName) {
     const envelopes = await getEnabledConfigsForKind(KIND);
     for (const envelope of envelopes) {
       const plugin = eventNotifierRegistry.get(envelope.config.pluginId);
-      if (!plugin || !plugin.subscribedEvents.includes(event)) continue;
+      if (!plugin) {
+        logger.error("Configured event notifier is unavailable; refusing dispatch", {
+          service: SERVICE, configId: envelope.config.id, pluginId: envelope.config.pluginId, event,
+        });
+        continue;
+      }
+      if (!plugin.subscribedEvents.includes(event)) continue;
 
       const subsidiary = envelope.subsidiary as { media?: string | null } | null;
       const media = parseMedia(subsidiary?.media);

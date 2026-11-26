@@ -12,7 +12,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
-import type { OptionsSkill, JobTypeData, DispatchJobData } from "@shared/schema";
+import type { JobTypeData, DispatchJobData } from "@shared/schema";
 import { DispatchJobDetailsExtensions } from "@/lib/dispatch-contributions";
 
 interface DispatchStatusCounts {
@@ -65,16 +65,6 @@ function DispatchJobDetailsContent() {
     queryKey: ["/api/components/config"],
   });
 
-  const skillsComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "worker.skills" && c.enabled
-  );
-
-  const { data: skills = [] } = useQuery<OptionsSkill[]>({
-    queryKey: ["/api/options/skill"],
-    enabled: skillsComponentEnabled && !!jobData?.requiredSkills?.length,
-  });
-
-  const requiredSkills = jobData?.requiredSkills || [];
 
   const facilityComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.facility" && c.enabled
@@ -260,29 +250,6 @@ function DispatchJobDetailsContent() {
           </div>
         )}
         <DispatchJobDetailsExtensions job={job} jobTypeData={jobTypeData ?? undefined} />
-        {skillsComponentEnabled && requiredSkills.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">Required Skills</h3>
-            <div className="flex flex-wrap gap-2" data-testid="skills-list">
-              {requiredSkills.map((skillId) => {
-                const skill = skills.find((s) => s.id === skillId);
-                if (!skill) return null;
-                const skillData = skill.data as { icon?: string } | null;
-                return (
-                  <Badge
-                    key={skillId}
-                    variant="secondary"
-                    className="gap-1"
-                    data-testid={`badge-skill-${skillId}`}
-                  >
-                    {skillData?.icon && renderIcon(skillData.icon, "h-3 w-3")}
-                    {skill.name}
-                  </Badge>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

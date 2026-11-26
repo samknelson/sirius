@@ -1,4 +1,10 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/worker/ratings/schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/worker/ratings/schema.ts"],
+  "storage": "server/storage.ts",
+  "startup": "server/startup.ts",
+  "metadata": "server/metadata.ts",
+  "client": "client/src/contributions.tsx",
+  "contributions": "shared/contributions.ts",
+  "migrations": ["scripts/migrate/components/worker.ratings/001_add_sirius_id_to_options_worker_ratings.ts"]
 }

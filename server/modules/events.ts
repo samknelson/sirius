@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { participantWorkerFacts } from "../services/participant-worker-facts";
 import { storage } from "../storage";
 import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { insertEventSchema, insertEventOccurrenceSchema } from "@shared/schema";
@@ -753,7 +754,7 @@ export function registerEventsRoutes(
     try {
       const worker = await storage.workers.getWorkerByContactId(contactId);
       const workerId = worker?.id || null;
-      const isSteward = workerId ? await storage.workerStewardAssignments.isWorkerSteward(workerId) : false;
+      const { isSteward } = workerId ? await participantWorkerFacts(workerId) : { isSteward: false };
 
       const payload = {
         participantId,

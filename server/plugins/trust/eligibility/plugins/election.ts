@@ -7,6 +7,7 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
+import { readTrustRelationships } from "../../../../services/trust-relationships";
 
 type ElectionConfig = BaseEligibilityConfig;
 
@@ -73,9 +74,8 @@ class ElectionPlugin extends EligibilityPlugin<ElectionConfig> {
       const dependentId = context.dependentWorker.id;
       const relationshipIds = election.relationshipIds ?? [];
       let covered = false;
-      for (const relId of relationshipIds) {
-        const rel = await storage.workerRelations.get(relId);
-        if (!rel) continue;
+      const relationships = await readTrustRelationships({ kind: "ids", ids: relationshipIds });
+      for (const rel of relationships) {
         const pair = new Set([rel.worker1, rel.worker2]);
         if (pair.has(subscriberId) && pair.has(dependentId)) {
           covered = true;

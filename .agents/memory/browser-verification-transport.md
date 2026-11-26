@@ -1,78 +1,28 @@
 ---
 name: Browser verification transport
-description: Browser launch, isolated real-component fixtures, and stylesheet handling for UI verification.
+description: Reliable browser transport and isolation of verification identities.
 ---
 
-For Puppeteer verification in this workspace, use the pipe transport when browser launch waits indefinitely for a debugging endpoint on stdout.
+Prefer Puppeteer's pipe transport when browser launch stalls while discovering
+a debugging endpoint. Resolve an available browser from PATH rather than
+searching the Nix store.
 
-**Why:** Browser binaries available in the workspace could launch, but the default endpoint discovery timed out; `pipe: true` completed the same checks. This is a browser-launch issue, not an app readiness failure.
+**Why:** A working browser can fail endpoint discovery independently of app
+readiness. Repeated binary searches and transport changes obscure that distinction.
 
-**How to apply:** For isolated browser checks, prefer pipe transport over repeatedly changing browser binaries. Signed-in UI behavior can be exercised with synthetic API responses intercepted only in the test browser; never add a server authentication bypass or change saved component enablement for verification.
+**How to apply:** Keep browser transport failures separate from application
+failures. Capture uncaught page exceptions as well as console output, and check
+the actual preview proxy when development initialization or HMR matters.
 
-The DevTools pipe is also usable directly if no browser automation package is installed.
+Keep verification identities and authentication configuration isolated from the
+shared application. Match an isolated production build's identity-provider
+settings to its test server and let the browser use the matching origin normally.
 
-**Why:** This workspace can have Chromium on PATH without Puppeteer or a native Node WebSocket implementation. Direct pipe commands avoid adding dependencies just for a one-off check. Serializing a React-owned DOM node by value can fail with “Object reference chain is too long.”
+**Why:** Build-time identity settings and runtime provider choices can disagree;
+injected transport headers or a live identity SDK can prevent a valid fixture
+from initializing without exposing an application defect.
 
-**How to apply:** Use the browser's null-delimited JSON pipe protocol with child-process file descriptors 3 and 4. Return booleans or plain data, never DOM nodes, from evaluations (including open/close checks). Bundle real components and use browser-only fixture data, never an application auth bypass.
-
-Process a standalone bundle's CSS with the existing PostCSS/Tailwind pipeline before using its screenshots for visual verification.
-
-**Why:** Esbuild bundles CSS but does not expand Tailwind directives; an otherwise working fixture appears entirely unstyled.
-
-**How to apply:** Reuse the project's existing style configuration, not hand-authored replacements.
-
-Resolve the browser executable from PATH before searching the filesystem.
-
-**Why:** Recursive searches and even wildcard listings of the Nix store stalled for minutes during browser verification, although a browser was already on PATH.
-
-**How to apply:** Try `command -v chromium` first. Avoid traversing the entire Nix store just to locate a test executable.
-
-For small signed-in component and navigation-count checks, prefer an isolated
-bundle of the actual components with browser/session fixtures rather than
-hand-authored imports into Vite's transformed development modules or stubs of
-Vite's runtime exports.
-
-**Why:** Hand-authored module imports bypass Vite's CommonJS interop and React
-refresh setup, and dependency URLs depend on the server's configured root. The
-development SPA can also perform unrelated document navigations; stubbing its
-hot-reload runtime can prevent rendering entirely. These harness failures can
-obscure otherwise-working application behavior.
-
-**How to apply:** Keep fixtures outside application authentication and outside
-the permanent UI suite. Bundle with automatic JSX, exercise the real WebSocket
-handler and shared UI, and inspect the rendered result. If transformed
-development modules are unavoidable, discover optimized dependency URLs
-(including the filesystem prefix and version query) from transformed source
-rather than guessing a node_modules URL; handle CommonJS default exports
-explicitly. Supply complete validated authentication envelopes in browser-only
-fixtures: HTTP 200 alone does not mean the auth provider accepted the fixture.
-
-For centered Radix dialog fixtures, do not retain browser element handles
-across preview changes or dialog close/reopen transitions. Prefer independently
-seeded dialog states when checking separate flows.
-
-**Why:** Replacing a tall preview moves the centered dialog while close
-animations and focus restoration are still running. Fixture pointer clicks
-can silently hit the wrong position or use a detached node, despite the
-application handler working correctly.
-
-**How to apply:** Wait for the prior dialog to finish closing, query the current
-element again, and separate export checks from an import-dialog closing flow.
-Distinguish automation timing failures from application failures in the report.
-
-Set mobile/touch emulation before seeding editor drafts, and scroll a target
-into view before sending raw touchscreen coordinates.
-
-**Why:** Puppeteer can reload the document when `hasTouch` or `isMobile`
-changes, resetting component state. Unlike an element click, a raw
-`touchscreen.tap(x, y)` does not scroll an offscreen target into view.
-
-**How to apply:** Verify draft retention within one emulation mode; start a
-separate touch flow after changing modes. Wait for dialog opening animations
-to settle before testing Escape or capturing a screenshot.
-
-A blank static capture can omit an uncaught page-level exception even when its browser console contains only hot-reload connection errors.
-
-**Why:** The static screenshot console stream did not include a module-initialization ReferenceError that prevented React from mounting. Direct browser inspection exposed it.
-
-**How to apply:** When a ready server returns a blank page, inspect Runtime.exceptionThrown and the root element through the browser protocol before treating loopback hot-reload errors as the cause. Verify against the actual preview proxy as well.
+**How to apply:** Use real synthetic-account sign-in in isolated environments,
+or intercept complete identity fixtures only in the test browser. Never add a
+server authentication bypass, alter saved workspace settings, or require a live
+identity-provider account just to verify a component.

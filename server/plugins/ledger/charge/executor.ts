@@ -5,7 +5,7 @@ import {
   LedgerTransaction,
   LedgerNotification,
 } from "./types";
-import { getEnabledChargePluginsByTrigger } from "./registry";
+import { getEnabledChargePluginsByTrigger, getChargePlugin, isChargePluginEnabled } from "./registry";
 import { mergeEnabledChargeConfigs, toChargeConfig } from "./charge-config-resolution";
 import { storage } from "../../../storage";
 import { dateToYmd } from "@shared/utils/date";
@@ -39,7 +39,18 @@ export async function executeChargePlugins(
     trigger,
   });
 
-  // Get all enabled plugins that handle this trigger (filters by component status)
+  const employerId = "employerId" in context ? context.employerId : null;
+  const configsByPlugin = await getEnabledConfigs(employerId);
+  const executed: PluginExecutionSummary[] = [];
+  for (const pluginId of configsByPlugin.keys()) {
+    const plugin = getChargePlugin(pluginId);
+    if (plugin && !plugin.canHandle(trigger)) continue;
+    if (plugin && await isChargePluginEnabled(pluginId)) continue;
+    const error = `Configured charge plugin "${pluginId}" is unavailable`;
+    logger.error(error, { service: "charge-plugin-executor", pluginId, trigger });
+    executed.push({ pluginId, success: false, transactionCount: 0, notificationCount: 0, error });
+  }
+  // Unavailable configurations remain failed results, not successful omissions.
   const applicablePlugins = await getEnabledChargePluginsByTrigger(trigger);
   
   if (applicablePlugins.length === 0) {
@@ -48,19 +59,12 @@ export async function executeChargePlugins(
       trigger,
     });
     return {
-      executed: [],
+      executed,
       totalTransactions: [],
       notifications: [],
     };
   }
 
-  // Get employerId from context if available (for employer-scoped plugins)
-  let employerId: string | null = null;
-  if ('employerId' in context) {
-    employerId = context.employerId;
-  }
-
-  const executed: PluginExecutionSummary[] = [];
   const totalTransactions: LedgerTransaction[] = [];
   const notifications: LedgerNotification[] = [];
 
@@ -68,7 +72,7 @@ export async function executeChargePlugins(
   for (const plugin of applicablePlugins) {
     try {
       // Get configs for this plugin (both global and employer-specific if applicable)
-      const configs = await getEnabledConfigsForPlugin(plugin.metadata.id, employerId);
+      const configs = configsByPlugin.get(plugin.metadata.id) ?? [];
       
       if (configs.length === 0) {
         logger.debug("No enabled configs for plugin", {
@@ -215,34 +219,31 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
 }
 
 /**
- * Get enabled configs for a plugin (global or employer-specific)
+ * Load scoped configs once, preserving per-plugin employer/account overrides.
  */
-async function getEnabledConfigsForPlugin(
-  pluginId: string,
+async function getEnabledConfigs(
   employerId: string | null
-): Promise<any[]> {
+): Promise<Map<string, ReturnType<typeof toChargeConfig>[]>> {
   // All enabled global configs (one per account).
   const globalConfigs = (
     await storage.pluginConfigs.search("charge", {
-      pluginId,
       enabled: true,
       scope: "global",
     })
   ).map(toChargeConfig);
 
-  if (!employerId) {
-    return globalConfigs;
-  }
-
   // Employer-specific configs override globals targeting the same account.
-  const employerConfigs = (
+  const employerConfigs = employerId ? (
     await storage.pluginConfigs.search("charge", {
-      pluginId,
       enabled: true,
       scope: "employer",
       employerId,
     })
-  ).map(toChargeConfig);
+  ).map(toChargeConfig) : [];
 
-  return mergeEnabledChargeConfigs(globalConfigs, employerConfigs);
+  return new Map([...new Set([...globalConfigs, ...employerConfigs].map(config => config.pluginId))]
+    .map(pluginId => [pluginId, mergeEnabledChargeConfigs(
+      globalConfigs.filter(config => config.pluginId === pluginId),
+      employerConfigs.filter(config => config.pluginId === pluginId),
+    )]));
 }

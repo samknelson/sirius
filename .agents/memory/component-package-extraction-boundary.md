@@ -39,3 +39,14 @@ descriptions; an unimported implementation refuses even authorized users.
 **How to apply:** Test registration through component startup and evaluate
 both an authorized and unauthorized request, without importing the policy
 directly in the test.
+
+T631 arrival remains a schedule-entry integration, not generic authentication.
+Do not substitute identifiers or invent credential providers merely to avoid
+an actual dependency.
+
+**Why:** The approved extraction scope preserves shared authentication and
+forbids new credential-provider frameworks. Extraction must not silently change
+the destination's authority.
+
+**How to apply:** Treat alternative arrival destinations or credentials as a
+separate product decision, not an extraction workaround.

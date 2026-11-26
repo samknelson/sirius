@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
-import { StarRating } from "@/components/edls/StarRating";
+import { ComponentSlot, ComponentWrappers } from "@/lib/component-contributions";
 import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -66,11 +66,6 @@ interface AssignmentsContextValue {
   unassignWorker: (assignment: AssignmentWithWorker) => void;
   isAssigning: boolean;
   isUnassigning: boolean;
-  selectedRatingId: string;
-  setSelectedRatingId: (id: string) => void;
-  workerRatingsMap: Map<string, number>;
-  ratingsEnabled: boolean;
-  hierarchicalRatings: RatingOptionWithLevel[];
   availableWorkers: AvailableWorker[];
   isLoadingWorkers: boolean;
   classifications: ClassificationOption[];
@@ -119,24 +114,7 @@ function formatTime(time: string): string {
 
 function SheetSummary() {
   const { sheet } = useEdlsSheetLayout();
-  const { assignments, selectedRatingId, workerRatingsMap } = useAssignments();
-
-  const sheetRatingStats = useMemo(() => {
-    if (selectedRatingId === "all") return null;
-    
-    let total = 0;
-    let count = 0;
-    for (const assignment of assignments) {
-      const rating = workerRatingsMap.get(assignment.workerId);
-      if (rating !== undefined) {
-        total += rating;
-        count++;
-      }
-    }
-    
-    if (count === 0) return { total: 0, average: 0, count: 0 };
-    return { total, average: Math.round((total / count) * 10) / 10, count };
-  }, [assignments, selectedRatingId, workerRatingsMap]);
+  const { assignments } = useAssignments();
 
   return (
     <Card>
@@ -158,12 +136,7 @@ function SheetSummary() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            {sheetRatingStats && (
-              <Badge variant="outline" data-testid="sheet-rating-stats">
-                <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
-                {sheetRatingStats.total} ({sheetRatingStats.average})
-              </Badge>
-            )}
+            <ComponentSlot name="edls.assignments.stats" props={{ assignments }} />
             <Badge variant="secondary" data-testid="text-sheet-workers">
               {assignments.length} / {sheet.workerCount}
             </Badge>
@@ -300,7 +273,7 @@ interface AssignedWorkerSlotProps {
 }
 
 function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: AssignedWorkerSlotProps) {
-  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap } = useAssignments();
+  const { unassignWorker, isUnassigning, setSelectedCrewId, classificationsMap } = useAssignments();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
@@ -316,7 +289,6 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
     setEditModalOpen(true);
   };
 
-  const ratingValue = selectedRatingId !== "all" ? workerRatingsMap.get(assignment.workerId) : undefined;
 
   const extrasParts: string[] = [];
   if (classification) extrasParts.push(classification.code || classification.name);
@@ -348,9 +320,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
             {assignment.worker.memberStatusCode ?? "—"}
           </span>
           <span className="text-sm truncate">{formatAssignedWorkerName(assignment.worker)}</span>
-          {ratingValue !== undefined && (
-            <StarRating value={ratingValue} />
-          )}
+          <ComponentSlot name="edls.assignments.value" props={{ workerId: assignment.workerId }} />
           <span className="flex-1" />
           {extrasText && (
             <span
@@ -409,7 +379,7 @@ interface CrewCardProps {
 
 function CrewCard({ crew }: CrewCardProps) {
   const { sheet } = useEdlsSheetLayout();
-  const { selectedCrewId, setSelectedCrewId, assignments, selectedRatingId, workerRatingsMap, classificationsMap } = useAssignments();
+  const { selectedCrewId, setSelectedCrewId, assignments, classificationsMap } = useAssignments();
   const isSelected = selectedCrewId === crew.id;
   
   const crewAssignments = useMemo(() => {
@@ -418,22 +388,6 @@ function CrewCard({ crew }: CrewCardProps) {
   const emptySlotCount = Math.max(0, crew.workerCount - crewAssignments.length);
   const emptySlots = Array.from({ length: emptySlotCount }, (_, i) => i);
 
-  const ratingStats = useMemo(() => {
-    if (selectedRatingId === "all") return null;
-    
-    let total = 0;
-    let count = 0;
-    for (const assignment of crewAssignments) {
-      const rating = workerRatingsMap.get(assignment.workerId);
-      if (rating !== undefined) {
-        total += rating;
-        count++;
-      }
-    }
-    
-    if (count === 0) return { total: 0, average: 0, count: 0 };
-    return { total, average: Math.round((total / count) * 10) / 10, count };
-  }, [crewAssignments, selectedRatingId, workerRatingsMap]);
 
   const handleClick = () => {
     setSelectedCrewId(isSelected ? null : crew.id);
@@ -454,12 +408,7 @@ function CrewCard({ crew }: CrewCardProps) {
             </CardTitle>
           </div>
           <div className="flex items-center gap-2">
-            {ratingStats && (
-              <Badge variant="outline" className="text-xs" data-testid={`crew-rating-${crew.id}`}>
-                <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
-                {ratingStats.total} ({ratingStats.average})
-              </Badge>
-            )}
+            <ComponentSlot name="edls.assignments.stats" props={{ assignments: crewAssignments, crewId: crew.id }} />
             <Badge variant="secondary" data-testid={`crew-worker-count-${crew.id}`}>
               {crewAssignments.length} / {crew.workerCount}
             </Badge>
@@ -572,64 +521,6 @@ interface AvailableWorker {
   memberStatusSequence: number | null;
 }
 
-interface ComponentConfig {
-  componentId: string;
-  enabled: boolean;
-}
-
-interface RatingOption {
-  id: string;
-  name: string;
-  parent: string | null;
-}
-
-interface RatingOptionWithLevel extends RatingOption {
-  level: number;
-}
-
-function buildRatingHierarchy(ratings: RatingOption[]): RatingOptionWithLevel[] {
-  const result: RatingOptionWithLevel[] = [];
-  const childrenMap = new Map<string | null, RatingOption[]>();
-  
-  for (const rating of ratings) {
-    const parentKey = rating.parent || null;
-    if (!childrenMap.has(parentKey)) {
-      childrenMap.set(parentKey, []);
-    }
-    childrenMap.get(parentKey)!.push(rating);
-  }
-
-  Array.from(childrenMap.values()).forEach(children => {
-    children.sort((a, b) => a.name.localeCompare(b.name));
-  });
-
-  const processed = new Set<string>();
-
-  function addWithChildren(rating: RatingOption, level: number) {
-    if (processed.has(rating.id)) return;
-    processed.add(rating.id);
-    result.push({ ...rating, level });
-    
-    const children = childrenMap.get(rating.id) || [];
-    for (const child of children) {
-      addWithChildren(child, level + 1);
-    }
-  }
-
-  const topLevel = childrenMap.get(null) || [];
-  for (const rating of topLevel) {
-    addWithChildren(rating, 0);
-  }
-
-  for (const rating of ratings) {
-    if (!processed.has(rating.id)) {
-      result.push({ ...rating, level: 0 });
-      processed.add(rating.id);
-    }
-  }
-
-  return result;
-}
 
 function formatWorkerName(worker: AvailableWorker): string {
   if (worker.family && worker.given) {
@@ -652,14 +543,7 @@ function WorkerAssignmentModal({
 }) {
   const { sheet } = useEdlsSheetLayout();
   
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-  
-  const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
-
-  return <WorkerAssignmentDetailsDialog workerId={worker.id} queryUrl={`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`} open={open} onOpenChange={onOpenChange} ratingsEnabled={ratingsEnabled} />;
+  return <WorkerAssignmentDetailsDialog workerId={worker.id} queryUrl={`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`} open={open} onOpenChange={onOpenChange}><ComponentSlot name="edls.worker-details" props={{ workerId: worker.id }} /></WorkerAssignmentDetailsDialog>;
 }
 
 function StatusDots({ worker }: { worker: AvailableWorker }) {
@@ -685,10 +569,6 @@ function AvailableWorkersPanel() {
     assignWorker, 
     isAssigning, 
     assignments,
-    selectedRatingId,
-    setSelectedRatingId,
-    ratingsEnabled,
-    hierarchicalRatings,
     availableWorkers: workers,
     isLoadingWorkers: isLoading,
   } = useAssignments();
@@ -856,26 +736,7 @@ function AvailableWorkersPanel() {
           </div>
         )}
         
-        {ratingsEnabled && hierarchicalRatings.length > 0 && (
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Rating</label>
-            <Select value={selectedRatingId} onValueChange={setSelectedRatingId}>
-              <SelectTrigger data-testid="select-rating-filter" className="h-8 text-xs">
-                <SelectValue placeholder="All workers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All workers</SelectItem>
-                {hierarchicalRatings.map((option) => (
-                  <SelectItem key={option.id} value={option.id}>
-                    <span style={{ paddingLeft: `${option.level * 12}px` }}>
-                      {option.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        <ComponentSlot name="edls.assignments.filter" props={{}} />
         
         {isLoading ? (
           <div className="space-y-2">
@@ -914,9 +775,7 @@ function AvailableWorkersPanel() {
                         data-testid={`worker-${worker.id}`}
                       >
                         <StatusDots worker={worker} />
-                        {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
-                          <StarRating value={worker.ratingValue} />
-                        )}
+                        <ComponentSlot name="edls.assignments.value" props={{ workerId: worker.id, value: worker.ratingValue }} />
                         <span className="text-sm truncate">{formatWorkerName(worker)}</span>
                       </div>
                     );
@@ -935,7 +794,8 @@ function EdlsSheetAssignmentsContent() {
   const { sheet } = useEdlsSheetLayout();
   const { toast } = useToast();
   const [selectedCrewId, setSelectedCrewId] = useState<string | null>(null);
-  const [selectedRatingId, setSelectedRatingId] = useState<string>("all");
+  const [workerQueryParameters, setWorkerQueryParameters] = useState<Record<string, string>>({});
+  const workerQueryString = new URLSearchParams(workerQueryParameters).toString();
 
   const { data: assignments = [] } = useQuery<AssignmentWithWorker[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "assignments"],
@@ -947,25 +807,11 @@ function EdlsSheetAssignmentsContent() {
   });
 
 
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-  
-  const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
-
-  const { data: ratingOptions = [] } = useQuery<RatingOption[]>({
-    queryKey: ["/api/options/worker-rating"],
-    enabled: ratingsEnabled,
-  });
-
-  const hierarchicalRatings = useMemo(() => buildRatingHierarchy(ratingOptions), [ratingOptions]);
-
   const { data: availableWorkers = [], isLoading: isLoadingWorkers } = useQuery<AvailableWorker[]>({
-    queryKey: ["/api/edls/sheets", sheet.id, "available-workers", selectedRatingId],
+    queryKey: ["/api/edls/sheets", sheet.id, "available-workers", workerQueryString],
     queryFn: async () => {
-      const url = selectedRatingId && selectedRatingId !== "all"
-        ? `/api/edls/sheets/${sheet.id}/available-workers?ratingId=${selectedRatingId}`
+      const url = workerQueryString
+        ? `/api/edls/sheets/${sheet.id}/available-workers?${workerQueryString}`
         : `/api/edls/sheets/${sheet.id}/available-workers`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to fetch available workers");
@@ -973,15 +819,6 @@ function EdlsSheetAssignmentsContent() {
     },
   });
 
-  const workerRatingsMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const worker of availableWorkers) {
-      if (worker.ratingValue !== null) {
-        map.set(worker.id, worker.ratingValue);
-      }
-    }
-    return map;
-  }, [availableWorkers]);
 
   const { data: classifications = [] } = useQuery<ClassificationOption[]>({
     queryKey: ["/api/options/classification"],
@@ -1051,11 +888,6 @@ function EdlsSheetAssignmentsContent() {
     unassignWorker: (assignment: AssignmentWithWorker) => unassignMutation.mutate(assignment),
     isAssigning: assignMutation.isPending,
     isUnassigning: unassignMutation.isPending,
-    selectedRatingId,
-    setSelectedRatingId,
-    workerRatingsMap,
-    ratingsEnabled,
-    hierarchicalRatings,
     availableWorkers,
     isLoadingWorkers,
     classifications,
@@ -1064,6 +896,7 @@ function EdlsSheetAssignmentsContent() {
 
   return (
     <AssignmentsContext.Provider value={contextValue}>
+      <ComponentWrappers name="edls.assignments.provider" props={{ workers: availableWorkers, setQueryParameters: setWorkerQueryParameters }}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <SheetSummary />
@@ -1073,6 +906,7 @@ function EdlsSheetAssignmentsContent() {
           <AvailableWorkersPanel />
         </div>
       </div>
+      </ComponentWrappers>
     </AssignmentsContext.Provider>
   );
 }

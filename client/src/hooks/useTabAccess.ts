@@ -109,10 +109,12 @@ export function useTabAccess({
     const filterAndResolve = (tabs: HierarchicalTab[]): ResolvedTab[] => {
       return tabs
         .filter(tab => accessMap.get(tab.id) === true && data.tabs.find(result => result.tabId === tab.id)?.visible !== false)
-        .map(tab => {
+        .flatMap(tab => {
           const filteredChildren = tab.children 
             ? filterAndResolve(tab.children)
             : undefined;
+          // Container-only sections must not offer a link to an unavailable child.
+          if (tab.navigateToFirstAccessibleChild && !filteredChildren?.length) return [];
           
           // Apply terminology substitution if termKey is defined
           const label = tab.termKey 
@@ -130,13 +132,13 @@ export function useTabAccess({
             ? filteredChildren[0].href
             : buildTabHref(tab.hrefTemplate, entityId);
 
-          return {
+          return [{
             id: tab.id,
             label,
             href,
             hasChildren: (filteredChildren?.length ?? 0) > 0,
             children: filteredChildren && filteredChildren.length > 0 ? filteredChildren : undefined,
-          };
+          }];
         });
     };
 
@@ -205,14 +207,6 @@ export function useWorkerTabAccess(workerId: string | undefined, enabled = true)
 /**
  * Hook specifically for worker certification entity tabs
  */
-export function useWorkerCertificationTabAccess(certificationId: string | undefined, enabled = true) {
-  return useTabAccess({
-    entityType: 'worker_certification',
-    entityId: certificationId,
-    enabled,
-  });
-}
-
 /**
  * Hook specifically for employer entity tabs
  */

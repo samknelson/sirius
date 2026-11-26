@@ -102,7 +102,6 @@ import {
 } from "./system/entity-metadata-seed";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
-import { type WorkerBadgesDenormStorage, createWorkerBadgesDenormStorage } from "../../components/worker.badges/server/storage/system/worker-badges-denorm";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
@@ -131,7 +130,6 @@ import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } fr
 import { type GbhetPensionStorage, createGbhetPensionStorage } from "./sitespecific/gbhet/pension";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
 import { type DispatchJobFacilityStorage, createDispatchJobFacilityStorage, dispatchJobFacilityLoggingConfig } from "./dispatch/facility";
-import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "../../components/worker.steward/server/storage/worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
@@ -144,12 +142,6 @@ import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStora
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
-import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "../../components/worker.skills/server/storage/workers/skills";
-import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "../../components/worker.tos/server/storage/workers/tos";
-import { type WorkerAatStorage, createWorkerAatStorage, workerAatLoggingConfig } from "../../components/worker.aat/server/storage/workers/aat";
-import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "../../components/worker.certifications/server/storage/workers/certifications";
-import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "../../components/worker.ratings/server/storage/workers/ratings";
-import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "../../components/worker.relations/server/storage/workers/relations";
 import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
 import { type TrustBenefitEligibilityExemptionsStorage, createTrustBenefitEligibilityExemptionsStorage, trustBenefitEligibilityExemptionsLoggingConfig } from "./trust/eligibility-exemptions";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
@@ -209,7 +201,6 @@ export interface IStorage extends ComponentStorage {
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
-  workerBadgesDenorm: WorkerBadgesDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   ebs: EbsStorage;
@@ -236,7 +227,6 @@ export interface IStorage extends ComponentStorage {
   dispatches: DispatchStorage;
   dispatchJobFacility: DispatchJobFacilityStorage;
   dispatchJobEmployerContacts: DispatchJobEmployerContactsStorage;
-  workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
   btuTerritories: BtuTerritoriesStorage;
@@ -247,12 +237,6 @@ export interface IStorage extends ComponentStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
-  workerSkills: WorkerSkillStorage;
-  workerTos: WorkerTosStorage;
-  workerAat: WorkerAatStorage;
-  workerCertifications: WorkerCertificationStorage;
-  workerRatings: WorkerRatingStorage;
-  workerRelations: WorkerRelationsStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
   trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
   edlsSheets: EdlsSheetsStorage;
@@ -322,7 +306,6 @@ export class DatabaseStorage implements IStorage {
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
-  workerBadgesDenorm: WorkerBadgesDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   ebs: EbsStorage;
@@ -349,7 +332,6 @@ export class DatabaseStorage implements IStorage {
   dispatches: DispatchStorage;
   dispatchJobFacility: DispatchJobFacilityStorage;
   dispatchJobEmployerContacts: DispatchJobEmployerContactsStorage;
-  workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
   btuTerritories: BtuTerritoriesStorage;
@@ -360,12 +342,6 @@ export class DatabaseStorage implements IStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   workerBans: WorkerBanStorage;
   entityNotes: EntityNotesStorage;
-  workerSkills: WorkerSkillStorage;
-  workerTos: WorkerTosStorage;
-  workerAat: WorkerAatStorage;
-  workerCertifications: WorkerCertificationStorage;
-  workerRatings: WorkerRatingStorage;
-  workerRelations: WorkerRelationsStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
   trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
   edlsSheets: EdlsSheetsStorage;
@@ -498,7 +474,6 @@ export class DatabaseStorage implements IStorage {
     // No logging for denorm - high-volume internal workflow state churn.
     this.denorm = createDenormStorage();
     this.workerMshDenorm = createWorkerMshDenormStorage();
-    this.workerBadgesDenorm = createWorkerBadgesDenormStorage();
     this.workerWshDenorm = createWorkerWshDenormStorage();
     this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
     // No logging for ebs - internal scheduled-event churn maintained by plugins.
@@ -581,7 +556,6 @@ export class DatabaseStorage implements IStorage {
     this.dispatches = withStorageLogging(createDispatchStorage(), dispatchLoggingConfig);
     this.dispatchJobFacility = withStorageLogging(createDispatchJobFacilityStorage(), dispatchJobFacilityLoggingConfig);
     this.dispatchJobEmployerContacts = withStorageLogging(createDispatchJobEmployerContactsStorage(), dispatchJobEmployerContactsLoggingConfig);
-    this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
     this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
     this.btuTerritories = createBtuTerritoriesStorage();
@@ -598,15 +572,6 @@ export class DatabaseStorage implements IStorage {
     );
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.entityNotes = withStorageLogging(createEntityNotesStorage(), entityNotesLoggingConfig);
-    this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
-    this.workerTos = withStorageLogging(createWorkerTosStorage(), workerTosLoggingConfig);
-    this.workerAat = withStorageLogging(createWorkerAatStorage(), workerAatLoggingConfig);
-    this.workerCertifications = withStorageLogging(
-      createWorkerCertificationStorage({ workerSkills: this.workerSkills }), 
-      workerCertificationLoggingConfig
-    );
-    this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
-    this.workerRelations = withStorageLogging(createWorkerRelationsStorage(), workerRelationsLoggingConfig);
     this.workerTrustElections = withStorageLogging(createWorkerTrustElectionsStorage(), workerTrustElectionsLoggingConfig);
     this.trustBenefitEligibilityExemptions = withStorageLogging(createTrustBenefitEligibilityExemptionsStorage(), trustBenefitEligibilityExemptionsLoggingConfig);
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);

@@ -2,6 +2,7 @@ import { entityMetadataStorage, type EntityMetadataView } from "../storage/syste
 import { entityMetadataContexts, getMetadataRecordContext, metadataRecordHref } from "../storage/entity-metadata-record-tables";
 import { formatRecordRevision, formatRecordSequence } from "@shared/utils/record-sequence";
 import type { RecordGoPresentation } from "@shared/utils/record-go";
+import { alterHooks } from "@shared/alter";
 
 export type RecordGoIdentifier =
   | { kind: "uuid"; value: string }
@@ -47,12 +48,18 @@ const recordGoAccessRequirements: Record<string, RecordGoAccessRequirement> = {
   users: { kind: "policy", id: "admin" },
   wizards: { kind: "policy", id: "employer.mine" },
   worker_hours: { kind: "permission", id: "staff" },
-  worker_skills: { kind: "policy", id: "worker.view", componentId: "worker.skills" },
   worker_trust_elections: { kind: "policy", id: "staff", componentId: "trust.elections" },
   workers: { kind: "policy", id: "worker.view" },
   ws_clients: { kind: "permission", id: "admin" },
 };
 
+export const recordGoResolutionHook = alterHooks.declare<
+  RecordGoResolution | null, { readonly metadata: EntityMetadataView }, Record<string, never>
+>({
+  id: "record-go.resolve",
+  description: "Resolve a component-owned child record and its authorization parent",
+  semantics: "Read-only; return a destination and parent from the same snapshot. Null means unhandled. Unknown contexts and errors refuse.",
+});
 let mergedRequirements: Record<string, RecordGoAccessRequirement> | undefined;
 
 /**
@@ -134,16 +141,17 @@ export async function resolveRecordGoSource(
 }
 
 async function resolveRecordGoMetadata(metadata: EntityMetadataView): Promise<RecordGoResolution> {
+  if (!getMetadataRecordContext(metadata.contextId)) return { kind: "not_found", reason: "unknown" };
+  try {
+    const contributed = await alterHooks.run(recordGoResolutionHook, null, { metadata });
+    if (contributed) return contributed;
+  } catch {
+    return { kind: "not_found", reason: "unknown" };
+  }
   // Child destinations are resolved once; authorization uses this SAME parent
   // snapshot rather than a second lookup that could authorize a different href.
-  if (metadata.contextId === "entity_notes" || metadata.contextId === "worker_skills") {
-    // An optional component's table may not exist at all while disabled.
-    if (metadata.contextId === "worker_skills") {
-      const { isComponentEnabled } = await import("../modules/components");
-      if (!(await isComponentEnabled("worker.skills"))) return { kind: "not_found", reason: "unknown" };
-    }
+  if (metadata.contextId === "entity_notes") {
     const { storage } = await import("../storage");
-    if (metadata.contextId === "entity_notes") {
       const note = await storage.entityNotes.get(metadata.entityId);
       if (!note) return { kind: "not_found", reason: "unknown" };
       if (note.contextId !== "worker") return { kind: "not_found", reason: "no_page" };
@@ -152,13 +160,6 @@ async function resolveRecordGoMetadata(metadata: EntityMetadataView): Promise<Re
         parent: { workerId: note.entityId, noteContextId: "worker" },
         href: `/workers/${encodeURIComponent(note.entityId)}/notes?record=${encodeURIComponent(note.id)}`,
       };
-    }
-    const skill = await storage.workerSkills.get(metadata.entityId);
-    if (!skill) return { kind: "not_found", reason: "unknown" };
-    return {
-      kind: "resolved", metadata, parent: { workerId: skill.workerId },
-      href: `/workers/${encodeURIComponent(skill.workerId)}/skills?record=${encodeURIComponent(skill.id)}`,
-    };
   }
   const href = metadataRecordHref(metadata.contextId, metadata.entityId);
   if (!href) return { kind: "not_found", reason: "no_page" };

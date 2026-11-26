@@ -151,9 +151,7 @@ export const configSections: NavSection[] = [
     description: "Worker settings and notifications",
     icon: Users,
     items: [
-      { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
-      { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },
     ],
   },
   {

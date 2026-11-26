@@ -43,14 +43,15 @@ registry has closed; both installed startup and absence builds can still pass.
 
 **How to apply:** Exercise a complete boot in isolation for each removal
 combination, and ensure core declarations have an unconditional early owner.
-Worker children follow the same relocation-only boundary. A component with no
+For relocation-only requests, worker children follow that same boundary. A component with no
 exclusive implementation may have only a transitional manifest; do not move
 shared authentication just to fill its directory. Fixed browser glob entries may
-remain thin forwarders during relocation.
+remain thin forwarders during relocation, but not after approved removability work.
 
 **Why:** The user explicitly excluded authentication extraction, new registration
 designs and permanent relocation/UI tests from this stage.
 
-**How to apply:** Preserve central registration and use focused existing tests
-plus temporary smoke checks. Review removability and browser discovery contracts
-separately before replacing the retained host integration.
+**How to apply:** Preserve central registration only during pure relocation.
+Separately approved removal must cover browser discovery and backend invocation
+together. Use focused existing tests plus temporary smoke checks, and never
+extract shared authentication merely to populate an optional login directory.

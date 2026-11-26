@@ -17,4 +17,12 @@ import { contributions as contribution13 } from "./../../../components/sitespeci
 import { contributions as contribution14 } from "./../../../components/sitespecific.t631.client/client/src/contributions";
 import { contributions as contribution15 } from "./../../../components/sitespecific.t631.interviews/client/src/contributions";
 import { contributions as contribution16 } from "./../../../components/system.session_history/client/src/contributions";
-export const componentBrowserContributions: ComponentBrowserContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5, contribution6, contribution7, contribution8, contribution9, contribution10, contribution11, contribution12, contribution13, contribution14, contribution15, contribution16];
+import { contributions as contribution17 } from "./../../../components/worker.aat/client/src/contributions";
+import { contributions as contribution18 } from "./../../../components/worker.badges/client/src/contributions";
+import { contributions as contribution19 } from "./../../../components/worker.certifications/client/src/contributions";
+import { contributions as contribution20 } from "./../../../components/worker.ratings/client/src/contributions";
+import { contributions as contribution21 } from "./../../../components/worker.relations/client/src/contributions";
+import { contributions as contribution22 } from "./../../../components/worker.skills/client/src/contributions";
+import { contributions as contribution23 } from "./../../../components/worker.steward/client/src/contributions";
+import { contributions as contribution24 } from "./../../../components/worker.tos/client/src/contributions";
+export const componentBrowserContributions: ComponentBrowserContributions[] = [contribution0, contribution1, contribution2, contribution3, contribution4, contribution5, contribution6, contribution7, contribution8, contribution9, contribution10, contribution11, contribution12, contribution13, contribution14, contribution15, contribution16, contribution17, contribution18, contribution19, contribution20, contribution21, contribution22, contribution23, contribution24];

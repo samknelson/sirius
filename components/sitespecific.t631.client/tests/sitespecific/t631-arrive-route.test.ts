@@ -357,8 +357,25 @@ describe("public T631 arrival route", () => {
         message: "The worker schedule is not available right now.",
       });
       expect(ensureAccessUuid).not.toHaveBeenCalled();
+      expect(wcRequest).not.toHaveBeenCalled();
+      expect(storage.workerIds.getTypeIdBySiriusId).not.toHaveBeenCalled();
     },
   );
+
+  it("rechecks schedule availability after remote authentication before issuing a key", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    wcRequest.mockImplementationOnce(async () => {
+      componentState.aat = false;
+      return { value: { data: { data: true } } };
+    });
+    const response = await post({ worker_id: "666666", token: "secret" });
+    expect(response.body).toEqual({
+      authenticated: false,
+      message: "The worker schedule is not available right now.",
+    });
+    expect(wcRequest).toHaveBeenCalledOnce();
+    expect(ensureAccessUuid).not.toHaveBeenCalled();
+  });
 
   it("does not issue a link that the public schedule would deny", async () => {
     scenario.exact.set("666666", { workerId: "worker-exact" });

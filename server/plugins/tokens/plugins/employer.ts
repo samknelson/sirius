@@ -84,7 +84,7 @@ registerTokenPlugin({
     // `employer.steward.view`; preview enforces that same policy per
     // employer rather than inventing a stricter or looser one.
     previewEntity: {
-      gate: { scope: "record", policy: "employer.steward.view" },
+      gate: { scope: "record", policy: "employer.view" },
       async load(storage, id) {
         const row = await storage.bulkTokens.getEmployerRow(id);
         if (!row) return null;

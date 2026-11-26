@@ -1,4 +1,15 @@
 import { eligibilityPluginRegistry } from "./registry";
+import { readTrustRelationships, TrustRelationshipsUnavailableError } from "../../../services/trust-relationships";
+
+async function resolvePairAuthority(subscriberWorkerId: string, dependentWorkerId: string, date: Date) {
+  try {
+    const [row] = await readTrustRelationships({ kind: "pair", subscriberWorkerId, dependentWorkerId, asOfDate: date });
+    return row;
+  } catch (error) {
+    if (error instanceof TrustRelationshipsUnavailableError) throw new EligibilityRelationshipError(error.message);
+    throw error;
+  }
+}
 import type {
   EligibilityContext,
   EligibilityResult,
@@ -227,11 +238,7 @@ export async function validateEligibilityRelationship(
       "Subscriber and dependent must be different workers",
     );
   }
-  const row = await storage.workerRelations.findActiveBetween(
-    subscriberWorkerId,
-    relationship.dependentWorkerId,
-    asOfDate(asOfYear, asOfMonth),
-  );
+  const row = await resolvePairAuthority(subscriberWorkerId, relationship.dependentWorkerId, asOfDate(asOfYear, asOfMonth));
   if (!row) {
     throw new EligibilityRelationshipError(
       `No active relationship from worker ${subscriberWorkerId} to dependent ${relationship.dependentWorkerId} as of ${asOfYear}-${String(asOfMonth).padStart(2, "0")}`,
@@ -279,11 +286,7 @@ async function buildContextParts(
     );
   }
 
-  const row = await storage.workerRelations.findActiveBetween(
-    input.workerId,
-    dependentWorkerId,
-    asOfDate(asOfYear, asOfMonth),
-  );
+  const row = await resolvePairAuthority(input.workerId, dependentWorkerId, asOfDate(asOfYear, asOfMonth));
   if (!row) {
     throw new EligibilityRelationshipError(
       `No active relationship from worker ${input.workerId} to dependent ${dependentWorkerId} as of ${asOfYear}-${String(asOfMonth).padStart(2, "0")}`,
@@ -360,9 +363,12 @@ export async function evaluateEligibilityRules(
         service: 'eligibility-executor',
       });
       results.push({
-        eligible: true,
+        eligible: plugin.metadata.unavailableBehavior !== "refuse",
         reason: `Component not enabled: ${componentId}`,
       });
+      if (plugin.metadata.unavailableBehavior === "refuse" && input.stopAfterIneligible !== false) {
+        break;
+      }
       continue;
     }
 
@@ -455,9 +461,15 @@ export async function evaluateBenefitEligibility(
       });
       pluginResults.push({
         pluginKey: rule.pluginKey,
-        eligible: true,
+        eligible: plugin.metadata.unavailableBehavior !== "refuse",
         reason: `Component not enabled: ${componentId}`,
       });
+      if (plugin.metadata.unavailableBehavior === "refuse") {
+        overallEligible = false;
+        if (input.stopAfterIneligible !== false) {
+          break;
+        }
+      }
       continue;
     }
 

@@ -1,4 +1,11 @@
 import { getClient, onAfterCommit, runInTransaction, runOutsideTransaction } from './transaction-context';
+import { alterHooks } from "@shared/alter";
+
+export const organizingStewardsHook = alterHooks.declare<OrganizingSteward[], Record<string, never>>({
+  id: "cardcheck.organizing.stewards",
+  description: "Read optional steward contacts for organizing reports",
+  semantics: "Read-only on the caller's transaction. Default is no optional rows. Query failures propagate, never masquerade as an empty report.",
+});
 import { eventBus, EventType } from "../services/event-bus";
 import type { CardcheckStatusChangePayload } from "@shared/cardcheck-notification";
 import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, workerHours, optionsEmploymentStatus, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
@@ -829,33 +836,7 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async getOrganizingStewards(): Promise<OrganizingSteward[]> {
-      const client = getClient();
-      try {
-        const result = await client.execute(sql`
-          SELECT
-            wsa.employer_id as "employerId",
-            wsa.worker_id as "workerId",
-            wsa.bargaining_unit_id as "bargainingUnitId",
-            c.display_name as "displayName",
-            c.email,
-            bu.name as "bargainingUnitName",
-            (
-              SELECT cp.phone_number
-              FROM contact_phone cp
-              WHERE cp.contact_id = c.id AND cp.is_active = true
-              ORDER BY cp.is_primary DESC NULLS LAST
-              LIMIT 1
-            ) as "phone"
-          FROM worker_steward_assignments wsa
-          INNER JOIN workers w ON w.id = wsa.worker_id
-          INNER JOIN contacts c ON c.id = w.contact_id
-          LEFT JOIN bargaining_units bu ON bu.id = wsa.bargaining_unit_id
-          ORDER BY c.display_name
-        `);
-        return result.rows as unknown as OrganizingSteward[];
-      } catch {
-        return [];
-      }
+      return alterHooks.run(organizingStewardsHook, [], {});
     },
 
     async getOrganizingPrincipals(): Promise<OrganizingPrincipal[]> {

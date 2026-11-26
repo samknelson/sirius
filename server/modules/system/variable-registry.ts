@@ -121,15 +121,6 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // read/write). A context's PRESENCE is the setting; unknown ids rejected.
   entity_notes_config: { schema: entityNotesConfigSchema },
 
-  // Worker TOS absence banner HTML (any authenticated user can read,
-  // staff can write; gated by the worker.tos component)
-  "worker.tos.absent_banner": {
-    readTier: "authenticated",
-    writeTier: "staff",
-    component: "worker.tos",
-    schema: z.string(),
-  },
-
   // Fully public — needed by logged-out pages (login screen, header badge)
   system_mode: {
     readTier: "public",

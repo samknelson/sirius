@@ -4,6 +4,10 @@ import { componentStartups } from "./generated/component-startups";
 // imports them. The route module invoking this hook loads later in boot.
 import "@shared/tab-visibility";
 import "./auth/sign-in-events";
+import "./storage/edls/worker-query-plan";
+import "./services/record-go";
+import "./services/trust-relationships";
+import "./services/participant-worker-facts";
 import type { Server } from "http";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";

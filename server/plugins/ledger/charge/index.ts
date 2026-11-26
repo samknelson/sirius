@@ -140,6 +140,5 @@ import "./plugins/gbhetLegalBenefit";
 import "./plugins/gbheHourlyCharge";
 import "./plugins/gbhetPensionSlaHourly";
 import "./plugins/paymentSimpleAllocation";
-import "./plugins/btuStewardAttendance";
 import "./plugins/btuDuesAllocation";
 import "./plugins/sitespecific-bao-echp";

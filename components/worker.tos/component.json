@@ -1,4 +1,9 @@
 {
-  "coreRegistered": true,
-  "schema": ["shared/schema/worker/tos/schema.ts"]
+  "definition": "shared/component.ts",
+  "schema": ["shared/schema/worker/tos/schema.ts"],
+  "storage": "server/storage.ts",
+  "startup": "server/startup.ts",
+  "metadata": "server/metadata.ts",
+  "client": "client/src/contributions.tsx"
+  ,"contributions": "shared/contributions.ts"
 }

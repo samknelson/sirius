@@ -1,7 +1,5 @@
 export { DatabaseStorage, type IStorage, storage } from "./database";
-export { WorkerTosConflictError } from "../../components/worker.tos/server/storage/workers/tos";
 export { createProcessesStorage, type ProcessesStorage } from "./system/processes";
-export { createWorkerBadgesDenormStorage, type WorkerBadgesDenormStorage } from "../../components/worker.badges/server/storage/system/worker-badges-denorm";
 export { type VariableStorage, createVariableStorage } from "./system/variables";
 export { type UserStorage, createUserStorage } from "./users";
 export { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";

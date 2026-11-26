@@ -91,6 +91,8 @@ export interface EligibilityResult {
  * by both the form renderer and the AJV validator.
  */
 export interface EligibilityPluginMetadata extends BasePluginMetadata {
+  /** Authority-bearing rules must not become a pass when their owner is disabled. */
+  unavailableBehavior?: "refuse";
   configSchema: JsonSchema;
 }
 

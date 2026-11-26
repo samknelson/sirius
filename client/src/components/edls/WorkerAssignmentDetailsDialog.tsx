@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Link } from "wouter";
-import { Calendar, ClipboardList, Clock, Star, User, Users } from "lucide-react";
+import { Calendar, ClipboardList, Clock, User, Users } from "lucide-react";
 import { formatYmd } from "@shared/utils/date";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -30,24 +31,17 @@ interface WorkerAssignmentDetails {
   next: WorkerAssignmentDetail | null;
 }
 
-interface WorkerRatingWithType {
-  id: string;
-  value: number;
-  ratingType: { id: string; name: string } | null;
-}
-
 export function WorkerAssignmentDetailsDialog({
-  workerId,
+  children,
   queryUrl,
   open,
   onOpenChange,
-  ratingsEnabled = false,
 }: {
   workerId: string;
+  children?: ReactNode;
   queryUrl: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  ratingsEnabled?: boolean;
 }) {
   const { data: details, isLoading, isError } = useQuery<WorkerAssignmentDetails>({
     queryKey: [queryUrl],
@@ -86,7 +80,7 @@ export function WorkerAssignmentDetailsDialog({
               <AssignmentDetailCard label="Current Assignment (Same Day)" detail={details.current} />
               <AssignmentDetailCard label="Next Assignment" detail={details.next} />
             </div>
-            <WorkerRatingsSection workerId={workerId} ratingsEnabled={ratingsEnabled} />
+            {children}
           </div>
         ) : <div className="text-muted-foreground">No details available</div>}
       </DialogContent>
@@ -128,27 +122,6 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
         {detail.supervisorName && <div className="flex items-center gap-2"><User className="h-3 w-3 text-muted-foreground" /><span>{detail.supervisorName}</span></div>}
         {(detail.startTime || detail.endTime) && <div className="flex items-center gap-2"><Clock className="h-3 w-3 text-muted-foreground" /><span>{detail.startTime || "—"} - {detail.endTime || "—"}</span></div>}
       </div>
-    </div>
-  );
-}
-
-function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; ratingsEnabled: boolean }) {
-  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithType[]>({
-    queryKey: ["/api/worker-ratings/worker", workerId],
-    queryFn: async () => {
-      const response = await fetch(`/api/worker-ratings/worker/${workerId}`);
-      if (!response.ok) throw new Error("Failed to fetch worker ratings");
-      return response.json();
-    },
-    enabled: ratingsEnabled,
-  });
-  if (!ratingsEnabled) return null;
-  if (isLoading) return <div className="border-t pt-3 space-y-2"><div className="text-sm font-medium text-muted-foreground">Ratings</div><Skeleton className="h-16 w-full" /></div>;
-  if (!ratings.length) return <div className="border-t pt-3"><div className="text-sm font-medium text-muted-foreground">Ratings</div><div className="text-sm text-muted-foreground mt-1">No ratings assigned</div></div>;
-  return (
-    <div className="border-t pt-3">
-      <div className="text-sm font-medium text-muted-foreground mb-2">Ratings</div>
-      <div className="grid grid-cols-2 gap-2">{ratings.map((rating) => <div key={rating.id} className="flex items-center justify-between bg-muted/50 rounded-md px-2 py-1.5"><span className="text-sm truncate mr-2">{rating.ratingType?.name ?? "Unknown rating"}</span><div className="flex items-center gap-0.5 flex-shrink-0">{[0, 1, 2, 3].map((i) => <Star key={i} className={`h-3 w-3 ${i < rating.value ? "text-yellow-400" : "text-muted-foreground/30"}`} fill={i < rating.value ? "currentColor" : "none"} />)}</div></div>)}</div>
     </div>
   );
 }

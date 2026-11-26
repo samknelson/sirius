@@ -15,19 +15,13 @@ import {
   optionsEmploymentStatus,
   optionsEventType,
   optionsDispatchJobType,
-  optionsSkills,
   optionsEdlsTasks,
   optionsEdlsShowStatus,
-  optionsCertifications,
-  optionsWorkerRatings,
   optionsClassifications,
   optionsIndustry,
   optionsWorkerMs,
-  optionsWorkerRelationType,
   optionsCommTags,
   optionsWorkerBanType,
-  optionsWorkerBadgeTypes,
-  insertOptionsWorkerBadgeTypeSchema,
   optionsNoteType,
   optionsFileType,
   bulkMediumEnum,
@@ -60,18 +54,13 @@ export interface OptionsTypeNames {
   "event-type": true;
   "dispatch-job-type": true;
   "ledger-payment-type": true;
-  "skill": true;
   "edls-task": true;
   "edls-show-status": true;
-  "certification": true;
-  "worker-rating": true;
   "classification": true;
   "industry": true;
   "worker-ms": true;
-  "worker-relation-type": true;
   "comm-tag": true;
   "worker-ban-type": true;
-  "worker-badge-type": true;
   "note-type": true;
   "file-type": true;
 }
@@ -326,26 +315,6 @@ export interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
 // Component-declared lists are added to this map at registration (see
 // server/modules/options-contributions.ts), so readers must not cache its keys.
 const optionsMetadata = {
-  "worker-badge-type": {
-    table: optionsWorkerBadgeTypes,
-    displayName: "Worker Badge Type",
-    description: "Manage badge types awarded through system activity",
-    singularName: "Worker Badge Type",
-    pluralName: "Worker Badge Types",
-    orderByColumn: "name",
-    loggingModule: "options.workerBadgeTypes",
-    requiredFields: ["name"],
-    optionalFields: ["icon", "siriusId", "description", "data"],
-    requiredComponent: "worker.badges",
-    supportsSequencing: false,
-    writeSchema: insertOptionsWorkerBadgeTypeSchema,
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px" },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Badge type name", showInTable: true, columnHeader: "Name" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional external ID", showInTable: true, columnHeader: "Sirius ID" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
-    ],
-  },
   "department": {
     table: optionsDepartment,
     displayName: "Department",
@@ -640,24 +609,6 @@ const optionsMetadata = {
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
-  "skill": {
-    table: optionsSkills,
-    displayName: "Worker Skill",
-    description: "Manage skills and qualifications that can be assigned to workers",
-    singularName: "Worker Skill",
-    pluralName: "Worker Skills",
-    orderByColumn: "name" as const,
-    loggingModule: "options.skills",
-    requiredFields: ["name"],
-    optionalFields: ["description", "data"],
-    supportsSequencing: false,
-    requiredComponent: "worker.skills",
-    fields: [
-      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", dataField: true },
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Welding, Plumbing, Electrical", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this skill", showInTable: true, columnHeader: "Description" },
-    ],
-  },
   "edls-task": {
     table: optionsEdlsTasks,
     displayName: "EDLS Task",
@@ -690,45 +641,6 @@ const optionsMetadata = {
     supportsSequencing: true,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Show status name", showInTable: true, columnHeader: "Name" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "certification": {
-    table: optionsCertifications,
-    displayName: "Worker Certification",
-    description: "Manage certification types that can be assigned to workers",
-    singularName: "Worker Certification",
-    pluralName: "Worker Certifications",
-    orderByColumn: "name" as const,
-    loggingModule: "options.certifications",
-    requiredFields: ["name"],
-    optionalFields: ["siriusId", "data"],
-    supportsSequencing: false,
-    requiredComponent: "worker.certifications",
-    fields: [
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Certification name", showInTable: true, columnHeader: "Name" },
-      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "skills", label: "Auto-Grant Skills", inputType: "select-options", required: false, helperText: "Skills to automatically grant when this certification is active", showInTable: false, selectOptionsType: "skill", dataField: true },
-      { name: "defaultDuration", label: "Default Duration (months)", inputType: "number", required: false, placeholder: "e.g., 12", helperText: "Default validity period in months", showInTable: true, columnHeader: "Duration", dataField: true },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "worker-rating": {
-    table: optionsWorkerRatings,
-    displayName: "Worker Rating Type",
-    description: "Manage rating types for evaluating workers. Ratings can have parent ratings to create a hierarchy.",
-    singularName: "Worker Rating Type",
-    pluralName: "Worker Rating Types",
-    orderByColumn: "name" as const,
-    loggingModule: "options.workerRatings",
-    requiredFields: ["name"],
-    optionalFields: ["parent", "siriusId", "data"],
-    supportsParent: true,
-    requiredComponent: "worker.ratings",
-    supportsSequencing: false,
-    fields: [
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Quality, Attendance, Teamwork", showInTable: true, columnHeader: "Name" },
-      { name: "parent", label: "Parent Rating", inputType: "select-self", required: false, helperText: "Select a parent to create a hierarchy", showInTable: true, columnHeader: "Parent" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
@@ -795,25 +707,6 @@ const optionsMetadata = {
           label: v === "sms" ? "SMS" : v === "email" ? "Email" : v === "inapp" ? "In-App" : v === "postal" ? "Postal" : v,
         })),
       },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
-    ],
-  },
-  "worker-relation-type": {
-    table: optionsWorkerRelationType,
-    displayName: "Worker Relationship Type",
-    description: "Manage relationship types used between workers (e.g. spouse, parent, sibling).",
-    singularName: "Worker Relationship Type",
-    pluralName: "Worker Relationship Types",
-    orderByColumn: "name" as const,
-    loggingModule: "options.workerRelationType",
-    requiredFields: ["name"],
-    optionalFields: ["siriusId", "description", "data"],
-    requiredComponent: "worker.relations",
-    supportsSequencing: false,
-    fields: [
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Spouse, Parent, Sibling", showInTable: true, columnHeader: "Name" },
-      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
-      { name: "description", label: "Description", inputType: "text", required: false, placeholder: "Short description of this relationship type", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },

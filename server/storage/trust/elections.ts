@@ -1,4 +1,5 @@
 import { getClient, runInTransaction } from '../transaction-context';
+import { readTrustRelationships } from "../../services/trust-relationships";
 import {
   workerTrustElections,
   workers,
@@ -6,8 +7,6 @@ import {
   employers,
   contacts,
   trustBenefits,
-  workerRelations,
-  optionsWorkerRelationType,
   createWorkerTrustElectionRequestSchema,
   updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
@@ -75,23 +74,7 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
           .from(trustBenefits)
           .where(inArray(trustBenefits.id, Array.from(benefitIdSet)))
       : Promise.resolve([] as { id: string; name: string | null }[]),
-    relIdSet.size
-      ? client
-          .select({
-            id: workerRelations.id,
-            worker1: workerRelations.worker1,
-            worker2: workerRelations.worker2,
-            relationTypeName: optionsWorkerRelationType.name,
-          })
-          .from(workerRelations)
-          .leftJoin(
-            optionsWorkerRelationType,
-            eq(workerRelations.relationType, optionsWorkerRelationType.id),
-          )
-          .where(inArray(workerRelations.id, Array.from(relIdSet)))
-      : Promise.resolve(
-          [] as { id: string; worker1: string; worker2: string; relationTypeName: string | null }[],
-        ),
+    readTrustRelationships({ kind: "ids", ids: [...relIdSet] }),
   ]);
 
   const otherWorkerIds = new Set<string>();

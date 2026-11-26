@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccessCheckBatch } from "@/hooks/use-access-check";
 import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
-import { StarRating, StarRatingFilter } from "@/components/edls/StarRating";
+import { ComponentSlot } from "@/lib/component-contributions";
 import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 import { getTodayYmd } from "@shared/utils/date";
 
@@ -95,10 +95,6 @@ export default function EdlsWorkersPage() {
   const { data: memberStatuses = [] } = useQuery<Option[]>({
     queryKey: ["/api/options/worker-ms"],
   });
-  const { data: rankingOptions = [] } = useQuery<Option[]>({
-    queryKey: ["/api/options/worker-rating"],
-    enabled: data?.ratingsEnabled === true,
-  });
   const edlsMemberStatuses = data?.industryId
     ? memberStatuses.filter((status) => status.industryId === data.industryId)
     : [];
@@ -133,13 +129,7 @@ export default function EdlsWorkersPage() {
             <FilterSelect label="Next" value={params.get("nextAssignment") || "all"} options={[{ id: "all", name: "All" }, { id: "include", name: "Has assignment" }, { id: "exclude", name: "No assignment" }]} onChange={(value) => update({ nextAssignment: value === "all" ? null : value })} testId="select-edls-worker-next-assignment" />
             <FilterSelect label="Active in EDLS" value={params.get("active") || "all"} options={[{ id: "all", name: "All workers" }, { id: "true", name: "Active" }, { id: "false", name: "Inactive" }]} onChange={(value) => update({ active: value === "all" ? null : value })} testId="select-edls-worker-active" />
             <FilterSelect label="Member status" value={params.get("memberStatusId") || "all"} options={[{ id: "all", name: "All statuses" }, ...edlsMemberStatuses]} onChange={(value) => update({ memberStatusId: value === "all" ? null : value })} testId="select-edls-worker-member-status" disabled={!data?.industryId} />
-            {data?.ratingsEnabled && <FilterSelect label="Rating" value={params.get("ratingId") || "all"} options={[{ id: "all", name: "No rating" }, ...rankingOptions]} onChange={(value) => update({ ratingId: value === "all" ? null : value, ratingValue: value === "all" ? null : params.get("ratingValue") })} testId="select-edls-worker-ranking" />}
-            {data?.ratingsEnabled && params.get("ratingId") && (
-              <StarRatingFilter
-                value={parseRatingFilter(params.get("ratingValue"))}
-                onChange={(value) => update({ ratingValue: value === null ? null : String(value) })}
-              />
-            )}
+            <ComponentSlot name="edls.workers.filters" props={{ enabled: data?.ratingsEnabled === true, params, update }} />
             <FilterSelect label="ID type" value={params.get("idTypeId") || "all"} options={[{ id: "all", name: "Any ID type" }, ...(data?.idTypes ?? [])]} onChange={(value) => update({ idTypeId: value === "all" ? null : value })} testId="select-edls-worker-id-type" />
             {params.get("idTypeId") && <div className="space-y-1"><label className="text-sm font-medium">ID value</label><Input className="w-36" value={params.get("idValue") || ""} onChange={(event) => update({ idValue: event.target.value || null })} placeholder="Any value" /></div>}
           </CardContent>
@@ -164,7 +154,7 @@ export default function EdlsWorkersPage() {
                     <TableHead>Worker</TableHead><TableHead>Active in EDLS</TableHead><TableHead>Member status</TableHead>
                     <TableHead>Assignments</TableHead>
                     {data?.idTypes.map((type) => <TableHead key={type.id}>{type.name}</TableHead>)}
-                    {data?.ratingsEnabled && params.get("ratingId") && <TableHead>{rankingOptions.find((option) => option.id === params.get("ratingId"))?.name ?? "Rating"}</TableHead>}
+                    <ComponentSlot name="edls.workers.header" props={{ enabled: data?.ratingsEnabled === true, params }} />
                   </TableRow></TableHeader>
                   <TableBody>{rows.map((row) => <TableRow key={row.id}>
                     <TableCell className="font-medium">{access.accessMap.get(row.id) ? <Link href={`/workers/${row.id}`} className="text-primary hover:underline">{workerName(row)}</Link> : workerName(row)}</TableCell>
@@ -172,7 +162,7 @@ export default function EdlsWorkersPage() {
                     <TableCell>{row.memberStatusName ?? "Unassigned"}{row.memberStatusCode ? <span className="ml-1 text-muted-foreground">({row.memberStatusCode})</span> : null}</TableCell>
                     <TableCell><AssignmentStatusDotsButton priorStatus={row.priorStatus} currentStatus={row.currentStatus} nextStatus={row.nextStatus} onClick={() => setDetailsWorkerId(row.id)} testId={`status-dots-${row.id}`} /></TableCell>
                     {data?.idTypes.map((type) => <TableCell key={type.id}>{row.ids?.[type.id] ?? "—"}</TableCell>)}
-                    {data?.ratingsEnabled && params.get("ratingId") && <TableCell>{row.ratingValue === null ? "—" : <StarRating value={row.ratingValue} />}</TableCell>}
+                    <ComponentSlot name="edls.workers.cell" props={{ enabled: data?.ratingsEnabled === true, params, value: row.ratingValue }} />
                   </TableRow>)}</TableBody>
                 </Table>
               </div>}
@@ -196,9 +186,4 @@ function updateUrl(setLocation: (to: string) => void, changes: Record<string, st
   const params = new URLSearchParams(window.location.search);
   Object.entries(changes).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
   setLocation(`/edls/workers${params.toString() ? `?${params.toString()}` : ""}`);
-}
-
-function parseRatingFilter(value: string | null): number | null {
-  const rating = Number(value);
-  return Number.isInteger(rating) && rating >= 1 && rating <= 4 ? rating : null;
 }

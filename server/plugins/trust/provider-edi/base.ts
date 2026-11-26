@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { readTrustRelationships } from "../../../services/trust-relationships";
 import {
   workers,
   contacts,
@@ -7,8 +8,6 @@ import {
   optionsGender,
   trustBenefits,
   trustWmb,
-  workerRelations,
-  optionsWorkerRelationType,
   employers,
 } from "@shared/schema";
 import type { TrustProviderEdiContext } from "./registry";
@@ -378,23 +377,18 @@ export async function buildMemberUnits(
       // Canonical active-relation semantics: start on/before the as-of
       // date AND (no end OR end on/after the as-of date). Rows without a
       // start date are not active.
-      const relations = await db
-        .select({
-          relationId: workerRelations.id,
-          relationSiriusId: optionsWorkerRelationType.siriusId,
-          startYmd: workerRelations.startYmd,
-          endYmd: workerRelations.endYmd,
-          ...personColumns,
-        })
-        .from(workerRelations)
-        .innerJoin(workers, eq(workerRelations.worker2, workers.id))
+      const relationshipFacts = await readTrustRelationships({ kind: "subscriber", subscriberWorkerId: wmb.workerId });
+      const people = relationshipFacts.length ? await db
+        .select({ workerId: workers.id, ...personColumns }).from(workers)
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
         .leftJoin(optionsGender, eq(contacts.gender, optionsGender.id))
-        .innerJoin(
-          optionsWorkerRelationType,
-          eq(workerRelations.relationType, optionsWorkerRelationType.id),
-        )
-        .where(eq(workerRelations.worker1, wmb.workerId));
+        .where(inArray(workers.id, [...new Set(relationshipFacts.map(r => r.worker2))])) : [];
+      const byWorker = new Map(people.map(person => [person.workerId, person]));
+      const relations = relationshipFacts.flatMap(relation => {
+        const person = byWorker.get(relation.worker2);
+        return person ? [{ ...person, relationId: relation.id, relationSiriusId: relation.relationSiriusId,
+          startYmd: relation.startYmd, endYmd: relation.endYmd }] : [];
+      });
       const activeRelations = relations.filter(
         (rel) =>
           rel.startYmd &&

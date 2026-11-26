@@ -6,7 +6,7 @@ import { requireComponent } from "../components";
 import { getEdlsSettings } from "./supervisor-context";
 import { getTodayYmd } from "@shared/utils/date";
 import { calendarDateSchema } from "@shared/calendar-date";
-import { isComponentEnabledSync } from "../../services/component/cache";
+import { EdlsWorkerQueryUnavailableError } from "../../storage/edls/worker-query-plan";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -84,18 +84,16 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
         if (settings.employer) {
           industryId = (await storage.employers.getEmployer(settings.employer))?.industryId ?? null;
         }
-        const ratingsEnabled = isComponentEnabledSync("worker.ratings");
         const referenceYmd = query.referenceDate ?? getTodayYmd();
-        const result = await storage.edlsWorkerDirectory.list({
+        const { ratingSelectionAvailable, ...result } = await storage.edlsWorkerDirectory.list({
           ...query,
           memberStatusId: industryId ? query.memberStatusId : undefined,
-          ratingId: ratingsEnabled ? query.ratingId : undefined,
-          ratingValue: ratingsEnabled ? query.ratingValue : undefined,
           industryId,
           referenceYmd,
         });
-        res.json({ ...result, industryId, ratingsEnabled, referenceDate: referenceYmd });
+        res.json({ ...result, industryId, ratingsEnabled: ratingSelectionAvailable, referenceDate: referenceYmd });
       } catch (error) {
+        if (error instanceof EdlsWorkerQueryUnavailableError) return res.status(400).json({ error: error.message });
         if (error instanceof z.ZodError) {
           return res.status(400).json({ error: "Invalid directory filters", details: error.errors });
         }

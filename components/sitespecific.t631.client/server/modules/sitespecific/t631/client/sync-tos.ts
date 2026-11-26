@@ -1,5 +1,7 @@
-import { storage, WorkerTosConflictError } from "../../../../../../../server/storage";
+import { storage } from "../../../../../../../server/storage";
+import { WorkerTosConflictError } from "../../../../../../worker.tos/server/storage/workers/tos";
 import { logger } from "../../../../../../../server/logger";
+import { isComponentEnabled } from "../../../../../../../server/modules/components";
 
 interface T631TosNode {
   nid?: unknown;
@@ -45,6 +47,7 @@ export async function syncTos(
   responseData: T631TosResponse,
   dryRun: boolean,
 ): Promise<SyncResult> {
+  if (!(await isComponentEnabled("worker.tos"))) throw new Error("T631 TOS synchronization requires worker.tos");
   const result: SyncResult = {
     created: 0, reopened: 0, updated: 0, unchanged: 0,
     terminated: 0, skipped: 0, errors: 0, details: [],

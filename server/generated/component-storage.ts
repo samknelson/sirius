@@ -10,5 +10,13 @@ import { createStorage as create7 } from "./../../components/sitespecific.freema
 import { createStorage as create8 } from "./../../components/sitespecific.freeman.edls_migrate/server/storage";
 import { createStorage as create9 } from "./../../components/sitespecific.t631.interviews/server/storage";
 import { createStorage as create10 } from "./../../components/system.session_history/server/storage";
-export function createComponentStorage() { return {...create0(), ...create1(), ...create2(), ...create3(), ...create4(), ...create5(), ...create6(), ...create7(), ...create8(), ...create9(), ...create10()}; }
+import { createStorage as create11 } from "./../../components/worker.aat/server/storage";
+import { createStorage as create12 } from "./../../components/worker.badges/server/storage";
+import { createStorage as create13 } from "./../../components/worker.certifications/server/storage";
+import { createStorage as create14 } from "./../../components/worker.ratings/server/storage";
+import { createStorage as create15 } from "./../../components/worker.relations/server/storage";
+import { createStorage as create16 } from "./../../components/worker.skills/server/storage";
+import { createStorage as create17 } from "./../../components/worker.steward/server/storage";
+import { createStorage as create18 } from "./../../components/worker.tos/server/storage";
+export function createComponentStorage() { return {...create0(), ...create1(), ...create2(), ...create3(), ...create4(), ...create5(), ...create6(), ...create7(), ...create8(), ...create9(), ...create10(), ...create11(), ...create12(), ...create13(), ...create14(), ...create15(), ...create16(), ...create17(), ...create18()}; }
 export type ComponentStorage = ReturnType<typeof createComponentStorage>;

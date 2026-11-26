@@ -1,4 +1,4 @@
-import { EventType, type StewardAssignmentSavedPayload } from "../../../../../../server/services/event-bus";
+import { STEWARD_ASSIGNMENT_SAVED, type StewardAssignmentSavedPayload } from "../../../events";
 import { registerEventNotifier } from "../../../../../../server/plugins/event-notifier/registry";
 import {
   type EventNotifierEventContext,
@@ -42,7 +42,7 @@ export const stewardAssignmentNotifier: EventNotifierPlugin = {
     "Notifies a worker when their steward assignment is created, updated, or removed.",
   order: 100,
   requiredComponent: "worker.steward",
-  subscribedEvents: [EventType.STEWARD_ASSIGNMENT_SAVED],
+  subscribedEvents: [STEWARD_ASSIGNMENT_SAVED],
   supportedMedia: ["email", "sms", "inapp", "postal"],
 
   async getRecipients(ctx): Promise<NotifierRecipient[]> {

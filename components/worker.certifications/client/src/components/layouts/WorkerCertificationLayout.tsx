@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
-import { useWorkerCertificationTabAccess } from "@/hooks/useTabAccess";
+import { useTabAccess } from "@/hooks/useTabAccess";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
@@ -50,7 +50,7 @@ interface WorkerCertificationLayoutProps {
 
 export function WorkerCertificationLayout({ activeTab, children }: WorkerCertificationLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { tabs } = useWorkerCertificationTabAccess(id);
+  const { tabs } = useTabAccess({ entityType: "worker_certification", entityId: id });
 
   const { data: certification, isLoading: certLoading, error: certError } = useQuery<WorkerCertificationWithDetails>({
     queryKey: ["/api/worker-certifications", id],

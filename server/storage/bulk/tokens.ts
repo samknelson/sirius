@@ -9,7 +9,6 @@ import {
   bargainingUnits,
   cardchecks,
   cardcheckDefinitions,
-  workerStewardAssignments,
 } from "@shared/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
@@ -53,12 +52,6 @@ export interface BulkTokensStorage {
   getWorkStatusRow(wsId: string): Promise<Row | undefined>;
   getMemberStatusNames(msIds: string[]): Promise<string[]>;
   getLatestCardcheckForWorker(workerId: string): Promise<BulkTokenCardcheckRow | undefined>;
-  /** Full contacts row of the steward assigned to (employer, BU). */
-  getBuildingRepContactRow(
-    employerId: string,
-    bargainingUnitId: string,
-    excludeWorkerId: string | null,
-  ): Promise<Row | undefined>;
   /**
    * Display name of a referenced row, used by the field token to
    * render FK values (options tables etc.) as their `name` column.
@@ -251,26 +244,6 @@ export function createBulkTokensStorage(): BulkTokensStorage {
         status: row.status ?? null,
         signedDate: row.signedDate ?? null,
       };
-    },
-
-    async getBuildingRepContactRow(employerId, bargainingUnitId, excludeWorkerId) {
-      const client = getClient();
-      const conditions = [
-        eq(workerStewardAssignments.employerId, employerId),
-        eq(workerStewardAssignments.bargainingUnitId, bargainingUnitId),
-      ];
-      if (excludeWorkerId) {
-        conditions.push(ne(workerStewardAssignments.workerId, excludeWorkerId));
-      }
-      const rows = await client
-        .select({ contact: contacts })
-        .from(workerStewardAssignments)
-        .innerJoin(workers, eq(workers.id, workerStewardAssignments.workerId))
-        .innerJoin(contacts, eq(contacts.id, workers.contactId))
-        .where(and(...conditions))
-        .orderBy(contacts.displayName)
-        .limit(1);
-      return rows[0]?.contact || undefined;
     },
 
     async getNameByReference(tableName, keyColumn, id) {

@@ -59,7 +59,7 @@ export async function authorizeRecordGoUser(
       && await notesContext.entityExists(parent.workerId)
       && (await checkAccess("worker.view", user, parent.workerId)).granted;
   }
-  if (resolution.metadata.contextId === "worker_skills") {
+  if (resolution.parent) {
     const workerId = resolution.parent?.workerId;
     if (!workerId || !(await storage.workers.getWorker(workerId))) return false;
     return (await checkAccess("worker.view", user, workerId)).granted;

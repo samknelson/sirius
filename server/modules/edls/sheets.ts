@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { EdlsWorkerQueryUnavailableError } from "../../storage/edls/worker-query-plan";
 import { storage } from "../../storage";
 import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, edlsSheetStatusEnum, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
@@ -160,6 +161,7 @@ export function registerEdlsSheetsRoutes(
       res.json(workers);
     } catch (error) {
       console.error("Failed to fetch available workers:", error);
+      if (error instanceof EdlsWorkerQueryUnavailableError) return res.status(400).json({ message: error.message });
       res.status(500).json({ message: "Failed to fetch available workers" });
     }
   });

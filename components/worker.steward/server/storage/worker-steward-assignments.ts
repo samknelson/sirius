@@ -3,7 +3,8 @@ import { getClient } from '../../../../server/storage/transaction-context';
 import { workerStewardAssignments, employers, bargainingUnits, workers, contacts, type WorkerStewardAssignment, type InsertWorkerStewardAssignment } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../../../../server/storage/middleware/logging";
-import { eventBus, EventType } from "../../../../server/services/event-bus";
+import { eventBus } from "../../../../server/services/event-bus";
+import { STEWARD_ASSIGNMENT_SAVED } from "../events";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -144,7 +145,7 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
         .values(data)
         .returning();
 
-      eventBus.emit(EventType.STEWARD_ASSIGNMENT_SAVED, {
+      eventBus.emit(STEWARD_ASSIGNMENT_SAVED, {
         assignmentId: assignment.id,
         workerId: assignment.workerId,
         employerId: assignment.employerId,
@@ -165,7 +166,7 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
         .returning();
 
       if (updated) {
-        eventBus.emit(EventType.STEWARD_ASSIGNMENT_SAVED, {
+        eventBus.emit(STEWARD_ASSIGNMENT_SAVED, {
           assignmentId: updated.id,
           workerId: updated.workerId,
           employerId: updated.employerId,
@@ -192,7 +193,7 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
       const deleted = result.length > 0;
 
       if (deleted && existing) {
-        eventBus.emit(EventType.STEWARD_ASSIGNMENT_SAVED, {
+        eventBus.emit(STEWARD_ASSIGNMENT_SAVED, {
           assignmentId: existing.id,
           workerId: existing.workerId,
           employerId: existing.employerId,

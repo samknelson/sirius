@@ -1,9 +1,25 @@
-import { Suspense, type ComponentType } from "react";
+import { Suspense, type ComponentType, type ReactNode } from "react";
+
+/** Named slot contributions used as providers; missing contributions preserve the host children. */
+export function ComponentWrappers({ name, props, children }: {
+  name: string; props: Record<string, unknown>; children: ReactNode;
+}) {
+  const { hasComponent } = useAuth();
+  return componentBrowserContributions.flatMap(c => c.slots ?? [])
+    .filter(slot => slot.slot === name && hasComponent(slot.component))
+    .reduceRight<ReactNode>((content, slot) => {
+      const Provider = slot.section;
+      return <Suspense key={slot.component} fallback={content}><Provider {...props}>{content}</Provider></Suspense>;
+    }, children);
+}
 import type { InsertEdlsCrew } from "@shared/schema";
 import type { NavItem, NavSection } from "../config/navigation-registry";
 import { componentBrowserContributions } from "../generated/component-contributions";
 import { useAuth } from "../contexts/AuthContext";
 import type { DispatchUiContribution } from "./dispatch-contributions";
+import type { DashboardPluginProps } from "../plugins/dashboard/registry";
+import type { WizardStepComponentProps } from "../components/wizards/framework/types";
+import type { WizardLaunchComponentProps } from "../plugins/wizards/registry";
 
 export interface CrewExtensionProps {
   crew: { data?: unknown; id?: string };
@@ -11,6 +27,11 @@ export interface CrewExtensionProps {
   onChange?: (data: InsertEdlsCrew["data"]) => void;
 }
 export interface ComponentBrowserContributions {
+  pluginViews?: {
+    dashboard?: Record<string, ComponentType<DashboardPluginProps>>;
+    wizardSteps?: Record<string, ComponentType<WizardStepComponentProps>>;
+    wizardLaunches?: Record<string, ComponentType<WizardLaunchComponentProps>>;
+  };
   dispatchUi?: DispatchUiContribution[];
   /** Headless observers owned by removable components (e.g. identity cleanup). */
   lifecycle?: ComponentType[];

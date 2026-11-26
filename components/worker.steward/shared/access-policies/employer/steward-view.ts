@@ -32,7 +32,7 @@ const policy = definePolicy({
       }
     }
 
-    if (await ctx.hasPermission('worker.steward')) {
+    if (await ctx.isComponentEnabled("worker.steward") && await ctx.hasPermission('worker.steward')) {
       const userWorker = await ctx.getUserWorker();
       if (userWorker) {
         const assignments = await ctx.storage.workerStewardAssignments?.getAssignmentsByWorkerId?.(userWorker.id);

@@ -117,8 +117,13 @@ const t631RemoteOperations = {
       argsSchema: { type: "object", properties: {}, additionalProperties: false },
       effect: "read",
     },
-    run: (ctx: WcVendorContext, _args: void) =>
-      performT631Fetch(ctx, "sirius_edls_server_tos_list"),
+    run: async (ctx: WcVendorContext, _args: void) => {
+      const { isComponentEnabled } = await import("../../../../../../server/modules/components");
+      if (!(await isComponentEnabled("worker.tos"))) {
+        throw new WcVendorError(409, "T631 time-off-sick synchronization requires worker.tos");
+      }
+      return performT631Fetch(ctx, "sirius_edls_server_tos_list");
+    },
   },
   "sitespecific.t631.server_switch.authenticate": {
     description: "authenticate a worker for the T631 server switch",

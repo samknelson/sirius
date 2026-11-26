@@ -109,14 +109,6 @@ function buildCoreDefaultMenuTree(): MenuItemDef[] {
           gate: { allOf: [{ policy: "staff" }, { component: "bargainingunits" }] },
         },
         {
-          id: "stewards",
-          labelTerm: { key: "steward", plural: true },
-          icon: "Shield",
-          href: "/stewards",
-          testId: "menu-stewards",
-          gate: { allOf: [{ policy: "staff" }, { component: "worker.steward" }] },
-        },
-        {
           id: "class-size-grievances",
           label: "Class Size Grievances",
           icon: "FileWarning",
@@ -477,14 +469,6 @@ export function buildEdlsMenuItems(): MenuItemDef[] {
       href: "/reports/edls",
       testId: "menu-edls-reports",
       gate: { policy: "edls.reader" },
-    },
-    {
-      id: "edls-tos",
-      label: "Absences",
-      icon: "Stethoscope",
-      href: "/edls/tos",
-      testId: "menu-edls-tos",
-      gate: { allOf: [{ component: "worker.tos" }, { policy: "edls.any" }] },
     },
   ];
 }

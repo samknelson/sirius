@@ -17,4 +17,12 @@ import * as startup12 from "./../../components/sitespecific.freeman.edls_migrate
 import * as startup13 from "./../../components/sitespecific.t631.client/server/startup";
 import * as startup14 from "./../../components/sitespecific.t631.interviews/server/startup";
 import * as startup15 from "./../../components/system.session_history/server/startup";
-export const componentStartups: ComponentStartup[] = [startup0, startup1, startup2, startup3, startup4, startup5, startup6, startup7, startup8, startup9, startup10, startup11, startup12, startup13, startup14, startup15];
+import * as startup16 from "./../../components/worker.aat/server/startup";
+import * as startup17 from "./../../components/worker.badges/server/startup";
+import * as startup18 from "./../../components/worker.certifications/server/startup";
+import * as startup19 from "./../../components/worker.ratings/server/startup";
+import * as startup20 from "./../../components/worker.relations/server/startup";
+import * as startup21 from "./../../components/worker.skills/server/startup";
+import * as startup22 from "./../../components/worker.steward/server/startup";
+import * as startup23 from "./../../components/worker.tos/server/startup";
+export const componentStartups: ComponentStartup[] = [startup0, startup1, startup2, startup3, startup4, startup5, startup6, startup7, startup8, startup9, startup10, startup11, startup12, startup13, startup14, startup15, startup16, startup17, startup18, startup19, startup20, startup21, startup22, startup23];

@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import { drizzle } from "drizzle-orm/pg-proxy";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { getTableName } from "drizzle-orm";
+import "../server/options";
 
 const state = vi.hoisted(() => ({
   client: undefined as unknown,

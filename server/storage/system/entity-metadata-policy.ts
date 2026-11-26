@@ -23,7 +23,6 @@ export const EXCLUDED_METADATA_TABLES = [
   "sessions",
   "snapshots",
   "trust_wmb",
-  "worker_aat",
   "worker_msh",
   "worker_wsh",
   "winston_logs",

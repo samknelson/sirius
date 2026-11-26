@@ -9,7 +9,8 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../../../../../server/storage/middleware/logging";
-import { eventBus, EventType } from "../../../../../server/services/event-bus";
+import { eventBus } from "../../../../../server/services/event-bus";
+import { WORKER_SKILL_SAVED } from "../../events";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -122,7 +123,7 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
         .returning();
       
       setImmediate(() => {
-        eventBus.emit(EventType.WORKER_SKILL_SAVED, {
+        eventBus.emit(WORKER_SKILL_SAVED, {
           workerSkillId: result.id,
           workerId: result.workerId,
           skillId: result.skillId,
@@ -141,7 +142,7 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
       
       if (deleted) {
         setImmediate(() => {
-          eventBus.emit(EventType.WORKER_SKILL_SAVED, {
+          eventBus.emit(WORKER_SKILL_SAVED, {
             workerSkillId: deleted.id,
             workerId: deleted.workerId,
             skillId: deleted.skillId,

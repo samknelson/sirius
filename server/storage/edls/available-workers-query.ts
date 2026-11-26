@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getClient } from "../transaction-context";
+import { workerQueryPlan } from "./worker-query-plan";
 
 export interface AvailableWorkerForSheet {
   id: string;
@@ -131,28 +132,19 @@ export async function getAvailableWorkersForSheetQuery(
   includeInactive = false,
   workerIds?: readonly string[],
 ): Promise<AvailableWorkerForSheet[]> {
+  const plan = await workerQueryPlan({ surface: "available", ratingId, industryId },
+    industryId
+      ? sql`ORDER BY COALESCE(aw."memberStatusSequence", 999999), aw.family, aw.given`
+      : sql`ORDER BY aw.family, aw.given`);
   if (workerIds?.length === 0) return [];
   const client = getClient();
-  const ratingJoin = ratingId
-    ? sql`INNER JOIN worker_ratings wr ON wr.worker_id = w.id AND wr.rating_id = ${ratingId}`
-    : sql``;
-  const ratingSelect = ratingId
-    ? sql`wr.value as "ratingValue"`
-    : sql`NULL::integer as "ratingValue"`;
+  const ratingJoin = plan.join;
+  const ratingSelect = sql`${plan.value} as "ratingValue"`;
   const memberStatusSelect = industryId
     ? sql`member_status.id as "memberStatusId", member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
     : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
 
-  let orderBy;
-  if (industryId && ratingId) {
-    orderBy = sql`ORDER BY COALESCE(aw."memberStatusSequence", 999999), aw."ratingValue" DESC, aw.family, aw.given`;
-  } else if (industryId) {
-    orderBy = sql`ORDER BY COALESCE(aw."memberStatusSequence", 999999), aw.family, aw.given`;
-  } else if (ratingId) {
-    orderBy = sql`ORDER BY aw."ratingValue" DESC, aw.family, aw.given`;
-  } else {
-    orderBy = sql`ORDER BY aw.family, aw.given`;
-  }
+  const orderBy = plan.orderBy;
 
   const result = await client.execute(sql`
     WITH available_workers AS MATERIALIZED (

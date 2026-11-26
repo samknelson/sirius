@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatYmd } from "@shared/utils/date";
-import { WorkerEdlsScheduleCard } from "@/components/edls/WorkerEdlsScheduleCard";
+import { ComponentSlot } from "@/lib/component-contributions";
 
 /**
  * One row of the worker's schedule, as narrowed by
@@ -65,7 +65,7 @@ function WorkerEdlsAssignmentsContent() {
 
   return (
     <div className="space-y-4">
-      <WorkerEdlsScheduleCard />
+      <ComponentSlot name="worker.edls.schedule" props={{}} />
       <Card>
         <CardHeader>
           <CardTitle>Assignments</CardTitle>

@@ -2,6 +2,7 @@ import { registerCronPlugin } from "../../../../../../../server/plugins/system/c
 import type { CronJobContext, CronJobResult } from "../../../../../../../server/plugins/system/cron/types";
 import { t631Fetch } from "../../../../modules/sitespecific/t631/client/fetch";
 import { syncTos } from "../../../../modules/sitespecific/t631/client/sync-tos";
+import { isComponentEnabled } from "../../../../../../../server/modules/components";
 
 registerCronPlugin({
   metadata: {
@@ -15,6 +16,7 @@ registerCronPlugin({
   defaultEnabled: false,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
+    if (!(await isComponentEnabled("worker.tos"))) throw new Error("T631 TOS synchronization requires worker.tos");
     const isDryRun = context.mode === "test";
 
     const fetchResult = await t631Fetch("sitespecific.t631.tos.list");

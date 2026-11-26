@@ -29,13 +29,11 @@ import "./plugins/report-edls-scheduled-too-soon";
 import "./plugins/btu-worker-import";
 import "./plugins/btu-dues-allocation";
 import "./plugins/btu-cardcheck-import";
-import "./plugins/btu-building-rep-import";
 import "./plugins/btu-cardcheck-sig-import";
 import "./plugins/btu-cardcheck-scrape-import";
 import "./plugins/sitespecific-hta-union-import";
 import "./plugins/gbhet-legal-workers";
 import "./plugins/employer-onboarding";
-import "../../../components/worker.ratings/server/plugins/wizards/plugins/worker-ratings-import";
 import "./plugins/trust-provider-edi";
 
 let kindRegistered = false;

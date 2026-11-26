@@ -361,6 +361,7 @@ export interface EventNotifierManifestEntry {
   description?: string;
   order: number;
   requiredComponent?: string;
+  requiredComponents?: readonly string[];
   needsReadOnlyDb?: boolean;
   /** Attached by the kind's `decorateEntries` for the generic admin UI. */
   enabled?: boolean;

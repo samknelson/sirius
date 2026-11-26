@@ -1,6 +1,7 @@
 import { createPluginComponentRegistry } from "@/plugins/_core/registry";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 import type { Wizard } from "@/lib/wizard-types";
+import { componentBrowserContributions } from "../../generated/component-contributions";
 
 /**
  * Escape-hatch component registry for wizard steps. Any wizard whose
@@ -13,6 +14,7 @@ import type { Wizard } from "@/lib/wizard-types";
 export const wizardComponentRegistry =
   createPluginComponentRegistry<WizardStepComponentProps>({
     kind: "wizards",
+    contributions: componentBrowserContributions.map(c => c.pluginViews?.wizardSteps ?? {}),
     glob: import.meta.glob("./*/*.tsx", { eager: true }),
   });
 
@@ -46,5 +48,6 @@ export interface WizardLaunchComponentProps {
 export const wizardLaunchComponentRegistry =
   createPluginComponentRegistry<WizardLaunchComponentProps>({
     kind: "wizards",
+    contributions: componentBrowserContributions.map(c => c.pluginViews?.wizardLaunches ?? {}),
     glob: import.meta.glob("./*/*.tsx", { eager: true }),
   });

@@ -35,7 +35,7 @@ export function registerWorkerCertificationsRoutes(
   requireAccess: RequireAccess,
   requirePermission: RequirePermission
 ) {
-  const certificationsComponent = requireComponent("worker.certifications");
+  const certificationsComponent = [requireComponent("worker.certifications"), requireComponent("worker.skills")];
 
   app.get("/api/worker-certifications/worker/:workerId", requireAuth, certificationsComponent, requireAccess('worker.view', (req) => req.params.workerId), async (req: Request, res: Response) => {
     try {

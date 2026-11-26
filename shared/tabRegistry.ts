@@ -76,7 +76,6 @@ export interface FlatTab extends TabDefinition {
  */
 export interface TabEntityTypes {
   worker: true;
-  worker_certification: true;
   employer: true;
   employer_contact: true;
   company: true;
@@ -175,12 +174,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'member-status', label: 'Member Status', hrefTemplate: '/workers/{id}/member-status', permission: 'staff' },
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
       { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/workers/{id}/dashboard', permission: 'staff' },
-      { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
-      { id: 'badges', label: 'Badges', hrefTemplate: '/workers/{id}/badges', policyId: 'worker.view', component: 'worker.badges' },
-      { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
-      { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
-      { id: 'aat', label: 'Access Tokens', hrefTemplate: '/workers/{id}/aat', policyId: 'worker.mine', component: 'worker.aat' },
     ]
   },
   { 
@@ -189,7 +183,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'email', label: 'Email', hrefTemplate: '/workers/{id}/email', permission: 'staff' },
       { id: 'addresses', label: 'Addresses', hrefTemplate: '/workers/{id}/addresses', policyId: 'worker.view' },
       { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/workers/{id}/phone-numbers', policyId: 'worker.view' },
-      { id: 'relations', label: 'Relations', hrefTemplate: '/workers/{id}/relations', policyId: 'worker.view', component: 'worker.relations' },
     ]
   },
   { 
@@ -209,7 +202,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'history', label: 'History', hrefTemplate: '/workers/{id}/employment/history', policyId: 'worker.view' },
       { id: 'monthly', label: 'Monthly', hrefTemplate: '/workers/{id}/employment/monthly', policyId: 'worker.view' },
       { id: 'daily', label: 'Daily', hrefTemplate: '/workers/{id}/employment/daily', policyId: 'worker.view' },
-      { id: 'tos', label: 'Time Off Sick', hrefTemplate: '/workers/{id}/employment/tos', permission: 'staff', component: 'worker.tos' },
     ]
   },
   { 
@@ -229,11 +221,10 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { 
-    id: 'union', label: 'Union', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker.view', component: 'cardcheck|bargainingunits|worker.steward',
+    id: 'union', label: 'Union', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker.view', navigateToFirstAccessibleChild: true,
     children: [
       { id: 'cardchecks', label: 'Cardchecks', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker.view', component: 'cardcheck' },
       { id: 'bargaining-unit', label: 'Bargaining Unit', hrefTemplate: '/workers/{id}/union/bargaining-unit', permission: 'staff', component: 'bargainingunits' },
-      { id: 'steward', label: 'Steward', hrefTemplate: '/workers/{id}/union/steward', permission: 'staff', component: 'worker.steward', termKey: 'steward' },
     ]
   },
   { 
@@ -271,19 +262,15 @@ export const workerTabTree: HierarchicalTab[] = [
 /**
  * Worker certification entity tab tree
  */
-export const workerCertificationTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/worker-certification/{id}', component: 'worker.certifications' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/worker-certification/{id}/edit', permission: 'staff', component: 'worker.certifications' },
-];
 
 /**
  * Employer entity tab tree
  */
 export const employerTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', policyId: 'employer.steward.view' },
+  { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', policyId: 'employer.view' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/employers/{id}/edit', permission: 'staff' },
-  { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', policyId: 'employer.steward.view' },
-  { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.steward.view' },
+  { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', policyId: 'employer.view' },
+  { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.view' },
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
   { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', policyId: 'employer.mine' },
   { id: 'notes', label: 'Notes', hrefTemplate: '/employers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'employer' } },
@@ -297,14 +284,8 @@ export const employerTabTree: HierarchicalTab[] = [
       { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/customer', policyId: 'employer.ledger' },
     ]
   },
-  { 
-    id: 'union', label: 'Union', hrefTemplate: '/employers/{id}/union/stewards', policyId: 'employer.steward.view', component: 'worker.steward',
-    children: [
-      { id: 'stewards', label: 'Stewards', hrefTemplate: '/employers/{id}/union/stewards', policyId: 'employer.steward.view', component: 'worker.steward', termKey: 'steward', termPlural: true },
-    ]
-  },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
-  { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
+  { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.view', component: 'sitespecific.btu' },
   { id: 'sitespecific-bao-immediate-eligibility', label: 'Immediate Eligibility', hrefTemplate: '/employers/{id}/sitespecific-bao-immediate-eligibility', permission: 'staff', component: 'sitespecific.bao' },
 ];
 
@@ -788,7 +769,6 @@ export const userRolesTabTree: HierarchicalTab[] = [
  */
 export const tabTreeRegistry: Partial<Record<TabEntityType, HierarchicalTab[]>> = {
   worker: workerTabTree,
-  worker_certification: workerCertificationTabTree,
   employer: employerTabTree,
   employer_contact: employerContactTabTree,
   company: companyTabTree,

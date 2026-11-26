@@ -63,12 +63,9 @@ export interface PollResult {
 
 /**
  * Typed shape of the `dispatch_jobs.data` jsonb blob.
- * - `requiredSkills`: option ids from `options_skill` (worker.skills component).
  */
 export interface DispatchJobData {
   offerRatio?: number;
   offerTimeout?: number;
   lastPollResult?: PollResult;
-  /** Option ids from `options_skill` (worker.skills component). */
-  requiredSkills?: string[];
 }

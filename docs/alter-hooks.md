@@ -168,3 +168,23 @@ incremental extraction boundary, not physical component packaging, build-time
 discovery, deployment profiles, a general lifecycle framework, or editable
 priority/configuration. Existing plugin, event and catalog frameworks keep their
 own responsibilities.
+
+## Worker-owned participation in retained hosts
+
+These hooks are declared by the host producing the value. Component startups
+register implementations unconditionally, before the hook registry closes;
+normal component availability determines execution. Registration does not
+query optional tables.
+
+| Hook | Value and context | Default and refusal | Database contract |
+| --- | --- | --- | --- |
+| `edls.workers.query-plan` | Typed SQL join, selected value, conditions, ordering, availability and request refusal; available-worker/directory selection context | No optional-table SQL, NULL display value and original ordering. Explicit unhandled selections or returned refusals become client errors. | Ratings returns fragments only. The host executes with its existing bounds, ordering and ambient transaction. |
+| `trust.relationships.resolve` | Nullable relationship facts; discriminated pair, ID-list or subscriber context | Null means authority unavailable, distinct from an empty result. Dependent validation refuses before no-rules shortcuts. | Read-only, caller transaction. ID hydration is batched; the owner preserves pair direction and active-date semantics. |
+| `record-go.resolve` | Nullable resolved destination and parent; known metadata context and record ID | Missing/unknown contexts and hook errors refuse. Owner must use one parent snapshot for both authorization and navigation. | Read-only lookup; no credential minting or identity fallback. |
+| `employer.view.extend` | Boolean grant after the retained employer-view policy denies | False; removing stewardship never removes core staff/employer grants. | Read-only assignment check, caller transaction. |
+| `events.participant-worker-facts` | Typed participant facts, including stewardship, for a worker | No optional facts. Not an independent authorization grant. | Read-only, caller transaction. |
+| `cardcheck.organizing.stewards` | Optional typed report rows for the selected employers | Empty optional report section; execution errors propagate rather than masquerading as an empty report. | Owner performs its batched query; retained host composes the report. |
+
+Retained metadata exclusions and record-navigation access declarations remain
+static contributions, not enabled-only hooks. Synchronous dispatch eligibility
+continues to use its existing plugin framework.

@@ -522,10 +522,33 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
   const { isComponentEnabledSync } = await import("../component/cache");
   const errors: string[] = [];
   let totalRan = 0;
-  for (const component of getAllComponents()) {
+  const allComponents = getAllComponents();
+  type Component = (typeof allComponents)[number];
+  const byId = new Map(allComponents.map(component => [component.id, component]));
+  const ordered: Component[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+  const visit = (component: Component): void => {
+    if (visited.has(component.id)) return;
+    if (visiting.has(component.id)) throw new Error(`Cyclic component schema dependency: ${component.id}`);
+    visiting.add(component.id);
+    const dependencies = new Set([
+      ...(component.dependsOnComponents ?? []),
+      ...(component.schemaManifest?.dependsOnComponents ?? []),
+    ]);
+    for (const id of dependencies) {
+      const parent = byId.get(id);
+      if (!parent) throw new Error(`Component "${component.id}" requires unavailable component "${id}"`);
+      visit(parent);
+    }
+    visiting.delete(component.id);
+    visited.add(component.id);
+    ordered.push(component);
+  };
+  allComponents.forEach(visit);
+  for (const component of ordered) {
     if (!component.managesSchema) continue;
     if (!isComponentEnabledSync(component.id)) continue;
-    if ((componentMigrations.get(component.id) ?? []).length === 0) continue;
 
     // A component that gains schema management while it is ALREADY enabled on a
     // deployment has no `component_schema_state_<id>` variable yet — that
@@ -535,7 +558,9 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
     // enable flow run its pending migrations. enableComponentSchema is
     // idempotent for an already-present, drift-free table: it creates-if-missing,
     // reflects table state, preserves any existing migrationVersion, and runs
-    // pending migrations itself.
+    // pending migrations itself. This also applies when the component has no
+    // authored migrations: fresh enabled schemas must not reach drift detection
+    // without their tables simply because there is no migration to run.
     const { state } = await readComponentSchemaState(component.id);
     if (!state) {
       const { enableComponentSchema } = await import("../component/lifecycle");

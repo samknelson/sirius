@@ -42,7 +42,6 @@ const RecordGoPage = lazy(() => import("@/pages/record-go"));
 const RecordGoResolverRoute = lazy(() => import("@/pages/record-go-resolver"));
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
-const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
@@ -64,7 +63,6 @@ const WorkerMemberStatus = lazy(() => import("@/pages/worker-member-status"));
 const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
 const WorkerDashboardPage = lazy(() => import("@/pages/worker-dashboard"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
-const WorkerSteward = lazy(() => import("../../components/worker.steward/client/src/pages/worker-steward"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
 const DispatchJobEmployerContactsPage = lazy(() => import("@/pages/dispatch/job-employer-contacts"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
@@ -77,21 +75,12 @@ const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files")
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
-const WorkerSkills = lazy(() => import("../../components/worker.skills/client/src/pages/worker-skills"));
-const WorkerBadges = lazy(() => import("../../components/worker.badges/client/src/pages/workers/badges"));
-const WorkerRelations = lazy(() => import("../../components/worker.relations/client/src/pages/workers/relations"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
 const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
 const TrustElectionDetail = lazy(() => import("@/pages/trust/election-detail"));
 const TrustElectionEdit = lazy(() => import("@/pages/trust/election-edit"));
-const WorkerTos = lazy(() => import("../../components/worker.tos/client/src/pages/worker-tos"));
-const WorkerCertifications = lazy(() => import("../../components/worker.certifications/client/src/pages/worker-certifications"));
-const WorkerCertificationView = lazy(() => import("../../components/worker.certifications/client/src/pages/worker-certification-view"));
-const WorkerRatings = lazy(() => import("../../components/worker.ratings/client/src/pages/worker-ratings"));
-const WorkerAat = lazy(() => import("../../components/worker.aat/client/src/pages/worker-aat"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
-const Stewards = lazy(() => import("../../components/worker.steward/client/src/pages/stewards"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
 const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
 const WorkerBenefitsExemptions = lazy(() => import("@/pages/worker-benefits-exemptions"));
@@ -152,7 +141,6 @@ const EmployerContactSendPostal = lazy(() => import("@/pages/employer-contact-se
 const EmployerContactSendInApp = lazy(() => import("@/pages/employer-contact-send-inapp"));
 const EmployerLogs = lazy(() => import("@/pages/employer-logs"));
 const EmployerPolicyHistory = lazy(() => import("@/pages/employer-policy-history"));
-const EmployerStewards = lazy(() => import("../../components/worker.steward/client/src/pages/employer-stewards"));
 const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
 const WizardView = lazy(() => import("@/pages/wizard-view"));
 const CustomerPage = lazy(() => import("@/pages/employers/customer"));
@@ -245,7 +233,6 @@ const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
 const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
 const OptionsIndexPage = lazy(() => import("@/pages/config/options-index"));
-const StewardSettingsPage = lazy(() => import("../../components/worker.steward/client/src/pages/config/steward-settings"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
 const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
@@ -283,7 +270,6 @@ const SftpClientTestPage = lazy(() => import("../../components/system.sftp.clien
 const SftpClientLogsPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-logs"));
 const SftpClientEditPage = lazy(() => import("../../components/system.sftp.client/client/src/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
-const WorkersTosConfigPage = lazy(() => import("../../components/worker.tos/client/src/pages/config/config-workers-tos"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
@@ -396,7 +382,6 @@ const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profi
 const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsAssignmentsPage = lazy(() => import("@/pages/edls/assignments"));
-const EdlsTosPage = lazy(() => import("@/pages/edls/tos"));
 const EdlsWorkersPage = lazy(() => import("@/pages/edls/workers"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
@@ -446,24 +431,6 @@ function PageLoader() {
  * never flips on load. Deliberately local to this route — every other public
  * route is unwrapped unconditionally.
  */
-function EdlsScheduleRoute() {
-  const { isAuthenticated, authReady } = useAuth();
-
-  if (!authReady) {
-    return <PageLoader />;
-  }
-
-  if (isAuthenticated) {
-    return (
-      <AuthenticatedLayout>
-        <EdlsSchedulePage />
-      </AuthenticatedLayout>
-    );
-  }
-
-  return <EdlsSchedulePage />;
-}
-
 function Router() {
   const { isAuthenticated, isLoading, authReady, authError } = useAuth();
   const [location, setLocation] = useLocation();
@@ -520,7 +487,6 @@ function Router() {
         <Route path="/unauthorized" component={UnauthorizedPage} />
         <Route path="/auth-error" component={AuthErrorPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
-        <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
 
       {/* Protected routes */}
       <Route path="/go/:id">
@@ -793,14 +759,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/badges">
-        <ProtectedRoute tabId="badges" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerBadges />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/workers/:id/notes">
         <ProtectedRoute tabId="notes" entityType="worker">
           <AuthenticatedLayout>
@@ -843,22 +801,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/skills">
-        <ProtectedRoute tabId="skills" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerSkills />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/relations">
-        <ProtectedRoute tabId="relations" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerRelations />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/workers/:id/elections/current">
         <ProtectedRoute tabId="elections-current" entityType="worker">
           <AuthenticatedLayout>
@@ -887,46 +829,6 @@ function Router() {
         <ProtectedRoute permission="staff" component="trust.elections">
           <AuthenticatedLayout>
             <TrustElectionEdit />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/certifications">
-        <ProtectedRoute tabId="certifications" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerCertifications />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/worker-certification/:id">
-        <ProtectedRoute tabId="view" entityType="worker_certification">
-          <AuthenticatedLayout>
-            <WorkerCertificationView />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/worker-certification/:id/edit">
-        <ProtectedRoute tabId="edit" entityType="worker_certification">
-          <AuthenticatedLayout>
-            <WorkerCertificationView defaultTab="edit" />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/ratings">
-        <ProtectedRoute tabId="ratings" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerRatings />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/aat">
-        <ProtectedRoute tabId="aat" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerAat />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -975,14 +877,6 @@ function Router() {
         <ProtectedRoute tabId="cardchecks" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCardchecks />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/union/steward">
-        <ProtectedRoute tabId="steward" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerSteward />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1119,14 +1013,6 @@ function Router() {
         <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/employment/tos">
-        <ProtectedRoute tabId="tos" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerTos />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1666,14 +1552,6 @@ function Router() {
         <ProtectedRoute tabId="policy-history" entityType="employer">
           <AuthenticatedLayout>
             <EmployerPolicyHistory />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/employers/:id/union/stewards">
-        <ProtectedRoute tabId="stewards" entityType="employer">
-          <AuthenticatedLayout>
-            <EmployerStewards />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2314,15 +2192,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Stewards route */}
-      <Route path="/stewards">
-        <ProtectedRoute permission="staff" component="worker.steward">
-          <AuthenticatedLayout>
-            <Stewards />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
       <Route path="/admin/letter-templates">
         <ProtectedRoute permission="staff">
@@ -2568,16 +2437,6 @@ function Router() {
       {/* Existing links and bookmarks to the plain options URL land on the list */}
       <Route path="/config/options/:type">
         {(params) => <Redirect to={`/config/options/${params.type}/list`} />}
-      </Route>
-
-      <Route path="/config/steward-settings">
-        <ProtectedRoute permission="admin" component="worker.steward">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <StewardSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
       </Route>
 
       <Route path="/config/event-types">
@@ -2931,16 +2790,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/workers/tos">
-        <ProtectedRoute permission="admin" component="worker.tos">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkersTosConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/dispatch/jobs">
         <ProtectedRoute policy="staff" component="dispatch">
           <AuthenticatedLayout>
@@ -3186,14 +3035,6 @@ function Router() {
         <ProtectedRoute policy="edls.coordinator" component="edls">
           <AuthenticatedLayout>
             <EdlsAssignmentsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/edls/tos">
-        <ProtectedRoute policy="edls.any" component="worker.tos">
-          <AuthenticatedLayout>
-            <EdlsTosPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
