@@ -13,15 +13,12 @@
  * Key: repo-relative path. Value: why the file is still here / what to move.
  */
 export const STORAGE_ENCAPSULATION_BASELINE: Record<string, string> = {
-  // Oneoff jobs framework: queries job_runs directly with db/getClient and
-  // drizzle operators; belongs in a storage namespace for job runs.
-  // Relocated with the runner; preserves the existing exception, not new queries.
-  'server/plugins/system/oneoff/runner.ts': 'oneoff runner queries job_runs via db/getClient + drizzle operators',
-  'server/modules/system/oneoff.ts': 'oneoff module imports db directly',
-  'server/plugins/system/oneoff/plugins/test.ts': 'test oneoff builds a sql`` query without the read-only opt-in',
-
-  // Member status scan: worker/ledger/cardcheck queries built in a service.
-  'server/services/member-status-scan.ts': 'member status scan builds worker/ledger/cardcheck queries via getClient',
+  // Owner-approved: oneoffs intentionally support direct database reads/writes,
+  // including the runner's bookkeeping and explicit read-write client contract.
+  // These existing exceptions are not storage-encapsulation cleanup targets.
+  'server/plugins/system/oneoff/runner.ts': 'intentional oneoff job_runs reads/writes via db/getClient + drizzle operators',
+  'server/modules/system/oneoff.ts': 'intentional oneoff module database access',
+  'server/plugins/system/oneoff/plugins/test.ts': 'intentional oneoff direct SQL through its database-access contract',
 
   // Quicksearch shared SQL helpers: sql`` fragments shared by quicksearch
   // plugins; shared infra without its own needsReadOnlyDb flag.

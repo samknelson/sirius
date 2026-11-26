@@ -1,10 +1,6 @@
 import { storage } from "../storage";
 import { toChargeConfig } from "../plugins/ledger/charge/charge-config-resolution";
 import { logger } from "../logger";
-import { getClient } from "../storage/transaction-context";
-import { sql, eq, and, desc } from "drizzle-orm";
-import { cardchecks } from "@shared/schema/cardcheck/schema";
-import { workers, ledger, ledgerEa, bargainingUnits } from "@shared/schema";
 
 const DEFAULT_DELINQUENT_DAYS = 60;
 
@@ -29,24 +25,16 @@ interface BulkScanResult {
 }
 
 async function getMemberStatusMap(): Promise<Map<string, { id: string; code: string }>> {
-  const client = getClient();
-  const statuses = await client.execute(sql`
-    SELECT id, code FROM options_worker_ms
-    WHERE code IN ('paid', 'pend', 'delinquent', 'non')
-  `);
+  const statuses = await storage.memberStatusScan.getStatusDefinitions();
   const map = new Map<string, { id: string; code: string }>();
-  for (const row of statuses.rows as any[]) {
+  for (const row of statuses) {
     map.set(row.code, { id: row.id, code: row.code });
   }
   return map;
 }
 
 async function getIndustryId(): Promise<string | null> {
-  const client = getClient();
-  const result = await client.execute(sql`
-    SELECT DISTINCT industry_id FROM options_worker_ms WHERE code IN ('paid', 'pend', 'delinquent', 'non') LIMIT 1
-  `);
-  return (result.rows[0] as any)?.industry_id || null;
+  return storage.memberStatusScan.getIndustryId();
 }
 
 async function getDuesAccountId(): Promise<string | null> {
@@ -63,29 +51,16 @@ async function getDuesAccountId(): Promise<string | null> {
 
 async function getDelinquentDaysForBu(bargainingUnitId: string | null): Promise<number> {
   if (!bargainingUnitId) return DEFAULT_DELINQUENT_DAYS;
-  const client = getClient();
-  const [bu] = await client
-    .select({ data: bargainingUnits.data })
-    .from(bargainingUnits)
-    .where(eq(bargainingUnits.id, bargainingUnitId));
+  const bu = await storage.bargainingUnits.getBargainingUnitById(bargainingUnitId);
   if (!bu) return DEFAULT_DELINQUENT_DAYS;
   const buData = bu.data as { memberStatusDelinquentDays?: number } | null;
   return buData?.memberStatusDelinquentDays || DEFAULT_DELINQUENT_DAYS;
 }
 
 async function getCurrentMemberStatusCode(workerId: string, industryId: string, statusMap: Map<string, { id: string; code: string }>): Promise<string | null> {
-  const client = getClient();
-  // Date alone settles which entry is current: unique (worker_id,
-  // industry_id, date) means one worker cannot hold two member statuses for
-  // one industry on one date. `id` only keeps the ordering total.
-  const result = await client.execute(sql`
-    SELECT ms_id FROM worker_msh
-    WHERE worker_id = ${workerId} AND industry_id = ${industryId}
-    ORDER BY date DESC, id DESC
-    LIMIT 1
-  `);
-  if (result.rows.length === 0) return null;
-  const msId = (result.rows[0] as any).ms_id;
+  const current = await storage.memberStatusScan.getCurrentStatus(workerId, industryId);
+  if (!current) return null;
+  const msId = current.ms_id;
   for (const [code, status] of statusMap) {
     if (status.id === msId) return code;
   }
@@ -101,23 +76,12 @@ export async function scanWorkerMemberStatus(workerId: string): Promise<ScanResu
     throw new Error("Member status configuration incomplete: missing industry or status definitions");
   }
 
-  const client = getClient();
-
-  const [worker] = await client
-    .select({ id: workers.id, bargainingUnitId: workers.bargainingUnitId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
+  const worker = await storage.memberStatusScan.getWorker(workerId);
   if (!worker) throw new Error(`Worker ${workerId} not found`);
 
   const previousCode = await getCurrentMemberStatusCode(workerId, industryId, statusMap);
 
-  const signedCards = await client
-    .select({ id: cardchecks.id })
-    .from(cardchecks)
-    .where(and(eq(cardchecks.workerId, workerId), eq(cardchecks.status, "signed")))
-    .limit(1);
-
-  const hasSignedCardCheck = signedCards.length > 0;
+  const hasSignedCardCheck = await storage.memberStatusScan.hasSignedCard(workerId);
 
   let newCode: string;
 
@@ -130,13 +94,11 @@ export async function scanWorkerMemberStatus(workerId: string): Promise<ScanResu
     if (!ea) {
       newCode = "pend";
     } else {
-      const latestPayment = await client.execute(sql`
-        SELECT date FROM ledger WHERE ea_id = ${ea.id} ORDER BY date DESC LIMIT 1
-      `);
-      if (latestPayment.rows.length === 0) {
+      const latestPayment = await storage.memberStatusScan.getLatestPayment(ea.id);
+      if (!latestPayment) {
         newCode = "pend";
       } else {
-        const lastPaymentDateStr = String((latestPayment.rows[0] as any).date).split("T")[0];
+        const lastPaymentDateStr = String(latestPayment.date).split("T")[0];
         const delinquentDays = await getDelinquentDaysForBu(worker.bargainingUnitId);
         const today = new Date();
         const cutoffDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() - delinquentDays));
@@ -152,13 +114,9 @@ export async function scanWorkerMemberStatus(workerId: string): Promise<ScanResu
     const newStatus = statusMap.get(newCode);
     if (newStatus) {
       const today = new Date().toISOString().split("T")[0];
-      const existingToday = await client.execute(sql`
-        SELECT id FROM worker_msh
-        WHERE worker_id = ${workerId} AND industry_id = ${industryId} AND date = ${today}
-        LIMIT 1
-      `);
-      if (existingToday.rows.length > 0) {
-        const existingId = (existingToday.rows[0] as any).id;
+      const existingToday = await storage.memberStatusScan.getHistoryOnDate(workerId, industryId, today);
+      if (existingToday) {
+        const existingId = existingToday.id;
         await storage.workerMsh.updateWorkerMsh(existingId, {
           msId: newStatus.id,
           data: { source: "auto-scan" },
@@ -193,21 +151,7 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
     throw new Error("Member status configuration incomplete: missing industry or status definitions");
   }
 
-  const client = getClient();
-
-  const activeWorkers = await client.execute(sql`
-    SELECT DISTINCT ON (w.id) w.id, w.bargaining_unit_id
-    FROM workers w
-    INNER JOIN (
-      SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
-      FROM worker_hours wh
-      ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
-    ) latest ON latest.worker_id = w.id
-    INNER JOIN options_employment_status es ON es.id = latest.employment_status_id
-    WHERE es.employed = true
-  `);
-
-  const workerRows = activeWorkers.rows as any[];
+  const workerRows = await storage.memberStatusScan.getActiveWorkers();
   logger.info(`Member status scan: found ${workerRows.length} active workers`, {
     service: "member-status-scan",
     mode,
@@ -215,34 +159,20 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
 
   const buDelinquentDaysCache = new Map<string, number>();
 
-  const signedCardWorkers = new Set<string>();
-  const signedResult = await client.execute(sql`
-    SELECT DISTINCT worker_id FROM cardchecks WHERE status = 'signed'
-  `);
-  for (const row of signedResult.rows as any[]) {
-    signedCardWorkers.add(row.worker_id);
-  }
+  const signedCardWorkers = new Set(await storage.memberStatusScan.getSignedCardWorkerIds());
 
   let eaMap = new Map<string, string>();
   if (duesAccountId) {
-    const eaResult = await client.execute(sql`
-      SELECT id, entity_id FROM ledger_ea
-      WHERE entity_type = 'worker' AND account_id = ${duesAccountId}
-    `);
-    for (const row of eaResult.rows as any[]) {
+    const eaResult = await storage.memberStatusScan.getWorkerLedgerAccounts(duesAccountId);
+    for (const row of eaResult) {
       eaMap.set(row.entity_id, row.id);
     }
   }
 
   let latestPaymentMap = new Map<string, Date>();
   if (duesAccountId && eaMap.size > 0) {
-    const paymentResult = await client.execute(sql`
-      SELECT DISTINCT ON (ea_id) ea_id, date
-      FROM ledger
-      WHERE ea_id = ANY(${sql`ARRAY[${sql.join(Array.from(eaMap.values()).map(id => sql`${id}`), sql`, `)}]`}::varchar[])
-      ORDER BY ea_id, date DESC
-    `);
-    for (const row of paymentResult.rows as any[]) {
+    const paymentResult = await storage.memberStatusScan.getLatestPayments(Array.from(eaMap.values()));
+    for (const row of paymentResult) {
       const workerId = [...eaMap.entries()].find(([, eaId]) => eaId === row.ea_id)?.[0];
       if (workerId) {
         latestPaymentMap.set(workerId, new Date(row.date));
@@ -251,13 +181,8 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
   }
 
   const currentStatusMap = new Map<string, string | null>();
-  const mshResult = await client.execute(sql`
-    SELECT DISTINCT ON (worker_id) worker_id, ms_id
-    FROM worker_msh
-    WHERE industry_id = ${industryId}
-    ORDER BY worker_id, date DESC, id DESC
-  `);
-  for (const row of mshResult.rows as any[]) {
+  const mshResult = await storage.memberStatusScan.getCurrentStatuses(industryId);
+  for (const row of mshResult) {
     const code = [...statusMap.entries()].find(([, s]) => s.id === row.ms_id)?.[0] || null;
     currentStatusMap.set(row.worker_id, code);
   }

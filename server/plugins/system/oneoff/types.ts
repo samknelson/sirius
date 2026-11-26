@@ -20,6 +20,8 @@ export interface OneoffContext {
   config: PluginConfig;
   action: string;
   input: unknown;
+  // Owner-approved direct reads/writes are intentional for oneoffs, not
+  // storage-encapsulation debt. Supplied only for the action's explicit opt-in.
   db?: typeof db;
 }
 

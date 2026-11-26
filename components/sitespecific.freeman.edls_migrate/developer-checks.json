@@ -1,5 +1,5 @@
 {
   "storageEncapsulationBaseline": {
-    "server/modules/sitespecific/freeman/edls-migrate/import.ts": "Freeman EDLS migrate import queries EDLS/dispatch tables via getClient + drizzle operators"
+    "server/modules/sitespecific/freeman/edls-migrate/import.ts": "Owner-approved indefinitely: migration already ran; direct EDLS/dispatch SQL via getClient + drizzle operators may remain until eventual component disposal, with no cleanup deadline"
   }
 }

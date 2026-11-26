@@ -6,6 +6,8 @@ import { getClient, runInTransaction, runOutsideTransaction } from "../../../sto
 import { requestContext } from "../../../middleware/request-context";
 import type { OneoffAction, OneoffPlugin, OneoffProgress } from "./types";
 
+// Direct DB access is intentional for this oneoff runner and its opted-in
+// actions; the owner confirmed this contract is not a cleanup target.
 const STALE_MS = 60_000;
 const controllers = new Map<string, AbortController>();
 

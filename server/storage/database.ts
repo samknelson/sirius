@@ -101,6 +101,7 @@ import {
 } from "./system/entity-metadata-seed";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
+import { type MemberStatusScanStorage, createMemberStatusScanStorage } from "./member-status-scan";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
@@ -170,6 +171,7 @@ import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentities
 import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
 export interface IStorage extends ComponentStorage {
+  memberStatusScan: MemberStatusScanStorage;
   processes: ProcessesStorage;
   variables: VariableStorage;
   users: UserStorage;
@@ -269,6 +271,7 @@ export interface IStorage extends ComponentStorage {
 
 export interface DatabaseStorage extends ComponentStorage {}
 export class DatabaseStorage implements IStorage {
+  memberStatusScan: MemberStatusScanStorage;
   processes: ProcessesStorage;
   variables: VariableStorage;
   users: UserStorage;
@@ -366,6 +369,7 @@ export class DatabaseStorage implements IStorage {
   letterTemplates: LetterTemplateStorage;
 
   constructor() {
+    this.memberStatusScan = createMemberStatusScanStorage();
     Object.assign(this, createComponentStorage());
     this.processes = createProcessesStorage();
     this.variables = withStorageLogging(

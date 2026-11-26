@@ -547,9 +547,11 @@ existing files already in that directory.
 
 ## All database access MUST go through the storage layer
 
-This is a hard, project-wide rule with **no exceptions**. Every database
+This is a hard, project-wide rule except for the explicitly approved
+contracts below. Every ordinary service/route database
 query — read or write, one row or one million — must be issued from a
-method on a storage module under `server/storage/`. Anything else is a
+method on a storage module under `server/storage/` (or its component's
+`server/storage/`). Anything else is a
 bug.
 
 **Forbidden anywhere outside `server/storage/`** (this includes every
@@ -576,8 +578,7 @@ Routes stay thin; all SQL lives in storage.
 It is acceptable **only inside a storage method**, never inside a
 route handler, service, plugin, or cron job.
 
-**Plugin opt-in for direct read-only DB access:** Plugins are the one
-sanctioned exception. A plugin whose only database need is a single,
+**Plugin opt-in for direct read-only DB access:** A plugin whose only database need is a single,
 pure-read query it alone uses may run that query inline with
 `storage.readOnly.query(...)` instead of adding a one-off storage
 method — but it MUST opt in by declaring `needsReadOnlyDb: true` in its
@@ -586,6 +587,18 @@ surfaced by the dashboard, trust-eligibility, charge, and
 event-notifier registries). This keeps the escape hatch visible and
 auditable. **Mutations always stay in storage** — the opt-in covers
 reads only.
+
+**Intentional oneoff access:** Oneoff plugins and their runner intentionally
+support direct database reads and writes, including the explicit
+`preflightDatabaseAccess` / `executeDatabaseAccess: "read-write"` client
+contract and runner bookkeeping. The owner confirmed this is not
+storage-encapsulation cleanup debt; do not refactor that contract as part of
+ordinary service cleanup.
+
+**Approved completed-migration exception:** The Freeman EDLS migration has
+already run. The owner approved its direct SQL indefinitely until eventual
+component disposal, with no refactoring requirement or cleanup deadline.
+Its existing component baseline records that approval; do not broaden it.
 
 **What the lint enforces:** The `storage-encapsulation` architecture-lint
 rule (`npx tsx scripts/dev/lint.ts storage-encapsulation`) scans `server/`

@@ -1,3 +1,6 @@
+// Owner-approved exception: this migration has already run and may retain
+// direct SQL indefinitely until the component is eventually discarded.
+// Do not refactor it for storage encapsulation or impose a cleanup deadline.
 import { createHash, randomUUID } from "crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
